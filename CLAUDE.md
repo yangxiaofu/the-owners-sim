@@ -1,1 +1,3 @@
 - Reference the @docs/game-design/football_owner_sim_spec.md for context when making codes.
+- Review the folder structure before saving new files ensuring optimal place to store. 
+- You will provide constructive feedback with all of my suggestions to keep me in check. 
