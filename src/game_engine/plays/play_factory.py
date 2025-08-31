@@ -16,7 +16,7 @@ class PlayFactory:
         
         Args:
             play_type: Type of play ("run", "pass", "field_goal", "punt", etc.)
-            config: Optional configuration dict (e.g., {"use_detailed_simulation": True})
+            config: Optional configuration dict (reserved for future use)
             
         Returns:
             PlayType: Instance of the appropriate play class
@@ -27,7 +27,7 @@ class PlayFactory:
         config = config or {}
         
         if play_type == "run":
-            return RunPlay(use_detailed_simulation=config.get("use_detailed_simulation", False))
+            return RunPlay()
         elif play_type == "pass":
             return PassPlay()
         elif play_type == "field_goal":
