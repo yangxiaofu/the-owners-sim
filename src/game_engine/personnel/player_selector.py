@@ -1,9 +1,8 @@
 from typing import Dict, Optional, List, Union
 from dataclasses import dataclass, field
 from ..field.field_state import FieldState
-from ...database.models.players.player import Player
-from ...database.models.players.positions import RunningBack, OffensiveLineman, DefensiveLineman, Linebacker
-from ...database.generators.mock_generator import MockPlayerGenerator
+from database.models.players.player import Player
+from database.models.players.positions import RunningBack, OffensiveLineman, DefensiveLineman, Linebacker
 
 
 @dataclass
@@ -412,8 +411,7 @@ class PlayerSelector:
         
         return base_players
     
-    @staticmethod
-    def apply_fatigue(players: Dict, play_result: Dict) -> Dict:
+    def apply_fatigue(self, players: Dict, play_result: Dict) -> Dict:
         """Apply fatigue effects to players after a play (future enhancement)"""
         # Placeholder for fatigue system
         # In full implementation, this would:

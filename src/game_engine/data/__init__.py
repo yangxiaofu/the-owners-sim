@@ -1,0 +1,1 @@
+# Data loading system for game entities

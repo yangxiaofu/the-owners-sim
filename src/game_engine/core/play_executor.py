@@ -20,6 +20,7 @@ class PlayExecutor:
             config: Configuration dict for simulation options
         """
         self.config = config or {}
+        self.player_selector = PlayerSelector()
         
     def execute_play(self, offense_team: Dict, defense_team: Dict, game_state: GameState) -> PlayResult:
         """
@@ -35,10 +36,14 @@ class PlayExecutor:
         """
         
         # 1. Determine play type based on game situation
+        # TODO: Use some level of AI to determine play type based on game conditions.
+        """
+        In determining the play, type, this needs to account for the coach, game condictions, score.  
+        """
         play_type = self._determine_play_type(game_state.field)
         
         # 2. Get personnel for both teams
-        personnel = PlayerSelector.get_personnel(
+        personnel = self.player_selector.get_personnel(
             offense_team, defense_team, play_type, game_state.field, self.config
         )
         
@@ -46,7 +51,6 @@ class PlayExecutor:
         play_instance = PlayFactory.create_play(play_type, self.config)
         
         # 4. Execute the play simulation (pass full team data for now)
-        # TODO: Update play classes to use personnel packages instead of team data
         play_result = play_instance.simulate(
             offense_team, 
             defense_team, 
@@ -57,8 +61,8 @@ class PlayExecutor:
         self._add_context_to_result(play_result, personnel, game_state)
         
         # 6. Apply post-play effects (fatigue, etc.)
-        PlayerSelector.apply_fatigue(personnel.offensive_players, play_result.__dict__)
-        PlayerSelector.apply_fatigue(personnel.defensive_players, play_result.__dict__)
+        self.player_selector.apply_fatigue(personnel.offensive_players, play_result.__dict__)
+        self.player_selector.apply_fatigue(personnel.defensive_players, play_result.__dict__)
         
         return play_result
     

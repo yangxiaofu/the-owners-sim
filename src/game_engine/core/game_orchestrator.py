@@ -1,9 +1,12 @@
 import random
-from typing import Optional
+from typing import Optional, Dict, Any
 from dataclasses import dataclass
 from .play_executor import PlayExecutor
 from ..field.game_state import GameState
 from ..plays.data_structures import PlayResult
+from ..data.loaders.team_loader import TeamLoader
+from ..data.loaders.player_loader import PlayerLoader
+from ..personnel.player_selector import PlayerSelector
 
 @dataclass
 class GameResult:
@@ -14,10 +17,28 @@ class GameResult:
     away_team_id: int
 
 class SimpleGameEngine:
-    def __init__(self):
-        # TODO: Replace data with data from the database.  Fix at a later stage.
-        # Comprehensive team data structure
-        self.teams_data = {
+    def __init__(self, data_source: str = "json", **config):
+        """
+        Initialize the game engine with pluggable data loaders.
+        
+        Args:
+            data_source: Type of data source ("json", "database", "mock")
+            **config: Configuration passed to data loaders
+        """
+        # Initialize data loaders
+        self.team_loader = TeamLoader(data_source, **config)
+        self.player_loader = PlayerLoader(data_source, **config)
+        
+        # Initialize play executor
+        self.play_executor = PlayExecutor()
+        
+        # Configure for individual players if supported
+        if self.player_loader.data_source.supports_entity_type("players"):
+            player_selector = PlayerSelector(use_individual_players=True)
+            self.play_executor.player_selector = player_selector
+        
+        # Legacy fallback - keep hardcoded data for backward compatibility
+        self._legacy_teams_data = {
             1: {  # Bears
                 "name": "Bears", "city": "Chicago",
                 "offense": {"qb_rating": 68, "rb_rating": 75, "wr_rating": 62, "ol_rating": 70, "te_rating": 65},
@@ -82,11 +103,32 @@ class SimpleGameEngine:
                 "coaching": {"offensive": 62, "defensive": 65},
                 "overall_rating": 62
             }
+        }  # End legacy data
+    
+    def _convert_team_to_legacy_format(self, team) -> Dict[str, Any]:
+        """Convert new Team object to legacy format for backward compatibility."""
+        return {
+            "name": team.name,
+            "city": team.city,
+            "offense": team.ratings.get("offense", {}),
+            "defense": team.ratings.get("defense", {}),
+            "special_teams": team.ratings.get("special_teams", 50),
+            "coaching": team.ratings.get("coaching", {}),
+            "overall_rating": team.ratings.get("overall_rating", 50)
         }
     
     def get_team_for_simulation(self, team_id: int) -> dict:
         """Get complete team data for simulation"""
-        return self.teams_data.get(team_id, {})
+        try:
+            # Try to load from new loader system
+            team = self.team_loader.get_by_id(team_id)
+            if team:
+                return self._convert_team_to_legacy_format(team)
+        except Exception:
+            pass
+        
+        # Fallback to legacy data
+        return self._legacy_teams_data.get(team_id, {})
     
     def calculate_team_strength(self, team_id: int) -> float:
         """Calculate overall team strength for scoring"""
@@ -98,8 +140,20 @@ class SimpleGameEngine:
         home_team = self.get_team_for_simulation(home_team_id)
         away_team = self.get_team_for_simulation(away_team_id)
         
-        # Initialize play-by-play simulation with new architecture
-        play_executor = PlayExecutor()
+        # Load team rosters if using individual players
+        if hasattr(self.play_executor, 'player_selector') and self.play_executor.player_selector:
+            try:
+                home_roster = self.player_loader.get_team_roster(home_team_id)
+                away_roster = self.player_loader.get_team_roster(away_team_id)
+                
+                self.play_executor.player_selector.set_team_rosters({
+                    home_team_id: home_roster,
+                    away_team_id: away_roster
+                })
+            except Exception as e:
+                print(f"Warning: Could not load individual players, using team ratings: {e}")
+        
+        # Initialize game state
         game_state = GameState()
         game_state.field.possession_team_id = home_team_id  # Home team starts with ball
         game_state.scoreboard.home_team_id = home_team_id
@@ -119,7 +173,7 @@ class SimpleGameEngine:
                 defense_team = home_team
             
             # Execute the play using new architecture
-            play_result = play_executor.execute_play(offense_team, defense_team, game_state)
+            play_result = self.play_executor.execute_play(offense_team, defense_team, game_state)
 
             # TODO: Add a stats tracker here later on.
             

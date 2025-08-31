@@ -1,0 +1,1 @@
+# Base abstractions for the entity loader system

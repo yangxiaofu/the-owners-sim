@@ -165,6 +165,7 @@ def test_personnel_system():
     engine = SimpleGameEngine()
     offense_team = engine.get_team_for_simulation(1)
     defense_team = engine.get_team_for_simulation(2)
+    player_selector = PlayerSelector()
     
     # Test different personnel situations
     situations = [
@@ -181,7 +182,7 @@ def test_personnel_system():
         field_state.field_position = situation["field_pos"]
         
         try:
-            personnel = PlayerSelector.get_personnel(
+            personnel = player_selector.get_personnel(
                 offense_team, defense_team, situation["play"], field_state
             )
             

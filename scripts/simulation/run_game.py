@@ -6,14 +6,49 @@ from typing import List, Tuple, Optional
 sys.path.append(os.path.join(os.path.dirname(__file__), '../../src'))
 
 from game_engine import SimpleGameEngine, GameResult
+from game_engine.data.loaders.team_loader import TeamLoader
 
 class FootballSimTerminal:
-    def __init__(self):
-        self.engine = SimpleGameEngine()
-        self.teams = self.create_sample_teams()
+    def __init__(self, data_source: str = "json"):
+        """
+        Initialize football simulation terminal.
+        
+        Args:
+            data_source: Data source type ("json", "database", "mock")
+        """
+        # Configure data source
+        if data_source == "json":
+            config = {
+                "base_path": "src/game_engine/data/sample_data"
+            }
+        else:
+            config = {}
+        
+        # Initialize game engine with new loader system
+        self.engine = SimpleGameEngine(data_source=data_source, **config)
+        
+        # Load teams using the new loader system
+        try:
+            self.team_loader = TeamLoader(data_source, **config)
+            self.teams = self.load_teams_from_loader()
+        except Exception as e:
+            print(f"Warning: Could not load teams from {data_source}, using fallback: {e}")
+            self.teams = self.create_sample_teams()
+    
+    def load_teams_from_loader(self) -> List[Tuple[int, str, str]]:
+        """Load teams using the new loader system."""
+        teams_dict = self.team_loader.get_all()
+        teams_list = []
+        
+        for team in teams_dict.values():
+            teams_list.append((team.id, team.name, team.city))
+        
+        # Sort by team ID for consistent ordering
+        teams_list.sort(key=lambda t: t[0])
+        return teams_list
     
     def create_sample_teams(self) -> List[Tuple[int, str, str]]:
-        # Sample teams without database
+        """Fallback method for creating sample teams."""
         return [
             (1, "Bears", "Chicago"),
             (2, "Packers", "Green Bay"),
@@ -133,5 +168,24 @@ class FootballSimTerminal:
                 print(f"An error occurred: {e}")
 
 if __name__ == "__main__":
-    app = FootballSimTerminal()
-    app.main_menu()
+    import sys
+    
+    # Allow user to specify data source via command line
+    data_source = "json"  # Default to JSON
+    if len(sys.argv) > 1:
+        data_source = sys.argv[1]
+    
+    print(f"🏈 Starting Football Owner Simulation with {data_source} data source")
+    
+    try:
+        app = FootballSimTerminal(data_source=data_source)
+        app.main_menu()
+    except Exception as e:
+        print(f"❌ Error initializing simulation: {e}")
+        print("💡 Trying fallback with mock data...")
+        try:
+            app = FootballSimTerminal(data_source="mock")
+            app.main_menu()
+        except Exception as fallback_error:
+            print(f"❌ Fallback failed: {fallback_error}")
+            print("Please check your data source configuration.")

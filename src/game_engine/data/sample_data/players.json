@@ -1,0 +1,431 @@
+{
+  "players": {
+    "player_rb_001": {
+      "id": "player_rb_001",
+      "name": "Derek Anderson",
+      "team_id": 1,
+      "position": "RB",
+      "role": "starter",
+      "jersey_number": 22,
+      "attributes": {
+        "speed": 88,
+        "strength": 82,
+        "agility": 91,
+        "stamina": 87,
+        "awareness": 79,
+        "technique": 85,
+        "vision": 88,
+        "power": 84,
+        "elusiveness": 92,
+        "catching": 67,
+        "pass_blocking": 55
+      },
+      "contract": {
+        "salary": 8500000,
+        "years_remaining": 2
+      },
+      "injury_status": "healthy",
+      "fatigue": 100
+    },
+    "player_rb_002": {
+      "id": "player_rb_002",
+      "name": "Marcus Williams",
+      "team_id": 1,
+      "position": "RB",
+      "role": "backup",
+      "jersey_number": 28,
+      "attributes": {
+        "speed": 82,
+        "strength": 78,
+        "agility": 86,
+        "stamina": 89,
+        "awareness": 72,
+        "technique": 77,
+        "vision": 74,
+        "power": 79,
+        "elusiveness": 84,
+        "catching": 71,
+        "pass_blocking": 58
+      },
+      "contract": {
+        "salary": 2100000,
+        "years_remaining": 1
+      },
+      "injury_status": "healthy",
+      "fatigue": 100
+    },
+    "player_fb_001": {
+      "id": "player_fb_001",
+      "name": "Tony Rodriguez",
+      "team_id": 1,
+      "position": "FB",
+      "role": "starter",
+      "jersey_number": 44,
+      "attributes": {
+        "speed": 65,
+        "strength": 91,
+        "agility": 72,
+        "stamina": 88,
+        "awareness": 84,
+        "technique": 89,
+        "vision": 78,
+        "power": 94,
+        "elusiveness": 61,
+        "catching": 73,
+        "pass_blocking": 87
+      },
+      "contract": {
+        "salary": 1800000,
+        "years_remaining": 2
+      },
+      "injury_status": "healthy",
+      "fatigue": 100
+    },
+    "player_ol_001": {
+      "id": "player_ol_001",
+      "name": "Marcus Johnson",
+      "team_id": 1,
+      "position": "LT",
+      "role": "starter",
+      "jersey_number": 76,
+      "attributes": {
+        "speed": 42,
+        "strength": 89,
+        "agility": 58,
+        "stamina": 85,
+        "awareness": 82,
+        "technique": 87,
+        "pass_blocking": 91,
+        "run_blocking": 84,
+        "mobility": 68,
+        "anchor": 92
+      },
+      "contract": {
+        "salary": 12500000,
+        "years_remaining": 3
+      },
+      "injury_status": "healthy",
+      "fatigue": 100
+    },
+    "player_ol_002": {
+      "id": "player_ol_002",
+      "name": "James Thompson",
+      "team_id": 1,
+      "position": "LG",
+      "role": "starter",
+      "jersey_number": 67,
+      "attributes": {
+        "speed": 38,
+        "strength": 92,
+        "agility": 52,
+        "stamina": 87,
+        "awareness": 79,
+        "technique": 83,
+        "pass_blocking": 86,
+        "run_blocking": 89,
+        "mobility": 71,
+        "anchor": 88
+      },
+      "contract": {
+        "salary": 8200000,
+        "years_remaining": 2
+      },
+      "injury_status": "healthy",
+      "fatigue": 100
+    },
+    "player_ol_003": {
+      "id": "player_ol_003",
+      "name": "David Mitchell",
+      "team_id": 1,
+      "position": "C",
+      "role": "starter",
+      "jersey_number": 55,
+      "attributes": {
+        "speed": 40,
+        "strength": 87,
+        "agility": 55,
+        "stamina": 89,
+        "awareness": 91,
+        "technique": 90,
+        "pass_blocking": 88,
+        "run_blocking": 85,
+        "mobility": 65,
+        "anchor": 89
+      },
+      "contract": {
+        "salary": 9800000,
+        "years_remaining": 4
+      },
+      "injury_status": "healthy",
+      "fatigue": 100
+    },
+    "player_ol_004": {
+      "id": "player_ol_004",
+      "name": "Carlos Rodriguez",
+      "team_id": 1,
+      "position": "RG",
+      "role": "starter",
+      "jersey_number": 72,
+      "attributes": {
+        "speed": 41,
+        "strength": 90,
+        "agility": 54,
+        "stamina": 86,
+        "awareness": 77,
+        "technique": 81,
+        "pass_blocking": 84,
+        "run_blocking": 91,
+        "mobility": 73,
+        "anchor": 86
+      },
+      "contract": {
+        "salary": 7400000,
+        "years_remaining": 1
+      },
+      "injury_status": "healthy",
+      "fatigue": 100
+    },
+    "player_ol_005": {
+      "id": "player_ol_005",
+      "name": "Robert Davis",
+      "team_id": 1,
+      "position": "RT",
+      "role": "starter",
+      "jersey_number": 78,
+      "attributes": {
+        "speed": 45,
+        "strength": 88,
+        "agility": 59,
+        "stamina": 84,
+        "awareness": 80,
+        "technique": 85,
+        "pass_blocking": 87,
+        "run_blocking": 88,
+        "mobility": 67,
+        "anchor": 90
+      },
+      "contract": {
+        "salary": 10200000,
+        "years_remaining": 2
+      },
+      "injury_status": "healthy",
+      "fatigue": 100
+    },
+    "player_dl_001": {
+      "id": "player_dl_001",
+      "name": "Terrell Washington",
+      "team_id": 1,
+      "position": "LE",
+      "role": "starter",
+      "jersey_number": 91,
+      "attributes": {
+        "speed": 75,
+        "strength": 89,
+        "agility": 78,
+        "stamina": 82,
+        "awareness": 86,
+        "technique": 84,
+        "pass_rushing": 91,
+        "run_defense": 79,
+        "power_moves": 87,
+        "finesse_moves": 93,
+        "gap_discipline": 77
+      },
+      "contract": {
+        "salary": 14200000,
+        "years_remaining": 3
+      },
+      "injury_status": "healthy",
+      "fatigue": 100
+    },
+    "player_dl_002": {
+      "id": "player_dl_002",
+      "name": "DeAndre Jackson",
+      "team_id": 1,
+      "position": "DT",
+      "role": "starter",
+      "jersey_number": 93,
+      "attributes": {
+        "speed": 62,
+        "strength": 94,
+        "agility": 68,
+        "stamina": 85,
+        "awareness": 89,
+        "technique": 91,
+        "pass_rushing": 78,
+        "run_defense": 95,
+        "power_moves": 92,
+        "finesse_moves": 71,
+        "gap_discipline": 94
+      },
+      "contract": {
+        "salary": 11800000,
+        "years_remaining": 2
+      },
+      "injury_status": "healthy",
+      "fatigue": 100
+    },
+    "player_dl_003": {
+      "id": "player_dl_003",
+      "name": "Antonio Brown",
+      "team_id": 1,
+      "position": "DT",
+      "role": "starter",
+      "jersey_number": 97,
+      "attributes": {
+        "speed": 58,
+        "strength": 92,
+        "agility": 65,
+        "stamina": 87,
+        "awareness": 85,
+        "technique": 88,
+        "pass_rushing": 81,
+        "run_defense": 92,
+        "power_moves": 89,
+        "finesse_moves": 74,
+        "gap_discipline": 91
+      },
+      "contract": {
+        "salary": 8900000,
+        "years_remaining": 1
+      },
+      "injury_status": "healthy",
+      "fatigue": 100
+    },
+    "player_dl_004": {
+      "id": "player_dl_004",
+      "name": "Isaiah Moore",
+      "team_id": 1,
+      "position": "RE",
+      "role": "starter",
+      "jersey_number": 94,
+      "attributes": {
+        "speed": 78,
+        "strength": 86,
+        "agility": 81,
+        "stamina": 80,
+        "awareness": 83,
+        "technique": 82,
+        "pass_rushing": 88,
+        "run_defense": 76,
+        "power_moves": 84,
+        "finesse_moves": 89,
+        "gap_discipline": 74
+      },
+      "contract": {
+        "salary": 13600000,
+        "years_remaining": 4
+      },
+      "injury_status": "healthy",
+      "fatigue": 100
+    },
+    "player_lb_001": {
+      "id": "player_lb_001",
+      "name": "Jordan Harris",
+      "team_id": 1,
+      "position": "LOLB",
+      "role": "starter",
+      "jersey_number": 52,
+      "attributes": {
+        "speed": 84,
+        "strength": 81,
+        "agility": 87,
+        "stamina": 89,
+        "awareness": 86,
+        "technique": 83,
+        "run_defense": 82,
+        "coverage": 89,
+        "blitzing": 91,
+        "pursuit": 88,
+        "instincts": 85
+      },
+      "contract": {
+        "salary": 9200000,
+        "years_remaining": 2
+      },
+      "injury_status": "healthy",
+      "fatigue": 100
+    },
+    "player_lb_002": {
+      "id": "player_lb_002",
+      "name": "Michael Lewis",
+      "team_id": 1,
+      "position": "MLB",
+      "role": "starter",
+      "jersey_number": 54,
+      "attributes": {
+        "speed": 79,
+        "strength": 88,
+        "agility": 82,
+        "stamina": 91,
+        "awareness": 93,
+        "technique": 89,
+        "run_defense": 94,
+        "coverage": 76,
+        "blitzing": 84,
+        "pursuit": 87,
+        "instincts": 95
+      },
+      "contract": {
+        "salary": 11500000,
+        "years_remaining": 3
+      },
+      "injury_status": "healthy",
+      "fatigue": 100
+    },
+    "player_lb_003": {
+      "id": "player_lb_003",
+      "name": "Darius Smith",
+      "team_id": 1,
+      "position": "ROLB",
+      "role": "starter",
+      "jersey_number": 51,
+      "attributes": {
+        "speed": 86,
+        "strength": 79,
+        "agility": 89,
+        "stamina": 85,
+        "awareness": 84,
+        "technique": 81,
+        "run_defense": 80,
+        "coverage": 87,
+        "blitzing": 88,
+        "pursuit": 90,
+        "instincts": 83
+      },
+      "contract": {
+        "salary": 8700000,
+        "years_remaining": 1
+      },
+      "injury_status": "healthy",
+      "fatigue": 100
+    },
+    "player_rb_003": {
+      "id": "player_rb_003",
+      "name": "Aaron Wilson",
+      "team_id": 2,
+      "position": "RB",
+      "role": "starter",
+      "jersey_number": 33,
+      "attributes": {
+        "speed": 85,
+        "strength": 79,
+        "agility": 88,
+        "stamina": 84,
+        "awareness": 81,
+        "technique": 82,
+        "vision": 86,
+        "power": 81,
+        "elusiveness": 89,
+        "catching": 74,
+        "pass_blocking": 62
+      },
+      "contract": {
+        "salary": 7800000,
+        "years_remaining": 2
+      },
+      "injury_status": "healthy",
+      "fatigue": 100
+    }
+  }
+}
