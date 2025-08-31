@@ -8,10 +8,14 @@ from ..field.field_state import FieldState
 class PuntPlay(PlayType):
     """Handles punt simulation logic"""
     
-    def simulate(self, offense_team: Dict, defense_team: Dict, field_state: FieldState) -> PlayResult:
+    def simulate(self, personnel, field_state: FieldState) -> PlayResult:
         """Simulate a punt and return the result"""
         
-        outcome, yards_gained = self._simulate_punt(offense_team, defense_team, field_state)
+        # Extract ratings from personnel
+        offense_ratings = self._extract_player_ratings(personnel, "offense") 
+        defense_ratings = self._extract_player_ratings(personnel, "defense")
+        
+        outcome, yards_gained = self._simulate_punt(offense_ratings, defense_ratings, field_state)
         
         # Calculate time elapsed and points
         time_elapsed = self._calculate_time_elapsed("punt", outcome)
@@ -29,13 +33,13 @@ class PuntPlay(PlayType):
             score_points=score_points
         )
     
-    def _simulate_punt(self, offense: Dict, defense: Dict, field_state: FieldState) -> tuple[str, int]:
+    def _simulate_punt(self, offense_ratings: Dict, defense_ratings: Dict, field_state: FieldState) -> tuple[str, int]:
         """Simulate a punt based on field position and team ratings"""
         # Base punt distance
         base_distance = random.randint(35, 55)
         
         # Adjust for punter quality (use special teams rating)
-        punter_rating = offense.get("special_teams", 70)
+        punter_rating = offense_ratings.get("special_teams", 70)
         rating_adjustment = (punter_rating - 70) * 0.2  # ±6 yards based on rating
         
         # Adjust for field position (harder to punt from deep)

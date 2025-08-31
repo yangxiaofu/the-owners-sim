@@ -8,10 +8,13 @@ from ..field.field_state import FieldState
 class KickPlay(PlayType):
     """Handles field goal and extra point attempts"""
     
-    def simulate(self, offense_team: Dict, defense_team: Dict, field_state: FieldState) -> PlayResult:
+    def simulate(self, personnel, field_state: FieldState) -> PlayResult:
         """Simulate a field goal attempt and return the result"""
         
-        outcome, yards_gained = self._simulate_field_goal(offense_team, defense_team, field_state)
+        # Extract ratings from personnel  
+        offense_ratings = self._extract_player_ratings(personnel, "offense")
+        
+        outcome, yards_gained = self._simulate_field_goal(offense_ratings, field_state)
         
         # Calculate time elapsed and points
         time_elapsed = self._calculate_time_elapsed("field_goal", outcome)
@@ -29,7 +32,7 @@ class KickPlay(PlayType):
             score_points=score_points
         )
     
-    def _simulate_field_goal(self, offense: Dict, defense: Dict, field_state: FieldState) -> tuple[str, int]:
+    def _simulate_field_goal(self, offense_ratings: Dict, field_state: FieldState) -> tuple[str, int]:
         """Simulate a field goal attempt based on distance and team ratings"""
         # Calculate distance (field position + 17 yards for end zone and holder)
         distance = (100 - field_state.field_position) + 17
@@ -37,8 +40,8 @@ class KickPlay(PlayType):
         # Base success rate decreases with distance
         base_success_rate = max(0.3, 0.95 - (distance - 20) * 0.015)
         
-        # Adjust for kicker quality (use special teams rating as proxy)
-        kicker_rating = offense.get("special_teams", 70)
+        # Adjust for kicker quality (use special teams rating as proxy)  
+        kicker_rating = offense_ratings.get("special_teams", 70)
         rating_adjustment = (kicker_rating - 70) * 0.005  # ±15% based on rating
         
         # Weather, pressure, and other factors could be added here

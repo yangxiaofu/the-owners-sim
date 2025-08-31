@@ -38,31 +38,28 @@ class PlayExecutor:
         # 1. Determine play type based on game situation
         # TODO: Use some level of AI to determine play type based on game conditions.
         """
-        In determining the play, type, this needs to account for the coach, game condictions, score.  
+        In determining the play, type, this needs to account for the coach, game condictions, score.
+        For now I'm okay making this more random.  
         """
         play_type = self._determine_play_type(game_state.field)
+
         
         # 2. Get personnel for both teams
         personnel = self.player_selector.get_personnel(
             offense_team, defense_team, play_type, game_state.field, self.config
         )
         
-        # 3. Create the appropriate play type instance
+        # 3. Create the appropriate play type instance1
         play_instance = PlayFactory.create_play(play_type, self.config)
         
-        # 4. Execute the play simulation (pass full team data for now)
-        play_result = play_instance.simulate(
-            offense_team, 
-            defense_team, 
-            game_state.field
-        )
+        # 4. Execute the play simulation using selected personnel
+        play_result = play_instance.simulate(personnel, game_state.field)
         
-        # 5. Enhance the play result with context information
-        self._add_context_to_result(play_result, personnel, game_state)
+        # 5. Enrich the play result with analytical metadata
+        self._enrich_play_result_with_metadata(play_result, personnel, game_state)
         
-        # 6. Apply post-play effects (fatigue, etc.)
-        self.player_selector.apply_fatigue(personnel.offensive_players, play_result.__dict__)
-        self.player_selector.apply_fatigue(personnel.defensive_players, play_result.__dict__)
+        # 6. Apply play-specific fatigue based on actual effort exerted
+        self.player_selector.apply_play_fatigue(personnel, play_result)
         
         return play_result
     
@@ -91,8 +88,18 @@ class PlayExecutor:
         else:  # Medium distance
             return "run" if random.random() < 0.5 else "pass"
     
-    def _add_context_to_result(self, play_result: PlayResult, personnel, game_state: GameState):
-        """Add context information to the play result"""
+    def _enrich_play_result_with_metadata(self, play_result: PlayResult, personnel, game_state: GameState):
+        """
+        Enrich the play result with analytical metadata for statistics and reporting.
+        
+        This method adds contextual information that wasn't part of the core simulation
+        but is needed for game analysis, play-by-play reporting, and statistical tracking.
+        
+        Args:
+            play_result: The basic play result from simulation
+            personnel: Personnel package used for the play
+            game_state: Current game state for context
+        """
         # Add formation and defensive call information
         play_result.formation = personnel.formation
         play_result.defensive_call = personnel.defensive_call

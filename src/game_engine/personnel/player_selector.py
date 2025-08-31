@@ -412,10 +412,145 @@ class PlayerSelector:
         return base_players
     
     def apply_fatigue(self, players: Dict, play_result: Dict) -> Dict:
-        """Apply fatigue effects to players after a play (future enhancement)"""
-        # Placeholder for fatigue system
-        # In full implementation, this would:
-        # - Reduce player effectiveness based on snaps played
-        # - Make substitution decisions
-        # - Handle injury risks
+        """Apply fatigue effects to players after a play (legacy method)"""
+        # Legacy method kept for backward compatibility
         return players
+    
+    def apply_play_fatigue(self, personnel: 'PersonnelPackage', play_result) -> None:
+        """
+        Apply play-specific fatigue to individual players based on their effort.
+        
+        Args:
+            personnel: Personnel package containing players who participated
+            play_result: Result of the play to determine fatigue amount
+        """
+        if not personnel.individual_players:
+            return  # No individual players to fatigue
+        
+        play_type = play_result.play_type
+        outcome = play_result.outcome
+        yards_gained = play_result.yards_gained
+        
+        # Determine base fatigue for play type
+        base_fatigue = self._get_base_fatigue_for_play(play_type, outcome)
+        
+        # Apply fatigue to offensive players
+        self._apply_offensive_fatigue(personnel, play_result, base_fatigue)
+        
+        # Apply fatigue to defensive players
+        self._apply_defensive_fatigue(personnel, play_result, base_fatigue)
+    
+    def _get_base_fatigue_for_play(self, play_type: str, outcome: str) -> Dict[str, int]:
+        """Get base fatigue amounts for different play types and outcomes"""
+        fatigue_matrix = {
+            "run": {
+                "rb": 3, "ol": 2, "dl": 3, "lb": 2,
+                "modifiers": {
+                    "gain": 1.0, "loss": 0.8, "touchdown": 1.2, "fumble": 1.3
+                }
+            },
+            "pass": {
+                "qb": 2, "wr": 2, "ol": 1, "dl": 3, "db": 2,
+                "modifiers": {
+                    "gain": 1.0, "incomplete": 0.7, "sack": 1.4, 
+                    "interception": 1.1, "touchdown": 1.2
+                }
+            },
+            "punt": {
+                "punter": 1, "coverage": 2, "returner": 2,
+                "modifiers": {"punt": 1.0, "blocked_punt": 1.5, "punt_return_td": 1.8}
+            },
+            "field_goal": {
+                "kicker": 1, "ol": 1, "dl": 2,
+                "modifiers": {"field_goal": 1.0, "missed_fg": 1.1}
+            }
+        }
+        
+        base_fatigue = fatigue_matrix.get(play_type, {})
+        outcome_modifier = base_fatigue.get("modifiers", {}).get(outcome, 1.0)
+        
+        # Apply outcome modifier to base values
+        adjusted_fatigue = {}
+        for position, value in base_fatigue.items():
+            if position != "modifiers" and isinstance(value, (int, float)):
+                adjusted_fatigue[position] = int(value * outcome_modifier)
+                
+        return adjusted_fatigue
+    
+    def _apply_offensive_fatigue(self, personnel: 'PersonnelPackage', play_result, base_fatigue: Dict[str, int]):
+        """Apply fatigue to offensive players"""
+        
+        # Running back fatigue
+        if personnel.rb_on_field and "rb" in base_fatigue:
+            fatigue_amount = base_fatigue["rb"]
+            
+            # Power runs cause more fatigue for power backs
+            if (play_result.play_type == "run" and 
+                hasattr(personnel.rb_on_field, 'power') and 
+                personnel.rb_on_field.power > 85):
+                fatigue_amount = int(fatigue_amount * 1.2)
+            
+            # Long runs cause extra fatigue
+            if play_result.yards_gained > 15:
+                fatigue_amount = int(fatigue_amount * 1.3)
+            
+            personnel.rb_on_field.apply_fatigue(fatigue_amount)
+        
+        # Offensive line fatigue
+        if personnel.ol_on_field and "ol" in base_fatigue:
+            base_ol_fatigue = base_fatigue["ol"]
+            
+            for ol_player in personnel.ol_on_field:
+                fatigue_amount = base_ol_fatigue
+                
+                # Interior linemen work harder on run plays
+                if (play_result.play_type == "run" and 
+                    ol_player.position in ['LG', 'C', 'RG']):
+                    fatigue_amount = int(fatigue_amount * 1.3)
+                
+                # Pass blocking on sacks is exhausting
+                if (play_result.play_type == "pass" and 
+                    play_result.outcome == "sack"):
+                    fatigue_amount = int(fatigue_amount * 1.5)
+                
+                ol_player.apply_fatigue(fatigue_amount)
+    
+    def _apply_defensive_fatigue(self, personnel: 'PersonnelPackage', play_result, base_fatigue: Dict[str, int]):
+        """Apply fatigue to defensive players"""
+        
+        # Defensive line fatigue
+        if personnel.dl_on_field and "dl" in base_fatigue:
+            base_dl_fatigue = base_fatigue["dl"]
+            
+            for dl_player in personnel.dl_on_field:
+                fatigue_amount = base_dl_fatigue
+                
+                # Pass rushers work harder on pass plays
+                if play_result.play_type == "pass":
+                    fatigue_amount = int(fatigue_amount * 1.2)
+                
+                # Sacks are rewarding but exhausting
+                if play_result.outcome == "sack":
+                    fatigue_amount = int(fatigue_amount * 1.4)
+                
+                dl_player.apply_fatigue(fatigue_amount)
+        
+        # Linebacker fatigue
+        if personnel.lb_on_field and "lb" in base_fatigue:
+            base_lb_fatigue = base_fatigue["lb"]
+            
+            for lb_player in personnel.lb_on_field:
+                fatigue_amount = base_lb_fatigue
+                
+                # Middle linebackers work harder on run plays
+                if (play_result.play_type == "run" and 
+                    lb_player.position == "MLB"):
+                    fatigue_amount = int(fatigue_amount * 1.3)
+                
+                # Coverage linebackers work harder on pass plays
+                if (play_result.play_type == "pass" and 
+                    hasattr(lb_player, 'coverage') and 
+                    lb_player.coverage > 80):
+                    fatigue_amount = int(fatigue_amount * 1.2)
+                
+                lb_player.apply_fatigue(fatigue_amount)
