@@ -1,0 +1,1 @@
+- Reference the @docs/game-design/football_owner_sim_spec.md for context when making codes.
