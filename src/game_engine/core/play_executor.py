@@ -42,14 +42,13 @@ class PlayExecutor:
         For now I'm okay making this more random.  
         """
         play_type = self._determine_play_type(game_state.field)
-
         
         # 2. Get personnel for both teams
         personnel = self.player_selector.get_personnel(
             offense_team, defense_team, play_type, game_state.field, self.config
         )
         
-        # 3. Create the appropriate play type instance1
+        # 3. Create the appropriate play type instance
         play_instance = PlayFactory.create_play(play_type, self.config)
         
         # 4. Execute the play simulation using selected personnel

@@ -7,6 +7,125 @@ from ..simulation.blocking.data_structures import RunPlayCall
 from .run_plays import DetailedRunSimulator
 
 
+class RunGameBalance:
+    """
+    Centralized configuration for run game balance - easy for game designers to tune
+    
+    This class contains all the magic numbers that affect running game balance.
+    Adjust these values to change how the running game plays:
+    - Higher effectiveness weights favor certain factors
+    - Tighter variance ranges create more consistent results
+    - Stronger situational modifiers create more realistic game situations
+    """
+    
+    # === CORE EFFECTIVENESS CALCULATION ===
+    # How much each factor contributes to run success (must sum to 1.0)
+    RB_EFFECTIVENESS_WEIGHT = 0.5      # How much RB attributes matter (0.0-1.0)
+    BLOCKING_EFFECTIVENESS_WEIGHT = 0.5 # How much O-line vs D-line matters (0.0-1.0)
+    
+    # === VARIANCE AND RANDOMNESS ===
+    # Base variance range applied to all runs
+    BASE_VARIANCE_MIN = 0.7    # Minimum multiplier (0.7 = 30% reduction possible)
+    BASE_VARIANCE_MAX = 1.0    # Base maximum before run-type variance kicks in
+    VARIANCE_MULTIPLIER = 0.3  # How much run-type variance affects max (0.0-1.0)
+    
+    # === SITUATIONAL MODIFIERS ===
+    # Down and distance effects
+    THIRD_AND_SHORT_PENALTY = 0.85    # 3rd & short run penalty (defense expecting)
+    FIRST_DOWN_BONUS = 1.05           # 1st down run bonus (more unpredictable)
+    
+    # Field position effects
+    GOAL_LINE_COMPRESSION = 0.7       # Non-power runs near goal line penalty
+    DEEP_TERRITORY_BONUS = 1.1        # Runs from own 20 or less bonus
+    GOAL_LINE_THRESHOLD = 95          # Field position considered "goal line"
+    DEEP_TERRITORY_THRESHOLD = 20     # Field position considered "deep territory"
+    
+    # === BREAKAWAY LOGIC ===
+    BREAKAWAY_MIN_YARDS = 8           # Minimum yards needed for breakaway chance
+    BREAKAWAY_BASE_CHANCE = 0.06      # Base breakaway probability (6%)
+    BREAKAWAY_EXCESS_BONUS = 0.001    # Bonus per rating point above threshold (0.1%)
+    BREAKAWAY_YARDS_MIN = 15          # Minimum bonus yards on breakaway
+    BREAKAWAY_YARDS_MAX = 35          # Maximum bonus yards on breakaway
+    
+    # === OUTCOME DETERMINATION ===
+    # Fumble logic
+    FUMBLE_CHANCE_STUFFED = 0.03      # Fumble chance on stuffed runs (3%)
+    FUMBLE_MAX_LOSS = -2              # Maximum loss on fumble
+    
+    # Touchdown logic  
+    TOUCHDOWN_MIN_YARDS = 15          # Minimum yards to be eligible for TD
+    TOUCHDOWN_CHANCE = 0.12           # TD chance on long runs (12%)
+    
+    @classmethod
+    def validate_configuration(cls):
+        """Validate that configuration values make sense"""
+        # Effectiveness weights should sum to 1.0
+        total_weight = cls.RB_EFFECTIVENESS_WEIGHT + cls.BLOCKING_EFFECTIVENESS_WEIGHT
+        if abs(total_weight - 1.0) > 0.001:
+            raise ValueError(f"Effectiveness weights must sum to 1.0, got {total_weight}")
+        
+        # Variance values should be reasonable
+        if cls.BASE_VARIANCE_MIN >= cls.BASE_VARIANCE_MAX:
+            raise ValueError("BASE_VARIANCE_MIN must be less than BASE_VARIANCE_MAX")
+        
+        # Probabilities should be between 0 and 1
+        probabilities = [
+            cls.BREAKAWAY_BASE_CHANCE, cls.FUMBLE_CHANCE_STUFFED, cls.TOUCHDOWN_CHANCE
+        ]
+        for prob in probabilities:
+            if not 0 <= prob <= 1:
+                raise ValueError(f"Probability {prob} must be between 0 and 1")
+
+
+# Validate configuration on import
+RunGameBalance.validate_configuration()
+
+
+# Situational Matchup Matrix Configuration (KISS: Simple dictionary structure)
+MATCHUP_MATRICES = {
+    "power_run": {
+        "rb_attributes": ["power", "vision"],
+        "base_yards": 3.5,
+        "ol_modifier": 1.3,
+        "dl_modifier": 1.2,
+        "variance": 0.8,
+        "breakaway_threshold": 85
+    },
+    "outside_zone": {
+        "rb_attributes": ["speed", "agility"],
+        "base_yards": 3.0,
+        "ol_modifier": 1.0,
+        "dl_modifier": 0.8,
+        "variance": 1.3,
+        "breakaway_threshold": 80
+    },
+    "inside_zone": {
+        "rb_attributes": ["vision", "agility"],
+        "base_yards": 3.8,
+        "ol_modifier": 1.1,
+        "dl_modifier": 1.0,
+        "variance": 1.0,
+        "breakaway_threshold": 82
+    },
+    "draw_play": {
+        "rb_attributes": ["vision", "elusiveness"],
+        "base_yards": 4.5,
+        "ol_modifier": 0.9,
+        "dl_modifier": 0.7,
+        "variance": 1.4,
+        "breakaway_threshold": 78
+    },
+    "goal_line_power": {
+        "rb_attributes": ["power", "strength"],
+        "base_yards": 1.5,
+        "ol_modifier": 1.4,
+        "dl_modifier": 1.3,
+        "variance": 0.6,
+        "breakaway_threshold": 95
+    }
+}
+
+
 class RunPlay(PlayType):
     """Handles all running play simulation logic"""
     
@@ -25,12 +144,13 @@ class RunPlay(PlayType):
             personnel.formation, personnel.defensive_call, "run"
         )
         
-        # Use enhanced simulation with personnel awareness
-        outcome, yards_gained = self._simulate_personnel_run(
-            offense_ratings, defense_ratings, personnel, formation_modifier
+        # Use situational matchup matrix algorithm
+        outcome, yards_gained = self._calculate_yards_from_matchup_matrix(
+            offense_ratings, defense_ratings, personnel, formation_modifier, field_state
         )
         
         # Calculate time elapsed and points
+        # TODO: this is random and will need to be consolidated to a configurator for better balancing.
         time_elapsed = self._calculate_time_elapsed("run", outcome)
         is_turnover = outcome == "fumble"
         is_score = outcome == "touchdown"
@@ -46,70 +166,145 @@ class RunPlay(PlayType):
             score_points=score_points
         )
     
-    def _simulate_personnel_run(self, offense_ratings: Dict, defense_ratings: Dict, 
-                               personnel, formation_modifier: float) -> tuple[str, int]:
-        """Enhanced run simulation using personnel data and formation advantages"""
-        import random
+    def _determine_run_type(self, formation: str, field_state: FieldState) -> str:
+        """SOLID: Single responsibility - classify run type based on formation and situation"""
         
-        # Get key ratings with fallbacks
-        rb_rating = offense_ratings.get('rb', 50)
+        # Goal line situations (YAGNI: only basic goal line logic)
+        if field_state.is_goal_line() and field_state.is_short_yardage():
+            return "goal_line_power"
+        
+        # SOLID: Open/Closed principle - new formations added via configuration
+        formation_to_run_type = {
+            "I_formation": "power_run",
+            "goal_line": "goal_line_power",
+            "singleback": "inside_zone",
+            "shotgun": "draw_play",
+            "pistol": "inside_zone"
+        }
+        
+        return formation_to_run_type.get(formation, "inside_zone")  # Safe default
+    
+    def _calculate_rb_effectiveness_for_run_type(self, rb, run_type: str) -> float:
+        """SOLID: Single responsibility - calculate RB effectiveness for specific run type"""
+        
+        if not rb:
+            return 0.5  # Default average effectiveness
+        
+        # SOLID: Dependency inversion - depends on RB interface, not implementation
+        matrix = MATCHUP_MATRICES[run_type]
+        total_rating = 0
+        
+        # KISS: Simple average calculation of relevant attributes
+        for attribute in matrix["rb_attributes"]:
+            rating = getattr(rb, attribute, 50)  # Safe attribute access with fallback
+            total_rating += rating
+        
+        avg_rating = total_rating / len(matrix["rb_attributes"])
+        return avg_rating / 100  # Normalize to 0-1 range
+    
+    def _calculate_yards_from_matchup_matrix(self, offense_ratings: Dict, defense_ratings: Dict,
+                                           personnel, formation_modifier: float, field_state: FieldState) -> tuple[str, int]:
+        """SOLID: Single responsibility - main yards calculation using matchup matrix"""
+        
+        # Step 1: Determine run type based on situation
+        run_type = self._determine_run_type(personnel.formation, field_state)
+        matrix = MATCHUP_MATRICES[run_type]
+        
+        # Step 2: Calculate RB effectiveness for this run type
+        rb_effectiveness = self._calculate_rb_effectiveness_for_run_type(
+            personnel.rb_on_field, run_type
+        )
+        
+        # Step 3: Calculate blocking effectiveness (KISS formula)
         ol_rating = offense_ratings.get('ol', 50)
         dl_rating = defense_ratings.get('dl', 50)
-        lb_rating = defense_ratings.get('lb', 50)
+        blocking_effectiveness = (ol_rating * matrix["ol_modifier"]) / (dl_rating * matrix["dl_modifier"])
         
-        # Calculate run success probability
-        offensive_strength = (rb_rating * 0.4 + ol_rating * 0.6)
-        defensive_strength = (dl_rating * 0.5 + lb_rating * 0.5)
+        # Step 4: Combine factors (KISS: simple weighted average)
+        combined_effectiveness = (rb_effectiveness * 0.5 + blocking_effectiveness * 0.5) * formation_modifier
         
-        # Apply formation modifier
-        offensive_strength *= formation_modifier
+        # Step 5: Apply to base yards with run-type specific variance
+        base_yards = matrix["base_yards"] * combined_effectiveness
+        variance = random.uniform(
+            RunGameBalance.BASE_VARIANCE_MIN, 
+            RunGameBalance.BASE_VARIANCE_MAX + matrix["variance"] * RunGameBalance.VARIANCE_MULTIPLIER
+        )
+        final_yards = base_yards * variance
         
-        # Base success rate calculation
-        success_rate = offensive_strength / (offensive_strength + defensive_strength * 1.1)
+        # Step 6: Apply situational modifiers
+        final_yards = self._apply_situational_modifiers(final_yards, field_state, run_type)
         
-        # Individual player bonuses when available
-        if personnel.individual_players and personnel.rb_on_field:
-            rb = personnel.rb_on_field
-            # Power runners get bonus on short yardage
-            if hasattr(rb, 'power') and rb.power > 85:
-                success_rate *= 1.05
-            # Elusive runners get bonus yards
-            if hasattr(rb, 'elusiveness') and rb.elusiveness > 85:
-                success_rate *= 1.03
+        # Step 7: Check for breakaway potential (YAGNI: simple logic)
+        if self._check_breakaway_potential(personnel.rb_on_field, matrix, final_yards):
+            final_yards += random.uniform(
+                RunGameBalance.BREAKAWAY_YARDS_MIN, 
+                RunGameBalance.BREAKAWAY_YARDS_MAX
+            )
         
-        # Determine outcome
-        if random.random() < success_rate:
-            # Successful run
-            base_yards = random.randint(2, 8)
-            
-            # Big play chance based on personnel
-            big_play_chance = 0.08
-            if personnel.individual_players and personnel.rb_on_field:
-                if hasattr(personnel.rb_on_field, 'speed') and personnel.rb_on_field.speed > 85:
-                    big_play_chance *= 1.5
-                    
-            if random.random() < big_play_chance:
-                base_yards += random.randint(10, 40)
-                
-            # Formation-specific yard bonuses
-            if personnel.formation == "goal_line" and base_yards <= 3:
-                base_yards = max(1, base_yards)  # Goal line formation gets short yardage
-            elif personnel.formation == "singleback":
-                base_yards = max(1, base_yards)  # Balanced formation
-                
-            # Touchdown chance
-            if base_yards >= 15 and random.random() < 0.15:
-                return "touchdown", base_yards
-                
-            return "gain", base_yards
+        # Step 8: Determine outcome and return
+        yards = max(0, int(final_yards))
+        return self._determine_play_outcome(yards, run_type)
+    
+    def _apply_situational_modifiers(self, base_yards: float, field_state: FieldState, run_type: str) -> float:
+        """SOLID: Single responsibility - apply game situation modifiers"""
+        
+        modified_yards = base_yards
+        
+        # YAGNI: Only essential situational modifiers
+        # Down and distance modifiers
+        if field_state.down == 3 and field_state.yards_to_go <= 2:
+            modified_yards *= RunGameBalance.THIRD_AND_SHORT_PENALTY  # 3rd and short - defense expecting run
+        elif field_state.down == 1:
+            modified_yards *= RunGameBalance.FIRST_DOWN_BONUS  # 1st down - more unpredictable
+        
+        # Field position modifiers
+        if field_state.field_position >= RunGameBalance.GOAL_LINE_THRESHOLD:
+            if run_type != "goal_line_power":
+                modified_yards *= RunGameBalance.GOAL_LINE_COMPRESSION  # Compressed field
+        elif field_state.field_position <= RunGameBalance.DEEP_TERRITORY_THRESHOLD:
+            modified_yards *= RunGameBalance.DEEP_TERRITORY_BONUS  # Defense playing it safe
+        
+        return modified_yards
+    
+    def _check_breakaway_potential(self, rb, matrix: Dict, current_yards: float) -> bool:
+        """YAGNI: Simple breakaway logic based on RB attributes and run type"""
+        
+        if not rb or current_yards < RunGameBalance.BREAKAWAY_MIN_YARDS:
+            return False
+        
+        # Calculate breakaway ability based on run-type specific attributes
+        total_rating = 0
+        for attribute in matrix["rb_attributes"]:
+            rating = getattr(rb, attribute, 50)
+            total_rating += rating
+        
+        avg_rating = total_rating / len(matrix["rb_attributes"])
+        
+        # Simple threshold check
+        if avg_rating >= matrix["breakaway_threshold"]:
+            # Base chance, with bonus for exceeding threshold
+            excess = avg_rating - matrix["breakaway_threshold"]
+            breakaway_chance = RunGameBalance.BREAKAWAY_BASE_CHANCE + (excess * RunGameBalance.BREAKAWAY_EXCESS_BONUS)
+            return random.random() < breakaway_chance
+        
+        return False
+    
+    def _determine_play_outcome(self, yards: int, run_type: str) -> tuple[str, int]:
+        """SOLID: Single responsibility - determine final play outcome"""
+        
+        # Fumble check (YAGNI: simple logic)
+        if yards <= 0 and random.random() < RunGameBalance.FUMBLE_CHANCE_STUFFED:
+            return "fumble", max(RunGameBalance.FUMBLE_MAX_LOSS, yards)
+        
+        # Touchdown check
+        if yards >= RunGameBalance.TOUCHDOWN_MIN_YARDS and random.random() < RunGameBalance.TOUCHDOWN_CHANCE:
+            return "touchdown", yards
+        
+        # Loss vs gain determination
+        if yards < 0:
+            return "loss", yards
         else:
-            # Failed run
-            if random.random() < 0.05:  # 5% fumble chance
-                return "fumble", random.randint(-2, 0)
-            elif random.random() < 0.15:  # Negative play
-                return "loss", random.randint(-5, -1)
-            else:  # Short gain
-                return "gain", random.randint(0, 2)
+            return "gain", yards
     
     def _simulate_detailed_run(self, offense: Dict, defense: Dict) -> tuple[str, int]:
         """Legacy detailed simulation - kept for backward compatibility"""
