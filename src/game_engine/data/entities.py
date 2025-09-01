@@ -7,7 +7,7 @@ class Team:
     """
     Team entity representing a football team.
     
-    Contains team metadata, ratings, and organizational information.
+    Contains team metadata, ratings, organizational information, and coaching philosophy.
     """
     id: int
     name: str
@@ -17,8 +17,9 @@ class Team:
     division: Optional[str] = None
     conference: Optional[str] = None
     
-    # Team ratings
+    # Team ratings and coaching
     ratings: Dict[str, Any] = None
+    team_philosophy: Optional[str] = None
     
     # Financial information
     salary_cap: Optional[int] = None
@@ -31,9 +32,26 @@ class Team:
                 "offense": {"rb_rating": 50, "ol_rating": 50, "qb_rating": 50, "wr_rating": 50, "te_rating": 50},
                 "defense": {"dl_rating": 50, "lb_rating": 50, "db_rating": 50},
                 "special_teams": 50,
-                "coaching": {"offensive": 50, "defensive": 50},
+                "coaching": {
+                    "offensive": 50, 
+                    "defensive": 50,
+                    "offensive_coordinator": {
+                        "archetype": "balanced_attack",
+                        "personality": "balanced",
+                        "custom_modifiers": {}
+                    },
+                    "defensive_coordinator": {
+                        "archetype": "multiple_defense",
+                        "personality": "balanced",
+                        "custom_modifiers": {}
+                    }
+                },
                 "overall_rating": 50
             }
+        
+        # Set default team philosophy if not provided
+        if self.team_philosophy is None:
+            self.team_philosophy = "balanced_approach"
     
     @property
     def full_name(self) -> str:
@@ -60,6 +78,55 @@ class Team:
             return rating_data if isinstance(rating_data, int) else 50
         
         return rating_data.get(subcategory, 50) if isinstance(rating_data, dict) else 50
+    
+    def get_coaching_archetype(self, coordinator_type: str) -> str:
+        """
+        Get coaching archetype for offensive or defensive coordinator.
+        
+        Args:
+            coordinator_type: "offensive" or "defensive"
+            
+        Returns:
+            Archetype string or "balanced_attack"/"multiple_defense" as default
+        """
+        coaching = self.ratings.get("coaching", {})
+        coordinator_key = f"{coordinator_type}_coordinator"
+        coordinator_data = coaching.get(coordinator_key, {})
+        
+        if coordinator_type == "offensive":
+            return coordinator_data.get("archetype", "balanced_attack")
+        else:
+            return coordinator_data.get("archetype", "multiple_defense")
+    
+    def get_custom_modifiers(self, coordinator_type: str) -> Dict[str, float]:
+        """
+        Get custom modifiers for offensive or defensive coordinator.
+        
+        Args:
+            coordinator_type: "offensive" or "defensive"
+            
+        Returns:
+            Dictionary of custom modifiers
+        """
+        coaching = self.ratings.get("coaching", {})
+        coordinator_key = f"{coordinator_type}_coordinator"
+        coordinator_data = coaching.get(coordinator_key, {})
+        return coordinator_data.get("custom_modifiers", {})
+    
+    def get_coordinator_personality(self, coordinator_type: str) -> str:
+        """
+        Get coordinator personality.
+        
+        Args:
+            coordinator_type: "offensive" or "defensive"
+            
+        Returns:
+            Personality string or "balanced" as default
+        """
+        coaching = self.ratings.get("coaching", {})
+        coordinator_key = f"{coordinator_type}_coordinator"
+        coordinator_data = coaching.get(coordinator_key, {})
+        return coordinator_data.get("personality", "balanced")
     
     def __str__(self) -> str:
         return self.full_name

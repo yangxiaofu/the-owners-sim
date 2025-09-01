@@ -93,8 +93,8 @@ OFFENSIVE_ARCHETYPES = {
         "4th_down_aggressiveness": 0.12,           # 12% 4th down conversion attempts (NFL: Conservative coaches <15%)
         "red_zone_passing": 0.25,                  # 25% red zone pass attempts, prefer field goals
         "situation_modifiers": {
-            "4th_and_short": {"punt": +0.25, "field_goal": +0.20, "run": -0.15, "pass": -0.20},
-            "4th_and_medium": {"punt": +0.20, "field_goal": +0.15, "pass": -0.20, "run": -0.15},
+            "4th_and_short": {"punt": +0.15, "field_goal": +0.15, "run": -0.05, "pass": -0.10},
+            "4th_and_medium": {"punt": +0.15, "field_goal": +0.10, "pass": -0.15, "run": -0.10},
             "red_zone": {"field_goal": +0.25, "pass": -0.20, "run": -0.08},
             "deep_territory": {"run": +0.15, "pass": -0.10, "punt": +0.05},
             "3rd_and_long": {"pass": -0.05}           # Slightly more conservative on 3rd and long

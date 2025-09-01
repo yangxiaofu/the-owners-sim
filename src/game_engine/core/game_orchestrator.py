@@ -7,6 +7,7 @@ from ..plays.data_structures import PlayResult
 from ..data.loaders.team_loader import TeamLoader
 from ..data.loaders.player_loader import PlayerLoader
 from ..personnel.player_selector import PlayerSelector
+from ..coaching import CoachingStaff
 
 @dataclass
 class GameResult:
@@ -37,186 +38,131 @@ class SimpleGameEngine:
             player_selector = PlayerSelector(use_individual_players=True)
             self.play_executor.player_selector = player_selector
         
-        # Legacy fallback - keep hardcoded data for backward compatibility
-        self._legacy_teams_data = {
-            1: {  # Bears
-                "name": "Bears", "city": "Chicago",
-                "offense": {"qb_rating": 68, "rb_rating": 75, "wr_rating": 62, "ol_rating": 70, "te_rating": 65},
-                "defense": {"dl_rating": 82, "lb_rating": 78, "db_rating": 70},
-                "special_teams": 72,
-                "coaching": {
-                    "offensive": 60, 
-                    "defensive": 75,
-                    "offensive_coordinator": {
-                        "archetype": "run_heavy",
-                        "custom_modifiers": {"power_emphasis": +0.08}
-                    },
-                    "defensive_coordinator": {
-                        "archetype": "run_stuffing",
-                        "custom_modifiers": {"interior_strength": +0.10}
-                    }
-                },
-                "overall_rating": 65
+        # Initialize coaching staff for all teams
+        self._initialize_coaching_staffs()
+    
+    def _initialize_coaching_staffs(self):
+        """Initialize CoachingStaff instances for all teams based on their current archetypes."""
+        
+        # Team coaching personality mappings based on current archetypes
+        team_coaching_configs = {
+            1: {  # Bears - Traditional run-heavy defense
+                "offensive_coordinator_personality": "traditional",
+                "defensive_coordinator_personality": "defensive_minded",
+                "team_philosophy": "run_heavy_defense"
             },
-            2: {  # Packers
-                "name": "Packers", "city": "Green Bay",
-                "offense": {"qb_rating": 88, "rb_rating": 70, "wr_rating": 85, "ol_rating": 72, "te_rating": 78},
-                "defense": {"dl_rating": 75, "lb_rating": 68, "db_rating": 72},
-                "special_teams": 78,
-                "coaching": {
-                    "offensive": 85, 
-                    "defensive": 70,
-                    "offensive_coordinator": {
-                        "archetype": "west_coast",
-                        "custom_modifiers": {"aaron_rodgers_effect": +0.12}
-                    },
-                    "defensive_coordinator": {
-                        "archetype": "zone_coverage",
-                        "custom_modifiers": {"coverage_emphasis": +0.08}
-                    }
-                },
-                "overall_rating": 75
+            2: {  # Packers - Innovative west coast with strong QB
+                "offensive_coordinator_personality": "innovative", 
+                "defensive_coordinator_personality": "balanced",
+                "team_philosophy": "passing_excellence"
             },
-            3: {  # Lions
-                "name": "Lions", "city": "Detroit",
-                "offense": {"qb_rating": 72, "rb_rating": 65, "wr_rating": 68, "ol_rating": 58, "te_rating": 62},
-                "defense": {"dl_rating": 62, "lb_rating": 55, "db_rating": 58},
-                "special_teams": 60,
-                "coaching": {
-                    "offensive": 65, 
-                    "defensive": 55,
-                    "offensive_coordinator": {
-                        "archetype": "aggressive",
-                        "custom_modifiers": {"4th_down_aggression": +0.15}
-                    },
-                    "defensive_coordinator": {
-                        "archetype": "balanced_defense",
-                        "custom_modifiers": {}
-                    }
-                },
-                "overall_rating": 60
+            3: {  # Lions - Aggressive modern offense
+                "offensive_coordinator_personality": "aggressive",
+                "defensive_coordinator_personality": "balanced", 
+                "team_philosophy": "high_scoring"
             },
-            4: {  # Vikings
-                "name": "Vikings", "city": "Minneapolis",
-                "offense": {"qb_rating": 78, "rb_rating": 68, "wr_rating": 82, "ol_rating": 65, "te_rating": 70},
-                "defense": {"dl_rating": 72, "lb_rating": 75, "db_rating": 68},
-                "special_teams": 70,
-                "coaching": {
-                    "offensive": 72, 
-                    "defensive": 68,
-                    "offensive_coordinator": {
-                        "archetype": "air_raid",
-                        "custom_modifiers": {"deep_pass_emphasis": +0.10}
-                    },
-                    "defensive_coordinator": {
-                        "archetype": "blitz_heavy",
-                        "custom_modifiers": {"linebacker_blitz": +0.12}
-                    }
-                },
-                "overall_rating": 70
+            4: {  # Vikings - Air raid with aggressive defense
+                "offensive_coordinator_personality": "innovative",
+                "defensive_coordinator_personality": "aggressive",
+                "team_philosophy": "explosive_plays"
             },
-            5: {  # Cowboys
-                "name": "Cowboys", "city": "Dallas",
-                "offense": {"qb_rating": 82, "rb_rating": 85, "wr_rating": 88, "ol_rating": 75, "te_rating": 72},
-                "defense": {"dl_rating": 78, "lb_rating": 80, "db_rating": 82},
-                "special_teams": 82,
-                "coaching": {
-                    "offensive": 80, 
-                    "defensive": 78,
-                    "offensive_coordinator": {
-                        "archetype": "balanced",
-                        "custom_modifiers": {"star_power": +0.05}
-                    },
-                    "defensive_coordinator": {
-                        "archetype": "man_coverage",
-                        "custom_modifiers": {"cornerback_emphasis": +0.10}
-                    }
-                },
-                "overall_rating": 80
+            5: {  # Cowboys - Balanced talent-based approach
+                "offensive_coordinator_personality": "balanced",
+                "defensive_coordinator_personality": "defensive_minded",
+                "team_philosophy": "star_power"
             },
-            6: {  # Eagles
-                "name": "Eagles", "city": "Philadelphia", 
-                "offense": {"qb_rating": 75, "rb_rating": 78, "wr_rating": 75, "ol_rating": 80, "te_rating": 68},
-                "defense": {"dl_rating": 85, "lb_rating": 72, "db_rating": 75},
-                "special_teams": 75,
-                "coaching": {
-                    "offensive": 75, 
-                    "defensive": 80,
-                    "offensive_coordinator": {
-                        "archetype": "run_heavy",
-                        "custom_modifiers": {"physical_style": +0.08}
-                    },
-                    "defensive_coordinator": {
-                        "archetype": "blitz_heavy",
-                        "custom_modifiers": {"pass_rush": +0.15}
-                    }
-                },
-                "overall_rating": 72
+            6: {  # Eagles - Physical run-heavy with aggressive defense
+                "offensive_coordinator_personality": "traditional",
+                "defensive_coordinator_personality": "aggressive",
+                "team_philosophy": "physical_dominance"
             },
-            7: {  # Giants
-                "name": "Giants", "city": "New York",
-                "offense": {"qb_rating": 70, "rb_rating": 72, "wr_rating": 65, "ol_rating": 62, "te_rating": 75},
-                "defense": {"dl_rating": 68, "lb_rating": 70, "db_rating": 65},
-                "special_teams": 68,
-                "coaching": {
-                    "offensive": 68, 
-                    "defensive": 70,
-                    "offensive_coordinator": {
-                        "archetype": "conservative",
-                        "custom_modifiers": {"field_goal_preference": +0.10}
-                    },
-                    "defensive_coordinator": {
-                        "archetype": "bend_dont_break",
-                        "custom_modifiers": {"red_zone_strength": +0.08}
-                    }
-                },
-                "overall_rating": 68
+            7: {  # Giants - Conservative traditional approach
+                "offensive_coordinator_personality": "traditional",
+                "defensive_coordinator_personality": "defensive_minded",
+                "team_philosophy": "field_position"
             },
-            8: {  # Commanders
-                "name": "Commanders", "city": "Washington",
-                "offense": {"qb_rating": 65, "rb_rating": 70, "wr_rating": 72, "ol_rating": 60, "te_rating": 65},
-                "defense": {"dl_rating": 72, "lb_rating": 65, "db_rating": 62},
-                "special_teams": 65,
-                "coaching": {
-                    "offensive": 62, 
-                    "defensive": 65,
-                    "offensive_coordinator": {
-                        "archetype": "west_coast",
-                        "custom_modifiers": {"short_pass_focus": +0.10}
-                    },
-                    "defensive_coordinator": {
-                        "archetype": "zone_coverage",
-                        "custom_modifiers": {"coverage_safety": +0.05}
-                    }
-                },
-                "overall_rating": 62
+            8: {  # Commanders - West coast methodical approach
+                "offensive_coordinator_personality": "balanced",
+                "defensive_coordinator_personality": "balanced",
+                "team_philosophy": "methodical_execution"
             }
-        }  # End legacy data
+        }
+        
+        # Add coaching_staff to each team's data using JSON loader
+        all_teams = self.team_loader.get_all()
+        for team_id, team in all_teams.items():
+            coaching_config = team_coaching_configs.get(team_id, {
+                "offensive_coordinator_personality": "balanced",
+                "defensive_coordinator_personality": "balanced", 
+                "team_philosophy": "balanced_approach"
+            })
+            
+            # Create CoachingStaff instance for this team
+            coaching_staff = CoachingStaff(team_id=str(team_id), coaching_config=coaching_config)
+            
+            # Store coaching staff for this team - this provides the new dynamic system
+            # Note: In JSON-based system, CoachingStaff is created on-demand in _convert_team_to_legacy_format
+            
+            # Keep existing coaching dict for backward compatibility
+            # The play_executor will check for coaching_staff first, then fall back to this
     
     def _convert_team_to_legacy_format(self, team) -> Dict[str, Any]:
         """Convert new Team object to legacy format for backward compatibility."""
-        return {
+        team_data = {
             "name": team.name,
             "city": team.city,
             "offense": team.ratings.get("offense", {}),
             "defense": team.ratings.get("defense", {}),
             "special_teams": team.ratings.get("special_teams", 50),
             "coaching": team.ratings.get("coaching", {}),
-            "overall_rating": team.ratings.get("overall_rating", 50)
+            "overall_rating": team.ratings.get("overall_rating", 50),
+            "team_philosophy": getattr(team, 'team_philosophy', 'balanced_approach')
         }
+        
+        # Add coaching staff integration for enhanced play calling
+        if hasattr(team, 'team_philosophy'):
+            
+            # Extract coordinator data from team ratings
+            coaching = team.ratings.get("coaching", {})
+            offensive_coord = coaching.get("offensive_coordinator", {})
+            defensive_coord = coaching.get("defensive_coordinator", {})
+            
+            coaching_config = {
+                "offensive_coordinator_archetype": offensive_coord.get("archetype", "balanced_attack"),
+                "defensive_coordinator_archetype": defensive_coord.get("archetype", "multiple_defense"),
+                "offensive_coordinator_personality": offensive_coord.get("personality", "balanced"),
+                "defensive_coordinator_personality": defensive_coord.get("personality", "balanced"),
+                "team_philosophy": team.team_philosophy,
+                "custom_modifiers": {
+                    "offensive": offensive_coord.get("custom_modifiers", {}),
+                    "defensive": defensive_coord.get("custom_modifiers", {})
+                }
+            }
+            
+            # Create CoachingStaff instance for this team
+            coaching_staff = CoachingStaff(team_id=str(team.id), coaching_config=coaching_config)
+            team_data["coaching_staff"] = coaching_staff
+        
+        return team_data
     
     def get_team_for_simulation(self, team_id: int) -> dict:
         """Get complete team data for simulation"""
-        try:
-            # Try to load from new loader system
-            team = self.team_loader.get_by_id(team_id)
-            if team:
-                return self._convert_team_to_legacy_format(team)
-        except Exception:
-            pass
+        # Load team data from JSON using the loader system
+        team = self.team_loader.get_by_id(team_id)
+        if team:
+            return self._convert_team_to_legacy_format(team)
         
-        # Fallback to legacy data
-        return self._legacy_teams_data.get(team_id, {})
+        # Return empty dict with defaults if team not found
+        return {
+            "name": "Unknown Team",
+            "city": "Unknown",
+            "offense": {"qb_rating": 50, "rb_rating": 50, "wr_rating": 50, "ol_rating": 50, "te_rating": 50},
+            "defense": {"dl_rating": 50, "lb_rating": 50, "db_rating": 50},
+            "special_teams": 50,
+            "coaching": {"offensive": 50, "defensive": 50},
+            "overall_rating": 50,
+            "team_philosophy": "balanced_approach"
+        }
     
     def calculate_team_strength(self, team_id: int) -> float:
         """Calculate overall team strength for scoring"""
@@ -353,8 +299,8 @@ class SimpleGameEngine:
         kickoff_play = PlayFactory.create_play("kickoff")
         
         # Get team data for kickoff simulation  
-        kicking_team = self._legacy_teams_data.get(kicking_team_id, {})
-        receiving_team = self._legacy_teams_data.get(receiving_team_id, {})
+        kicking_team = self.get_team_for_simulation(kicking_team_id)
+        receiving_team = self.get_team_for_simulation(receiving_team_id)
         
         # Create mock personnel package for kickoff
         personnel = Mock()

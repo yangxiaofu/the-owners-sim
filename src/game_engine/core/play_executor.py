@@ -37,15 +37,31 @@ class PlayExecutor:
         """
         
         # 1. Determine play type using intelligent archetype-based system
-        # Extract coaching data from teams (with fallback to balanced archetypes)
-        # TODO: Crate a more sophisticated system for the archetype. It needs to rotate depending on who the team is.
-        offensive_coordinator = offense_team.get('coaching', {}).get('offensive_coordinator', {'archetype': 'balanced'})
-        defensive_coordinator = defense_team.get('coaching', {}).get('defensive_coordinator', {'archetype': 'balanced_defense'})
-
-
-        """
-        Updated and more sophisticaed as of 9/1/25
-        """
+        # Use dynamic coaching staff for realistic, adaptive coaching behavior
+        coaching_staff = offense_team.get('coaching_staff')
+        if coaching_staff:
+            # New dynamic coaching system - coaches adapt based on context
+            game_context = {
+                'opponent': defense_team,
+                'score_differential': game_state.get_score_differential() if hasattr(game_state, 'get_score_differential') else 0,
+                'time_remaining': game_state.clock.get_time_remaining() if hasattr(game_state.clock, 'get_time_remaining') else 900,
+                'field_position': game_state.field.field_position,
+                'down': game_state.field.down,
+                'yards_to_go': game_state.field.yards_to_go
+            }
+            offensive_coordinator = coaching_staff.get_offensive_coordinator_for_situation(game_context)
+            
+            # Get defensive coaching staff for counter-intelligence
+            defensive_coaching_staff = defense_team.get('coaching_staff') 
+            if defensive_coaching_staff:
+                defensive_coordinator = defensive_coaching_staff.get_defensive_coordinator_for_situation(game_context)
+            else:
+                # Fallback to static defensive archetype
+                defensive_coordinator = defense_team.get('coaching', {}).get('defensive_coordinator', {'archetype': 'balanced_defense'})
+        else:
+            # Fallback to legacy system for backward compatibility
+            offensive_coordinator = offense_team.get('coaching', {}).get('offensive_coordinator', {'archetype': 'balanced'})
+            defensive_coordinator = defense_team.get('coaching', {}).get('defensive_coordinator', {'archetype': 'balanced_defense'})
         play_type = self._determine_play_type(game_state.field, offensive_coordinator, defensive_coordinator)
         
         # 2. Get personnel for both teams

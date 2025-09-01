@@ -69,6 +69,7 @@ class TeamLoader(EntityLoader[Team]):
             division=raw_data.get("division"),
             conference=raw_data.get("conference"),
             ratings=raw_data.get("ratings", {}),
+            team_philosophy=raw_data.get("team_philosophy"),
             salary_cap=raw_data.get("salary_cap"),
             cap_space=raw_data.get("cap_space")
         )
