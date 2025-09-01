@@ -15,12 +15,11 @@ from dataclasses import dataclass
 # Import existing PlayResult from the plays module
 from ...plays.data_structures import PlayResult
 
-# Import transition data structures from individual calculators
-from .field_calculator import FieldTransition
-from .possession_calculator import PossessionTransition  
-from .score_calculator import ScoreTransition
-from .clock_calculator import ClockTransition
-from .special_situations_calculator import SpecialSituationTransition
+# Import transitions from data structures
+from ..data_structures import BaseGameStateTransition, GameStateTransition
+
+# Import transition data structures from data_structures (the authoritative ones)
+from ..data_structures import FieldTransition, PossessionTransition, ScoreTransition, ClockTransition, SpecialSituationTransition
 
 # Import calculator modules
 from .field_calculator import FieldCalculator
@@ -28,24 +27,6 @@ from .possession_calculator import PossessionCalculator
 from .score_calculator import ScoreCalculator
 from .clock_calculator import ClockCalculator
 from .special_situations_calculator import SpecialSituationsCalculator
-
-
-@dataclass(frozen=True)
-class GameStateTransition:
-    """
-    Main container for all calculated state changes.
-    This represents everything that should happen after a play.
-    """
-    field_transition: Optional[FieldTransition] = None
-    possession_transition: Optional[PossessionTransition] = None  
-    score_transition: Optional[ScoreTransition] = None
-    clock_transition: Optional[ClockTransition] = None
-    special_situation_transitions: List[SpecialSituationTransition] = None
-    
-    def __post_init__(self):
-        # Initialize empty list if None provided
-        if self.special_situation_transitions is None:
-            object.__setattr__(self, 'special_situation_transitions', [])
 
 
 class TransitionCalculator:
@@ -66,7 +47,7 @@ class TransitionCalculator:
         self.clock_calculator = ClockCalculator()
         self.special_situations_calculator = SpecialSituationsCalculator()
     
-    def calculate_all_transitions(self, play_result: PlayResult, game_state) -> GameStateTransition:
+    def calculate_all_transitions(self, play_result: PlayResult, game_state) -> BaseGameStateTransition:
         """
         Calculate all state transitions for a play result.
         
@@ -78,7 +59,7 @@ class TransitionCalculator:
             game_state: Current game state (field, clock, scoreboard)
             
         Returns:
-            GameStateTransition containing all calculated changes
+            BaseGameStateTransition containing all calculated changes
         """
         # Calculate basic field changes (downs, yards to go, field position)
         field_transition = self.field_calculator.calculate_field_changes(
@@ -105,12 +86,12 @@ class TransitionCalculator:
             play_result, game_state
         )
         
-        return GameStateTransition(
+        return BaseGameStateTransition(
             field_transition=field_transition,
             possession_transition=possession_transition,
             score_transition=score_transition,
             clock_transition=clock_transition,
-            special_situation_transitions=special_situations
+            special_situation_transition=special_situations[0] if special_situations else None
         )
     
     def calculate_field_only(self, play_result: PlayResult, game_state) -> FieldTransition:
@@ -146,7 +127,7 @@ def calculate_transitions(play_result: PlayResult, game_state) -> GameStateTrans
         game_state: Current game state
         
     Returns:
-        Complete GameStateTransition with all calculated changes
+        Complete BaseGameStateTransition with all calculated changes
     """
     calculator = TransitionCalculator()
     return calculator.calculate_all_transitions(play_result, game_state)

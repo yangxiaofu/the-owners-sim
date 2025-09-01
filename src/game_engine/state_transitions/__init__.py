@@ -51,9 +51,7 @@ try:
         ValidationResult, ValidationResultBuilder, ValidationCategory,
         PossessionChangeReason, ScoreType
     )
-    # Use validator's GameStateTransition if data structures not available
-    if not components.get('data_structures'):
-        from .validators import GameStateTransition as DataGameStateTransition
+    # Note: GameStateTransition is now properly available from data_structures
     components['validators'] = True
 except ImportError as e:
     print(f"Warning: Could not import validators: {e}")

@@ -25,6 +25,7 @@ from dataclasses import dataclass
 
 # Import transition system components with fallbacks
 from ..state_transitions import GameStateTransition, TransitionCalculator, TransitionValidator, TransitionApplicator
+from ..state_transitions.data_structures import BaseGameStateTransition, enhance_base_transition
 
 # Try to import tracking system, use fallback if not available
 try:
@@ -269,7 +270,42 @@ class GameStateManager:
         self.logger.debug("Calculating state transitions...")
         
         # Use the pure calculation functions to determine what should change
-        return self.calculator.calculate_all_transitions(play_result, game_state)
+        base_transition = self.calculator.calculate_all_transitions(play_result, game_state)
+        
+        # Enhance the base transition with metadata for full system integration
+        return self._enhance_transition(base_transition, play_result, game_state)
+    
+    def _enhance_transition(self, base_transition: BaseGameStateTransition, 
+                          play_result: PlayResult, game_state: GameState) -> GameStateTransition:
+        """
+        Convert a BaseGameStateTransition to a full GameStateTransition with metadata.
+        
+        Args:
+            base_transition: Lightweight transition from calculator
+            play_result: Original play result that caused this transition
+            game_state: Current game state for context
+            
+        Returns:
+            Enhanced GameStateTransition with all metadata
+        """
+        # Determine possession team ID from game state
+        possession_team_id = str(game_state.field.possession_team_id) if hasattr(game_state.field, 'possession_team_id') else "unknown"
+        
+        # Create descriptive transition reason
+        transition_reason = f"{play_result.play_type} play: {play_result.outcome}"
+        if play_result.yards_gained != 0:
+            transition_reason += f" for {play_result.yards_gained} yards"
+        if play_result.is_score:
+            transition_reason += f" - SCORE ({play_result.score_points} points)"
+        if play_result.is_turnover:
+            transition_reason += " - TURNOVER"
+        
+        return enhance_base_transition(
+            base_transition=base_transition,
+            play_result=play_result,
+            possession_team_id=possession_team_id,
+            transition_reason=transition_reason
+        )
     
     def _validate_transitions(self, transition: GameStateTransition):
         """

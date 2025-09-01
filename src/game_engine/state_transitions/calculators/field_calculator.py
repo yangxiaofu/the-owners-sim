@@ -10,28 +10,8 @@ Based on the current game_orchestrator.py field update logic (lines 174, 230).
 from typing import Optional
 from dataclasses import dataclass
 from ...plays.data_structures import PlayResult
-
-
-@dataclass(frozen=True)
-class FieldTransition:
-    """
-    Immutable representation of field position changes.
-    
-    Contains all field-related changes that should be applied after a play.
-    """
-    new_field_position: Optional[int] = None  # New yard line position (0-100)
-    new_down: Optional[int] = None            # New down number (1-4)
-    new_yards_to_go: Optional[int] = None     # New yards needed for first down
-    is_first_down: bool = False               # Whether play resulted in first down
-    is_touchdown: bool = False                # Whether play resulted in touchdown
-    is_safety: bool = False                   # Whether play resulted in safety
-    turnover_on_downs: bool = False           # Whether down limit exceeded
-    
-    # Additional context for validation/debugging
-    yards_gained_on_play: int = 0             # Actual yards gained this play
-    previous_down: Optional[int] = None       # Down before the play
-    previous_yards_to_go: Optional[int] = None # Yards to go before the play
-    previous_field_position: Optional[int] = None # Field position before the play
+# Import the proper FieldTransition from data_structures
+from ..data_structures import FieldTransition
 
 
 class FieldCalculator:
@@ -78,32 +58,30 @@ class FieldCalculator:
         # Handle special cases first
         if is_touchdown:
             return FieldTransition(
-                new_field_position=100,
+                new_yard_line=100,
+                old_yard_line=previous_field_position,
+                yards_gained=play_result.yards_gained,
                 new_down=1,
+                old_down=previous_down,
                 new_yards_to_go=10,
-                is_first_down=False,
-                is_touchdown=True,
-                is_safety=False,
-                turnover_on_downs=False,
-                yards_gained_on_play=play_result.yards_gained,
-                previous_down=previous_down,
-                previous_yards_to_go=previous_yards_to_go,
-                previous_field_position=previous_field_position
+                old_yards_to_go=previous_yards_to_go,
+                first_down_achieved=False,
+                in_end_zone=True,
+                at_goal_line=True
             )
         
         if is_safety:
             return FieldTransition(
-                new_field_position=0,
+                new_yard_line=0,
+                old_yard_line=previous_field_position,
+                yards_gained=play_result.yards_gained,
                 new_down=1,
+                old_down=previous_down,
                 new_yards_to_go=10,
-                is_first_down=False,
-                is_touchdown=False,
-                is_safety=True,
-                turnover_on_downs=False,
-                yards_gained_on_play=play_result.yards_gained,
-                previous_down=previous_down,
-                previous_yards_to_go=previous_yards_to_go,
-                previous_field_position=previous_field_position
+                old_yards_to_go=previous_yards_to_go,
+                first_down_achieved=False,
+                safety_situation=True,
+                in_end_zone=True
             )
         
         # Calculate new down and yards to go for normal plays
@@ -114,17 +92,16 @@ class FieldCalculator:
         )
         
         return FieldTransition(
-            new_field_position=new_field_position,
+            new_yard_line=new_field_position,
+            old_yard_line=previous_field_position,
+            yards_gained=play_result.yards_gained,
             new_down=new_down,
+            old_down=previous_down,
             new_yards_to_go=new_yards_to_go,
-            is_first_down=is_first_down,
-            is_touchdown=False,
-            is_safety=False,
-            turnover_on_downs=turnover_on_downs,
-            yards_gained_on_play=play_result.yards_gained,
-            previous_down=previous_down,
-            previous_yards_to_go=previous_yards_to_go,
-            previous_field_position=previous_field_position
+            old_yards_to_go=previous_yards_to_go,
+            first_down_achieved=is_first_down,
+            in_red_zone=(new_field_position >= 80),
+            in_goal_to_go=(100 - new_field_position <= 10)
         )
     
     def _calculate_new_field_position(self, current_position: int, yards_gained: int) -> int:

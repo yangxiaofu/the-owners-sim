@@ -16,62 +16,8 @@ from .possession_validator import PossessionValidator, PossessionChangeReason
 from .score_validator import ScoreValidator, ScoreType
 from .nfl_rules_validator import NFLRulesValidator
 
-
-@dataclass
-class GameStateTransition:
-    """
-    Represents a complete game state transition with all relevant data
-    This is the main object that gets validated by the TransitionValidator
-    """
-    
-    # Field state changes (required fields)
-    current_field_position: int
-    new_field_position: int
-    current_down: int
-    new_down: int
-    current_yards_to_go: int
-    new_yards_to_go: int
-    yards_gained: int
-    
-    # Possession changes (required fields)
-    current_possession_team: Optional[int]
-    new_possession_team: Optional[int]
-    
-    # Score changes (required fields)
-    current_score: Tuple[int, int]  # (home, away)
-    new_score: Tuple[int, int]      # (home, away)
-    
-    # Clock and game state (required fields)
-    current_quarter: int
-    new_quarter: int
-    current_time_remaining: int
-    new_time_remaining: int
-    time_elapsed: int
-    
-    # Play context (required fields)
-    play_type: str
-    play_outcome: str
-    
-    # Optional fields with defaults (must come last)
-    possession_changed: bool = False
-    possession_change_reason: Optional[PossessionChangeReason] = None
-    scoring_occurred: bool = False
-    scoring_team: Optional[int] = None
-    score_type: Optional[ScoreType] = None
-    context: Optional[Dict[str, Any]] = None
-    
-    def __post_init__(self):
-        """Initialize computed fields"""
-        if self.context is None:
-            self.context = {}
-        
-        # Auto-detect possession change if not explicitly set
-        if not self.possession_changed and self.current_possession_team != self.new_possession_team:
-            self.possession_changed = True
-        
-        # Auto-detect scoring if not explicitly set
-        if not self.scoring_occurred and self.current_score != self.new_score:
-            self.scoring_occurred = True
+# Import the structured GameStateTransition from data_structures
+from ..data_structures import GameStateTransition
 
 
 class TransitionValidator:
@@ -101,8 +47,16 @@ class TransitionValidator:
         
         # Add metadata about the transition
         builder.add_metadata("transition_type", "complete_state_change")
-        builder.add_metadata("play_type", transition.play_type)
-        builder.add_metadata("play_outcome", transition.play_outcome)
+        
+        # Safely extract play information (now available via properties)
+        try:
+            builder.add_metadata("play_type", transition.play_type)
+            builder.add_metadata("play_outcome", transition.play_outcome)
+        except Exception as e:
+            # Fallback metadata if play information is not available
+            builder.add_metadata("play_type", "unknown")
+            builder.add_metadata("play_outcome", "unknown")
+            builder.add_metadata("play_extraction_error", str(e))
         
         # 1. Validate field state changes
         field_result = self._validate_field_changes(transition)

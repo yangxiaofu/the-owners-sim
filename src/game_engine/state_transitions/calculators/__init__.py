@@ -14,8 +14,10 @@ Key Modules:
 - special_situations_calculator: Complex scenarios (punt, kickoff, turnover)
 """
 
-# Import main calculator classes
-from .transition_calculator import TransitionCalculator, GameStateTransition, calculate_transitions
+# Import main calculator classes  
+from .transition_calculator import TransitionCalculator, calculate_transitions
+# Import BaseGameStateTransition from data structures (no longer defined in calculator)
+from ..data_structures import BaseGameStateTransition
 from .field_calculator import FieldCalculator, FieldTransition
 from .possession_calculator import PossessionCalculator, PossessionTransition
 from .score_calculator import ScoreCalculator, ScoreTransition
@@ -29,7 +31,7 @@ from .special_situations_calculator import (
 __all__ = [
     # Main coordinator
     'TransitionCalculator',
-    'GameStateTransition', 
+    'BaseGameStateTransition',  # Now imported from data_structures
     'calculate_transitions',
     
     # Individual calculators

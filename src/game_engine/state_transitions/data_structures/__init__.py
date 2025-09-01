@@ -14,18 +14,24 @@ All transition objects follow these principles:
 - Can be easily tested and verified
 """
 
-from .game_state_transition import GameStateTransition
+from .game_state_transition import BaseGameStateTransition, GameStateTransition
 from .field_transition import FieldTransition
 from .possession_transition import PossessionTransition
 from .score_transition import ScoreTransition
 from .clock_transition import ClockTransition
 from .special_situation_transition import SpecialSituationTransition
+from .transition_utils import enhance_base_transition, extract_base_transition, create_transition_id
 
 __all__ = [
+    'BaseGameStateTransition',
     'GameStateTransition',
     'FieldTransition',
     'PossessionTransition', 
     'ScoreTransition',
     'ClockTransition',
     'SpecialSituationTransition',
+    # Utility functions
+    'enhance_base_transition',
+    'extract_base_transition', 
+    'create_transition_id',
 ]
