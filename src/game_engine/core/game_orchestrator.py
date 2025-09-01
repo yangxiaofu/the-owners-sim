@@ -16,6 +16,16 @@ class GameResult:
     winner_id: Optional[int]
     home_team_id: int
     away_team_id: int
+    play_count: int = 0
+    play_type_counts: Dict[str, int] = None
+    clock_stats: Dict[str, float] = None
+    
+    def __post_init__(self):
+        """Initialize default values for tracking fields."""
+        if self.play_type_counts is None:
+            self.play_type_counts = {"run": 0, "pass": 0, "kick": 0, "punt": 0}
+        if self.clock_stats is None:
+            self.clock_stats = {"total_clock_used": 0.0, "avg_per_play": 0.0, "run_avg": 0.0, "pass_avg": 0.0, "special_avg": 0.0}
 
 class SimpleGameEngine:
     def __init__(self, data_source: str = "json", **config):
@@ -42,73 +52,15 @@ class SimpleGameEngine:
         self._initialize_coaching_staffs()
     
     def _initialize_coaching_staffs(self):
-        """Initialize CoachingStaff instances for all teams based on their current archetypes."""
-        
-        # Team coaching personality mappings based on current archetypes
-        team_coaching_configs = {
-            1: {  # Bears - Traditional run-heavy defense
-                "offensive_coordinator_personality": "traditional",
-                "defensive_coordinator_personality": "defensive_minded",
-                "team_philosophy": "run_heavy_defense"
-            },
-            2: {  # Packers - Innovative west coast with strong QB
-                "offensive_coordinator_personality": "innovative", 
-                "defensive_coordinator_personality": "balanced",
-                "team_philosophy": "passing_excellence"
-            },
-            3: {  # Lions - Aggressive modern offense
-                "offensive_coordinator_personality": "aggressive",
-                "defensive_coordinator_personality": "balanced", 
-                "team_philosophy": "high_scoring"
-            },
-            4: {  # Vikings - Air raid with aggressive defense
-                "offensive_coordinator_personality": "innovative",
-                "defensive_coordinator_personality": "aggressive",
-                "team_philosophy": "explosive_plays"
-            },
-            5: {  # Cowboys - Balanced talent-based approach
-                "offensive_coordinator_personality": "balanced",
-                "defensive_coordinator_personality": "defensive_minded",
-                "team_philosophy": "star_power"
-            },
-            6: {  # Eagles - Physical run-heavy with aggressive defense
-                "offensive_coordinator_personality": "traditional",
-                "defensive_coordinator_personality": "aggressive",
-                "team_philosophy": "physical_dominance"
-            },
-            7: {  # Giants - Conservative traditional approach
-                "offensive_coordinator_personality": "traditional",
-                "defensive_coordinator_personality": "defensive_minded",
-                "team_philosophy": "field_position"
-            },
-            8: {  # Commanders - West coast methodical approach
-                "offensive_coordinator_personality": "balanced",
-                "defensive_coordinator_personality": "balanced",
-                "team_philosophy": "methodical_execution"
-            }
-        }
-        
-        # Add coaching_staff to each team's data using JSON loader
-        all_teams = self.team_loader.get_all()
-        for team_id, team in all_teams.items():
-            coaching_config = team_coaching_configs.get(team_id, {
-                "offensive_coordinator_personality": "balanced",
-                "defensive_coordinator_personality": "balanced", 
-                "team_philosophy": "balanced_approach"
-            })
-            
-            # Create CoachingStaff instance for this team
-            coaching_staff = CoachingStaff(team_id=str(team_id), coaching_config=coaching_config)
-            
-            # Store coaching staff for this team - this provides the new dynamic system
-            # Note: In JSON-based system, CoachingStaff is created on-demand in _convert_team_to_legacy_format
-            
-            # Keep existing coaching dict for backward compatibility
-            # The play_executor will check for coaching_staff first, then fall back to this
+        """Initialize CoachingStaff instances for all teams from JSON data."""
+        # CoachingStaff instances are now created on-demand in _convert_team_to_legacy_format
+        # using data directly from teams.json - no hardcoded configurations needed
+        pass
     
     def _convert_team_to_legacy_format(self, team) -> Dict[str, Any]:
         """Convert new Team object to legacy format for backward compatibility."""
         team_data = {
+            "team_id": team.id,  # Include team_id for score differential calculation
             "name": team.name,
             "city": team.city,
             "offense": team.ratings.get("offense", {}),
@@ -149,20 +101,10 @@ class SimpleGameEngine:
         """Get complete team data for simulation"""
         # Load team data from JSON using the loader system
         team = self.team_loader.get_by_id(team_id)
-        if team:
-            return self._convert_team_to_legacy_format(team)
+        if not team:
+            raise ValueError(f"Team with ID {team_id} not found in team data. Check teams.json configuration.")
         
-        # Return empty dict with defaults if team not found
-        return {
-            "name": "Unknown Team",
-            "city": "Unknown",
-            "offense": {"qb_rating": 50, "rb_rating": 50, "wr_rating": 50, "ol_rating": 50, "te_rating": 50},
-            "defense": {"dl_rating": 50, "lb_rating": 50, "db_rating": 50},
-            "special_teams": 50,
-            "coaching": {"offensive": 50, "defensive": 50},
-            "overall_rating": 50,
-            "team_philosophy": "balanced_approach"
-        }
+        return self._convert_team_to_legacy_format(team)
     
     def calculate_team_strength(self, team_id: int) -> float:
         """Calculate overall team strength for scoring"""
@@ -196,6 +138,11 @@ class SimpleGameEngine:
         play_count = 0
         max_plays = 200  # Safety limit to prevent infinite loops
         
+        # Initialize tracking variables
+        play_type_counts = {"run": 0, "pass": 0, "kick": 0, "punt": 0}
+        clock_usage_by_type = {"run": [], "pass": [], "kick": [], "punt": []}
+        total_clock_used = 0.0
+        
         # Main game loop - play by play until game ends
         while not game_state.is_game_over() and play_count < max_plays:
             # Determine which team has possession
@@ -209,7 +156,19 @@ class SimpleGameEngine:
             # Execute the play using new architecture
             play_result = self.play_executor.execute_play(offense_team, defense_team, game_state)
 
-            # TODO: Add a stats tracker here later on.
+            # Track clock usage for this play using PlayResult.time_elapsed
+            clock_used_this_play = play_result.time_elapsed
+            total_clock_used += clock_used_this_play
+            
+            # Track play type and clock usage
+            play_type = play_result.play_type
+            if play_type in play_type_counts:
+                play_type_counts[play_type] += 1
+                clock_usage_by_type[play_type].append(clock_used_this_play)
+            else:
+                # Handle special cases or default to "run"
+                play_type_counts["run"] += 1
+                clock_usage_by_type["run"].append(clock_used_this_play)
             
             # Update game state using the centralized method
             field_result = game_state.update_after_play(play_result)
@@ -271,24 +230,31 @@ class SimpleGameEngine:
         # Determine winner
         winner_id = home_team_id if game_state.scoreboard.home_score > game_state.scoreboard.away_score else away_team_id if game_state.scoreboard.away_score > game_state.scoreboard.home_score else None
         
+        # Calculate clock statistics
+        avg_per_play = total_clock_used / play_count if play_count > 0 else 0.0
+        run_avg = sum(clock_usage_by_type["run"]) / len(clock_usage_by_type["run"]) if clock_usage_by_type["run"] else 0.0
+        pass_avg = sum(clock_usage_by_type["pass"]) / len(clock_usage_by_type["pass"]) if clock_usage_by_type["pass"] else 0.0
+        special_avg = (sum(clock_usage_by_type["kick"]) + sum(clock_usage_by_type["punt"])) / (len(clock_usage_by_type["kick"]) + len(clock_usage_by_type["punt"])) if (clock_usage_by_type["kick"] or clock_usage_by_type["punt"]) else 0.0
+        
+        clock_stats = {
+            "total_clock_used": total_clock_used,
+            "avg_per_play": avg_per_play,
+            "run_avg": run_avg,
+            "pass_avg": pass_avg,
+            "special_avg": special_avg
+        }
+        
         return GameResult(
             home_score=game_state.scoreboard.home_score,
             away_score=game_state.scoreboard.away_score,
             winner_id=winner_id,
             home_team_id=home_team_id,
-            away_team_id=away_team_id
+            away_team_id=away_team_id,
+            play_count=play_count,
+            play_type_counts=play_type_counts.copy(),
+            clock_stats=clock_stats
         )
-    
-    def _generate_score(self, team_strength: float, is_home: bool) -> int:
-        base_score = 14
-        
-        strength_modifier = (team_strength - 50) * 0.3
-        home_advantage = 3 if is_home else 0
-        
-        variance = random.normalvariate(0, 7)
-        
-        final_score = max(0, round(base_score + strength_modifier + home_advantage + variance))
-        return final_score
+
     
     def _simulate_kickoff(self, kicking_team_id: int, receiving_team_id: int):
         """Simulate a kickoff play between two teams"""

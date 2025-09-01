@@ -39,7 +39,7 @@ class StatisticsExtractor:
         stats = {}
         
         # Basic player assignments
-        stats['quarterback'] = self._get_player_name(personnel.qb_on_field)
+        stats['quarterback'] = self._get_player_name(personnel.position_player_map.get('quarterback'))
         stats['receiver'] = self._identify_primary_receiver(personnel, pass_data)
         
         # Pass rush statistics
