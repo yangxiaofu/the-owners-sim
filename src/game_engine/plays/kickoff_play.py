@@ -234,7 +234,8 @@ class KickoffPlay(PlayType):
         is_score = outcome == "touchdown"  # Rare but possible on kickoff return
         score_points = self._calculate_points(outcome)
         
-        return PlayResult(
+        # Create play result
+        play_result = PlayResult(
             play_type="kickoff",
             outcome=outcome,
             yards_gained=yards_gained,
@@ -244,6 +245,11 @@ class KickoffPlay(PlayType):
             score_points=score_points,
             final_field_position=final_field_position
         )
+        
+        # Populate situational context from field state
+        self._populate_situational_context(play_result, field_state)
+        
+        return play_result
     
     def _determine_kick_strategy(self, field_state: FieldState, personnel) -> str:
         """SOLID: Single responsibility - determine kickoff strategy based on game situation"""

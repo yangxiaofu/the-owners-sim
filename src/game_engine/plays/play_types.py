@@ -151,3 +151,20 @@ class PlayType(ABC):
             return 2
         else:
             return 0
+    
+    def _populate_situational_context(self, play_result: PlayResult, field_state: FieldState):
+        """Populate comprehensive situational context from field state"""
+        # Basic Context Fields
+        play_result.down = field_state.down
+        play_result.distance = field_state.yards_to_go
+        play_result.field_position = field_state.field_position
+        play_result.quarter = field_state.quarter
+        play_result.game_clock = field_state.game_clock
+        
+        # Derived Context Flags
+        play_result.big_play = play_result.yards_gained >= 20
+        play_result.explosive_play = play_result.yards_gained >= 40
+        play_result.red_zone_play = field_state.field_position >= 80
+        play_result.goal_line_play = field_state.field_position >= 90
+        play_result.two_minute_drill = field_state.game_clock <= 120
+        play_result.down_conversion = play_result.yards_gained >= field_state.yards_to_go or play_result.is_score

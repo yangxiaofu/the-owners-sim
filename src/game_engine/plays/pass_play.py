@@ -213,7 +213,8 @@ class PassPlay(PlayType):
         
         play_stats = extractor.extract_pass_statistics(personnel, pass_data)
         
-        return PlayResult(
+        # Create play result
+        play_result = PlayResult(
             play_type="pass",
             outcome=outcome,
             yards_gained=yards_gained,
@@ -237,6 +238,11 @@ class PassPlay(PlayType):
             coverage_beaten=play_stats.get('coverage_beaten', False),
             interceptions_by=play_stats.get('interceptions_by')
         )
+        
+        # Populate situational context from field state
+        self._populate_situational_context(play_result, field_state)
+        
+        return play_result
     
     def _determine_route_concept(self, formation: str, field_state: FieldState) -> str:
         """SOLID: Single responsibility - classify route concept based on formation and situation"""

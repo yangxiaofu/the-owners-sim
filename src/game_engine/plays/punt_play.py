@@ -171,7 +171,8 @@ class PuntPlay(PlayType):
         is_score = outcome == "punt_return_td"     # Only return TDs score directly
         score_points = self._calculate_points(outcome)
         
-        return PlayResult(
+        # Create play result
+        play_result = PlayResult(
             play_type="punt",
             outcome=outcome,
             yards_gained=yards_gained,
@@ -180,6 +181,11 @@ class PuntPlay(PlayType):
             is_score=is_score,
             score_points=score_points
         )
+        
+        # Populate situational context from field state
+        self._populate_situational_context(play_result, field_state)
+        
+        return play_result
     
     def _determine_punt_situation(self, field_state: FieldState) -> str:
         """SOLID: Single responsibility - classify punt situation based on field position and game context"""

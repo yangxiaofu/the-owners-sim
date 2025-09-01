@@ -10,6 +10,8 @@ class FieldState:
         self.yards_to_go = 10
         self.field_position = 25  # yard line (1-100)
         self.possession_team_id: Optional[int] = None
+        self.quarter: int = 1  # default to first quarter
+        self.game_clock: int = 900  # default to 15 minutes in seconds
     
     def update_down(self, yards_gained: int) -> str:
         """Update down and distance based on yards gained"""

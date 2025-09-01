@@ -130,7 +130,8 @@ class KickPlay(PlayType):
         is_score = outcome in ["field_goal", "extra_point"]
         score_points = self._calculate_points(outcome)
         
-        return PlayResult(
+        # Create play result
+        play_result = PlayResult(
             play_type="field_goal",
             outcome=outcome,
             yards_gained=yards_gained,
@@ -139,6 +140,11 @@ class KickPlay(PlayType):
             is_score=is_score,
             score_points=score_points
         )
+        
+        # Populate situational context from field state
+        self._populate_situational_context(play_result, field_state)
+        
+        return play_result
     
     def _calculate_kick_distance(self, field_state: FieldState) -> int:
         """Calculate kick distance in yards (field position + end zone + holder)"""

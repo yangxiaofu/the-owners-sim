@@ -1,10 +1,17 @@
 from typing import Dict, List, Any, Optional
 from ..base.entity_loader import EntityLoader
-from database.models.players.player import Player
-from database.models.players.positions import (
-    RunningBack, OffensiveLineman, DefensiveLineman, Linebacker,
-    create_running_back, create_offensive_lineman, create_defensive_lineman, create_linebacker
-)
+try:
+    from database.models.players.player import Player
+    from database.models.players.positions import (
+        RunningBack, OffensiveLineman, DefensiveLineman, Linebacker,
+        create_running_back, create_offensive_lineman, create_defensive_lineman, create_linebacker
+    )
+except ImportError:
+    from src.database.models.players.player import Player
+    from src.database.models.players.positions import (
+        RunningBack, OffensiveLineman, DefensiveLineman, Linebacker,
+        create_running_back, create_offensive_lineman, create_defensive_lineman, create_linebacker
+    )
 
 
 class PlayerLoader(EntityLoader[Player]):

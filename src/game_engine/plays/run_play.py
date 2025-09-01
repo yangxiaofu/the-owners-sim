@@ -179,7 +179,8 @@ class RunPlay(PlayType):
         
         play_stats = extractor.extract_run_statistics(personnel, run_data)
         
-        return PlayResult(
+        # Create play result
+        play_result = PlayResult(
             play_type="run",
             outcome=outcome,
             yards_gained=yards_gained,
@@ -200,6 +201,11 @@ class RunPlay(PlayType):
             protection_breakdowns=play_stats.get('protection_breakdowns', []),
             perfect_protection=play_stats.get('perfect_protection', False)
         )
+        
+        # Populate situational context from field state
+        self._populate_situational_context(play_result, field_state)
+        
+        return play_result
     
     def _determine_run_type(self, formation: str, field_state: FieldState) -> str:
         """SOLID: Single responsibility - classify run type based on formation and situation"""
