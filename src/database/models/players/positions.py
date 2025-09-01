@@ -266,3 +266,89 @@ def create_linebacker(name: str, team_id: int, position: str,
         role=role,
         **base_ratings
     )
+
+
+@dataclass
+class Kicker(Player):
+    """Kicker with specialized attributes for field goals and extra points"""
+    
+    # Kicker-specific attributes (providing defaults for dataclass inheritance)
+    leg_strength: int = 50         # Maximum kick distance capability
+    accuracy: int = 50             # Precision on shorter kicks
+    mental_toughness: int = 50     # Performance under pressure situations
+    consistency: int = 50          # Game-to-game reliability
+    
+    def __post_init__(self):
+        """Initialize Kicker and validate all ratings"""
+        super().__post_init__()
+        
+        # Validate Kicker-specific ratings
+        for attr in ['leg_strength', 'accuracy', 'mental_toughness', 'consistency']:
+            value = getattr(self, attr)
+            if not 0 <= value <= 100:
+                raise ValueError(f"{attr} must be between 0-100, got {value}")
+    
+    @property
+    def overall_rating(self) -> int:
+        """Calculate Kicker overall rating with position-specific weighting"""
+        return int((self.accuracy * 0.30 + self.leg_strength * 0.25 + 
+                   self.mental_toughness * 0.20 + self.consistency * 0.15 + 
+                   self.awareness * 0.10))
+    
+    @property
+    def short_accuracy_rating(self) -> int:
+        """Specialized rating for short field goals (under 40 yards)"""
+        return int((self.accuracy * 0.40 + self.consistency * 0.25 + 
+                   self.mental_toughness * 0.20 + self.technique * 0.15))
+    
+    @property
+    def long_distance_rating(self) -> int:
+        """Specialized rating for long field goals (50+ yards)"""
+        return int((self.leg_strength * 0.40 + self.accuracy * 0.25 + 
+                   self.mental_toughness * 0.20 + self.technique * 0.15))
+    
+    @property
+    def pressure_rating(self) -> int:
+        """Rating for high-pressure kicks (game-winning, clutch situations)"""
+        return int((self.mental_toughness * 0.35 + self.consistency * 0.25 + 
+                   self.awareness * 0.20 + self.accuracy * 0.20))
+    
+    def get_max_effective_distance(self) -> int:
+        """Calculate kicker's maximum effective field goal distance"""
+        # Base distance of 45 yards, modified by leg strength
+        base_distance = 45
+        strength_bonus = (self.leg_strength - 50) * 0.3  # +/- 15 yards max
+        return int(base_distance + strength_bonus)
+    
+    def get_kicker_type(self) -> str:
+        """Determine kicker's strength profile"""
+        if self.leg_strength > 85 and self.accuracy > 75:
+            return "elite"  # Can hit from anywhere with accuracy
+        elif self.leg_strength > 80:
+            return "power"  # Strong leg, long distance specialist
+        elif self.accuracy > 85:
+            return "precision"  # Accurate but limited range
+        elif self.mental_toughness > 85:
+            return "clutch"  # Performs well under pressure
+        else:
+            return "reliable"  # Solid all-around kicker
+
+
+def create_kicker(name: str, team_id: int, position: str = "K",
+                  base_ratings: Dict[str, int] = None, role: PlayerRole = PlayerRole.STARTER) -> Kicker:
+    """Create a Kicker with realistic attribute distribution"""
+    if base_ratings is None:
+        base_ratings = {
+            'speed': 30, 'strength': 60, 'agility': 45, 'stamina': 70,
+            'awareness': 75, 'technique': 75, 'leg_strength': 70,
+            'accuracy': 75, 'mental_toughness': 70, 'consistency': 70
+        }
+    
+    return Kicker(
+        id=f"{team_id}_{position}_{name}",
+        name=name,
+        position=position,
+        team_id=team_id,
+        role=role,
+        **base_ratings
+    )
