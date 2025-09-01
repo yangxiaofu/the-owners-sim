@@ -253,21 +253,21 @@ class GameStateTransition(BaseGameStateTransition):
     def possession_changed(self) -> bool:
         """Check if possession changed from possession transition."""
         if self.possession_transition:
-            return self.possession_transition.possession_changes
+            return getattr(self.possession_transition, 'possession_changes', False)
         return False
         
     @property
-    def current_possession_team(self) -> Optional[int]:
+    def current_possession_team(self) -> Optional[str]:
         """Get current possession team from possession transition."""
         if self.possession_transition:
-            return self.possession_transition.old_possession_team
+            return self.possession_transition.old_possessing_team
         return None
         
     @property
-    def new_possession_team(self) -> Optional[int]:
+    def new_possession_team(self) -> Optional[str]:
         """Get new possession team from possession transition."""
         if self.possession_transition:
-            return self.possession_transition.new_possession_team
+            return self.possession_transition.new_possessing_team
         return None
     
     @property
