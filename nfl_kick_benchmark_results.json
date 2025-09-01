@@ -1,0 +1,99 @@
+{
+  "extra_point_rate": {
+    "mean": 0.9114,
+    "std_dev": 0.28416551514918204,
+    "confidence_interval": [
+      0.9035233337805388,
+      0.9192766662194611
+    ],
+    "sample_size": 5000,
+    "passes_nfl_test": false,
+    "variance_from_nfl": 4.864300626304799
+  },
+  "short_fg_rate": {
+    "mean": 0.8676,
+    "std_dev": 0.33892512447441836,
+    "confidence_interval": [
+      0.8582054748498501,
+      0.87699452515015
+    ],
+    "sample_size": 5000,
+    "passes_nfl_test": false,
+    "variance_from_nfl": 6.609257265877289
+  },
+  "medium_fg_rate": {
+    "mean": 0.799,
+    "std_dev": 0.40074805052551404,
+    "confidence_interval": [
+      0.7878918307683039,
+      0.8101081692316962
+    ],
+    "sample_size": 5000,
+    "passes_nfl_test": false,
+    "variance_from_nfl": 6.11045828437132
+  },
+  "long_fg_rate": {
+    "mean": 0.6668,
+    "std_dev": 0.4713573591236272,
+    "confidence_interval": [
+      0.6537346405880587,
+      0.6798653594119412
+    ],
+    "sample_size": 5000,
+    "passes_nfl_test": false,
+    "variance_from_nfl": 9.278911564625854
+  },
+  "overall_fg_rate": {
+    "mean": 0.7796,
+    "std_dev": 0.41451639292071435,
+    "confidence_interval": [
+      0.7681101917879888,
+      0.7910898082120111
+    ],
+    "sample_size": 5000,
+    "passes_nfl_test": false,
+    "variance_from_nfl": 7.190476190476192
+  },
+  "block_rate": {
+    "mean": 0.0073,
+    "std_dev": 0.08512761009214342,
+    "confidence_interval": [
+      0.0056314988421939886,
+      0.008968501157806012
+    ],
+    "sample_size": 10000,
+    "passes_nfl_test": false,
+    "variance_from_nfl": 51.33333333333333
+  },
+  "distance_correlation": {
+    "success_rates_by_distance": {
+      "20-29": 0.868,
+      "30-39": 0.828,
+      "40-49": 0.788,
+      "50-59": 0.74
+    },
+    "passes_correlation_test": true
+  },
+  "extreme_distance": {
+    "success_rate": 0.629,
+    "passes_realism_test": false
+  },
+  "pressure_situation": {
+    "normal_rate": 0.808,
+    "pressure_rate": 0.866,
+    "performance_difference": -0.05799999999999994,
+    "passes_pressure_test": false
+  },
+  "environmental_consistency": {
+    "sample1_rate": 0.84,
+    "sample2_rate": 0.804,
+    "difference": 0.03599999999999992,
+    "passes_consistency_test": true
+  },
+  "team_rating_correlation": {
+    "high_team_rate": 0.502,
+    "low_team_rate": 0.496,
+    "performance_gap": 0.006000000000000005,
+    "passes_correlation_test": false
+  }
+}

@@ -1,0 +1,128 @@
+{
+  "completion_rate": {
+    "mean": 0.679,
+    "std_dev": 0.46686079295653005,
+    "confidence_interval": [
+      0.669849528458052,
+      0.6881504715419481
+    ],
+    "sample_size": 10000,
+    "passes_nfl_test": true,
+    "variance_from_nfl": 3.981623277182239
+  },
+  "yards_per_attempt": {
+    "mean": 7.232,
+    "std_dev": 1.4464000000000001,
+    "confidence_interval": [
+      7.20365056,
+      7.260349440000001
+    ],
+    "sample_size": 10000,
+    "passes_nfl_test": true,
+    "variance_from_nfl": 1.8591549295774727
+  },
+  "sack_rate": {
+    "mean": 0.0707,
+    "std_dev": 0.2563230578781394,
+    "confidence_interval": [
+      0.06567606806558847,
+      0.07572393193441153
+    ],
+    "sample_size": 10000,
+    "passes_nfl_test": true,
+    "variance_from_nfl": 2.9112081513828265
+  },
+  "interception_rate": {
+    "mean": 0.0211,
+    "std_dev": 0.14371774420717853,
+    "confidence_interval": [
+      0.0182831322135393,
+      0.0239168677864607
+    ],
+    "sample_size": 10000,
+    "passes_nfl_test": true,
+    "variance_from_nfl": 4.090909090909082
+  },
+  "touchdown_rate": {
+    "mean": 0.0769,
+    "std_dev": 0.2664327119555705,
+    "confidence_interval": [
+      0.07167791884567082,
+      0.08212208115432917
+    ],
+    "sample_size": 10000,
+    "passes_nfl_test": false,
+    "variance_from_nfl": 70.88888888888889
+  },
+  "yards_per_completion": {
+    "mean": 10.659944060061829,
+    "std_dev": 2.131988812012366,
+    "confidence_interval": [
+      10.60924380018956,
+      10.710644319934097
+    ],
+    "sample_size": 6793,
+    "passes_nfl_test": true,
+    "variance_from_nfl": 2.2023480728272626
+  },
+  "statistical_distribution": {
+    "mean_yards": 7.1238,
+    "std_dev": 13.203897449267965,
+    "passes_variance_test": false
+  },
+  "third_down_conversion": {
+    "mean": 0.312,
+    "std_dev": 0.46330983153824823,
+    "confidence_interval": [
+      0.28328375913180837,
+      0.34071624086819163
+    ],
+    "sample_size": 1000,
+    "passes_nfl_test": false,
+    "variance_from_nfl": 22.000000000000007
+  },
+  "red_zone_td_rate": {
+    "mean": 0.395,
+    "std_dev": 0.4888506929523574,
+    "confidence_interval": [
+      0.36470072014057103,
+      0.425299279859429
+    ],
+    "sample_size": 1000,
+    "passes_nfl_test": false,
+    "variance_from_nfl": 34.166666666666664
+  },
+  "deep_ball_completion": {
+    "mean": 1.0,
+    "std_dev": 0.0,
+    "confidence_interval": [
+      1.0,
+      1.0
+    ],
+    "sample_size": 242,
+    "passes_nfl_test": false,
+    "variance_from_nfl": 185.71428571428575
+  },
+  "formation_variety": {
+    "formation_results": {
+      "shotgun": 0.645,
+      "shotgun_spread": 0.655,
+      "I_formation": 0.635,
+      "singleback": 0.685,
+      "pistol": 0.625
+    },
+    "has_realistic_variety": false
+  },
+  "team_rating_correlation": {
+    "cowboys_ypa": 7.828,
+    "lions_ypa": 6.046,
+    "performance_gap": 1.782,
+    "passes_correlation_test": true
+  },
+  "matchup_realism": {
+    "elite_vs_poor_ypa": 8.072,
+    "poor_vs_elite_ypa": 6.526,
+    "matchup_difference": 1.5459999999999994,
+    "passes_matchup_test": false
+  }
+}

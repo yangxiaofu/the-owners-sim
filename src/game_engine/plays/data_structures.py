@@ -12,6 +12,7 @@ class PlayResult:
     is_turnover: bool     # fumble, interception
     is_score: bool        # touchdown, field goal, safety
     score_points: int     # points scored on this play (0, 2, 3, 6)
+    final_field_position: Optional[int] = None  # Final field position after play (for kickoffs, punts)
     
     # Enhanced tracking information
     primary_player: Optional[str] = None      # Player who carried/caught/threw the ball
@@ -64,5 +65,16 @@ class PlayResult:
                 return "Field goal missed"
         elif self.play_type == "punt":
             return f"{self.yards_gained}-yard punt"
+        elif self.play_type == "kickoff":
+            if self.outcome == "touchback":
+                return f"Kickoff touchback to {self.final_field_position}-yard line"
+            elif self.outcome == "touchdown":
+                return f"Kickoff return for {self.yards_gained}-yard touchdown"
+            elif self.outcome == "onside_recovery":
+                return f"Onside kick recovered"
+            elif self.outcome == "fumble":
+                return f"Kickoff return, fumble"
+            else:
+                return f"Kickoff return for {self.yards_gained} yards"
         
         return f"{self.play_type}: {self.outcome} for {self.yards_gained} yards"

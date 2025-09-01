@@ -4,6 +4,7 @@ from .run_play import RunPlay
 from .pass_play import PassPlay
 from .kick_play import KickPlay
 from .punt_play import PuntPlay
+from .kickoff_play import KickoffPlay
 
 
 class PlayFactory:
@@ -34,13 +35,15 @@ class PlayFactory:
             return KickPlay()
         elif play_type == "punt":
             return PuntPlay()
+        elif play_type == "kickoff":
+            return KickoffPlay()
         else:
             raise ValueError(f"Unknown play type: {play_type}")
     
     @staticmethod
     def get_supported_play_types() -> list[str]:
         """Return a list of all supported play types"""
-        return ["run", "pass", "field_goal", "punt"]
+        return ["run", "pass", "field_goal", "punt", "kickoff"]
     
     @staticmethod
     def is_supported_play_type(play_type: str) -> bool:

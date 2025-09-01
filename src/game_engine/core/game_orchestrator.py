@@ -182,12 +182,17 @@ class SimpleGameEngine:
             
             # Handle possession changes for scoring
             if play_result.is_score:
-                # TODO: Handle kickoff after score properly
-                # For now, just switch possession
-                game_state.field.possession_team_id = away_team_id if game_state.field.possession_team_id == home_team_id else home_team_id
+                # Execute kickoff after score
+                scoring_team_id = game_state.field.possession_team_id
+                receiving_team_id = away_team_id if scoring_team_id == home_team_id else home_team_id
+                
+                kickoff_result = self._simulate_kickoff(scoring_team_id, receiving_team_id)
+                
+                # Update field state after kickoff
+                game_state.field.possession_team_id = receiving_team_id
                 game_state.field.down = 1
                 game_state.field.yards_to_go = 10
-                game_state.field.field_position = 25
+                game_state.field.field_position = kickoff_result.final_field_position
             
             # Handle turnovers
             elif play_result.is_turnover:
@@ -250,3 +255,32 @@ class SimpleGameEngine:
         
         final_score = max(0, round(base_score + strength_modifier + home_advantage + variance))
         return final_score
+    
+    def _simulate_kickoff(self, kicking_team_id: int, receiving_team_id: int):
+        """Simulate a kickoff play between two teams"""
+        from ..plays.play_factory import PlayFactory
+        from unittest.mock import Mock
+        
+        # Create kickoff play
+        kickoff_play = PlayFactory.create_play("kickoff")
+        
+        # Get team data for kickoff simulation  
+        kicking_team = self._legacy_teams_data.get(kicking_team_id, {})
+        receiving_team = self._legacy_teams_data.get(receiving_team_id, {})
+        
+        # Create mock personnel package for kickoff
+        personnel = Mock()
+        personnel.special_teams_rating = kicking_team.get('special_teams', 70)
+        personnel.kicker_on_field = None  # Use team ratings for now
+        personnel.returner_on_field = None  # Use team ratings for now
+        
+        # Create simplified field state (kickoffs start from 35-yard line)
+        field_state = Mock()
+        field_state.down = 1
+        field_state.yards_to_go = 10
+        field_state.field_position = 35  # NFL kickoff position
+        field_state.is_goal_line = lambda: False
+        field_state.is_short_yardage = lambda: False
+        
+        # Simulate the kickoff
+        return kickoff_play.simulate(personnel, field_state)
