@@ -3,6 +3,7 @@ from typing import Dict
 from .play_types import PlayType
 from .data_structures import PlayResult
 from ..field.field_state import FieldState
+from .strategic_field_goal_decision import FieldGoalStrategicBalance
 
 
 class KickGameBalance:
@@ -150,6 +151,31 @@ class KickPlay(PlayType):
         """Calculate kick distance in yards (field position + end zone + holder)"""
         return (100 - field_state.field_position) + KickGameBalance.END_ZONE_DISTANCE + KickGameBalance.HOLDER_DISTANCE
     
+    def _calculate_strategic_success_rate(self, distance: int) -> float:
+        """
+        Calculate success rate using strategic distance-based modeling
+        
+        This method uses the same distance categories and success rates as the strategic
+        field goal decision system for consistency across the codebase.
+        
+        Args:
+            distance: Field goal distance in yards
+            
+        Returns:
+            float: Base success rate for the distance (0.0 to 1.0)
+        """
+        
+        # Use strategic distance categories for consistent success rate modeling
+        for category, data in FieldGoalStrategicBalance.DISTANCE_SUCCESS_RATES.items():
+            distance_max = data.get("distance_max", float('inf'))
+            distance_min = data.get("distance_min", 0)
+            
+            if distance_min <= distance <= distance_max:
+                return data["base_success_rate"]
+        
+        # If distance exceeds all categories, use very low probability
+        return 0.20  # 20% for extremely long attempts (70+ yards)
+    
     def _determine_kick_situation(self, distance: int, field_state: FieldState) -> str:
         """SOLID: Single responsibility - classify kick situation based on distance"""
         
@@ -275,10 +301,11 @@ class KickPlay(PlayType):
             protection_effectiveness * KickGameBalance.PROTECTION_WEIGHT
         )
         
-        # Step 6: Apply effectiveness to base success rate
-        # Use very gentle approach for kicking - NFL kickers are highly trained specialists
+        # Step 6: Apply effectiveness to strategic base success rate
+        # Use strategic distance-based success rate modeling for more realistic results
+        strategic_base_rate = self._calculate_strategic_success_rate(distance)
         effectiveness_modifier = 0.98 + (combined_effectiveness - 0.75) * 0.10  # Very gentle
-        base_with_effectiveness = matrix["base_success"] * effectiveness_modifier
+        base_with_effectiveness = strategic_base_rate * effectiveness_modifier
         
         # Step 7: Apply situational modifiers
         final_success_rate = self._apply_kick_situational_modifiers(

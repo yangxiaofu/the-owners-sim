@@ -83,7 +83,7 @@ class GameContext:
         """
         # Time-based situations
         self.is_two_minute_drill = self._is_two_minute_situation()
-        self.is_final_minute = self.time_remaining <= 60
+        self.is_final_minute = self.time_remaining <= 90
         self.is_late_game = self.quarter >= 4
         
         # Score-based situations
@@ -116,7 +116,10 @@ class GameContext:
         """
         close_game = abs(self.score_differential) <= 14  # Within two touchdowns
         late_in_game = (
-            (self.quarter == 4 and self.time_remaining <= 480) or  # Last 8 minutes of 4th
+            # Critical time for protect lead: earlier if leading by small margin
+            (self.quarter == 4 and self.time_remaining <= 600 and self.score_differential > 0 and abs(self.score_differential) <= 7) or
+            # Critical time for trailing/tied: later threshold  
+            (self.quarter == 4 and self.time_remaining <= 400) or  # Last 6.5 minutes of 4th
             (self.quarter == 4 and self.time_remaining <= 120) or  # Last 2 minutes
             (self.quarter == 2 and self.time_remaining <= 120)     # End of half
         )
@@ -136,7 +139,7 @@ class GameContext:
             return 'high'
         elif self.is_critical_time:
             return 'medium'
-        elif self.is_late_game and abs(self.score_differential) <= 7:
+        elif self.is_late_game and self.time_remaining <= 600 and abs(self.score_differential) <= 7:
             return 'low'
         else:
             return 'none'

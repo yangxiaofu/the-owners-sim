@@ -66,6 +66,11 @@ class PlayResult:
     missed_tackle: bool = False
     perfect_protection: bool = False          # All blocks successful
     
+    # === CONVERSION ATTEMPT TRACKING ===
+    conversion_attempt: Optional[str] = None   # "extra_point" or "two_point" if this is a conversion
+    conversion_result: Optional[str] = None    # "good" or "missed" for conversion attempts
+    conversion_decision_factors: List[str] = field(default_factory=list)  # Factors that influenced 2-point decision
+    
     # === MATCHUP ANALYSIS ===
     key_matchup_winner: Optional[str] = None    # Player who won critical matchup
     key_matchup_loser: Optional[str] = None     # Player who lost critical matchup
@@ -74,6 +79,19 @@ class PlayResult:
     down_conversion: bool = False             # Did play result in first down/TD
     red_zone_play: bool = False
     two_minute_drill: bool = False
+    
+    # === PENALTY TRACKING ===
+    penalty_occurred: bool = False
+    penalty_type: Optional[str] = None
+    penalized_player: Optional[str] = None
+    penalty_yards: int = 0
+    penalty_automatic_first_down: bool = False
+    penalty_phase: Optional[str] = None  # "pre_snap", "during_play", "post_play"
+    penalty_description: str = ""
+    penalty_team: Optional[str] = None   # "offense" or "defense"
+    
+    # Multiple penalties support
+    additional_penalties: List[Dict] = field(default_factory=list)
     
     def get_summary(self) -> str:
         """Generate a human-readable summary of the play"""
@@ -178,6 +196,10 @@ class PlayResult:
             breakdown = self.protection_breakdowns[0]
             description += f" - protection breakdown: {breakdown.get('blocker', 'blocker')} beaten by {breakdown.get('defender', 'defender')}"
         
+        # Add penalty information
+        if self.penalty_occurred:
+            description += f" - PENALTY: {self.penalty_description}"
+        
         return description
     
     def _generate_run_commentary(self) -> str:
@@ -217,5 +239,9 @@ class PlayResult:
         # Add negative plays
         if self.tackles_for_loss_by:
             description += f" - tackled for loss by {self.tackles_for_loss_by[0]}"
+        
+        # Add penalty information
+        if self.penalty_occurred:
+            description += f" - PENALTY: {self.penalty_description}"
         
         return description

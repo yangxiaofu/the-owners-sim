@@ -36,14 +36,14 @@ class BalancedStrategy:
         """
         # Base time for different play types (standard NFL timing)
         base_times = {
-            'run': 28,      # Further reduced run timing (-4s more)
-            'pass_complete': 13,     # Further reduced complete passes (-2s more)
-            'pass_incomplete': 10,   # Further reduced incomplete passes (-2s more)
-            'punt': 15,     # Standard special teams
-            'field_goal': 15,
-            'kick': 15,
-            'kneel': 40,    # Standard clock control
-            'spike': 3      # Standard spike timing
+            'run': 32,      # Increased to reduce play count
+            'pass_complete': 20,     # Increased to reduce play count
+            'pass_incomplete': 16,   # Increased to reduce play count
+            'punt': 18,     # Increased to reduce play count
+            'field_goal': 18,      # Increased to reduce play count
+            'kick': 18,            # Increased to reduce play count
+            'kneel': 42,    # Increased to reduce play count
+            'spike': 4      # Minimal increase
         }
         
         # Handle pass play types with completion status
@@ -57,7 +57,7 @@ class BalancedStrategy:
         else:
             effective_play_type = play_type
         
-        base_time = base_times.get(effective_play_type, 23)  # Default neutral timing
+        base_time = base_times.get(effective_play_type, 26)  # Default neutral timing (increased)
         
         # Base archetype modifier: neutral/minimal
         base_adjustment = 0  # No significant tempo bias
@@ -83,18 +83,18 @@ class BalancedStrategy:
         
         # Minimal balanced-specific situational logic
         if score_differential > 14:  # Leading by 15+
-            adjusted_time += 2  # Slight clock control with big lead
+            adjusted_time += 1  # Slight clock control with big lead (reduced from +2)
             
         elif score_differential < -14:  # Trailing by 15+
-            adjusted_time -= 2  # Slight urgency when way behind
+            adjusted_time -= 3  # Increased urgency when way behind (increased from -2)
             
         # Fourth quarter standard adjustments
         if quarter == 4:
             if clock < 300:  # Final 5 minutes
                 if score_differential > 7:  # Leading by 8+
-                    adjusted_time += 2  # Standard clock control
+                    adjusted_time += 1  # Standard clock control (reduced from +2)
                 elif score_differential < -7:  # Trailing by 8+
-                    adjusted_time -= 2  # Standard hurry-up
+                    adjusted_time -= 3  # Increased hurry-up (increased from -2)
                     
         # Down and distance (minimal adjustments)
         if down >= 3 and distance > 10:  # 3rd/4th and long
@@ -111,4 +111,4 @@ class BalancedStrategy:
         if quarter in [2, 4] and clock <= 120 and score_differential < 0:
             adjusted_time -= 1  # Standard two-minute drill adjustment
             
-        return int(max(8, min(45, adjusted_time)))  # Apply bounds and convert to int
+        return int(max(8, min(45, adjusted_time)))  # Apply bounds for target play count

@@ -36,14 +36,14 @@ class WestCoastStrategy:
         """
         # Base time for different play types
         base_times = {
-            'run': 28,           # Further reduced base run time (-4s more)
-            'pass_complete': 13, # Further reduced completed passes (-2s more)
-            'pass_incomplete': 10, # Further reduced incomplete passes (-2s more)
-            'punt': 15,          # Standard special teams
-            'field_goal': 15,
-            'kick': 15,
-            'kneel': 38,         # Good clock control
-            'spike': 3           # Standard spike timing
+            'run': 33,           # Increased to reduce play count
+            'pass_complete': 21, # Increased to reduce play count
+            'pass_incomplete': 17, # Increased to reduce play count
+            'punt': 18,          # Increased to reduce play count
+            'field_goal': 18,    # Increased to reduce play count
+            'kick': 18,          # Increased to reduce play count
+            'kneel': 43,         # Increased to reduce play count
+            'spike': 4           # Minimal increase
         }
         
         # Handle pass play types with completion status
@@ -57,10 +57,10 @@ class WestCoastStrategy:
         else:
             effective_play_type = play_type
             
-        base_time = base_times.get(effective_play_type, 24)  # Default methodical timing
+        base_time = base_times.get(effective_play_type, 28)  # Default methodical timing (increased)
         
         # Base archetype modifier: methodical precision
-        base_adjustment = 2  # +1-2 seconds for precision and reads
+        base_adjustment = 1  # +1 second for precision and reads (reduced from +2)
         
         # Play-type specific adjustments
         play_modifiers = {
@@ -85,13 +85,13 @@ class WestCoastStrategy:
         # West coast specific situational logic
         if score_differential > 3:  # Leading by 4+
             if quarter >= 3:  # Second half with lead
-                adjusted_time += 2  # Control tempo to protect lead
+                adjusted_time += 1  # Control tempo to protect lead (reduced from +2)
             else:
-                adjusted_time += 1  # Slight tempo control
+                adjusted_time += 1  # Slight tempo control (unchanged)
                 
         elif score_differential < -3:  # Trailing by 4+
             # West coast can speed up when needed
-            adjusted_time -= 3  # Efficient hurry-up
+            adjusted_time -= 4  # Efficient hurry-up (increased from -3)
             
         elif abs(score_differential) <= 3:  # Close game
             # West coast excels in close games with precision
@@ -119,17 +119,17 @@ class WestCoastStrategy:
             
         # Red zone excellence (west coast strength)
         if field_position >= 80:  # Red zone
-            adjusted_time += 2  # Extra precision in scoring position
+            adjusted_time += 1  # Extra precision in scoring position (reduced from +2)
             if field_position >= 95:  # Goal line
-                adjusted_time += 1  # Maximum precision at goal line
+                adjusted_time += 1  # Maximum precision at goal line (unchanged)
                 
         # Fourth quarter clock management intelligence
         if quarter == 4:
             if clock < 600:  # Final 10 minutes
                 if score_differential > 7:  # Comfortable lead
-                    adjusted_time += 3  # Control clock
+                    adjusted_time += 2  # Control clock (reduced from +3)
                 elif score_differential > 0:  # Small lead
-                    adjusted_time += 1  # Slight control
+                    adjusted_time += 1  # Slight control (unchanged)
                 elif score_differential == 0:  # Tied
                     # Stay methodical in tie games
                     pass  # No adjustment - stick to base precision
@@ -142,4 +142,4 @@ class WestCoastStrategy:
             if score_differential <= 0:  # Need score
                 adjusted_time -= 1  # Moderate urgency
                 
-        return int(max(8, min(45, adjusted_time)))  # Apply bounds and convert to int
+        return int(max(8, min(45, adjusted_time)))  # Apply bounds for target play count

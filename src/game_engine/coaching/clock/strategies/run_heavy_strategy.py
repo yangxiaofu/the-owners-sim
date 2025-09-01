@@ -35,14 +35,14 @@ class RunHeavyStrategy:
         """
         # Base time for different play types
         base_times = {
-            'run': 28,          # Further reduced running plays (-4s more)  
-            'pass_complete': 13, # Further reduced completed passes (-2s more)
-            'pass_incomplete': 10, # Further reduced incomplete passes (-2s more)
-            'punt': 15,         # Special teams
-            'field_goal': 15,
-            'kick': 15,
-            'kneel': 40,        # Clock burning
-            'spike': 3          # Clock stopping
+            'run': 30,          # Decreased to get closer to target
+            'pass_complete': 19, # Decreased to get closer to target
+            'pass_incomplete': 15, # Decreased to get closer to target
+            'punt': 16,         # Decreased to get closer to target
+            'field_goal': 16,   # Decreased to get closer to target
+            'kick': 16,         # Decreased to get closer to target
+            'kneel': 40,        # Decreased to get closer to target
+            'spike': 4          # Unchanged
         }
         
         # Handle pass play types with completion status
@@ -56,10 +56,10 @@ class RunHeavyStrategy:
         else:
             effective_play_type = play_type
         
-        base_time = base_times.get(effective_play_type, 25)  # Default base time
+        base_time = base_times.get(effective_play_type, 25)  # Default base time (decreased more)
         
         # Base archetype modifier: conservative tempo
-        base_adjustment = 4  # +3-5 seconds average
+        base_adjustment = 2  # +2 seconds average (reduced further)
         
         # Play-type specific adjustments
         play_modifiers = {
@@ -84,13 +84,13 @@ class RunHeavyStrategy:
         if score_differential > 0:  # Leading
             # Extra clock consumption when ahead
             if quarter >= 3:  # Second half
-                adjusted_time += 5
+                adjusted_time += 3  # Reduced from +5
             else:
-                adjusted_time += 2
+                adjusted_time += 1  # Reduced from +2
                 
         elif score_differential < -7:  # Trailing by more than 7
-            # Still conservative, but slightly faster when desperate
-            adjusted_time -= 2
+            # Still conservative, but increased urgency when desperate
+            adjusted_time -= 3  # Increased from -2
         
         # Down and distance considerations
         if down >= 3:  # 3rd/4th down
@@ -103,15 +103,15 @@ class RunHeavyStrategy:
         if quarter == 4:
             if clock < 600:  # Final 10 minutes
                 if score_differential > 0:  # Leading
-                    adjusted_time += 3  # Milk the clock
+                    adjusted_time += 2  # Milk the clock (reduced from +3)
                 elif score_differential == 0:  # Tied
-                    adjusted_time += 1  # Slightly more deliberate
+                    adjusted_time += 1  # Slightly more deliberate (unchanged)
                     
         # Two-minute drill adjustments
         if quarter in [2, 4] and clock <= 120:
             if score_differential < 0:  # Trailing
-                adjusted_time -= 3  # Need to move faster
+                adjusted_time -= 4  # Need to move faster (increased from -3)
             elif score_differential > 7:  # Leading by more than 7
-                adjusted_time += 2  # Run more clock
+                adjusted_time += 1  # Run more clock (reduced from +2)
                 
-        return int(max(8, min(45, adjusted_time)))  # Apply bounds and convert to int
+        return int(max(8, min(45, adjusted_time)))  # Apply bounds for target play count

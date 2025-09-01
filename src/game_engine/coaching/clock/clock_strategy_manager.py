@@ -167,15 +167,15 @@ class ClockStrategyManager:
         """Calculate fallback time when primary strategy fails"""
         # Simple fallback timing based on play type
         base_times = {
-            'run': 25,      # Running plays consume more clock
-            'pass': 15,     # Passing plays vary but shorter on average
-            'punt': 10,     # Special teams plays
-            'field_goal': 10,
-            'kneel': 40,    # Kneeling to run clock
-            'spike': 2      # Clock stoppers
+            'run': 28,      # Running plays consume more clock (increased)
+            'pass': 20,     # Passing plays vary but shorter on average (increased)
+            'punt': 15,      # Special teams plays (increased)
+            'field_goal': 15, # Increased to reduce play count
+            'kneel': 42,    # Kneeling to run clock (increased)
+            'spike': 3      # Clock stoppers (minimal increase)
         }
         
-        base_time = base_times.get(play_type, 20)  # Default 20 seconds
+        base_time = base_times.get(play_type, 24)  # Default 24 seconds (increased)
         
         # Apply basic context adjustments
         if game_context.get('timeout_situation'):
@@ -186,7 +186,7 @@ class ClockStrategyManager:
         clock = game_context.get('clock', 900)
         
         if quarter in [2, 4] and clock < 120:  # Two minute warning
-            return max(base_time - 5, 5)  # 5-second reduction, minimum 5 seconds
+            return max(base_time - 6, 4)  # 6-second reduction, minimum 4 seconds (increased urgency)
         
         return base_time
     
@@ -194,15 +194,15 @@ class ClockStrategyManager:
         """Get maximum reasonable time for a play type"""
         # Maximum times to prevent unrealistic clock usage
         max_times = {
-            'run': 45,      # Very slow running play
-            'pass': 35,     # Slow developing pass
-            'punt': 30,     # Including snap time
-            'field_goal': 30,
-            'kneel': 45,    # Maximum kneel time
-            'spike': 5      # Should be very quick
+            'run': 45,      # Very slow running play (restored)
+            'pass': 38,     # Slow developing pass (increased)
+            'punt': 32,     # Including snap time (increased)
+            'field_goal': 32, # Increased
+            'kneel': 45,    # Maximum kneel time (restored)
+            'spike': 6      # Should be very quick (increased)
         }
         
-        return max_times.get(play_type, 40)  # Default maximum
+        return max_times.get(play_type, 40)  # Default maximum (restored)
     
     def get_registered_archetypes(self) -> list[str]:
         """Get list of all registered archetypes"""
@@ -225,13 +225,13 @@ class _PlaceholderClockStrategy:
         """Basic placeholder implementation of time calculation"""
         # Simple time calculation based on play type and context
         base_times = {
-            'run': 38,      # Running plays typically consume more clock
-            'pass_complete': 18,     # Complete passes
-            'pass_incomplete': 13,   # Incomplete passes stop clock
-            'punt': 12,     # Special teams operations
-            'field_goal': 12,
-            'kneel': 40,    # Intentional clock burning
-            'spike': 3      # Intentional clock stopping
+            'run': 36,      # Running plays typically consume more clock (increased)
+            'pass_complete': 22,     # Complete passes (increased)
+            'pass_incomplete': 18,   # Incomplete passes stop clock (increased)
+            'punt': 17,     # Special teams operations (increased)
+            'field_goal': 17,        # Increased to reduce play count
+            'kneel': 40,    # Intentional clock burning (increased)
+            'spike': 4      # Intentional clock stopping (minimal increase)
         }
         
         # Handle pass play types with completion status
@@ -245,14 +245,14 @@ class _PlaceholderClockStrategy:
         else:
             effective_play_type = play_type
         
-        base_time = base_times.get(effective_play_type, 22)  # Default timing
+        base_time = base_times.get(effective_play_type, 26)  # Default timing (increased)
         
         # Basic context modifications
         context_modifiers = self._get_basic_context_modifiers(game_context)
         adjusted_time = base_time + context_modifiers
         
         # Ensure reasonable bounds
-        return max(3, min(adjusted_time, 45))
+        return max(3, min(adjusted_time, 45))  # Restored upper bound
     
     def _get_basic_context_modifiers(self, game_context: Dict[str, Any]) -> int:
         """Apply basic context modifications to timing"""
@@ -263,16 +263,16 @@ class _PlaceholderClockStrategy:
         clock = game_context.get('clock', 900)
         
         if quarter in [2, 4] and clock < 120:  # Two minute drill
-            modifier -= 8  # Faster execution
+            modifier -= 9  # Faster execution (increased from -8)
         elif quarter in [2, 4] and clock < 300:  # End of half/game
-            modifier -= 4  # Moderately faster
+            modifier -= 5  # Moderately faster (increased from -4)
         
         # Score differential affects tempo
         score_diff = game_context.get('score_differential', 0)
         
         if score_diff < -7:  # Trailing by more than a touchdown
-            modifier -= 3  # Slight hurry
+            modifier -= 4  # Increased hurry (increased from -3)
         elif score_diff > 7:  # Leading by more than a touchdown
-            modifier += 3   # Take more time
+            modifier += 2   # Take more time (reduced from +3)
         
         return modifier

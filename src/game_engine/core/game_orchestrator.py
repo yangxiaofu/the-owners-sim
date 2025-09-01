@@ -2,6 +2,7 @@ import random
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
 from .play_executor import PlayExecutor
+from .game_state_manager import create_game_state_manager
 from ..field.game_state import GameState
 from ..plays.data_structures import PlayResult
 from ..data.loaders.team_loader import TeamLoader
@@ -19,6 +20,7 @@ class GameResult:
     play_count: int = 0
     play_type_counts: Dict[str, int] = None
     clock_stats: Dict[str, float] = None
+    tracking_summary: Optional[Dict[str, Any]] = None
     
     def __post_init__(self):
         """Initialize default values for tracking fields."""
@@ -111,7 +113,7 @@ class SimpleGameEngine:
         team_data = self.get_team_for_simulation(team_id)
         return team_data.get("overall_rating", 50.0)
     
-    def simulate_game(self, home_team_id: int, away_team_id: int) -> GameResult:
+    def simulate_game(self, home_team_id: int, away_team_id: int, is_playoff_game: bool = False) -> GameResult:
         # Get complete team data for simulation
         home_team = self.get_team_for_simulation(home_team_id)
         away_team = self.get_team_for_simulation(away_team_id)
@@ -130,7 +132,7 @@ class SimpleGameEngine:
                 print(f"Warning: Could not load individual players, using team ratings: {e}")
         
         # Initialize game state
-        game_state = GameState()
+        game_state = GameState(is_playoff_game)
         game_state.field.possession_team_id = home_team_id  # Home team starts with ball
         game_state.scoreboard.home_team_id = home_team_id
         game_state.scoreboard.away_team_id = away_team_id
@@ -138,111 +140,50 @@ class SimpleGameEngine:
         play_count = 0
         max_plays = 200  # Safety limit to prevent infinite loops
         
-        # Initialize tracking variables
-        play_type_counts = {"run": 0, "pass": 0, "kick": 0, "punt": 0}
-        clock_usage_by_type = {"run": [], "pass": [], "kick": [], "punt": []}
-        total_clock_used = 0.0
+        # Initialize Game State Manager for clean state transitions
+        game_state_manager = create_game_state_manager(
+            game_id=f"game_{home_team_id}_{away_team_id}",
+            home_team_id=str(home_team_id),
+            away_team_id=str(away_team_id)
+        )
         
-        # Main game loop - play by play until game ends
+        # Main game loop - Clean 4-step pattern replaces complex state management
         while not game_state.is_game_over() and play_count < max_plays:
             # Determine which team has possession
             if game_state.field.possession_team_id == home_team_id:
                 offense_team = home_team
                 defense_team = away_team
+                possession_team_id = str(home_team_id)
             else:
                 offense_team = away_team  
                 defense_team = home_team
+                possession_team_id = str(away_team_id)
             
-            # Execute the play using new architecture
+            # Execute the play using existing play executor
             play_result = self.play_executor.execute_play(offense_team, defense_team, game_state)
-
-            # Track clock usage for this play using PlayResult.time_elapsed
-            clock_used_this_play = play_result.time_elapsed
-            total_clock_used += clock_used_this_play
             
-            # Track play type and clock usage
-            play_type = play_result.play_type
-            if play_type in play_type_counts:
-                play_type_counts[play_type] += 1
-                clock_usage_by_type[play_type].append(clock_used_this_play)
-            else:
-                # Handle special cases or default to "run"
-                play_type_counts["run"] += 1
-                clock_usage_by_type["run"].append(clock_used_this_play)
+            # Process play through Game State Manager (4-step pattern)
+            # Step 1: Calculate → Step 2: Validate → Step 3: Apply → Step 4: Track
+            transition_result = game_state_manager.process_play_result(
+                play_result, game_state, possession_team_id
+            )
             
-            # Update game state using the centralized method
-            field_result = game_state.update_after_play(play_result)
-            
-            # Handle possession changes for scoring
-            if play_result.is_score:
-                # Execute kickoff after score
-                scoring_team_id = game_state.field.possession_team_id
-                receiving_team_id = away_team_id if scoring_team_id == home_team_id else home_team_id
-                
-                kickoff_result = self._simulate_kickoff(scoring_team_id, receiving_team_id)
-                
-                # Update field state after kickoff
-                game_state.field.possession_team_id = receiving_team_id
-                game_state.field.down = 1
-                game_state.field.yards_to_go = 10
-                game_state.field.field_position = kickoff_result.final_field_position
-            
-            # Handle turnovers
-            elif play_result.is_turnover:
-                # Switch possession
-                game_state.field.possession_team_id = away_team_id if game_state.field.possession_team_id == home_team_id else home_team_id
-                game_state.field.down = 1
-                game_state.field.yards_to_go = 10
-                # TODO: Set field position based on turnover location
-                game_state.field.field_position = 50  # Simplified
-            
-            # Handle punts
-            elif play_result.play_type == "punt":
-                # Switch possession
-                game_state.field.possession_team_id = away_team_id if game_state.field.possession_team_id == home_team_id else home_team_id  
-                game_state.field.down = 1
-                game_state.field.yards_to_go = 10
-                # TODO: Calculate punt field position
-                game_state.field.field_position = max(20, 100 - play_result.yards_gained)
-            
-            # Handle normal plays - check if it resulted in a score
-            elif field_result == "touchdown":
-                # Handle touchdown scored by normal play
-                game_state.field.possession_team_id = away_team_id if game_state.field.possession_team_id == home_team_id else home_team_id
-                game_state.field.down = 1
-                game_state.field.yards_to_go = 10 
-                game_state.field.field_position = 25
-            
-            # Check for turnover on downs
-            elif game_state.field.down > 4:
-                # Turnover on downs
-                game_state.field.possession_team_id = away_team_id if game_state.field.possession_team_id == home_team_id else home_team_id
-                game_state.field.down = 1
-                game_state.field.yards_to_go = 10
-                # Field position stays the same (simplified)
-            
-            # Check for end of quarter
-            if game_state.clock.clock <= 0:
-                game_state.clock.advance_quarter()
+            # Handle any state transition failures
+            if not transition_result.success:
+                print(f"⚠️ State transition failed: {transition_result.all_errors}")
+                # Continue with fallback - original game_state unchanged
             
             play_count += 1
         
         # Determine winner
         winner_id = home_team_id if game_state.scoreboard.home_score > game_state.scoreboard.away_score else away_team_id if game_state.scoreboard.away_score > game_state.scoreboard.home_score else None
         
-        # Calculate clock statistics
-        avg_per_play = total_clock_used / play_count if play_count > 0 else 0.0
-        run_avg = sum(clock_usage_by_type["run"]) / len(clock_usage_by_type["run"]) if clock_usage_by_type["run"] else 0.0
-        pass_avg = sum(clock_usage_by_type["pass"]) / len(clock_usage_by_type["pass"]) if clock_usage_by_type["pass"] else 0.0
-        special_avg = (sum(clock_usage_by_type["kick"]) + sum(clock_usage_by_type["punt"])) / (len(clock_usage_by_type["kick"]) + len(clock_usage_by_type["punt"])) if (clock_usage_by_type["kick"] or clock_usage_by_type["punt"]) else 0.0
+        # Get comprehensive statistics from Game State Manager tracking system
+        comprehensive_stats = game_state_manager.get_game_statistics()
+        clock_stats = comprehensive_stats.get('clock_management', {})
         
-        clock_stats = {
-            "total_clock_used": total_clock_used,
-            "avg_per_play": avg_per_play,
-            "run_avg": run_avg,
-            "pass_avg": pass_avg,
-            "special_avg": special_avg
-        }
+        # Get comprehensive tracking summary if available
+        tracking_summary = game_state_manager.get_comprehensive_summary()
         
         return GameResult(
             home_score=game_state.scoreboard.home_score,
@@ -251,8 +192,9 @@ class SimpleGameEngine:
             home_team_id=home_team_id,
             away_team_id=away_team_id,
             play_count=play_count,
-            play_type_counts=play_type_counts.copy(),
-            clock_stats=clock_stats
+            play_type_counts=comprehensive_stats.get('play_type_distribution', {}),
+            clock_stats=clock_stats,
+            tracking_summary=tracking_summary
         )
 
     

@@ -39,6 +39,7 @@ class Player:
     # Mental Attributes
     awareness: int      # Football IQ, reading plays
     technique: int      # Position-specific fundamentals
+    discipline: int = 75 # Penalty tendency control (0-100, higher = fewer penalties)
     
     # Game State
     fatigue: int = 100       # Current energy level (0-100)
@@ -51,7 +52,7 @@ class Player:
     
     def __post_init__(self):
         """Validate ratings are within bounds"""
-        for attr in ['speed', 'strength', 'agility', 'stamina', 'awareness', 'technique']:
+        for attr in ['speed', 'strength', 'agility', 'stamina', 'awareness', 'technique', 'discipline']:
             value = getattr(self, attr)
             if not 0 <= value <= 100:
                 raise ValueError(f"{attr} must be between 0-100, got {value}")

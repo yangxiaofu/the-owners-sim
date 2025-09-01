@@ -36,14 +36,14 @@ class AirRaidStrategy:
         """
         # Base time for different play types  
         base_times = {
-            'run': 28,           # Further reduced base run time (-4s more)
-            'pass_complete': 13, # Further reduced completed passes (-2s more)
-            'pass_incomplete': 10, # Further reduced incomplete passes (-2s more)
-            'punt': 13,          # Quicker special teams
-            'field_goal': 13,
-            'kick': 13,
-            'kneel': 35,         # Still need to burn clock when needed
-            'spike': 2           # Lightning fast spikes
+            'run': 36,           # Increased to get closer to target
+            'pass_complete': 24, # Increased to get closer to target
+            'pass_incomplete': 20, # Increased to get closer to target
+            'punt': 22,          # Increased to get closer to target
+            'field_goal': 22,    # Increased to get closer to target
+            'kick': 22,          # Increased to get closer to target
+            'kneel': 42,         # Increased to get closer to target
+            'spike': 5           # Unchanged
         }
         
         # Handle pass play types with completion status
@@ -57,10 +57,10 @@ class AirRaidStrategy:
         else:
             effective_play_type = play_type
             
-        base_time = base_times.get(effective_play_type, 18)  # Default faster base time
+        base_time = base_times.get(effective_play_type, 30)  # Default faster base time (increased to target range)
         
         # Base archetype modifier: fast tempo
-        base_adjustment = -5  # Base -5 seconds for hurry-up
+        base_adjustment = 0  # Base 0 seconds (neutralized for target range)
         
         # Play-type specific adjustments
         play_modifiers = {
@@ -86,13 +86,13 @@ class AirRaidStrategy:
         if score_differential < 0:  # Trailing
             # Extra speed when behind - this is where air raid shines
             if score_differential <= -7:  # Down by 7+
-                adjusted_time -= 8  # Maximum hurry-up mode
+                adjusted_time -= 6  # Maximum hurry-up mode (reduced from -8)
             else:  # Down by 1-6
-                adjusted_time -= 4  # Moderate hurry-up
+                adjusted_time -= 3  # Moderate hurry-up (reduced from -4)
                 
         elif score_differential > 7:  # Leading by more than 7
             # Even when ahead, air raid stays aggressive
-            adjusted_time -= 2  # Still faster than average, but not as extreme
+            adjusted_time -= 1  # Still faster than average (reduced from -2)
         
         # Down and distance considerations
         if down >= 3:  # 3rd/4th down
@@ -112,12 +112,12 @@ class AirRaidStrategy:
         if quarter == 4:
             if clock < 300:  # Final 5 minutes
                 if score_differential <= 0:  # Tied or trailing
-                    adjusted_time -= 4  # Maximum urgency
+                    adjusted_time -= 3  # Maximum urgency (reduced from -4)
                 elif score_differential < 7:  # Small lead
-                    adjusted_time -= 2  # Still playing fast
+                    adjusted_time -= 1  # Still playing fast (reduced from -2)
                     
         # Red zone adjustments - air raid can struggle here
         if field_position >= 80 and score_differential >= 0:  # Red zone, not trailing
             adjusted_time += 1  # Slightly slower in compressed field
             
-        return int(max(8, min(45, adjusted_time)))  # Apply bounds and convert to int
+        return int(max(8, min(45, adjusted_time)))  # Apply bounds for target play count
