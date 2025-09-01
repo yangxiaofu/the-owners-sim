@@ -2,6 +2,7 @@ import random
 from typing import Dict
 from .play_types import PlayType
 from .data_structures import PlayResult
+from .statistics_extractor import StatisticsExtractor, PassPlayData
 from ..field.field_state import FieldState
 
 
@@ -169,6 +170,10 @@ class PassPlay(PlayType):
     def simulate(self, personnel, field_state: FieldState) -> PlayResult:
         """Simulate a passing play using selected personnel"""
         
+        # Ensure position mapping is populated for realistic player names
+        if personnel.individual_players:
+            personnel.auto_populate_position_map()
+        
         # Extract player ratings from personnel package
         offense_ratings = self._extract_player_ratings(personnel, "offense")
         defense_ratings = self._extract_player_ratings(personnel, "defense")
@@ -178,8 +183,11 @@ class PassPlay(PlayType):
             personnel.formation, personnel.defensive_call, "pass"
         )
         
-        outcome, yards_gained = self._calculate_yards_from_route_matchup_matrix(
-            offense_ratings, defense_ratings, personnel, formation_modifier, field_state
+        # Store simulation data for statistics extraction
+        simulation_data = {}
+        
+        outcome, yards_gained = self._calculate_yards_from_route_matchup_matrix_with_stats(
+            offense_ratings, defense_ratings, personnel, formation_modifier, field_state, simulation_data
         )
         
         # Calculate time elapsed and points
@@ -188,6 +196,23 @@ class PassPlay(PlayType):
         is_score = outcome == "touchdown"
         score_points = self._calculate_points(outcome)
         
+        # Extract comprehensive statistics
+        extractor = StatisticsExtractor()
+        pass_data = PassPlayData(
+            qb_effectiveness=simulation_data.get('qb_effectiveness', 0.0),
+            wr_effectiveness=simulation_data.get('wr_effectiveness', 0.0),
+            protection_effectiveness=simulation_data.get('protection_effectiveness', 0.0),
+            coverage_effectiveness=simulation_data.get('coverage_effectiveness', 0.0),
+            rush_advantage=simulation_data.get('rush_advantage', 0.0),
+            coverage_modifier=simulation_data.get('coverage_modifier', 1.0),
+            route_concept=simulation_data.get('route_concept', 'intermediate'),
+            coverage_type=simulation_data.get('coverage_type', 'zone'),
+            final_completion=simulation_data.get('final_completion', 0.0),
+            outcome=outcome
+        )
+        
+        play_stats = extractor.extract_pass_statistics(personnel, pass_data)
+        
         return PlayResult(
             play_type="pass",
             outcome=outcome,
@@ -195,7 +220,22 @@ class PassPlay(PlayType):
             time_elapsed=time_elapsed,
             is_turnover=is_turnover,
             is_score=is_score,
-            score_points=score_points
+            score_points=score_points,
+            
+            # Comprehensive statistics
+            quarterback=play_stats.get('quarterback'),
+            receiver=play_stats.get('receiver'),
+            pass_rusher=play_stats.get('pass_rusher'),
+            coverage_defender=play_stats.get('coverage_defender'),
+            passes_defended_by=play_stats.get('passes_defended_by', []),
+            quarterback_hits_by=play_stats.get('quarterback_hits_by', []),
+            quarterback_hurries_by=play_stats.get('quarterback_hurries_by', []),
+            protection_breakdowns=play_stats.get('protection_breakdowns', []),
+            clean_pocket=play_stats.get('clean_pocket', False),
+            perfect_protection=play_stats.get('perfect_protection', False),
+            pressure_applied=play_stats.get('pressure_applied', False),
+            coverage_beaten=play_stats.get('coverage_beaten', False),
+            interceptions_by=play_stats.get('interceptions_by')
         )
     
     def _determine_route_concept(self, formation: str, field_state: FieldState) -> str:
@@ -239,9 +279,9 @@ class PassPlay(PlayType):
         
         return coverage_mapping.get(defensive_call, "zone")  # Safe default
     
-    def _calculate_sack_probability(self, offense_ratings: Dict, defense_ratings: Dict, 
-                                   personnel, field_state: FieldState, route_concept: str) -> tuple[str, int]:
-        """SOLID: Single responsibility - calculate sack probability before route development"""
+    def _calculate_sack_probability_with_stats(self, offense_ratings: Dict, defense_ratings: Dict, 
+                                   personnel, field_state: FieldState, route_concept: str) -> tuple[tuple[str, int], float]:
+        """SOLID: Single responsibility - calculate sack probability before route development with stats tracking"""
         
         # Step 1: Get pass protection strength
         ol_rating = offense_ratings.get('ol', 50)
@@ -265,6 +305,9 @@ class PassPlay(PlayType):
             db_blitz * PassGameBalance.DB_BLITZ_WEIGHT
         )
         
+        # Calculate rush advantage for statistics
+        rush_advantage = total_rush / (total_protection + 20)  # Avoid division by zero
+        
         # Step 3: Apply time to throw from route concept
         matrix = ROUTE_CONCEPT_MATRICES[route_concept]
         time_to_throw = matrix["time_to_throw"]
@@ -278,9 +321,18 @@ class PassPlay(PlayType):
         # Step 6: Determine outcome
         if random.random() < sack_probability:
             sack_yards = self._calculate_sack_yardage(total_rush, total_protection)
-            return "sack", sack_yards
+            return ("sack", sack_yards), rush_advantage
         
-        return "no_sack", 0
+        return ("no_sack", 0), rush_advantage
+    
+    def _calculate_sack_probability(self, offense_ratings: Dict, defense_ratings: Dict, 
+                                   personnel, field_state: FieldState, route_concept: str) -> tuple[str, int]:
+        """SOLID: Single responsibility - calculate sack probability before route development"""
+        
+        sack_outcome, _ = self._calculate_sack_probability_with_stats(
+            offense_ratings, defense_ratings, personnel, field_state, route_concept
+        )
+        return sack_outcome
     
     def _get_rb_pass_protection(self, rb) -> float:
         """YAGNI: Simple RB pass protection calculation"""
@@ -413,19 +465,25 @@ class PassPlay(PlayType):
         avg_rating = total_rating / len(matrix["wr_attributes"])
         return avg_rating / 100  # Normalize to 0-1 range
     
-    def _calculate_yards_from_route_matchup_matrix(self, offense_ratings: Dict, defense_ratings: Dict,
-                                                  personnel, formation_modifier: float, field_state: FieldState) -> tuple[str, int]:
-        """SOLID: Single responsibility - main yards calculation using route concept matchup matrix"""
+    def _calculate_yards_from_route_matchup_matrix_with_stats(self, offense_ratings: Dict, defense_ratings: Dict,
+                                                  personnel, formation_modifier: float, field_state: FieldState, simulation_data: Dict) -> tuple[str, int]:
+        """SOLID: Single responsibility - main yards calculation using route concept matchup matrix with statistics tracking"""
         
         # Step 1: Determine route concept and coverage
         route_concept = self._determine_route_concept(personnel.formation, field_state)
         coverage_type = self._determine_defensive_coverage(personnel.defensive_call, personnel)
         matrix = ROUTE_CONCEPT_MATRICES[route_concept]
         
+        # Store basic data
+        simulation_data['route_concept'] = route_concept
+        simulation_data['coverage_type'] = coverage_type
+        
         # Step 2: SACK CALCULATION (happens first - can end play immediately)
-        sack_outcome = self._calculate_sack_probability(
+        sack_outcome, rush_advantage = self._calculate_sack_probability_with_stats(
             offense_ratings, defense_ratings, personnel, field_state, route_concept
         )
+        
+        simulation_data['rush_advantage'] = rush_advantage
         
         if sack_outcome[0] == "sack":
             return sack_outcome
@@ -433,10 +491,12 @@ class PassPlay(PlayType):
         # Step 3: Calculate QB effectiveness for this route concept
         qb = getattr(personnel, 'qb_on_field', None)
         qb_effectiveness = self._calculate_qb_effectiveness_for_route_concept(qb, route_concept)
+        simulation_data['qb_effectiveness'] = qb_effectiveness
         
         # Step 4: Calculate WR effectiveness for this route concept  
         wr = getattr(personnel, 'primary_wr', None)
         wr_effectiveness = self._calculate_wr_effectiveness_for_route_concept(wr, route_concept)
+        simulation_data['wr_effectiveness'] = wr_effectiveness
         
         # Step 5: Calculate protection effectiveness (for non-sack scenarios)
         ol_rating = offense_ratings.get('ol', 50)
@@ -448,11 +508,14 @@ class PassPlay(PlayType):
             rb_protection * PassGameBalance.RB_PROTECTION_WEIGHT +
             te_protection * PassGameBalance.TE_PROTECTION_WEIGHT
         ) / 100.0  # Normalize to 0-1 range
+        simulation_data['protection_effectiveness'] = protection_effectiveness
         
         # Step 6: Calculate coverage effectiveness (DB vs route concept)
         db_rating = defense_ratings.get('db', 50)
         coverage_modifier = matrix[f"vs_{coverage_type}_modifier"]
         coverage_effectiveness = db_rating / 100.0  # Normalize
+        simulation_data['coverage_effectiveness'] = coverage_effectiveness
+        simulation_data['coverage_modifier'] = coverage_modifier
         
         # Step 7: Combine all factors (KISS: simple weighted calculation)
         # ULTRA-THINK FIX: Fixed backwards team correlation bug
@@ -478,9 +541,19 @@ class PassPlay(PlayType):
         
         # Step 9: Apply situational modifiers
         final_completion = self._apply_pass_situational_modifiers(final_completion, field_state, route_concept)
+        simulation_data['final_completion'] = final_completion
         
         # Step 10: Determine outcome and return
         return self._determine_pass_outcome(final_completion, matrix, route_concept, coverage_type, field_state)
+    
+    def _calculate_yards_from_route_matchup_matrix(self, offense_ratings: Dict, defense_ratings: Dict,
+                                                  personnel, formation_modifier: float, field_state: FieldState) -> tuple[str, int]:
+        """SOLID: Single responsibility - main yards calculation using route concept matchup matrix"""
+        
+        simulation_data = {}  # Temporary storage, not used in this version
+        return self._calculate_yards_from_route_matchup_matrix_with_stats(
+            offense_ratings, defense_ratings, personnel, formation_modifier, field_state, simulation_data
+        )
     
     def _apply_pass_situational_modifiers(self, base_completion: float, field_state: FieldState, route_concept: str) -> float:
         """SOLID: Single responsibility - apply game situation modifiers to completion probability"""

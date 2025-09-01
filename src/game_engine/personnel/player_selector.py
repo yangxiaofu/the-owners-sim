@@ -1,4 +1,4 @@
-from typing import Dict, Optional, List, Union
+from typing import Dict, Optional, List, Union, Any
 from dataclasses import dataclass, field
 from ..field.field_state import FieldState
 from database.models.players.player import Player
@@ -20,6 +20,9 @@ class PersonnelPackage:
     ol_on_field: List[OffensiveLineman] = field(default_factory=list)
     dl_on_field: List[DefensiveLineman] = field(default_factory=list)
     lb_on_field: List[Linebacker] = field(default_factory=list)
+    
+    # Enhanced position-to-player mapping for realistic player names
+    position_player_map: Dict[str, Any] = field(default_factory=dict)
     
     def get_running_back(self) -> Optional[RunningBack]:
         """Get the running back on the field"""
@@ -81,6 +84,76 @@ class PersonnelPackage:
             if lb.position == 'MLB':
                 return lb
         return lbs[0] if lbs else None
+    
+    def set_position_player(self, position_code: str, player: Any) -> None:
+        """Set player for specific position code (e.g., 'LE', 'LG', 'MLB')"""
+        self.position_player_map[position_code] = player
+    
+    def get_player_by_position(self, position_code: str) -> Optional[Any]:
+        """Get player by position code (e.g., 'LE', 'LG', 'MLB')"""
+        return self.position_player_map.get(position_code)
+    
+    def auto_populate_position_map(self) -> None:
+        """Auto-populate position map from existing player lists for realistic player names"""
+        if not self.individual_players:
+            return
+        
+        # Map offensive line positions (standard 5-man line: LT, LG, C, RG, RT)
+        if self.ol_on_field and len(self.ol_on_field) >= 5:
+            ol_positions = ['LT', 'LG', 'C', 'RG', 'RT']
+            for i, player in enumerate(self.ol_on_field[:5]):
+                self.position_player_map[ol_positions[i]] = player
+        
+        # Map defensive line positions based on number of players
+        if self.dl_on_field:
+            if len(self.dl_on_field) == 3:  # 3-4 defense
+                dl_positions = ['LE', 'DT', 'RE']
+            elif len(self.dl_on_field) == 4:  # 4-3 defense  
+                dl_positions = ['LE', 'DT1', 'DT2', 'RE']
+            else:  # Flexible mapping
+                dl_positions = [f'DL{i+1}' for i in range(len(self.dl_on_field))]
+                # But ensure we have standard positions for stats
+                if len(self.dl_on_field) >= 1:
+                    dl_positions[0] = 'LE'
+                if len(self.dl_on_field) >= 2:  
+                    dl_positions[1] = 'DT'
+                if len(self.dl_on_field) >= 3:
+                    dl_positions[2] = 'RE' if len(self.dl_on_field) == 3 else 'DT2'
+                if len(self.dl_on_field) >= 4:
+                    dl_positions[3] = 'RE'
+            
+            for i, player in enumerate(self.dl_on_field):
+                if i < len(dl_positions):
+                    self.position_player_map[dl_positions[i]] = player
+        
+        # Map linebacker positions
+        if self.lb_on_field:
+            lb_positions = ['MLB', 'OLB1', 'OLB2', 'LB4', 'LB5']  # Support various LB sets
+            for i, player in enumerate(self.lb_on_field):
+                if i < len(lb_positions):
+                    # Use standard positions for first few LBs
+                    if i == 0:
+                        self.position_player_map['MLB'] = player
+                    elif i == 1:
+                        self.position_player_map['OLB'] = player  # Also map to generic OLB
+                        self.position_player_map[lb_positions[i]] = player
+                    else:
+                        self.position_player_map[lb_positions[i]] = player
+        
+        # Map other key positions if available
+        if hasattr(self, 'cb_on_field') and self.cb_on_field:
+            if isinstance(self.cb_on_field, list):
+                for i, cb in enumerate(self.cb_on_field[:3]):  # Support up to 3 CBs
+                    self.position_player_map[f'CB{i+1}' if i > 0 else 'CB'] = cb
+            else:
+                self.position_player_map['CB'] = self.cb_on_field
+        
+        if hasattr(self, 'safety_on_field') and self.safety_on_field:
+            if isinstance(self.safety_on_field, list):
+                for i, safety in enumerate(self.safety_on_field[:2]):  # Support up to 2 safeties
+                    self.position_player_map[f'S{i+1}' if i > 0 else 'S'] = safety
+            else:
+                self.position_player_map['S'] = self.safety_on_field
 
 
 class PlayerSelector:

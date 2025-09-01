@@ -1,9 +1,12 @@
 import random
-from typing import Dict
+from typing import Dict, List
 from .play_types import PlayType
 from .data_structures import PlayResult
+from .statistics_extractor import StatisticsExtractor, RunPlayData
 from ..field.field_state import FieldState
-from ..simulation.blocking.data_structures import RunPlayCall
+from ..simulation.blocking.data_structures import RunPlayCall, BlockingResult
+from ..simulation.blocking.simulator import BlockingSimulator
+from ..simulation.blocking.strategies import RunBlockingStrategy
 from .run_plays import DetailedRunSimulator
 
 
@@ -135,6 +138,10 @@ class RunPlay(PlayType):
     def simulate(self, personnel, field_state: FieldState) -> PlayResult:
         """Simulate a running play using selected personnel"""
         
+        # Ensure position mapping is populated for realistic player names
+        if personnel.individual_players:
+            personnel.auto_populate_position_map()
+        
         # Extract player ratings from personnel package
         offense_ratings = self._extract_player_ratings(personnel, "offense")
         defense_ratings = self._extract_player_ratings(personnel, "defense")
@@ -144,17 +151,33 @@ class RunPlay(PlayType):
             personnel.formation, personnel.defensive_call, "run"
         )
         
-        # Use situational matchup matrix algorithm
-        outcome, yards_gained = self._calculate_yards_from_matchup_matrix(
-            offense_ratings, defense_ratings, personnel, formation_modifier, field_state
+        # Get detailed blocking results for statistics
+        blocking_results = self._simulate_blocking_matchups(personnel, offense_ratings, defense_ratings, field_state)
+        
+        # Use situational matchup matrix algorithm with blocking context
+        outcome, yards_gained, expected_yards = self._calculate_yards_from_matchup_matrix_with_stats(
+            offense_ratings, defense_ratings, personnel, formation_modifier, field_state, blocking_results
         )
         
         # Calculate time elapsed and points
-        # TODO: this is random and will need to be consolidated to a configurator for better balancing.
         time_elapsed = self._calculate_time_elapsed("run", outcome)
         is_turnover = outcome == "fumble"
         is_score = outcome == "touchdown"
         score_points = self._calculate_points(outcome)
+        
+        # Extract comprehensive statistics
+        extractor = StatisticsExtractor()
+        run_data = RunPlayData(
+            rb_effectiveness=self._calculate_rb_effectiveness_for_run_type(
+                personnel.rb_on_field, self._determine_run_type(personnel.formation, field_state)
+            ),
+            blocking_results=blocking_results,
+            yards_gained=yards_gained,
+            expected_yards=expected_yards,
+            outcome=outcome
+        )
+        
+        play_stats = extractor.extract_run_statistics(personnel, run_data)
         
         return PlayResult(
             play_type="run",
@@ -163,7 +186,19 @@ class RunPlay(PlayType):
             time_elapsed=time_elapsed,
             is_turnover=is_turnover,
             is_score=is_score,
-            score_points=score_points
+            score_points=score_points,
+            
+            # Comprehensive statistics
+            rusher=play_stats.get('rusher'),
+            tackler=play_stats.get('tackler'),
+            assist_tackler=play_stats.get('assist_tackler'),
+            pancakes_by=play_stats.get('pancakes_by', []),
+            key_blocks_by=play_stats.get('key_blocks_by', []),
+            missed_tackles_by=play_stats.get('missed_tackles_by', []),
+            broken_tackles=play_stats.get('broken_tackles', 0),
+            tackles_for_loss_by=play_stats.get('tackles_for_loss_by', []),
+            protection_breakdowns=play_stats.get('protection_breakdowns', []),
+            perfect_protection=play_stats.get('perfect_protection', False)
         )
     
     def _determine_run_type(self, formation: str, field_state: FieldState) -> str:
@@ -202,9 +237,47 @@ class RunPlay(PlayType):
         avg_rating = total_rating / len(matrix["rb_attributes"])
         return avg_rating / 100  # Normalize to 0-1 range
     
-    def _calculate_yards_from_matchup_matrix(self, offense_ratings: Dict, defense_ratings: Dict,
-                                           personnel, formation_modifier: float, field_state: FieldState) -> tuple[str, int]:
-        """SOLID: Single responsibility - main yards calculation using matchup matrix"""
+    def _simulate_blocking_matchups(self, personnel, offense_ratings: Dict, defense_ratings: Dict, field_state: FieldState) -> List[BlockingResult]:
+        """Simulate detailed blocking matchups for statistics extraction"""
+        
+        # Create simplified blocker and defender mappings
+        blockers = {
+            "LT": offense_ratings.get('ol', 50) + random.randint(-5, 5),
+            "LG": offense_ratings.get('ol', 50) + random.randint(-5, 5),
+            "C": offense_ratings.get('ol', 50) + random.randint(-5, 5),
+            "RG": offense_ratings.get('ol', 50) + random.randint(-5, 5),
+            "RT": offense_ratings.get('ol', 50) + random.randint(-5, 5)
+        }
+        
+        defenders = {
+            "LE": defense_ratings.get('dl', 50) + random.randint(-5, 5),
+            "DT": defense_ratings.get('dl', 50) + random.randint(-5, 5),
+            "RE": defense_ratings.get('dl', 50) + random.randint(-5, 5),
+            "MLB": defense_ratings.get('lb', 50) + random.randint(-5, 5)
+        }
+        
+        # Create blocking context
+        from ..simulation.blocking.strategies import BlockingContext
+        
+        run_type = self._determine_run_type(personnel.formation, field_state)
+        context = BlockingContext(
+            blocking_type="run_blocking",
+            play_details={"play_type": run_type, "direction": "center"},
+            situation={
+                "down": field_state.down,
+                "yards_to_go": field_state.yards_to_go,
+                "field_position": field_state.field_position
+            }
+        )
+        
+        # Simulate blocking matchups
+        blocking_simulator = BlockingSimulator(RunBlockingStrategy())
+        return blocking_simulator.simulate_matchups(blockers, defenders, context)
+    
+    def _calculate_yards_from_matchup_matrix_with_stats(self, offense_ratings: Dict, defense_ratings: Dict,
+                                           personnel, formation_modifier: float, field_state: FieldState, 
+                                           blocking_results: List[BlockingResult]) -> tuple[str, int, float]:
+        """SOLID: Single responsibility - main yards calculation using matchup matrix with statistics tracking"""
         
         # Step 1: Determine run type based on situation
         run_type = self._determine_run_type(personnel.formation, field_state)
@@ -215,16 +288,16 @@ class RunPlay(PlayType):
             personnel.rb_on_field, run_type
         )
         
-        # Step 3: Calculate blocking effectiveness (KISS formula)
-        ol_rating = offense_ratings.get('ol', 50)
-        dl_rating = defense_ratings.get('dl', 50)
-        blocking_effectiveness = (ol_rating * matrix["ol_modifier"]) / (dl_rating * matrix["dl_modifier"])
+        # Step 3: Calculate blocking effectiveness using actual blocking results
+        blocking_effectiveness = self._calculate_blocking_effectiveness_from_results(blocking_results, matrix)
         
         # Step 4: Combine factors (KISS: simple weighted average)
         combined_effectiveness = (rb_effectiveness * 0.5 + blocking_effectiveness * 0.5) * formation_modifier
         
         # Step 5: Apply to base yards with run-type specific variance
         base_yards = matrix["base_yards"] * combined_effectiveness
+        expected_yards = base_yards  # Store for statistics
+        
         variance = random.uniform(
             RunGameBalance.BASE_VARIANCE_MIN, 
             RunGameBalance.BASE_VARIANCE_MAX + matrix["variance"] * RunGameBalance.VARIANCE_MULTIPLIER
@@ -242,8 +315,45 @@ class RunPlay(PlayType):
             )
         
         # Step 8: Determine outcome and return
-        yards = max(0, int(final_yards))
-        return self._determine_play_outcome(yards, run_type)
+        yards = max(-5, int(final_yards))  # Allow negative yards for TFL
+        outcome, final_yards = self._determine_play_outcome(yards, run_type)
+        return outcome, final_yards, expected_yards
+    
+    def _calculate_yards_from_matchup_matrix(self, offense_ratings: Dict, defense_ratings: Dict,
+                                           personnel, formation_modifier: float, field_state: FieldState) -> tuple[str, int]:
+        """SOLID: Single responsibility - main yards calculation using matchup matrix"""
+        
+        # Create simplified blocking results for backward compatibility
+        blocking_results = []
+        outcome, yards, _ = self._calculate_yards_from_matchup_matrix_with_stats(
+            offense_ratings, defense_ratings, personnel, formation_modifier, field_state, blocking_results
+        )
+        return outcome, yards
+    
+    def _calculate_blocking_effectiveness_from_results(self, blocking_results: List[BlockingResult], matrix: Dict) -> float:
+        """Calculate blocking effectiveness from actual blocking simulation results"""
+        
+        if not blocking_results:
+            return 0.5  # Default average effectiveness
+        
+        # Calculate overall blocking grade
+        total_weighted_success = 0.0
+        total_weight = 0.0
+        
+        for result in blocking_results:
+            weight = result.impact_factor
+            success_value = 1.0 if result.success else 0.0
+            
+            total_weighted_success += success_value * weight
+            total_weight += weight
+        
+        if total_weight == 0:
+            return 0.5
+        
+        overall_grade = total_weighted_success / total_weight
+        
+        # Apply run-type specific modifiers
+        return overall_grade * matrix.get("ol_modifier", 1.0)
     
     def _apply_situational_modifiers(self, base_yards: float, field_state: FieldState, run_type: str) -> float:
         """SOLID: Single responsibility - apply game situation modifiers"""
