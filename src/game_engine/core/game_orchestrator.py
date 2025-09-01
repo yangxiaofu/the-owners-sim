@@ -44,7 +44,18 @@ class SimpleGameEngine:
                 "offense": {"qb_rating": 68, "rb_rating": 75, "wr_rating": 62, "ol_rating": 70, "te_rating": 65},
                 "defense": {"dl_rating": 82, "lb_rating": 78, "db_rating": 70},
                 "special_teams": 72,
-                "coaching": {"offensive": 60, "defensive": 75},
+                "coaching": {
+                    "offensive": 60, 
+                    "defensive": 75,
+                    "offensive_coordinator": {
+                        "archetype": "run_heavy",
+                        "custom_modifiers": {"power_emphasis": +0.08}
+                    },
+                    "defensive_coordinator": {
+                        "archetype": "run_stuffing",
+                        "custom_modifiers": {"interior_strength": +0.10}
+                    }
+                },
                 "overall_rating": 65
             },
             2: {  # Packers
@@ -52,7 +63,18 @@ class SimpleGameEngine:
                 "offense": {"qb_rating": 88, "rb_rating": 70, "wr_rating": 85, "ol_rating": 72, "te_rating": 78},
                 "defense": {"dl_rating": 75, "lb_rating": 68, "db_rating": 72},
                 "special_teams": 78,
-                "coaching": {"offensive": 85, "defensive": 70},
+                "coaching": {
+                    "offensive": 85, 
+                    "defensive": 70,
+                    "offensive_coordinator": {
+                        "archetype": "west_coast",
+                        "custom_modifiers": {"aaron_rodgers_effect": +0.12}
+                    },
+                    "defensive_coordinator": {
+                        "archetype": "zone_coverage",
+                        "custom_modifiers": {"coverage_emphasis": +0.08}
+                    }
+                },
                 "overall_rating": 75
             },
             3: {  # Lions
@@ -60,7 +82,18 @@ class SimpleGameEngine:
                 "offense": {"qb_rating": 72, "rb_rating": 65, "wr_rating": 68, "ol_rating": 58, "te_rating": 62},
                 "defense": {"dl_rating": 62, "lb_rating": 55, "db_rating": 58},
                 "special_teams": 60,
-                "coaching": {"offensive": 65, "defensive": 55},
+                "coaching": {
+                    "offensive": 65, 
+                    "defensive": 55,
+                    "offensive_coordinator": {
+                        "archetype": "aggressive",
+                        "custom_modifiers": {"4th_down_aggression": +0.15}
+                    },
+                    "defensive_coordinator": {
+                        "archetype": "balanced_defense",
+                        "custom_modifiers": {}
+                    }
+                },
                 "overall_rating": 60
             },
             4: {  # Vikings
@@ -68,7 +101,18 @@ class SimpleGameEngine:
                 "offense": {"qb_rating": 78, "rb_rating": 68, "wr_rating": 82, "ol_rating": 65, "te_rating": 70},
                 "defense": {"dl_rating": 72, "lb_rating": 75, "db_rating": 68},
                 "special_teams": 70,
-                "coaching": {"offensive": 72, "defensive": 68},
+                "coaching": {
+                    "offensive": 72, 
+                    "defensive": 68,
+                    "offensive_coordinator": {
+                        "archetype": "air_raid",
+                        "custom_modifiers": {"deep_pass_emphasis": +0.10}
+                    },
+                    "defensive_coordinator": {
+                        "archetype": "blitz_heavy",
+                        "custom_modifiers": {"linebacker_blitz": +0.12}
+                    }
+                },
                 "overall_rating": 70
             },
             5: {  # Cowboys
@@ -76,7 +120,18 @@ class SimpleGameEngine:
                 "offense": {"qb_rating": 82, "rb_rating": 85, "wr_rating": 88, "ol_rating": 75, "te_rating": 72},
                 "defense": {"dl_rating": 78, "lb_rating": 80, "db_rating": 82},
                 "special_teams": 82,
-                "coaching": {"offensive": 80, "defensive": 78},
+                "coaching": {
+                    "offensive": 80, 
+                    "defensive": 78,
+                    "offensive_coordinator": {
+                        "archetype": "balanced",
+                        "custom_modifiers": {"star_power": +0.05}
+                    },
+                    "defensive_coordinator": {
+                        "archetype": "man_coverage",
+                        "custom_modifiers": {"cornerback_emphasis": +0.10}
+                    }
+                },
                 "overall_rating": 80
             },
             6: {  # Eagles
@@ -84,7 +139,18 @@ class SimpleGameEngine:
                 "offense": {"qb_rating": 75, "rb_rating": 78, "wr_rating": 75, "ol_rating": 80, "te_rating": 68},
                 "defense": {"dl_rating": 85, "lb_rating": 72, "db_rating": 75},
                 "special_teams": 75,
-                "coaching": {"offensive": 75, "defensive": 80},
+                "coaching": {
+                    "offensive": 75, 
+                    "defensive": 80,
+                    "offensive_coordinator": {
+                        "archetype": "run_heavy",
+                        "custom_modifiers": {"physical_style": +0.08}
+                    },
+                    "defensive_coordinator": {
+                        "archetype": "blitz_heavy",
+                        "custom_modifiers": {"pass_rush": +0.15}
+                    }
+                },
                 "overall_rating": 72
             },
             7: {  # Giants
@@ -92,7 +158,18 @@ class SimpleGameEngine:
                 "offense": {"qb_rating": 70, "rb_rating": 72, "wr_rating": 65, "ol_rating": 62, "te_rating": 75},
                 "defense": {"dl_rating": 68, "lb_rating": 70, "db_rating": 65},
                 "special_teams": 68,
-                "coaching": {"offensive": 68, "defensive": 70},
+                "coaching": {
+                    "offensive": 68, 
+                    "defensive": 70,
+                    "offensive_coordinator": {
+                        "archetype": "conservative",
+                        "custom_modifiers": {"field_goal_preference": +0.10}
+                    },
+                    "defensive_coordinator": {
+                        "archetype": "bend_dont_break",
+                        "custom_modifiers": {"red_zone_strength": +0.08}
+                    }
+                },
                 "overall_rating": 68
             },
             8: {  # Commanders
@@ -100,7 +177,18 @@ class SimpleGameEngine:
                 "offense": {"qb_rating": 65, "rb_rating": 70, "wr_rating": 72, "ol_rating": 60, "te_rating": 65},
                 "defense": {"dl_rating": 72, "lb_rating": 65, "db_rating": 62},
                 "special_teams": 65,
-                "coaching": {"offensive": 62, "defensive": 65},
+                "coaching": {
+                    "offensive": 62, 
+                    "defensive": 65,
+                    "offensive_coordinator": {
+                        "archetype": "west_coast",
+                        "custom_modifiers": {"short_pass_focus": +0.10}
+                    },
+                    "defensive_coordinator": {
+                        "archetype": "zone_coverage",
+                        "custom_modifiers": {"coverage_safety": +0.05}
+                    }
+                },
                 "overall_rating": 62
             }
         }  # End legacy data

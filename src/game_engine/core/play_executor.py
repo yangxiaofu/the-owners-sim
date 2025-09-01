@@ -1,9 +1,9 @@
-import random
 from typing import Optional, Dict
 from ..plays.play_factory import PlayFactory
 from ..plays.data_structures import PlayResult
+from ..plays.play_calling import PlayCaller
 from ..field.game_state import GameState
-from ..personnel.player_selector import PlayerSelector, PersonnelPackage
+from ..personnel.player_selector import PlayerSelector
 
 
 class PlayExecutor:
@@ -21,6 +21,7 @@ class PlayExecutor:
         """
         self.config = config or {}
         self.player_selector = PlayerSelector()
+        self.play_caller = PlayCaller()
         
     def execute_play(self, offense_team: Dict, defense_team: Dict, game_state: GameState) -> PlayResult:
         """
@@ -35,19 +36,26 @@ class PlayExecutor:
             PlayResult: Complete result of the play execution
         """
         
-        # 1. Determine play type based on game situation
-        # TODO: Use some level of AI to determine play type based on game conditions.
+        # 1. Determine play type using intelligent archetype-based system
+        # Extract coaching data from teams (with fallback to balanced archetypes)
+        # TODO: Crate a more sophisticated system for the archetype. It needs to rotate depending on who the team is.
+        offensive_coordinator = offense_team.get('coaching', {}).get('offensive_coordinator', {'archetype': 'balanced'})
+        defensive_coordinator = defense_team.get('coaching', {}).get('defensive_coordinator', {'archetype': 'balanced_defense'})
+
+
         """
-        In determining the play, type, this needs to account for the coach, game condictions, score.
-        For now I'm okay making this more random.  
+        Updated and more sophisticaed as of 9/1/25
         """
-        play_type = self._determine_play_type(game_state.field)
+        play_type = self._determine_play_type(game_state.field, offensive_coordinator, defensive_coordinator)
         
         # 2. Get personnel for both teams
         personnel = self.player_selector.get_personnel(
             offense_team, defense_team, play_type, game_state.field, self.config
         )
-        
+
+        """
+        Each archetype will have a preferred set of playbooks that they can use. But the playbooks will b
+        """
         # 3. Create the appropriate play type instance
         play_instance = PlayFactory.create_play(play_type, self.config)
         
@@ -62,30 +70,19 @@ class PlayExecutor:
         
         return play_result
     
-    def _determine_play_type(self, field_state) -> str:
+    def _determine_play_type(self, field_state, offensive_coordinator: Dict, defensive_coordinator: Optional[Dict] = None) -> str:
         """
-        Determine play type based on game situation.
-        This will eventually be replaced by AI play calling.
+        Determine play type using archetype-based intelligent play calling
+        
+        Args:
+            field_state: Current game situation (down, distance, field position)
+            offensive_coordinator: Offensive coordinator archetype data
+            defensive_coordinator: Optional defensive coordinator data for counter-effects
+            
+        Returns:
+            str: Intelligent play type selection based on coaching archetypes
         """
-        down = field_state.down
-        yards_to_go = field_state.yards_to_go
-        
-        # 4th down logic
-        if down == 4:
-            if yards_to_go > 8:
-                return "punt"
-            elif yards_to_go <= 3:
-                return "run"  # 4th and short
-            else:
-                return "field_goal" if random.random() < 0.6 else "punt"
-        
-        # 1st-3rd down play calling
-        if yards_to_go >= 8:  # Long distance
-            return "pass" if random.random() < 0.7 else "run"
-        elif yards_to_go <= 3:  # Short distance
-            return "run" if random.random() < 0.6 else "pass"
-        else:  # Medium distance
-            return "run" if random.random() < 0.5 else "pass"
+        return self.play_caller.determine_play_type(field_state, offensive_coordinator, defensive_coordinator)
     
     def _enrich_play_result_with_metadata(self, play_result: PlayResult, personnel, game_state: GameState):
         """
