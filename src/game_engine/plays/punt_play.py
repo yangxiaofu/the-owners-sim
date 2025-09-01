@@ -54,11 +54,39 @@ class PuntGameBalance:
     BASE_RETURN_YARDS = 8.5                # NFL average punt return
     MAX_RETURN_YARDS = 85                  # Maximum return yardage
     COVERAGE_IMPACT_MULTIPLIER = 0.8       # How much coverage affects returns
-    FAIR_CATCH_BASE_RATE = 0.25            # 25% fair catch rate (reduced from 45%)
+    FAIR_CATCH_BASE_RATE = 0.42            # 42% fair catch rate to meet NFL benchmarks
     
     # === VARIANCE AND CONSISTENCY ===
     BASE_VARIANCE_MIN = 0.8                # Minimum variance multiplier
     BASE_VARIANCE_MAX = 1.2                # Maximum variance multiplier
+    
+    # === EFFECTIVENESS MODIFIERS ===
+    EFFECTIVENESS_BASE_MODIFIER = 0.98     # Base effectiveness modifier (less harsh penalty)
+    EFFECTIVENESS_TARGET = 0.72            # Target effectiveness for average teams
+    EFFECTIVENESS_SCALE_FACTOR = 0.15      # Reduced impact of effectiveness deviation
+    
+    # === RETURN YARDS CALCULATION ===
+    NET_RETURN_BASE = 2.0                  # Base return yards for net calculation (NFL: 47.4→45.8 = 1.6 diff)
+    NET_RETURN_MAX = 15                    # Maximum return yards
+    COVERAGE_REDUCTION_FACTOR = 0.5        # How much coverage reduces returns
+    SITUATION_BONUS_FACTOR = 0.3           # How much situation affects returns
+    RETURN_VARIANCE_MIN = 0.8              # Minimum return variance
+    RETURN_VARIANCE_MAX = 1.2              # Maximum return variance
+    
+    # === OUTCOME PROBABILITIES ===
+    OUT_OF_BOUNDS_BASE_CHANCE = 0.3        # Base chance for out of bounds on short punts
+    NON_TOUCHBACK_END_ZONE_POSITION = 95   # Field position when punt reaches end zone but not touchback
+    
+    # === MINIMUM VALUES ===
+    MIN_PUNT_DISTANCE = 20                 # Minimum punt distance
+    MIN_SHANK_DISTANCE = 15                # Minimum distance on shanked punts
+    SHANK_DISTANCE_MULTIPLIER = 0.6        # Multiplier for shanked punt distance
+    
+    # === THRESHOLDS AND BUFFERS ===
+    EMERGENCY_YARDS_THRESHOLD = 15         # 4th down yards needed for emergency punt
+    BLOCKED_PUNT_MAX_YARDS = 10            # Maximum yards on blocked punt
+    PROTECTION_BUFFER = 20                 # Buffer to avoid division by zero in block calculation
+    RETURN_TD_COVERAGE_FACTOR = 0.8        # How much coverage affects return TD risk
     
     @classmethod
     def validate_configuration(cls):
@@ -85,30 +113,30 @@ PuntGameBalance.validate_configuration()
 PUNT_SITUATION_MATRICES = {
     "deep_punt": {
         "punter_attributes": ["leg_strength", "hang_time"],
-        "base_distance": 48.0,              # Focus on maximum distance from deep territory
+        "base_distance": 50.0,              # Enhanced distance from deep territory for touchback potential
         "placement_effectiveness": 0.6,     # Limited placement focus - just get distance
         "block_risk_multiplier": 1.2,       # Higher block risk from deep (longer snap)
         "return_vulnerability": 1.1,        # More vulnerable to returns (distance vs hang time)
         "fair_catch_modifier": 0.9,         # Less likely to fair catch on long punts
-        "variance": 0.8                     # More consistent distance-focused punts
+        "variance": 1.0                     # Full variance range (0.8-1.2)
     },
     "midfield_punt": {
         "punter_attributes": ["hang_time", "accuracy"],
-        "base_distance": 44.0,              # Balanced approach - standard punt
+        "base_distance": 46.0,              # Enhanced distance for better touchback potential
         "placement_effectiveness": 0.8,     # Moderate placement focus
         "block_risk_multiplier": 1.0,       # Normal block risk
         "return_vulnerability": 1.0,        # Standard return vulnerability
         "fair_catch_modifier": 1.0,         # Normal fair catch rate
-        "variance": 0.6                     # Most consistent punt situation
+        "variance": 1.0                     # Full variance range (0.8-1.2)
     },
     "short_punt": {
         "punter_attributes": ["accuracy", "placement"],
-        "base_distance": 38.0,              # Shorter distance, focus on placement
+        "base_distance": 44.0,              # Enhanced distance for touchback potential while maintaining placement focus
         "placement_effectiveness": 1.4,     # High placement bonus - coffin corner focus
         "block_risk_multiplier": 0.8,       # Lower block risk (shorter field, quicker operation)
         "return_vulnerability": 0.7,        # Less vulnerable (better placement, coverage time)
         "fair_catch_modifier": 1.2,         # More fair catches due to placement
-        "variance": 0.4                     # More consistent due to shorter field
+        "variance": 1.0                     # Full variance for touchback potential (0.8-1.2)
     },
     "emergency_punt": {
         "punter_attributes": ["leg_strength", "composure"],
@@ -117,7 +145,7 @@ PUNT_SITUATION_MATRICES = {
         "block_risk_multiplier": 2.0,       # Very high block risk (4th & long, rushed)
         "return_vulnerability": 1.5,        # High vulnerability to returns
         "fair_catch_modifier": 0.8,         # Less fair catches (poor placement)
-        "variance": 1.2                     # Most variable - high pressure situation
+        "variance": 1.0                     # Full variance range (0.8-1.2) - high pressure situation
     }
 }
 
@@ -157,7 +185,7 @@ class PuntPlay(PlayType):
         """SOLID: Single responsibility - classify punt situation based on field position and game context"""
         
         # Emergency punt situations (4th and very long)
-        if field_state.down == 4 and field_state.yards_to_go > 15:
+        if field_state.down == 4 and field_state.yards_to_go > PuntGameBalance.EMERGENCY_YARDS_THRESHOLD:
             return "emergency_punt"
         
         # Short field situations (near opponent goal)
@@ -230,7 +258,7 @@ class PuntPlay(PlayType):
         
         # Step 3: Calculate base block probability
         matrix = PUNT_SITUATION_MATRICES[punt_situation]
-        rush_advantage = dl_rush / (ol_protection + 20)  # Avoid division by zero
+        rush_advantage = dl_rush / (ol_protection + PuntGameBalance.PROTECTION_BUFFER)
         
         block_probability = (
             PuntGameBalance.BLOCK_RATE * 
@@ -259,7 +287,8 @@ class PuntPlay(PlayType):
             pass
         
         # Pressure situation modifiers
-        if field_state.down == 4 and field_state.yards_to_go > 10:
+        DESPERATION_PUNT_THRESHOLD = 10  # 4th down yards for desperation punt
+        if field_state.down == 4 and field_state.yards_to_go > DESPERATION_PUNT_THRESHOLD:
             # 4th and long - desperation punt
             modified_distance *= PuntGameBalance.FOURTH_AND_LONG_PRESSURE
         
@@ -284,18 +313,19 @@ class PuntPlay(PlayType):
                 touchback_distance = 100 - field_state.field_position
                 return "touchback", touchback_distance
             # If not touchback, ball is downed at ~5 yard line
-            return "punt", 95
+            return "punt", PuntGameBalance.NON_TOUCHBACK_END_ZONE_POSITION
         
         # Check for shank/poor punt
         if random.random() < PuntGameBalance.SHANK_RATE / matrix["placement_effectiveness"]:
             # Poor punt - reduced distance and worse field position
-            shank_distance = max(15, int(gross_distance * 0.6))
+            shank_distance = max(PuntGameBalance.MIN_SHANK_DISTANCE, 
+                               int(gross_distance * PuntGameBalance.SHANK_DISTANCE_MULTIPLIER))
             return "shank", shank_distance
         
         # Check for return touchdown
         return_td_risk = (PuntGameBalance.RETURN_TD_RATE * 
                          matrix["return_vulnerability"] * 
-                         (1.0 - coverage_effectiveness * 0.8))
+                         (1.0 - coverage_effectiveness * PuntGameBalance.RETURN_TD_COVERAGE_FACTOR))
         
         if random.random() < return_td_risk:
             return "punt_return_td", gross_distance
@@ -310,7 +340,7 @@ class PuntPlay(PlayType):
         
         # Determine if punt went out of bounds (good placement)
         if (punt_situation == "short_punt" and 
-            random.random() < 0.3 * matrix["placement_effectiveness"]):
+            random.random() < PuntGameBalance.OUT_OF_BOUNDS_BASE_CHANCE * matrix["placement_effectiveness"]):
             return "out_of_bounds", gross_distance
         
         # Standard punt with return
@@ -324,21 +354,21 @@ class PuntPlay(PlayType):
         
         # Start with much lower base return for net punt calculation
         # NFL: Gross punt 47.4, net punt 45.8 = only ~1.6 yard difference on average
-        base_return = 2.0  # Much lower base return
+        base_return = PuntGameBalance.NET_RETURN_BASE
         
         # Coverage effectiveness reduces return yards (good coverage = less return yards)
-        coverage_reduction = base_return * coverage_effectiveness * 0.5
+        coverage_reduction = base_return * coverage_effectiveness * PuntGameBalance.COVERAGE_REDUCTION_FACTOR
         
         # Situation vulnerability increases return yards (poor punt situation = more return yards)  
-        situation_bonus = base_return * (matrix["return_vulnerability"] - 1.0) * 0.3
+        situation_bonus = base_return * (matrix["return_vulnerability"] - 1.0) * PuntGameBalance.SITUATION_BONUS_FACTOR
         
         total_return = base_return - coverage_reduction + situation_bonus
         
         # Add minimal variance
-        variance = random.uniform(0.8, 1.2)
+        variance = random.uniform(PuntGameBalance.RETURN_VARIANCE_MIN, PuntGameBalance.RETURN_VARIANCE_MAX)
         final_return = total_return * variance
         
-        return max(0, min(15, int(final_return)))  # Cap at 15 yards max return
+        return max(0, min(PuntGameBalance.NET_RETURN_MAX, int(final_return)))
     
     def _calculate_punt_outcome_from_matrix(self, offense_ratings: Dict, defense_ratings: Dict,
                                           personnel, field_state: FieldState) -> tuple[str, int]:
@@ -351,7 +381,7 @@ class PuntPlay(PlayType):
         # Step 2: Check for block (happens first - can end play immediately)
         if self._calculate_block_probability(offense_ratings, defense_ratings, punt_situation):
             # Blocked punt - minimal distance, potentially dangerous
-            block_distance = random.randint(0, 10)
+            block_distance = random.randint(0, PuntGameBalance.BLOCKED_PUNT_MAX_YARDS)
             return "blocked_punt", block_distance
         
         # Step 3: Calculate punter effectiveness for this situation
@@ -370,7 +400,9 @@ class PuntPlay(PlayType):
         
         # Step 6: Apply effectiveness to base distance
         # Use gentler approach - average effectiveness (0.72) should yield close to base distance
-        effectiveness_modifier = 0.95 + (combined_effectiveness - 0.72) * 0.25  # Much gentler
+        effectiveness_modifier = (PuntGameBalance.EFFECTIVENESS_BASE_MODIFIER + 
+                                (combined_effectiveness - PuntGameBalance.EFFECTIVENESS_TARGET) * 
+                                PuntGameBalance.EFFECTIVENESS_SCALE_FACTOR)
         base_with_effectiveness = matrix["base_distance"] * effectiveness_modifier
         
         # Step 7: Apply situational modifiers
@@ -379,14 +411,13 @@ class PuntPlay(PlayType):
         )
         
         # Step 8: Add variance for realism
-        variance = random.uniform(
-            PuntGameBalance.BASE_VARIANCE_MIN, 
-            PuntGameBalance.BASE_VARIANCE_MAX * matrix["variance"]
-        )
+        min_variance = PuntGameBalance.BASE_VARIANCE_MIN
+        max_variance = min_variance + (PuntGameBalance.BASE_VARIANCE_MAX - min_variance) * matrix["variance"]
+        variance = random.uniform(min_variance, max_variance)
         final_gross_distance = adjusted_distance * variance
         
         # Step 9: Calculate net distance (gross distance is before returns)
-        gross_yards = max(20, int(final_gross_distance))  # Minimum punt distance
+        gross_yards = max(PuntGameBalance.MIN_PUNT_DISTANCE, int(final_gross_distance))
         
         # Step 10: Determine final outcome and calculate net yardage
         return self._determine_punt_outcome(gross_yards, punt_situation, coverage_effectiveness, field_state)
