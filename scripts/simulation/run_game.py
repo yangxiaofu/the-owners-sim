@@ -94,7 +94,7 @@ class FootballSimTerminal:
         return f"Team {team_id}"
     
     def simulate_game_interactive(self):
-        teams = self.get_teams()
+        teams = (self.get_teams())
         if not teams:
             print("No teams found in database!")
             return

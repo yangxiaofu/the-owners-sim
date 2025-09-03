@@ -9,137 +9,106 @@ Efficient, methodical coaching archetype that emphasizes:
 """
 
 from typing import Dict, Any
+from .base_strategy import BaseClockStrategy
+from ..config import SituationalAdjustments, GameContextThresholds
 
 
-class WestCoastStrategy:
+class WestCoastStrategy(BaseClockStrategy):
     """
     Methodical coaching archetype that emphasizes efficiency and situational precision.
     
     Characteristics:
-    - Base +1-2 seconds for precision
+    - Base +1 second for precision
     - Strong situational adjustments
     - Balanced tempo with smart clock management
     - Adapts well to different game situations
     """
     
-    def get_time_elapsed(self, play_type: str, game_context: Dict[str, Any], completion_status: str = None) -> int:
+    def __init__(self):
+        """Initialize the west coast strategy."""
+        super().__init__('west_coast')
+    
+    def _get_strategy_specific_adjustments(self, play_type: str, game_context: Dict[str, Any], 
+                                         completion_status: str, effective_play_type: str) -> int:
         """
-        Calculate time elapsed with west coast archetype modifications.
+        Get west coast strategy-specific situational adjustments.
+        
+        West coast strategy emphasizes precision and intelligent situational awareness.
+        This method adds west coast-specific timing logic that focuses on smart adjustments.
         
         Args:
-            play_type: Type of play ('run', 'pass', 'kick', 'punt')
-            game_context: Dict containing game situation (quarter, clock, score_differential, etc.)
-            completion_status: For pass plays, whether it was 'complete', 'incomplete', 'touchdown', or 'interception'
+            play_type: Original play type
+            game_context: Game situation data
+            completion_status: Pass completion status if applicable
+            effective_play_type: Processed play type for timing lookup
             
         Returns:
-            Time elapsed in seconds with west coast adjustments
+            Additional adjustment in seconds (varies based on situation)
         """
-        # Base time for different play types
-        base_times = {
-            'run': 33,           # Increased to reduce play count
-            'pass_complete': 21, # Increased to reduce play count
-            'pass_incomplete': 17, # Increased to reduce play count
-            'punt': 18,          # Increased to reduce play count
-            'field_goal': 18,    # Increased to reduce play count
-            'kick': 18,          # Increased to reduce play count
-            'kneel': 43,         # Increased to reduce play count
-            'spike': 4           # Minimal increase
-        }
+        # Extract validated game context
+        context = self._extract_game_context(game_context)
+        quarter = context['quarter']
+        clock = context['clock']
+        score_differential = context['score_differential']
+        down = context['down']
+        distance = context['distance']
+        field_position = context['field_position']
         
-        # Handle pass play types with completion status
-        if play_type == 'pass' and completion_status:
-            if completion_status in ['complete', 'touchdown']:
-                effective_play_type = 'pass_complete'
-            elif completion_status in ['incomplete', 'interception']:
-                effective_play_type = 'pass_incomplete'
-            else:
-                effective_play_type = 'pass_complete'  # Default to complete
-        else:
-            effective_play_type = play_type
-            
-        base_time = base_times.get(effective_play_type, 28)  # Default methodical timing (increased)
+        adjustment = 0
         
-        # Base archetype modifier: methodical precision
-        base_adjustment = 1  # +1 second for precision and reads (reduced from +2)
-        
-        # Play-type specific adjustments
-        play_modifiers = {
-            'pass_complete': 0,   # Neutral on completed passes (system strength)
-            'pass_incomplete': 0, # Neutral on incomplete passes
-            'run': +1,            # Slightly slower on runs for precision
-            'kick': 0,            # Normal special teams timing
-            'punt': 0             # Normal special teams timing
-        }
-        
-        # Apply base west coast tempo
-        adjusted_time = base_time + base_adjustment + play_modifiers.get(effective_play_type, 0)
-        
-        # Extract game context variables
-        quarter = game_context.get('quarter', 1)
-        clock = game_context.get('clock', 900)
-        score_differential = game_context.get('score_differential', 0)
-        down = game_context.get('down', 1)
-        distance = game_context.get('distance', 10)
-        field_position = game_context.get('field_position', 20)
-        
-        # West coast specific situational logic
-        if score_differential > 3:  # Leading by 4+
-            if quarter >= 3:  # Second half with lead
-                adjusted_time += 1  # Control tempo to protect lead (reduced from +2)
-            else:
-                adjusted_time += 1  # Slight tempo control (unchanged)
-                
-        elif score_differential < -3:  # Trailing by 4+
-            # West coast can speed up when needed
-            adjusted_time -= 4  # Efficient hurry-up (increased from -3)
-            
-        elif abs(score_differential) <= 3:  # Close game
+        # West coast specific situational intelligence
+        if abs(score_differential) <= SituationalAdjustments.SMALL_LEAD:  # Close game (±3)
             # West coast excels in close games with precision
-            adjusted_time += 1  # Extra precision in tight games
+            adjustment += 1  # Extra precision in tight games
+        elif score_differential > SituationalAdjustments.SMALL_LEAD:  # Leading by 4+
+            if quarter >= 3:  # Second half with lead
+                adjustment += 1  # Smart tempo control to protect lead
+        elif score_differential < -SituationalAdjustments.SMALL_LEAD:  # Trailing by 4+
+            # West coast can efficiently speed up when needed
+            adjustment -= 2  # Intelligent hurry-up
         
-        # Down and distance intelligence
+        # Down and distance intelligence (west coast specialty)
         if down == 1:  # First down
-            adjusted_time += 1  # Take time to assess defense
+            adjustment += 1  # Take time to read defense and make adjustments
         elif down == 2:  # Second down  
-            if distance <= 5:  # Manageable
-                adjusted_time += 1  # Methodical approach
-            else:  # Long yardage
-                adjusted_time -= 1  # Pick up tempo
-        elif down >= 3:  # 3rd/4th down
-            if distance <= 3:  # Short yardage
-                adjusted_time += 2  # Extra precision on critical downs
-            else:  # Long yardage
-                adjusted_time -= 1  # Efficient passing game
+            if distance <= GameContextThresholds.SHORT_YARDAGE:  # Manageable distance
+                adjustment += 1  # Methodical approach on manageable 2nd downs
+            else:  # Longer yardage
+                adjustment -= 1  # Pick up tempo to get back on track
+        elif down >= 3:  # 3rd/4th down (west coast strength)
+            if distance <= GameContextThresholds.SHORT_YARDAGE:  # Short yardage
+                adjustment += 2  # Maximum precision on critical short yardage
+            else:  # Long yardage - west coast comfort zone
+                adjustment -= 1  # Efficient in obvious passing situations
                 
         # Field position intelligence
-        if field_position <= 20:  # Own 20 or deeper
-            adjusted_time += 1  # Conservative in own territory
-        elif field_position >= 50:  # Crossing midfield
-            adjusted_time -= 1  # Open up the offense
+        if field_position <= SituationalAdjustments.OWN_TWENTY:  # Own 20 or deeper
+            adjustment += 1  # Conservative and precise in own territory
+        elif field_position >= SituationalAdjustments.MIDFIELD:  # Crossing midfield
+            adjustment -= 1  # Open up the offense in good field position
             
         # Red zone excellence (west coast strength)
-        if field_position >= 80:  # Red zone
-            adjusted_time += 1  # Extra precision in scoring position (reduced from +2)
-            if field_position >= 95:  # Goal line
-                adjusted_time += 1  # Maximum precision at goal line (unchanged)
+        if self._is_red_zone(field_position):  # Red zone
+            adjustment += 1  # Extra precision in scoring position
+            if self._is_goal_line(field_position):  # Goal line
+                adjustment += 1  # Maximum precision at goal line
                 
         # Fourth quarter clock management intelligence
         if quarter == 4:
-            if clock < 600:  # Final 10 minutes
-                if score_differential > 7:  # Comfortable lead
-                    adjusted_time += 2  # Control clock (reduced from +3)
+            if clock < SituationalAdjustments.FINAL_TEN_MINUTES:  # Final 10 minutes
+                if score_differential > SituationalAdjustments.MEDIUM_LEAD:  # Big lead
+                    adjustment += 2  # Smart clock control
                 elif score_differential > 0:  # Small lead
-                    adjusted_time += 1  # Slight control (unchanged)
+                    adjustment += 1  # Slight control while staying efficient
                 elif score_differential == 0:  # Tied
-                    # Stay methodical in tie games
-                    pass  # No adjustment - stick to base precision
-                else:  # Trailing
-                    if clock < 180:  # Final 3 minutes
-                        adjusted_time -= 2  # Efficient hurry-up
+                    # Stay methodical in tie games - no additional adjustment
+                    pass
+                elif clock < 180:  # Final 3 minutes, trailing
+                    adjustment -= 2  # Efficient hurry-up when time is critical
                         
         # Two-minute drill (west coast is solid but not elite here)
-        if quarter in [2, 4] and clock <= 120:
-            if score_differential <= 0:  # Need score
-                adjusted_time -= 1  # Moderate urgency
+        if self._is_two_minute_situation(quarter, clock):
+            if score_differential <= 0:  # Need to score
+                adjustment -= 1  # Moderate urgency - efficient but not frantic
                 
-        return int(max(8, min(45, adjusted_time)))  # Apply bounds for target play count
+        return adjustment

@@ -17,7 +17,7 @@ import logging
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
 
-from ...field.game_state import GameState
+from game_engine.field.game_state import GameState
 
 
 @dataclass

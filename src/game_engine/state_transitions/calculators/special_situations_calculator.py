@@ -10,7 +10,7 @@ other special situation handling throughout the game loop.
 
 from typing import List, Optional
 from dataclasses import dataclass, field
-from ...plays.data_structures import PlayResult
+from game_engine.plays.data_structures import PlayResult
 
 
 @dataclass(frozen=True)
@@ -82,6 +82,23 @@ class SpecialSituationsCalculator:
             if kickoff_situation:
                 special_situations.append(kickoff_situation)
         
+        # Check for required kickoff field reset (play after scoring)
+        elif self._needs_post_score_kickoff_reset(play_result, game_state):
+            # 🔧 DEBUG: Integration verification
+            print(f"🔧 CALCULATOR DEBUG: post-score reset needed = True")
+            print(f"🔧 CALCULATOR DEBUG: field_pos = {game_state.field.field_position}, down = {game_state.field.down}")
+            
+            kickoff_reset = self._calculate_kickoff_reset(play_result, game_state)
+            if kickoff_reset:
+                print(f"🔧 CALCULATOR DEBUG: kickoff_reset created with new_field_position = {kickoff_reset.new_field_position}")
+                special_situations.append(kickoff_reset)
+        else:
+            # 🔧 DEBUG: Integration verification  
+            reset_needed = self._needs_post_score_kickoff_reset(play_result, game_state)
+            print(f"🔧 CALCULATOR DEBUG: post-score reset needed = {reset_needed}")
+            if not reset_needed:
+                print(f"🔧 CALCULATOR DEBUG: no reset - field_pos = {game_state.field.field_position}, down = {game_state.field.down}, is_score = {play_result.is_score}")
+        
         # Check for punt return situation
         if play_result.play_type == "punt":
             punt_situation = self._calculate_punt_return(play_result, game_state)
@@ -130,6 +147,72 @@ class SpecialSituationsCalculator:
             new_possession_team_id=receiving_team_id,
             kickoff_result=kickoff_result,
             description=f"Kickoff after {play_result.outcome}",
+            involves_penalty=False
+        )
+    
+    def _needs_post_score_kickoff_reset(self, play_result: PlayResult, game_state) -> bool:
+        """
+        Detect if the current game state requires a kickoff field reset.
+        
+        This identifies scenarios where the previous play was a scoring play,
+        and the current play needs field position reset from the scoring location
+        to the kickoff return position.
+        
+        Args:
+            play_result: Current play result (the play AFTER the score)
+            game_state: Current game state
+            
+        Returns:
+            True if kickoff field reset is needed
+        """
+        # Don't apply kickoff reset if this is currently a scoring play
+        if play_result.is_score:
+            return False
+            
+        field_pos = game_state.field.field_position
+        down = game_state.field.down
+        
+        # Primary indicator: Field position at scoring locations with fresh down
+        # Touchdown: field_position >= 100, down = 1
+        # Close field goal: field_position >= 90, down = 1  
+        if field_pos >= 90 and down == 1:
+            return True
+            
+        # Secondary indicator: Any position at 100-yard line (touchdown location)
+        # This handles edge cases where down might not be properly set
+        if field_pos >= 100:
+            return True
+        
+        return False
+    
+    def _calculate_kickoff_reset(self, play_result: PlayResult, game_state) -> Optional[SpecialSituationTransition]:
+        """
+        Calculate kickoff field position reset for post-scoring scenarios.
+        
+        This handles the field reset that should happen after a scoring play
+        when the receiving team takes possession via kickoff.
+        
+        Args:
+            play_result: Current play result (play after the score)
+            game_state: Current game state needing reset
+            
+        Returns:
+            SpecialSituationTransition for kickoff field reset
+        """
+        # Determine teams: current possession is the team that scored
+        scoring_team_id = game_state.field.possession_team_id
+        receiving_team_id = self._get_opposite_team_id(scoring_team_id)
+        
+        # Simulate kickoff return to get realistic field position
+        kickoff_result = self._simulate_kickoff(scoring_team_id, receiving_team_id)
+        
+        return SpecialSituationTransition(
+            situation_type="kickoff_reset",
+            requires_immediate_action=True,
+            new_field_position=kickoff_result.final_field_position,
+            new_possession_team_id=receiving_team_id,
+            kickoff_result=kickoff_result,
+            description="Post-score kickoff field reset",
             involves_penalty=False
         )
     

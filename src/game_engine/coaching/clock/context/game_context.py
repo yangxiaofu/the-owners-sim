@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from ....field.game_state import GameState
+from game_engine.field.game_state import GameState
 
 
 @dataclass

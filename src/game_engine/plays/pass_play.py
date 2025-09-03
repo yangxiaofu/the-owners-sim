@@ -1,9 +1,9 @@
 import random
 from typing import Dict
-from .play_types import PlayType
-from .data_structures import PlayResult
-from .statistics_extractor import StatisticsExtractor, PassPlayData
-from ..field.field_state import FieldState
+from game_engine.plays.play_types import PlayType
+from game_engine.plays.data_structures import PlayResult
+from game_engine.plays.statistics_extractor import StatisticsExtractor, PassPlayData
+from game_engine.field.field_state import FieldState
 
 
 class PassGameBalance:
@@ -635,34 +635,10 @@ class PassPlay(PlayType):
             
             yards = max(0, int(final_yards))
             
-            # ULTRA-THINK FIX: Red Zone and General Touchdown Logic
-            td_probability = PassGameBalance.BASE_TD_RATE
-            
-            # ULTRA-THINK FIX: Aggressive Red Zone Logic aligned with NFL test (80-95 field position)  
-            if field_state.field_position >= 80:  # Matches benchmark test exactly
-                # NFL red zone TD rate is 60%, but accounting for incomplete passes,
-                # we need higher completion->TD conversion rate
-                td_probability = 0.85  # Increased from 75% to 85%
-                # In red zone, ANY completion can be TD (more realistic)
-                if yards >= 1:  # Any forward progress can score
-                    if random.random() < td_probability:
-                        return "touchdown", yards
-                        
-            # Extended red zone (field position 70-79)
-            elif field_state.field_position >= 70:
-                td_probability = 0.35  # Moderate TD chance in extended red zone
-                if yards >= 5:
-                    if random.random() < td_probability:
-                        return "touchdown", yards
-            else:
-                # Regular field: Need sufficient yards + probability
-                if yards >= PassGameBalance.TD_MIN_YARDS:
-                    # Boost TD probability for longer completions
-                    yards_bonus = min(0.15, (yards - PassGameBalance.TD_MIN_YARDS) * 0.01)
-                    td_probability = min(0.25, td_probability + yards_bonus)
-                    
-                    if random.random() < td_probability:
-                        return "touchdown", yards
+            # Check for touchdown - field position aware (no probability, just physics)
+            final_position = field_state.field_position + yards
+            if final_position >= 100:
+                return "touchdown", yards
             
             return "gain", yards
         else:
@@ -686,31 +662,3 @@ class PassPlay(PlayType):
         
         return base_yards + yac_yards
     
-    def _simulate_pass(self, offense: Dict, defense: Dict) -> tuple[str, int]:
-        """Simulate a passing play based on team ratings"""
-        qb_rating = offense["offense"]["qb_rating"]
-        wr_rating = offense["offense"]["wr_rating"]
-        db_rating = defense["defense"]["db_rating"]
-        
-        # Completion probability
-        completion_prob = (qb_rating + wr_rating) / (qb_rating + wr_rating + db_rating * 1.5)
-        
-        if random.random() < completion_prob:
-            # Completed pass
-            yards = random.randint(3, 25)
-            if random.random() < 0.08:  # 8% chance of big play
-                yards += random.randint(15, 60)
-                
-            # Check for touchdown
-            if yards >= 25 and random.random() < 0.12:
-                return "touchdown", yards
-                
-            return "gain", yards
-        else:
-            # Incomplete pass or negative play
-            if random.random() < 0.1:  # 10% chance of sack
-                return "sack", random.randint(-8, -1)
-            elif random.random() < 0.02:  # 2% chance of interception
-                return "interception", 0
-            else:
-                return "incomplete", 0

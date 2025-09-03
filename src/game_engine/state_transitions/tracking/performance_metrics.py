@@ -31,7 +31,7 @@ import psutil
 import gc
 from contextlib import contextmanager
 
-from ...plays.data_structures import PlayResult
+from game_engine.plays.data_structures import PlayResult
 
 
 class PerformanceCategory(Enum):

@@ -1,8 +1,8 @@
 import random
 from typing import List, Dict, Tuple
-from ..simulation.blocking.strategies import RunBlockingStrategy, BlockingContext
-from ..simulation.blocking.simulator import BlockingSimulator
-from ..simulation.blocking.data_structures import BlockingResult, RunPlayCall, RunResult
+from game_engine.simulation.blocking.strategies import RunBlockingStrategy, BlockingContext
+from game_engine.simulation.blocking.simulator import BlockingSimulator
+from game_engine.simulation.blocking.data_structures import BlockingResult, RunPlayCall, RunResult
 
 class DetailedRunSimulator:
     """Detailed position-by-position run play simulation"""

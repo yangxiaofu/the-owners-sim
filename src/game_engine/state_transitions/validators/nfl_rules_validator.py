@@ -7,7 +7,7 @@ clock management, quarter progression, game timing, and special situations.
 
 from typing import Any, Dict, Optional, List
 from enum import Enum
-from .validation_result import (
+from game_engine.state_transitions.validators.validation_result import (
     ValidationResult, ValidationResultBuilder, ValidationCategory,
     create_success_result
 )

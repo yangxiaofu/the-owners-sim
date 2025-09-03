@@ -13,8 +13,8 @@ Replaces simple distance thresholds with comprehensive strategic evaluation.
 import random
 from typing import Dict, Optional, Tuple
 from dataclasses import dataclass
-from ..field.field_state import FieldState
-from ..field.game_state import GameState
+from game_engine.field.field_state import FieldState
+from game_engine.field.game_state import GameState
 
 
 @dataclass

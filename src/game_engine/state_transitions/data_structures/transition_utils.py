@@ -8,8 +8,8 @@ and the full GameStateTransition with metadata.
 import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional
-from ...plays.data_structures import PlayResult
-from .game_state_transition import BaseGameStateTransition, GameStateTransition
+from game_engine.plays.data_structures import PlayResult
+from game_engine.state_transitions.data_structures.game_state_transition import BaseGameStateTransition, GameStateTransition
 
 
 def enhance_base_transition(
@@ -75,7 +75,16 @@ def enhance_base_transition(
         audit_trail={
             'possession_team_id': possession_team_id,
             'created_timestamp': created_at.isoformat(),
-            'play_summary': play_result.play_description or f"{play_result.play_type} play"
+            'play_summary': play_result.play_description or f"{play_result.play_type} play",
+            # Add validator-required keys for scoring detection
+            'is_scoring_play': play_result.is_score,
+            'outcome': play_result.outcome,
+            'new_field_position': play_result.final_field_position,
+            # Include possession change reason in context for accurate validation
+            'possession_change_reason': (
+                base_transition.possession_transition.possession_change_reason 
+                if base_transition.possession_transition else None
+            )
         }
     )
 

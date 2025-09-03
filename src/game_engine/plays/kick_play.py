@@ -1,9 +1,9 @@
 import random
 from typing import Dict
-from .play_types import PlayType
-from .data_structures import PlayResult
-from ..field.field_state import FieldState
-from .strategic_field_goal_decision import FieldGoalStrategicBalance
+from game_engine.plays.play_types import PlayType
+from game_engine.plays.data_structures import PlayResult
+from game_engine.field.field_state import FieldState
+from game_engine.plays.strategic_field_goal_decision import FieldGoalStrategicBalance
 
 
 class KickGameBalance:
@@ -113,8 +113,16 @@ KICK_SITUATION_MATRICES = {
 class KickPlay(PlayType):
     """Handles field goal and extra point attempts using distance-based matrices"""
     
-    def simulate(self, personnel, field_state: FieldState) -> PlayResult:
-        """Simulate a field goal attempt using selected personnel"""
+    def simulate(self, personnel, field_state: FieldState, play_context: str = "field_goal") -> PlayResult:
+        """
+        Simulate a field goal attempt using selected personnel
+        
+        Args:
+            personnel: Personnel package for the play
+            field_state: Current field state
+            play_context: Context to distinguish field goals from extra points
+                         ("field_goal" | "extra_point")
+        """
         
         # Extract player ratings from personnel package
         offense_ratings = self._extract_player_ratings(personnel, "offense")
@@ -122,7 +130,7 @@ class KickPlay(PlayType):
         
         # Calculate kick outcome using distance-based matrix system
         outcome, yards_gained = self._calculate_kick_outcome_from_matrix(
-            offense_ratings, defense_ratings, personnel, field_state
+            offense_ratings, defense_ratings, personnel, field_state, play_context
         )
         
         # Calculate time elapsed and points
@@ -176,10 +184,23 @@ class KickPlay(PlayType):
         # If distance exceeds all categories, use very low probability
         return 0.20  # 20% for extremely long attempts (70+ yards)
     
-    def _determine_kick_situation(self, distance: int, field_state: FieldState) -> str:
-        """SOLID: Single responsibility - classify kick situation based on distance"""
+    def _determine_kick_situation(self, distance: int, field_state: FieldState, play_context: str = "field_goal") -> str:
+        """SOLID: Single responsibility - classify kick situation based on distance and context"""
         
-        # Extra point detection (goal line or 1-2 yard line)
+        # KISS: Use explicit context to override distance-based detection
+        if play_context == "extra_point":
+            return "extra_point"
+        
+        # For field goals, use distance-based classification regardless of position
+        if play_context == "field_goal":
+            if distance <= 39:
+                return "short_fg"
+            elif distance <= 49:
+                return "medium_fg"
+            else:
+                return "long_fg"
+        
+        # Fallback to original logic for backward compatibility
         if field_state.field_position >= 98 or distance <= 20:
             return "extra_point"
         
@@ -276,12 +297,12 @@ class KickPlay(PlayType):
         return max(0.0, min(1.0, modified_rate))
     
     def _calculate_kick_outcome_from_matrix(self, offense_ratings: Dict, defense_ratings: Dict,
-                                          personnel, field_state: FieldState) -> tuple[str, int]:
+                                          personnel, field_state: FieldState, play_context: str = "field_goal") -> tuple[str, int]:
         """SOLID: Single responsibility - main kick calculation using distance-based matrix"""
         
         # Step 1: Calculate distance and determine kick situation
         distance = self._calculate_kick_distance(field_state)
-        kick_situation = self._determine_kick_situation(distance, field_state)
+        kick_situation = self._determine_kick_situation(distance, field_state, play_context)
         matrix = KICK_SITUATION_MATRICES[kick_situation]
         
         # Step 2: Check for block (happens first - can end play immediately)
@@ -331,5 +352,5 @@ class KickPlay(PlayType):
         mock_personnel.kicker_rating = offense_ratings.get("special_teams", 70)
         
         return self._calculate_kick_outcome_from_matrix(
-            offense_ratings, {"dl": 50}, mock_personnel, field_state
+            offense_ratings, {"dl": 50}, mock_personnel, field_state, "field_goal"
         )

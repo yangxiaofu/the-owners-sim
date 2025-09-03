@@ -191,7 +191,7 @@ class ScoreTransition:
         """Validate scoring data and calculate derived fields."""
         # If score occurred, we should have basic information
         if self.score_occurred:
-            if not self.scoring_team:
+            if self.scoring_team is None:
                 raise ValueError("Scoring plays must specify the scoring team")
             if self.points_scored <= 0:
                 raise ValueError("Scoring plays must award positive points")

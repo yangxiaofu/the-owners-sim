@@ -1,9 +1,9 @@
 import random
 from typing import Dict, Optional, List, Tuple
 from collections import defaultdict
-from ..field.field_state import FieldState
-from ..plays.play_calling import OFFENSIVE_ARCHETYPES, DEFENSIVE_ARCHETYPES
-from .coaching_constants import (
+from game_engine.field.field_state import FieldState
+from game_engine.plays.play_calling import OFFENSIVE_ARCHETYPES, DEFENSIVE_ARCHETYPES
+from game_engine.coaching.coaching_constants import (
     COACH_PERSONALITIES, ADAPTATION_THRESHOLDS, OPPONENT_MEMORY_BONUSES,
     EXPERIENCE_MULTIPLIERS, PERSONNEL_PREFERENCES, DECISION_WEIGHTS,
     COACHING_EFFECTIVENESS, SITUATIONAL_MODIFIERS, PHILOSOPHY_COMPATIBILITY

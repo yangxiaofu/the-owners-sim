@@ -9,115 +9,87 @@ Fast tempo, hurry-up coaching archetype that emphasizes:
 """
 
 from typing import Dict, Any
+from .base_strategy import BaseClockStrategy
+from ..config import SituationalAdjustments
 
 
-class AirRaidStrategy:
+class AirRaidStrategy(BaseClockStrategy):
     """
     Fast-tempo coaching archetype that emphasizes speed and maximizing possessions.
     
     Characteristics:
-    - Base -5 seconds per play  
-    - Additional -8 seconds when trailing
+    - Base -2 seconds per play  
+    - Additional speed when trailing
     - Faster tempo on pass plays
     - Aggressive no-huddle concepts
     """
     
-    def get_time_elapsed(self, play_type: str, game_context: Dict[str, Any], completion_status: str = None) -> int:
+    def __init__(self):
+        """Initialize the air raid strategy."""
+        super().__init__('air_raid')
+    
+    def _get_strategy_specific_adjustments(self, play_type: str, game_context: Dict[str, Any], 
+                                         completion_status: str, effective_play_type: str) -> int:
         """
-        Calculate time elapsed with air raid archetype modifications.
+        Get air raid strategy-specific situational adjustments.
+        
+        Air raid strategy emphasizes speed and aggression, especially when trailing.
+        This method adds air raid-specific timing logic on top of the standard adjustments.
         
         Args:
-            play_type: Type of play ('run', 'pass', 'kick', 'punt')
-            game_context: Dict containing game situation (quarter, clock, score_differential, etc.)
-            completion_status: For pass plays, whether it was 'complete', 'incomplete', 'touchdown', or 'interception'
+            play_type: Original play type
+            game_context: Game situation data
+            completion_status: Pass completion status if applicable
+            effective_play_type: Processed play type for timing lookup
             
         Returns:
-            Time elapsed in seconds with air raid adjustments
+            Additional adjustment in seconds (usually negative for faster tempo)
         """
-        # Base time for different play types  
-        base_times = {
-            'run': 36,           # Increased to get closer to target
-            'pass_complete': 24, # Increased to get closer to target
-            'pass_incomplete': 20, # Increased to get closer to target
-            'punt': 22,          # Increased to get closer to target
-            'field_goal': 22,    # Increased to get closer to target
-            'kick': 22,          # Increased to get closer to target
-            'kneel': 42,         # Increased to get closer to target
-            'spike': 5           # Unchanged
-        }
+        # Extract validated game context
+        context = self._extract_game_context(game_context)
+        quarter = context['quarter']
+        clock = context['clock']
+        score_differential = context['score_differential']
+        down = context['down']
+        distance = context['distance']
+        field_position = context['field_position']
+        timeouts_remaining = context['timeouts_remaining']
         
-        # Handle pass play types with completion status
-        if play_type == 'pass' and completion_status:
-            if completion_status in ['complete', 'touchdown']:
-                effective_play_type = 'pass_complete'
-            elif completion_status in ['incomplete', 'interception']:
-                effective_play_type = 'pass_incomplete'
-            else:
-                effective_play_type = 'pass_complete'  # Default to complete
-        else:
-            effective_play_type = play_type
-            
-        base_time = base_times.get(effective_play_type, 30)  # Default faster base time (increased to target range)
+        adjustment = 0
         
-        # Base archetype modifier: fast tempo
-        base_adjustment = 0  # Base 0 seconds (neutralized for target range)
-        
-        # Play-type specific adjustments
-        play_modifiers = {
-            'pass_complete': -3,   # Extra fast on completed passes (bread and butter)
-            'pass_incomplete': -3, # Extra fast on incomplete passes too
-            'run': -1,             # Faster runs than normal, but not as fast as passes
-            'kick': +2,            # Special teams can't be rushed as much
-            'punt': +1             # Punt operations need some precision
-        }
-        
-        # Apply base air raid tempo
-        adjusted_time = base_time + base_adjustment + play_modifiers.get(effective_play_type, 0)
-        
-        # Extract game context variables
-        quarter = game_context.get('quarter', 1)
-        clock = game_context.get('clock', 900)
-        score_differential = game_context.get('score_differential', 0)
-        down = game_context.get('down', 1)
-        distance = game_context.get('distance', 10)
-        field_position = game_context.get('field_position', 20)
-        
-        # Air raid specific situational logic
+        # Air raid specific logic: extra speed when trailing (beyond standard adjustments)
         if score_differential < 0:  # Trailing
-            # Extra speed when behind - this is where air raid shines
-            if score_differential <= -7:  # Down by 7+
-                adjusted_time -= 6  # Maximum hurry-up mode (reduced from -8)
-            else:  # Down by 1-6
-                adjusted_time -= 3  # Moderate hurry-up (reduced from -4)
+            if score_differential <= -SituationalAdjustments.MEDIUM_LEAD:  # Down by 7+
+                adjustment -= 4  # Maximum hurry-up mode (air raid specialty)
+            elif score_differential <= -SituationalAdjustments.SMALL_LEAD:  # Down by 3-6
+                adjustment -= 2  # Moderate hurry-up
                 
-        elif score_differential > 7:  # Leading by more than 7
-            # Even when ahead, air raid stays aggressive
-            adjusted_time -= 1  # Still faster than average (reduced from -2)
+        elif score_differential > SituationalAdjustments.MEDIUM_LEAD:  # Leading by 8+
+            # Even when ahead, air raid maintains aggressive tempo
+            adjustment -= 1  # Still faster than average
         
-        # Down and distance considerations
+        # Down and distance considerations (air raid thrives on 3rd down)
         if down >= 3:  # 3rd/4th down
             if distance <= 3:  # Short yardage
-                adjusted_time -= 1  # Quick snap to catch defense off-guard
+                adjustment -= 1  # Quick snap to catch defense off-guard
             else:  # Long yardage - air raid comfort zone
-                adjusted_time -= 2  # Extra fast in passing situations
+                adjustment -= 2  # Extra fast in obvious passing situations
                 
         # Two-minute drill adjustments (air raid specialty)
-        if quarter in [2, 4] and clock <= 120:
-            adjusted_time -= 3  # Master of the two-minute drill
-            timeouts = game_context.get('timeouts_remaining', 3)
-            if timeouts == 0:  # No timeouts left
-                adjusted_time -= 2  # Even faster when can't stop clock
+        if self._is_two_minute_situation(quarter, clock):
+            adjustment -= 2  # Master of the two-minute drill (beyond standard adjustment)
+            if timeouts_remaining == 0:  # No timeouts left
+                adjustment -= 2  # Even faster when can't stop clock
                 
-        # Fourth quarter urgency
-        if quarter == 4:
-            if clock < 300:  # Final 5 minutes
-                if score_differential <= 0:  # Tied or trailing
-                    adjusted_time -= 3  # Maximum urgency (reduced from -4)
-                elif score_differential < 7:  # Small lead
-                    adjusted_time -= 1  # Still playing fast (reduced from -2)
+        # Fourth quarter crunch time (air raid excels under pressure)
+        if self._is_fourth_quarter_crunch_time(quarter, clock):
+            if score_differential <= 0:  # Tied or trailing
+                adjustment -= 2  # Maximum urgency in clutch moments
+            elif score_differential < SituationalAdjustments.MEDIUM_LEAD:  # Small lead
+                adjustment -= 1  # Still playing fast to extend lead
                     
-        # Red zone adjustments - air raid can struggle here
-        if field_position >= 80 and score_differential >= 0:  # Red zone, not trailing
-            adjusted_time += 1  # Slightly slower in compressed field
+        # Red zone adjustments - air raid can struggle in compressed field
+        if self._is_red_zone(field_position) and score_differential >= 0:  # Red zone, not desperate
+            adjustment += 1  # Slightly slower due to compressed field
             
-        return int(max(8, min(45, adjusted_time)))  # Apply bounds for target play count
+        return adjustment

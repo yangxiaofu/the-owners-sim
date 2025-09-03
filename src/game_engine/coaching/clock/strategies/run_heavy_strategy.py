@@ -8,110 +8,83 @@ Conservative, clock-consuming coaching archetype that emphasizes:
 """
 
 from typing import Dict, Any
+from .base_strategy import BaseClockStrategy
+from ..config import SituationalAdjustments, GameContextThresholds
 
 
-class RunHeavyStrategy:
+class RunHeavyStrategy(BaseClockStrategy):
     """
     Conservative coaching archetype that emphasizes clock control and methodical offense.
     
     Characteristics:
-    - Base +3-5 seconds per play
-    - Additional +5 seconds when leading to run clock
-    - Slower tempo on run plays
+    - Base +2 seconds per play
+    - Additional time consumption when leading to run clock
+    - Slower tempo on run plays  
     - Conservative clock management
     """
     
-    def get_time_elapsed(self, play_type: str, game_context: Dict[str, Any], completion_status: str = None) -> int:
+    def __init__(self):
+        """Initialize the run heavy strategy."""
+        super().__init__('run_heavy')
+    
+    def _get_strategy_specific_adjustments(self, play_type: str, game_context: Dict[str, Any], 
+                                         completion_status: str, effective_play_type: str) -> int:
         """
-        Calculate time elapsed with run-heavy archetype modifications.
+        Get run heavy strategy-specific situational adjustments.
+        
+        Run heavy strategy emphasizes clock control and methodical play,
+        especially when leading. This method adds run heavy-specific timing logic.
         
         Args:
-            play_type: Type of play ('run', 'pass', 'kick', 'punt') 
-            game_context: Dict containing game situation (quarter, clock, score_differential, etc.)
-            completion_status: For pass plays, indicates 'complete', 'incomplete', 'touchdown', 'interception'
+            play_type: Original play type
+            game_context: Game situation data
+            completion_status: Pass completion status if applicable
+            effective_play_type: Processed play type for timing lookup
             
         Returns:
-            Time elapsed in seconds with run-heavy adjustments
+            Additional adjustment in seconds (usually positive for slower tempo)
         """
-        # Base time for different play types
-        base_times = {
-            'run': 30,          # Decreased to get closer to target
-            'pass_complete': 19, # Decreased to get closer to target
-            'pass_incomplete': 15, # Decreased to get closer to target
-            'punt': 16,         # Decreased to get closer to target
-            'field_goal': 16,   # Decreased to get closer to target
-            'kick': 16,         # Decreased to get closer to target
-            'kneel': 40,        # Decreased to get closer to target
-            'spike': 4          # Unchanged
-        }
+        # Extract validated game context
+        context = self._extract_game_context(game_context)
+        quarter = context['quarter']
+        clock = context['clock']
+        score_differential = context['score_differential']
+        down = context['down']
+        distance = context['distance']
         
-        # Handle pass play types with completion status
-        if play_type == 'pass' and completion_status:
-            if completion_status in ['complete', 'touchdown']:
-                effective_play_type = 'pass_complete'
-            elif completion_status in ['incomplete', 'interception']:
-                effective_play_type = 'pass_incomplete'
-            else:
-                effective_play_type = 'pass_complete'  # Default to complete
-        else:
-            effective_play_type = play_type
+        adjustment = 0
         
-        base_time = base_times.get(effective_play_type, 25)  # Default base time (decreased more)
-        
-        # Base archetype modifier: conservative tempo
-        base_adjustment = 2  # +2 seconds average (reduced further)
-        
-        # Play-type specific adjustments
-        play_modifiers = {
-            'run': +2,      # Extra slow on run plays (bread and butter)
-            'pass': +1,     # Slightly slower on passes
-            'kick': 0,      # Normal special teams timing
-            'punt': 0       # Normal special teams timing
-        }
-        
-        # Apply base run-heavy tempo
-        adjusted_time = base_time + base_adjustment + play_modifiers.get(play_type, 0)
-        
-        # Extract game context variables
-        quarter = game_context.get('quarter', 1)
-        clock = game_context.get('clock', 900)
-        score_differential = game_context.get('score_differential', 0)
-        down = game_context.get('down', 1)
-        distance = game_context.get('distance', 10)
-        field_position = game_context.get('field_position', 20)
-        
-        # Run-heavy specific situational logic
+        # Run heavy specific logic: extra clock consumption when ahead
         if score_differential > 0:  # Leading
-            # Extra clock consumption when ahead
-            if quarter >= 3:  # Second half
-                adjusted_time += 3  # Reduced from +5
+            if quarter >= 3:  # Second half - really milk the clock
+                adjustment += 2  # Extra deliberate tempo when protecting lead
             else:
-                adjusted_time += 1  # Reduced from +2
+                adjustment += 1  # Slight clock control in first half
                 
-        elif score_differential < -7:  # Trailing by more than 7
-            # Still conservative, but increased urgency when desperate
-            adjusted_time -= 3  # Increased from -2
+        elif score_differential < -SituationalAdjustments.MEDIUM_LEAD:  # Trailing by 8+
+            # Even run heavy needs some urgency when desperate
+            adjustment -= 2  # Increased urgency but still methodical
         
-        # Down and distance considerations
+        # Down and distance considerations (run heavy likes precision)
         if down >= 3:  # 3rd/4th down
-            adjusted_time += 1  # Extra time for precision
+            adjustment += 1  # Extra time for precision on critical downs
             
-        if distance >= 10:  # Long yardage
-            adjusted_time += 1  # More deliberate on long downs
+        if distance >= GameContextThresholds.LONG_YARDAGE:  # 10+ yards
+            adjustment += 1  # More deliberate on long yardage situations
             
-        # Fourth quarter clock management
+        # Fourth quarter clock management (run heavy specialty)
         if quarter == 4:
-            if clock < 600:  # Final 10 minutes
+            if clock < SituationalAdjustments.FINAL_TEN_MINUTES:  # Final 10 minutes
                 if score_differential > 0:  # Leading
-                    adjusted_time += 2  # Milk the clock (reduced from +3)
+                    adjustment += 3  # Maximum clock control mode
                 elif score_differential == 0:  # Tied
-                    adjusted_time += 1  # Slightly more deliberate (unchanged)
+                    adjustment += 1  # Slightly more deliberate
                     
-        # Two-minute drill adjustments
-        if quarter in [2, 4] and clock <= 120:
-            if score_differential < 0:  # Trailing
-                adjusted_time -= 4  # Need to move faster (increased from -3)
-            elif score_differential > 7:  # Leading by more than 7
-                adjusted_time += 1  # Run more clock (reduced from +2)
+        # Two-minute drill adjustments (run heavy struggles here)
+        if self._is_two_minute_situation(quarter, clock):
+            if score_differential < 0:  # Trailing - forced to change philosophy
+                adjustment -= 3  # Urgency overrides natural tempo
+            elif score_differential > SituationalAdjustments.MEDIUM_LEAD:  # Big lead
+                adjustment += 2  # Run even more clock if possible
                 
-        return int(max(8, min(45, adjusted_time)))  # Apply bounds for target play count
+        return adjustment

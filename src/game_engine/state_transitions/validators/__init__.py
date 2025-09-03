@@ -5,15 +5,16 @@ Provides comprehensive validation for game state transitions to ensure
 all state changes are legal and consistent with NFL rules.
 """
 
-from .validation_result import (
+from game_engine.state_transitions.validators.validation_result import (
     ValidationResult, ValidationResultBuilder, ValidationCategory, 
     ValidationSeverity, ValidationIssue, create_success_result, create_error_result
 )
-from .transition_validator import TransitionValidator, GameStateTransition
-from .field_validator import FieldValidator
-from .possession_validator import PossessionValidator, PossessionChangeReason
-from .score_validator import ScoreValidator, ScoreType
-from .nfl_rules_validator import NFLRulesValidator
+from game_engine.state_transitions.validators.transition_validator import TransitionValidator, GameStateTransition
+from game_engine.state_transitions.validators.field_validator import FieldValidator
+from game_engine.state_transitions.validators.possession_validator import PossessionValidator, PossessionChangeReason
+from game_engine.state_transitions.validators.score_validator import ScoreValidator
+from game_engine.state_transitions.data_structures.score_transition import ScoreType
+from game_engine.state_transitions.validators.nfl_rules_validator import NFLRulesValidator
 
 __all__ = [
     # Main validation classes

@@ -24,18 +24,19 @@ import logging
 from dataclasses import dataclass
 
 # Import transition system components with fallbacks
-from ..state_transitions import GameStateTransition, TransitionCalculator, TransitionValidator, TransitionApplicator
-from ..state_transitions.data_structures import BaseGameStateTransition, enhance_base_transition
+from game_engine.state_transitions import GameStateTransition, TransitionCalculator, TransitionValidator, TransitionApplicator
+from game_engine.state_transitions.data_structures import BaseGameStateTransition, enhance_base_transition
+from game_engine.state_transitions.validators.validation_result import ValidationSeverity
 
 # Try to import tracking system, use fallback if not available
 try:
-    from ..state_transitions import create_integrated_tracker
+    from game_engine.state_transitions import create_integrated_tracker
     TRACKING_AVAILABLE = True
 except ImportError:
     TRACKING_AVAILABLE = False
     print("⚠️  Advanced tracking unavailable, using basic tracking fallback")
-from ..plays.data_structures import PlayResult
-from ..field.game_state import GameState
+from game_engine.plays.data_structures import PlayResult
+from game_engine.field.game_state import GameState
 
 
 class BasicTrackingFallback:
@@ -169,6 +170,11 @@ class GameStateManager:
         self.home_team_id = home_team_id
         self.away_team_id = away_team_id
         
+        # Initialize post-score kickoff tracking
+        self._post_score_kickoff_pending = False
+        self._kickoff_receiving_team = None
+        self._last_scoring_play_type = None
+        
         # Initialize all state transition components
         self.calculator = TransitionCalculator()
         self.validator = TransitionValidator()
@@ -207,6 +213,15 @@ class GameStateManager:
         start_time = time.time()
         
         try:
+            # 🔧 DEBUG: Entry point verification
+            print(f"🔧 MANAGER DEBUG: Entry - field_pos = {game_state.field.field_position}, down = {game_state.field.down}")
+            print(f"🔧 MANAGER DEBUG: Entry - play_type = {play_result.play_type}, is_score = {play_result.is_score}")
+            
+            # Handle post-score kickoff state tracking
+            self._update_post_score_tracking(play_result, possession_team_id)
+            
+            print(f"🔧 MANAGER DEBUG: kickoff_pending = {self._post_score_kickoff_pending}, receiving_team = {self._kickoff_receiving_team}")
+            
             # Step 1: Calculate what changes should happen (pure functions)
             transition = self._calculate_transitions(play_result, game_state)
             
@@ -216,7 +231,7 @@ class GameStateManager:
                 return StateTransitionResult(
                     success=False,
                     transition=transition,
-                    validation_errors=validation_result.get_error_messages(),
+                    validation_errors=[str(issue) for issue in validation_result.get_issues_by_severity(ValidationSeverity.ERROR)],
                     execution_time_ms=(time.time() - start_time) * 1000
                 )
             
@@ -328,7 +343,7 @@ class GameStateManager:
         self.logger.debug("Applying state transitions...")
         
         # Atomic application with rollback on any failure
-        return self.applicator.apply_transition(transition, game_state)
+        return self.applicator.apply_calculated_transition(transition, game_state)
     
     def _track_play_result(self, play_result: PlayResult, possession_team_id: str,
                           game_state: GameState, transition: GameStateTransition,
@@ -346,7 +361,8 @@ class GameStateManager:
         
         # Record transitions for debugging (if advanced tracking available)
         if TRACKING_AVAILABLE and hasattr(self.tracking_system, 'auditor'):
-            self.tracking_system.auditor.record_state_transition(transition)
+            description = self._create_changes_summary(transition)
+            self.tracking_system.record_state_transition(transition, game_state, description)
     
     def _create_changes_summary(self, transition: GameStateTransition) -> str:
         """Create human-readable summary of what changed"""
@@ -354,12 +370,12 @@ class GameStateManager:
         
         if transition.field_transition:
             ft = transition.field_transition
-            if ft.field_position_change != 0:
-                changes.append(f"field {ft.old_field_position}→{ft.new_field_position}")
-            if ft.down_change:
+            if ft.yards_gained != 0:
+                changes.append(f"field {ft.old_yard_line}→{ft.new_yard_line}")
+            if ft.old_down != ft.new_down:
                 changes.append(f"down {ft.old_down}→{ft.new_down}")
         
-        if transition.possession_transition and transition.possession_transition.possession_changed:
+        if transition.possession_transition and transition.possession_transition.possession_changes:
             changes.append("possession change")
         
         if transition.score_transition and transition.score_transition.points_scored > 0:
@@ -367,7 +383,7 @@ class GameStateManager:
         
         if transition.clock_transition:
             ct = transition.clock_transition
-            changes.append(f"-{ct.time_elapsed}s")
+            changes.append(f"-{ct.seconds_elapsed}s")
         
         return ", ".join(changes) if changes else "no changes"
     
@@ -507,6 +523,43 @@ class GameStateManager:
             })
         
         return capabilities
+    
+    def _update_post_score_tracking(self, play_result: PlayResult, possession_team_id: str):
+        """
+        Update post-score kickoff tracking state.
+        
+        This method tracks when scoring plays occur and when kickoff resets
+        are needed for the next play.
+        
+        Args:
+            play_result: Current play result
+            possession_team_id: Team that had possession for this play
+        """
+        if play_result.is_score:
+            # Scoring play occurred - set kickoff pending for next play
+            self._post_score_kickoff_pending = True
+            
+            # Determine receiving team (opposite of scoring team)
+            if possession_team_id == self.home_team_id:
+                self._kickoff_receiving_team = self.away_team_id
+            else:
+                self._kickoff_receiving_team = self.home_team_id
+            
+            # Track the type of scoring play
+            self._last_scoring_play_type = play_result.outcome
+            
+            if self.logger:
+                self.logger.debug(f"Post-score kickoff pending: {play_result.outcome} by {possession_team_id}, receiving team: {self._kickoff_receiving_team}")
+                
+        elif self._post_score_kickoff_pending:
+            # This is the play after a scoring play - clear the pending flag
+            if self.logger:
+                self.logger.debug(f"Post-score kickoff being processed for receiving team: {self._kickoff_receiving_team}")
+            
+            # Reset tracking (kickoff should be handled by special situations)
+            self._post_score_kickoff_pending = False
+            self._kickoff_receiving_team = None
+            self._last_scoring_play_type = None
 
 
 def create_game_state_manager(game_id: str, home_team_id: str, 

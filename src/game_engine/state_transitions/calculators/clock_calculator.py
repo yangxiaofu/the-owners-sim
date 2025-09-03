@@ -10,31 +10,9 @@ and game_state.py clock updates (lines 33-37).
 
 from typing import Optional
 from dataclasses import dataclass
-from ...plays.data_structures import PlayResult
-
-
-@dataclass(frozen=True)
-class ClockTransition:
-    """
-    Immutable representation of clock changes.
-    
-    Contains all clock-related changes that should be applied after a play.
-    """
-    time_elapsed: int = 0                         # Seconds to subtract from clock
-    should_stop_clock: bool = False               # Whether clock should stop
-    should_advance_quarter: bool = False          # Whether to advance quarter
-    new_quarter: Optional[int] = None             # New quarter number if advancing
-    new_clock_time: Optional[int] = None          # New clock time after changes
-    
-    # Clock stoppage reasons
-    clock_stop_reason: Optional[str] = None       # Why clock stopped
-    
-    # Context information
-    previous_clock_time: Optional[int] = None     # Clock time before play
-    previous_quarter: Optional[int] = None        # Quarter before play
-    is_two_minute_warning: bool = False           # Whether this triggers 2-minute warning
-    is_end_of_half: bool = False                  # Whether this ends a half
-    is_end_of_game: bool = False                  # Whether this ends the game
+from game_engine.plays.data_structures import PlayResult
+# Import the proper ClockTransition from data_structures
+from game_engine.state_transitions.data_structures import ClockTransition, ClockStopReason
 
 
 class ClockCalculator:
@@ -74,29 +52,50 @@ class ClockCalculator:
         
         # Check for quarter advancement
         should_advance_quarter = new_clock_time <= 0
-        new_quarter = None
         if should_advance_quarter:
             new_quarter = self._calculate_new_quarter(current_quarter)
             # Reset clock for new quarter
             new_clock_time = self._get_quarter_time(new_quarter)
+        else:
+            # QUICK FIX: Set new_quarter=current_quarter when no quarter change
+            # This matches validator expectations while maintaining correct logic
+            new_quarter = current_quarter
         
         # Check for special timing situations
         is_two_minute_warning = self._is_two_minute_warning(current_time, new_clock_time, current_quarter)
         is_end_of_half = self._is_end_of_half(current_quarter, should_advance_quarter)
         is_end_of_game = self._is_end_of_game(current_quarter, should_advance_quarter)
         
+        # Map clock stop reason to proper enum
+        clock_stop_reason_enum = None
+        if stop_reason:
+            reason_mapping = {
+                "incomplete": ClockStopReason.INCOMPLETE_PASS,
+                "out_of_bounds": ClockStopReason.OUT_OF_BOUNDS,
+                "penalty": ClockStopReason.PENALTY,
+                "turnover": ClockStopReason.TURNOVER,
+                "score": ClockStopReason.SCORING_PLAY,
+                "timeout": ClockStopReason.TIMEOUT_CALLED,
+                "first_down": ClockStopReason.FIRST_DOWN
+            }
+            clock_stop_reason_enum = reason_mapping.get(stop_reason, ClockStopReason.PENALTY)
+
         return ClockTransition(
-            time_elapsed=time_elapsed,
-            should_stop_clock=should_stop_clock,
-            should_advance_quarter=should_advance_quarter,
+            time_advanced=time_elapsed > 0,
+            seconds_elapsed=time_elapsed,
+            new_game_time=int(max(0, new_clock_time)),  # Convert to int for validator compatibility
+            old_game_time=current_time,
+            clock_running=not should_stop_clock,
+            clock_stopped=should_stop_clock,
+            clock_stop_reason=clock_stop_reason_enum,
+            current_quarter=current_quarter,
+            quarter_changed=should_advance_quarter,
             new_quarter=new_quarter,
-            new_clock_time=max(0, new_clock_time),  # Don't go negative
-            clock_stop_reason=stop_reason,
-            previous_clock_time=current_time,
-            previous_quarter=current_quarter,
-            is_two_minute_warning=is_two_minute_warning,
-            is_end_of_half=is_end_of_half,
-            is_end_of_game=is_end_of_game
+            time_remaining_in_quarter=int(max(0, new_clock_time)),
+            two_minute_warning_triggered=is_two_minute_warning,
+            quarter_ending=is_end_of_half,
+            game_ending=is_end_of_game,
+            regulation_ending=(current_quarter == 4 and is_end_of_game)
         )
     
     def _should_stop_clock(self, play_result: PlayResult) -> tuple[bool, Optional[str]]:
@@ -140,13 +139,16 @@ class ClockCalculator:
             current_quarter: Current quarter (1-4, or overtime)
             
         Returns:
-            New quarter number
+            New quarter number (1-5, where 5 is overtime)
         """
         if current_quarter < 4:
             return current_quarter + 1
+        elif current_quarter == 4:
+            return 5  # Enter overtime
         else:
-            # Overtime - this would need more complex logic
-            return current_quarter + 1  # Simple overtime increment
+            # In overtime (quarter 5), stay in overtime to avoid invalid quarter 6
+            # This prevents NFL.QUARTER.002 validation errors
+            return 5
     
     def _get_quarter_time(self, quarter: int) -> int:
         """

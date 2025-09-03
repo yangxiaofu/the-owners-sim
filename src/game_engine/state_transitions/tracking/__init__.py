@@ -61,7 +61,7 @@ Integration Points:
 - Supports debugging and optimization workflows
 """
 
-from .game_statistics_tracker import (
+from game_engine.state_transitions.tracking.game_statistics_tracker import (
     GameStatisticsTracker,
     GameStatisticsSummary,
     PlayTypeStats,
@@ -70,7 +70,7 @@ from .game_statistics_tracker import (
     GamePhase
 )
 
-from .play_by_play_auditor import (
+from game_engine.state_transitions.tracking.play_by_play_auditor import (
     PlayByPlayAuditor,
     AuditEntry,
     AuditQuery,
@@ -78,7 +78,7 @@ from .play_by_play_auditor import (
     GameContext
 )
 
-from .performance_metrics import (
+from game_engine.state_transitions.tracking.performance_metrics import (
     PerformanceTracker,
     PerformanceMetric,
     ExecutionProfile,

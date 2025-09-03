@@ -9,9 +9,10 @@ Neutral timing coaching archetype that emphasizes:
 """
 
 from typing import Dict, Any
+from .base_strategy import BaseClockStrategy
 
 
-class BalancedStrategy:
+class BalancedStrategy(BaseClockStrategy):
     """
     Neutral coaching archetype that represents standard NFL tempo and clock management.
     
@@ -22,93 +23,46 @@ class BalancedStrategy:
     - Serves as baseline comparison for other archetypes
     """
     
-    def get_time_elapsed(self, play_type: str, game_context: Dict[str, Any], completion_status: str = None) -> int:
+    def __init__(self):
+        """Initialize the balanced strategy."""
+        super().__init__('balanced')
+    
+    def _get_strategy_specific_adjustments(self, play_type: str, game_context: Dict[str, Any], 
+                                         completion_status: str, effective_play_type: str) -> int:
         """
-        Calculate time elapsed with balanced archetype modifications.
+        Get balanced strategy-specific situational adjustments.
+        
+        Balanced strategy relies mostly on the standard situational adjustments
+        with only minimal strategy-specific modifications.
         
         Args:
-            play_type: Type of play ('run', 'pass', 'kick', 'punt')
-            game_context: Dict containing game situation (quarter, clock, score_differential, etc.)
-            completion_status: For pass plays, status ('complete', 'incomplete', 'touchdown', 'interception')
+            play_type: Original play type
+            game_context: Game situation data
+            completion_status: Pass completion status if applicable
+            effective_play_type: Processed play type for timing lookup
             
         Returns:
-            Time elapsed in seconds with minimal balanced adjustments
+            Additional adjustment in seconds (always minimal for balanced)
         """
-        # Base time for different play types (standard NFL timing)
-        base_times = {
-            'run': 32,      # Increased to reduce play count
-            'pass_complete': 20,     # Increased to reduce play count
-            'pass_incomplete': 16,   # Increased to reduce play count
-            'punt': 18,     # Increased to reduce play count
-            'field_goal': 18,      # Increased to reduce play count
-            'kick': 18,            # Increased to reduce play count
-            'kneel': 42,    # Increased to reduce play count
-            'spike': 4      # Minimal increase
-        }
+        # Extract validated game context
+        context = self._extract_game_context(game_context)
+        quarter = context['quarter']
+        clock = context['clock']
+        score_differential = context['score_differential']
+        down = context['down']
+        distance = context['distance']
         
-        # Handle pass play types with completion status
-        if play_type == 'pass' and completion_status:
-            if completion_status in ['complete', 'touchdown']:
-                effective_play_type = 'pass_complete'
-            elif completion_status in ['incomplete', 'interception']:
-                effective_play_type = 'pass_incomplete'
-            else:
-                effective_play_type = 'pass_complete'  # Default to complete
-        else:
-            effective_play_type = play_type
+        adjustment = 0
         
-        base_time = base_times.get(effective_play_type, 26)  # Default neutral timing (increased)
+        # Balanced strategy has minimal specific adjustments beyond the standard ones
+        # Most timing comes from the centralized situational adjustments
         
-        # Base archetype modifier: neutral/minimal
-        base_adjustment = 0  # No significant tempo bias
-        
-        # Play-type specific adjustments (minimal variations)
-        play_modifiers = {
-            'pass': 0,      # Neutral timing on passes
-            'run': 0,       # Neutral timing on runs  
-            'kick': 0,      # Standard special teams timing
-            'punt': 0       # Standard special teams timing
-        }
-        
-        # Apply base balanced tempo (essentially unchanged)
-        adjusted_time = base_time + base_adjustment + play_modifiers.get(play_type, 0)
-        
-        # Extract game context variables
-        quarter = game_context.get('quarter', 1)
-        clock = game_context.get('clock', 900)
-        score_differential = game_context.get('score_differential', 0)
-        down = game_context.get('down', 1)
-        distance = game_context.get('distance', 10)
-        field_position = game_context.get('field_position', 20)
-        
-        # Minimal balanced-specific situational logic
-        if score_differential > 14:  # Leading by 15+
-            adjusted_time += 1  # Slight clock control with big lead (reduced from +2)
+        # Only a few balanced-specific fine-tunings
+        if down == 1 and distance == 10:  # Fresh set of downs
+            adjustment += 1  # Take a moment to assess the defense
             
-        elif score_differential < -14:  # Trailing by 15+
-            adjusted_time -= 3  # Increased urgency when way behind (increased from -2)
-            
-        # Fourth quarter standard adjustments
-        if quarter == 4:
-            if clock < 300:  # Final 5 minutes
-                if score_differential > 7:  # Leading by 8+
-                    adjusted_time += 1  # Standard clock control (reduced from +2)
-                elif score_differential < -7:  # Trailing by 8+
-                    adjusted_time -= 3  # Increased hurry-up (increased from -2)
-                    
-        # Down and distance (minimal adjustments)
-        if down >= 3 and distance > 10:  # 3rd/4th and long
-            adjusted_time -= 1  # Slight urgency on obvious passing downs
-            
-        if down == 1 and distance == 10:  # Fresh set
-            adjusted_time += 1  # Take a moment to assess
-            
-        # Red zone (standard adjustment)
-        if field_position >= 80:  # Red zone
-            adjusted_time += 1  # Slight precision increase
-            
-        # Two-minute warning (standard urgency)
-        if quarter in [2, 4] and clock <= 120 and score_differential < 0:
-            adjusted_time -= 1  # Standard two-minute drill adjustment
-            
-        return int(max(8, min(45, adjusted_time)))  # Apply bounds for target play count
+        # Two-minute drill adjustment (balanced approach)
+        if self._is_two_minute_situation(quarter, clock) and score_differential < 0:
+            adjustment -= 1  # Standard two-minute urgency
+        
+        return adjustment

@@ -13,20 +13,20 @@ from typing import List, Optional, Tuple
 from dataclasses import dataclass
 
 # Import existing PlayResult from the plays module
-from ...plays.data_structures import PlayResult
+from game_engine.plays.data_structures import PlayResult
 
 # Import transitions from data structures
-from ..data_structures import BaseGameStateTransition, GameStateTransition
+from game_engine.state_transitions.data_structures import BaseGameStateTransition, GameStateTransition
 
 # Import transition data structures from data_structures (the authoritative ones)
-from ..data_structures import FieldTransition, PossessionTransition, ScoreTransition, ClockTransition, SpecialSituationTransition
+from game_engine.state_transitions.data_structures import FieldTransition, PossessionTransition, ScoreTransition, ClockTransition, SpecialSituationTransition
 
 # Import calculator modules
-from .field_calculator import FieldCalculator
-from .possession_calculator import PossessionCalculator  
-from .score_calculator import ScoreCalculator
-from .clock_calculator import ClockCalculator
-from .special_situations_calculator import SpecialSituationsCalculator
+from game_engine.state_transitions.calculators.field_calculator import FieldCalculator
+from game_engine.state_transitions.calculators.possession_calculator import PossessionCalculator  
+from game_engine.state_transitions.calculators.score_calculator import ScoreCalculator
+from game_engine.state_transitions.calculators.clock_calculator import ClockCalculator
+from game_engine.state_transitions.calculators.special_situations_calculator import SpecialSituationsCalculator
 
 
 class TransitionCalculator:

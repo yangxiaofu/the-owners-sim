@@ -2,8 +2,8 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 from enum import Enum
 import random
-from ...database.models.players.positions import RunningBack, OffensiveLineman, DefensiveLineman, Linebacker
-from ..field.field_state import FieldState
+from database.models.players.positions import RunningBack, OffensiveLineman, DefensiveLineman, Linebacker
+from game_engine.field.field_state import FieldState
 
 
 class RunConceptType(Enum):

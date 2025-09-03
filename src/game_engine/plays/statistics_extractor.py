@@ -1,7 +1,7 @@
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
-from ..personnel.player_selector import PersonnelPackage
-from ..simulation.blocking.data_structures import BlockingResult
+from game_engine.personnel.player_selector import PersonnelPackage
+from game_engine.simulation.blocking.data_structures import BlockingResult
 
 
 @dataclass

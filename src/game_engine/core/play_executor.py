@@ -1,14 +1,14 @@
 from typing import Optional, Dict, List
 import logging
-from ..plays.play_factory import PlayFactory
-from ..plays.data_structures import PlayResult
-from ..plays.play_calling import PlayCaller
-from ..field.game_state import GameState
-from ..personnel.player_selector import PlayerSelector
-from ..coaching.clock.clock_strategy_manager import ClockStrategyManager
-from ..coaching.clock.context.game_context import GameContext
-from ..penalties.penalty_detector import PenaltyDetector
-from ..penalties.data_structures import PenaltyResult
+from game_engine.plays.play_factory import PlayFactory
+from game_engine.plays.data_structures import PlayResult
+from game_engine.plays.play_calling import PlayCaller
+from game_engine.field.game_state import GameState
+from game_engine.personnel.player_selector import PlayerSelector
+from game_engine.coaching.clock.clock_strategy_manager import ClockStrategyManager
+from game_engine.coaching.clock.context.game_context import GameContext
+from game_engine.penalties.penalty_detector import PenaltyDetector
+from game_engine.penalties.data_structures import PenaltyResult
 
 
 class PlayExecutor:

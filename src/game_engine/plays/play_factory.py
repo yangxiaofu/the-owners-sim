@@ -1,10 +1,10 @@
 from typing import Dict
-from .play_types import PlayType
-from .run_play import RunPlay
-from .pass_play import PassPlay
-from .kick_play import KickPlay
-from .punt_play import PuntPlay
-from .kickoff_play import KickoffPlay
+from game_engine.plays.play_types import PlayType
+from game_engine.plays.run_play import RunPlay
+from game_engine.plays.pass_play import PassPlay
+from game_engine.plays.kick_play import KickPlay
+from game_engine.plays.punt_play import PuntPlay
+from game_engine.plays.kickoff_play import KickoffPlay
 
 
 class PlayFactory:

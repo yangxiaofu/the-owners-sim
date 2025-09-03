@@ -1,7 +1,7 @@
 import random
 from typing import Dict, Optional, TYPE_CHECKING, Any
-from ..field.field_state import FieldState
-from .strategic_field_goal_decision import StrategicFieldGoalDecisionMaker, FieldGoalDecision
+from game_engine.field.field_state import FieldState
+from game_engine.plays.strategic_field_goal_decision import StrategicFieldGoalDecisionMaker, FieldGoalDecision
 
 if TYPE_CHECKING:
     from ..coaching.clock.context.game_context import GameContext

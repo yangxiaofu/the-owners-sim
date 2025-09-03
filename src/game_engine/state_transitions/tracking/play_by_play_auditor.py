@@ -28,8 +28,8 @@ import json
 from datetime import datetime
 from uuid import uuid4
 
-from ..data_structures.game_state_transition import GameStateTransition
-from ...plays.data_structures import PlayResult
+from game_engine.state_transitions.data_structures.game_state_transition import GameStateTransition
+from game_engine.plays.data_structures import PlayResult
 
 
 class AuditEventType(Enum):

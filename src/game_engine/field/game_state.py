@@ -1,6 +1,6 @@
-from .field_state import FieldState
-from .game_clock import GameClock
-from .scoreboard import Scoreboard
+from game_engine.field.field_state import FieldState
+from game_engine.field.game_clock import GameClock
+from game_engine.field.scoreboard import Scoreboard
 
 class GameState:
     """Unified game state coordinator"""
@@ -34,48 +34,38 @@ class GameState:
         }
     
     def update_after_play(self, play_result) -> str:
-        """Update all state after a play"""
-        # Update field position
-        field_result = self.field.update_down(play_result.yards_gained)
+        """LEGACY METHOD - DEPRECATED
         
-        # Update clock
+        WARNING: This method is deprecated and should not be used.
+        All game state updates now go through the GameStateManager and 
+        state transition system to prevent dual-system conflicts.
+        
+        Use: GameStateManager.process_play_result() instead
+        """
+        # SAFETY: Prevent accidental usage of this deprecated method
+        import warnings
+        warnings.warn(
+            "update_after_play() is deprecated. Use GameStateManager.process_play_result() instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        print(f"🚨 DEPRECATED: update_after_play() called! This should use GameStateManager instead.")
+        
+        # Only handle non-scoring updates to prevent dual-system conflicts
+        field_result = self.field.update_down(play_result.yards_gained)
         self.clock.run_time(play_result.time_elapsed)
         
-        # Handle clock stoppage
         if play_result.outcome in ["incomplete", "out_of_bounds", "penalty"]:
             self.clock.stop_clock()
         
-        # Update score
-        if play_result.is_score:
-            if play_result.outcome == "touchdown":
-                self.scoreboard.add_touchdown(self.field.possession_team_id)
-                # Automatically attempt extra point (YAGNI - simple implementation)
-                self._attempt_extra_point(self.field.possession_team_id)
-            elif play_result.outcome == "field_goal":
-                self.scoreboard.add_field_goal(self.field.possession_team_id)
-            elif play_result.outcome == "safety":
-                # Safety goes to the other team
-                other_team = self._get_other_team_id()
-                self.scoreboard.add_safety(other_team)
+        # SCORING INTENTIONALLY REMOVED: Handled by state transition system
+        # This prevents the dual scoring system bug that caused 1-point scores
         
         return field_result
     
-    def _attempt_extra_point(self, scoring_team_id: int):
-        """
-        Attempt extra point conversion after touchdown.
-        
-        YAGNI implementation: Simple 95% success rate.
-        """
-        import random
-        
-        extra_point_success_rate = 0.95
-        if random.random() < extra_point_success_rate:
-            self.scoreboard.add_extra_point(scoring_team_id)
+    # _attempt_extra_point() REMOVED: This legacy method was part of the old
+    # dual scoring system that caused 1-point bugs. Extra point attempts are now
+    # handled atomically by the state transition system with coaching decisions.
     
-    def _get_other_team_id(self):
-        """Get the ID of the team that doesn't have possession"""
-        # This will need to be implemented based on your team management
-        # For now, just placeholder logic
-        if self.field.possession_team_id == self.scoreboard.home_team_id:
-            return self.scoreboard.away_team_id
-        return self.scoreboard.home_team_id
+    # _get_other_team_id() REMOVED: This was only used by the legacy scoring system.
+    # The state transition system uses proper team resolution via TransitionContext.

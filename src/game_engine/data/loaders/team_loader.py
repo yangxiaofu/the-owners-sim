@@ -1,6 +1,6 @@
 from typing import Dict, List, Any, Optional
-from ..base.entity_loader import EntityLoader
-from ..entities import Team
+from game_engine.data.base.entity_loader import EntityLoader
+from game_engine.data.entities import Team
 
 
 class TeamLoader(EntityLoader[Team]):

@@ -8,28 +8,9 @@ Based on the game_orchestrator.py possession logic (lines 177-222).
 """
 
 from typing import Optional
-from dataclasses import dataclass
-from ...plays.data_structures import PlayResult
-
-
-@dataclass(frozen=True)
-class PossessionTransition:
-    """
-    Immutable representation of possession changes.
-    
-    Contains all possession-related changes that should be applied after a play.
-    """
-    new_possession_team_id: Optional[int] = None  # Which team should have possession
-    possession_changed: bool = False              # Whether possession actually changed
-    reason_for_change: Optional[str] = None       # Why possession changed
-    requires_kickoff: bool = False                # Whether change requires kickoff
-    requires_punt: bool = False                   # Whether this was due to a punt
-    requires_turnover_at_spot: bool = False       # Whether turnover happens at spot
-    new_field_position: Optional[int] = None      # Field position after possession change
-    
-    # Context information
-    previous_possession_team_id: Optional[int] = None
-    change_type: Optional[str] = None             # "score", "turnover", "punt", "turnover_on_downs"
+from game_engine.plays.data_structures import PlayResult
+# Import the proper PossessionTransition from data_structures
+from game_engine.state_transitions.data_structures import PossessionTransition, PossessionChangeReason
 
 
 class PossessionCalculator:
@@ -59,7 +40,7 @@ class PossessionCalculator:
         # Check for scoring plays first (lines 177-188)
         if play_result.is_score:
             return self._calculate_score_possession_change(
-                play_result, current_possession
+                play_result, current_possession, game_state
             )
         
         # Check for turnovers (lines 191-197)
@@ -80,7 +61,7 @@ class PossessionCalculator:
         field_result = self._simulate_field_update(play_result, game_state)
         if field_result == "touchdown":
             return self._calculate_touchdown_possession_change(
-                current_possession
+                current_possession, game_state
             )
         
         # Check for turnover on downs (lines 217-222)
@@ -91,13 +72,13 @@ class PossessionCalculator:
         
         # No possession change
         return PossessionTransition(
-            new_possession_team_id=current_possession,
-            possession_changed=False,
-            previous_possession_team_id=current_possession
+            possession_changes=False,
+            old_possessing_team=str(current_possession) if current_possession else None,
+            new_possessing_team=str(current_possession) if current_possession else None
         )
     
     def _calculate_score_possession_change(self, play_result: PlayResult, 
-                                         current_possession: int) -> PossessionTransition:
+                                         current_possession: int, game_state) -> PossessionTransition:
         """
         Calculate possession change after a score.
         
@@ -105,18 +86,14 @@ class PossessionCalculator:
         After scoring, possession switches and requires kickoff.
         """
         # Determine receiving team (opposite of scoring team)
-        new_possession = self._get_opposite_team_id(current_possession)
+        new_possession = self._get_opposite_team_id(current_possession, game_state)
         
         return PossessionTransition(
-            new_possession_team_id=new_possession,
-            possession_changed=True,
-            reason_for_change=f"{play_result.play_type} score",
-            requires_kickoff=True,
-            requires_punt=False,
-            requires_turnover_at_spot=False,
-            new_field_position=25,  # Standard kickoff return position
-            previous_possession_team_id=current_possession,
-            change_type="score"
+            new_possessing_team=str(new_possession) if new_possession else None,
+            possession_changes=True,
+            possession_change_reason=PossessionChangeReason.TOUCHDOWN_SCORED if play_result.play_type in ["run", "pass"] 
+                                    else PossessionChangeReason.FIELD_GOAL_SCORED,
+            old_possessing_team=str(current_possession) if current_possession else None
         )
     
     def _calculate_turnover_possession_change(self, play_result: PlayResult,
@@ -127,22 +104,34 @@ class PossessionCalculator:
         
         Based on lines 191-197 in game_orchestrator.py.
         """
-        new_possession = self._get_opposite_team_id(current_possession)
+        new_possession = self._get_opposite_team_id(current_possession, game_state)
         
         # TODO: Calculate actual turnover field position based on where it occurred
         # For now using simplified logic from original code
         turnover_field_position = 50  # Simplified as in original
         
+        # Import TurnoverType for proper enum mapping
+        from ..data_structures.possession_transition import TurnoverType
+        
+        # Map play outcome to turnover type
+        turnover_type_map = {
+            "fumble": TurnoverType.FUMBLE_LOST,
+            "interception": TurnoverType.INTERCEPTION
+        }
+        
+        # Map outcome to proper PossessionChangeReason enum
+        reason_map = {
+            "fumble": PossessionChangeReason.TURNOVER_FUMBLE,
+            "interception": PossessionChangeReason.TURNOVER_INTERCEPTION
+        }
+        
         return PossessionTransition(
-            new_possession_team_id=new_possession,
-            possession_changed=True,
-            reason_for_change=play_result.outcome,  # "fumble" or "interception"
-            requires_kickoff=False,
-            requires_punt=False, 
-            requires_turnover_at_spot=True,
-            new_field_position=turnover_field_position,
-            previous_possession_team_id=current_possession,
-            change_type="turnover"
+            new_possessing_team=str(new_possession) if new_possession else None,
+            possession_changes=True,
+            possession_change_reason=reason_map.get(play_result.outcome, PossessionChangeReason.TURNOVER_FUMBLE),
+            turnover_occurred=True,
+            turnover_type=turnover_type_map.get(play_result.outcome, TurnoverType.FUMBLE_LOST),
+            old_possessing_team=str(current_possession) if current_possession else None
         )
     
     def _calculate_punt_possession_change(self, play_result: PlayResult,
@@ -153,42 +142,32 @@ class PossessionCalculator:
         
         Based on lines 200-206 in game_orchestrator.py.
         """
-        new_possession = self._get_opposite_team_id(current_possession)
+        new_possession = self._get_opposite_team_id(current_possession, game_state)
         
         # TODO: Calculate actual punt field position
         # For now using simplified logic from original code  
         punt_field_position = max(20, 100 - play_result.yards_gained)
         
         return PossessionTransition(
-            new_possession_team_id=new_possession,
-            possession_changed=True,
-            reason_for_change="punt",
-            requires_kickoff=False,
-            requires_punt=True,
-            requires_turnover_at_spot=False,
-            new_field_position=punt_field_position,
-            previous_possession_team_id=current_possession,
-            change_type="punt"
+            new_possessing_team=str(new_possession) if new_possession else None,
+            possession_changes=True,
+            possession_change_reason=PossessionChangeReason.PUNT,
+            old_possessing_team=str(current_possession) if current_possession else None
         )
     
-    def _calculate_touchdown_possession_change(self, current_possession: int) -> PossessionTransition:
+    def _calculate_touchdown_possession_change(self, current_possession: int, game_state) -> PossessionTransition:
         """
         Calculate possession change for touchdown scored by normal play.
         
         Based on lines 209-214 in game_orchestrator.py.
         """
-        new_possession = self._get_opposite_team_id(current_possession)
+        new_possession = self._get_opposite_team_id(current_possession, game_state)
         
         return PossessionTransition(
-            new_possession_team_id=new_possession,
-            possession_changed=True,
-            reason_for_change="touchdown",
-            requires_kickoff=True,
-            requires_punt=False,
-            requires_turnover_at_spot=False,
-            new_field_position=25,  # Standard kickoff return position
-            previous_possession_team_id=current_possession,
-            change_type="score"
+            new_possessing_team=str(new_possession) if new_possession else None,
+            possession_changes=True,
+            possession_change_reason=PossessionChangeReason.TOUCHDOWN_SCORED,
+            old_possessing_team=str(current_possession) if current_possession else None
         )
     
     def _calculate_turnover_on_downs_possession_change(self, current_possession: int,
@@ -198,44 +177,51 @@ class PossessionCalculator:
         
         Based on lines 217-222 in game_orchestrator.py.
         """
-        new_possession = self._get_opposite_team_id(current_possession)
+        new_possession = self._get_opposite_team_id(current_possession, game_state)
         
         # Field position stays the same for turnover on downs
         current_field_position = game_state.field.field_position
         
+        from ..data_structures.possession_transition import TurnoverType
+        
         return PossessionTransition(
-            new_possession_team_id=new_possession,
-            possession_changed=True,
-            reason_for_change="turnover on downs",
-            requires_kickoff=False,
-            requires_punt=False,
-            requires_turnover_at_spot=True,
-            new_field_position=current_field_position,
-            previous_possession_team_id=current_possession,
-            change_type="turnover_on_downs"
+            new_possessing_team=str(new_possession) if new_possession else None,
+            possession_changes=True,
+            possession_change_reason=PossessionChangeReason.TURNOVER_ON_DOWNS,
+            turnover_occurred=True,
+            turnover_type=TurnoverType.ON_DOWNS,
+            old_possessing_team=str(current_possession) if current_possession else None
         )
     
-    def _get_opposite_team_id(self, team_id: int) -> int:
+    def _get_opposite_team_id(self, team_id: int, game_state) -> int:
         """
-        Get the ID of the opposite team.
+        Get the ID of the opposite team using proper team resolution.
         
-        This assumes a two-team game with home/away structure.
-        Will need to be adapted based on actual team ID system.
+        YAGNI FIX: Copy proven working pattern from TransitionApplicator._get_opposing_team_id()
+        Uses actual game state team IDs instead of hardcoded values.
         """
-        # This logic will need to be updated based on actual team management
-        # For now, assumes simple home (1) / away (2) or similar structure
-        return 2 if team_id == 1 else 1
+        if team_id == game_state.scoreboard.home_team_id:
+            return game_state.scoreboard.away_team_id
+        return game_state.scoreboard.home_team_id
     
     def _simulate_field_update(self, play_result: PlayResult, game_state) -> str:
         """
         Simulate what the field update would return for touchdown detection.
         
         This replicates the field update logic to detect touchdowns.
+        Only detects touchdowns for plays that actually cross into the end zone
+        from a normal field position (not already in the end zone).
         """
         current_field_position = game_state.field.field_position
         new_position = current_field_position + play_result.yards_gained
         
-        if new_position >= 100:
+        # Only consider it a touchdown if:
+        # 1. The play crosses into the end zone (from < 100 to >= 100)
+        # 2. The play is actually marked as a scoring play
+        # 3. The play starts from a normal field position (not already in end zone)
+        if (new_position >= 100 and 
+            current_field_position < 100 and 
+            play_result.is_score):
             return "touchdown"
         
         return "normal"

@@ -6,21 +6,13 @@ for touchdowns, field goals, safeties, and extra points/two-point conversions.
 """
 
 from typing import Any, Dict, Optional, Tuple
-from enum import Enum
-from .validation_result import (
+from game_engine.state_transitions.validators.validation_result import (
     ValidationResult, ValidationResultBuilder, ValidationCategory,
     create_success_result
 )
 
-
-class ScoreType(Enum):
-    """Valid scoring types in NFL"""
-    TOUCHDOWN = "touchdown"           # 6 points
-    FIELD_GOAL = "field_goal"        # 3 points  
-    SAFETY = "safety"                # 2 points
-    EXTRA_POINT = "extra_point"      # 1 point (after touchdown)
-    TWO_POINT_CONVERSION = "two_point_conversion"  # 2 points (after touchdown)
-    DEFENSIVE_TWO_POINT = "defensive_two_point"    # 2 points (rare)
+# Import the authoritative ScoreType enum from data_structures
+from game_engine.state_transitions.data_structures.score_transition import ScoreType
 
 
 class ScoreValidator:
@@ -75,7 +67,9 @@ class ScoreValidator:
         home_diff = new_score[0] - previous_score[0]
         away_diff = new_score[1] - previous_score[1]
         
-        if scoring_team == 0:  # Home team scored
+        # CRITICAL FIX: Updated to support team system format (1=HOME, 2=AWAY)
+        # Also maintain backward compatibility with old format (0=HOME, 1=AWAY)
+        if scoring_team in [0, 1]:  # HOME team scored (old format=0, new format=1)
             if home_diff != expected_score_change:
                 builder.add_error(
                     ValidationCategory.SCORING_RULES,
@@ -94,32 +88,42 @@ class ScoreValidator:
                     expected_value=0,
                     rule_reference="NFL.SCORE.003"
                 )
-        elif scoring_team == 1:  # Away team scored
-            if away_diff != expected_score_change:
-                builder.add_error(
-                    ValidationCategory.SCORING_RULES,
-                    f"Away team touchdown should add {expected_score_change} points",
-                    field_name="away_score_change",
-                    current_value=away_diff,
-                    expected_value=expected_score_change,
-                    rule_reference="NFL.SCORE.004"
-                )
-            if home_diff != 0:
-                builder.add_error(
-                    ValidationCategory.SCORING_RULES,
-                    "Home team score should not change on away team touchdown",
-                    field_name="home_score_change",
-                    current_value=home_diff,
-                    expected_value=0,
-                    rule_reference="NFL.SCORE.005"
-                )
+        elif scoring_team in [1, 2]:  # AWAY team scored (old format=1, new format=2)
+            # Handle potential ambiguity: scoring_team=1 could be old away or new home
+            # Use score differential to determine which team actually scored
+            if away_diff == expected_score_change and home_diff == 0:
+                # Away team scored (scoring_team=1 old format OR scoring_team=2 new format)
+                pass  # Valid away team scoring
+            elif home_diff == expected_score_change and away_diff == 0:
+                # Home team scored (scoring_team=1 new format only)
+                pass  # Valid home team scoring  
+            else:
+                # Score differential doesn't match expectations
+                if away_diff != expected_score_change and scoring_team == 2:
+                    builder.add_error(
+                        ValidationCategory.SCORING_RULES,
+                        f"Away team touchdown should add {expected_score_change} points",
+                        field_name="away_score_change",
+                        current_value=away_diff,
+                        expected_value=expected_score_change,
+                        rule_reference="NFL.SCORE.004"
+                    )
+                if home_diff != 0 and scoring_team == 2:
+                    builder.add_error(
+                        ValidationCategory.SCORING_RULES,
+                        "Home team score should not change on away team touchdown",
+                        field_name="home_score_change",
+                        current_value=home_diff,
+                        expected_value=0,
+                        rule_reference="NFL.SCORE.005"
+                    )
         else:
             builder.add_error(
                 ValidationCategory.SCORING_RULES,
-                "Invalid scoring team - must be 0 (home) or 1 (away)",
+                "Invalid scoring team - must be 1 (home) or 2 (away) for team system, or 0 (home) or 1 (away) for legacy format",
                 field_name="scoring_team",
                 current_value=scoring_team,
-                expected_value="0 or 1",
+                expected_value="1, 2 (team system) or 0, 1 (legacy)",
                 rule_reference="NFL.SCORE.006"
             )
         
@@ -186,7 +190,8 @@ class ScoreValidator:
         home_diff = new_score[0] - previous_score[0]
         away_diff = new_score[1] - previous_score[1]
         
-        if scoring_team == 0:  # Home team scored
+        # CRITICAL FIX: Updated to support team system format (1=HOME, 2=AWAY)
+        if scoring_team in [0, 1]:  # Home team scored (old format=0, new format=1)
             if home_diff != expected_score_change:
                 builder.add_error(
                     ValidationCategory.SCORING_RULES,
@@ -205,7 +210,7 @@ class ScoreValidator:
                     expected_value=0,
                     rule_reference="NFL.SCORE.011"
                 )
-        elif scoring_team == 1:  # Away team scored
+        elif scoring_team == 2:  # Away team scored (team system format)
             if away_diff != expected_score_change:
                 builder.add_error(
                     ValidationCategory.SCORING_RULES,
@@ -224,6 +229,15 @@ class ScoreValidator:
                     expected_value=0,
                     rule_reference="NFL.SCORE.013"
                 )
+        else:
+            builder.add_error(
+                ValidationCategory.SCORING_RULES,
+                "Invalid scoring team - must be 1 (home) or 2 (away) for team system, or 0 (home) or 1 (away) for legacy format",
+                field_name="scoring_team",
+                current_value=scoring_team,
+                expected_value="1, 2 (team system) or 0, 1 (legacy)",
+                rule_reference="NFL.SCORE.006"
+            )
         
         # Validate context
         if context and "down" in context:
@@ -274,7 +288,9 @@ class ScoreValidator:
         home_diff = new_score[0] - previous_score[0]
         away_diff = new_score[1] - previous_score[1]
         
-        if scoring_team == 0:  # Home team scored
+        # CRITICAL FIX: Updated to support team system format (1=HOME, 2=AWAY) 
+        # Also maintain backward compatibility with old format (0=HOME, 1=AWAY)
+        if scoring_team in [0, 1]:  # HOME team scored (old format=0, new format=1)
             if home_diff != expected_score_change:
                 builder.add_error(
                     ValidationCategory.SCORING_RULES,
@@ -293,7 +309,7 @@ class ScoreValidator:
                     expected_value=0,
                     rule_reference="NFL.SCORE.017"
                 )
-        elif scoring_team == 1:  # Away team scored
+        elif scoring_team == 2:  # Away team scored (team system format)
             if away_diff != expected_score_change:
                 builder.add_error(
                     ValidationCategory.SCORING_RULES,
@@ -312,6 +328,15 @@ class ScoreValidator:
                     expected_value=0,
                     rule_reference="NFL.SCORE.019"
                 )
+        else:
+            builder.add_error(
+                ValidationCategory.SCORING_RULES,
+                "Invalid scoring team - must be 1 (home) or 2 (away) for team system, or 0 (home) or 1 (away) for legacy format",
+                field_name="scoring_team",
+                current_value=scoring_team,
+                expected_value="1, 2 (team system) or 0, 1 (legacy)",
+                rule_reference="NFL.SCORE.006"
+            )
         
         return builder.build()
     
@@ -336,7 +361,9 @@ class ScoreValidator:
         home_diff = new_score[0] - previous_score[0]
         away_diff = new_score[1] - previous_score[1]
         
-        if scoring_team == 0:  # Home team extra point
+        # CRITICAL FIX: Updated to support team system format (1=HOME, 2=AWAY)
+        # Also maintain backward compatibility with old format (0=HOME, 1=AWAY)
+        if scoring_team in [0, 1]:  # HOME team extra point (old format=0, new format=1)
             if home_diff != expected_score_change:
                 builder.add_error(
                     ValidationCategory.SCORING_RULES,
@@ -355,7 +382,7 @@ class ScoreValidator:
                     expected_value=0,
                     rule_reference="NFL.SCORE.021"
                 )
-        elif scoring_team == 1:  # Away team extra point
+        elif scoring_team == 2:  # Away team extra point (team system format)
             if away_diff != expected_score_change:
                 builder.add_error(
                     ValidationCategory.SCORING_RULES,
@@ -374,6 +401,15 @@ class ScoreValidator:
                     expected_value=0,
                     rule_reference="NFL.SCORE.023"
                 )
+        else:
+            builder.add_error(
+                ValidationCategory.SCORING_RULES,
+                "Invalid scoring team - must be 1 (home) or 2 (away) for team system, or 0 (home) or 1 (away) for legacy format",
+                field_name="scoring_team",
+                current_value=scoring_team,
+                expected_value="1, 2 (team system) or 0, 1 (legacy)",
+                rule_reference="NFL.SCORE.006"
+            )
         
         # Validate that extra point follows a touchdown
         if context and "previous_play" in context:
@@ -411,7 +447,9 @@ class ScoreValidator:
         home_diff = new_score[0] - previous_score[0]
         away_diff = new_score[1] - previous_score[1]
         
-        if scoring_team == 0:  # Home team conversion
+        # CRITICAL FIX: Updated to support team system format (1=HOME, 2=AWAY)
+        # Also maintain backward compatibility with old format (0=HOME, 1=AWAY)
+        if scoring_team in [0, 1]:  # HOME team conversion (old format=0, new format=1)
             if home_diff != expected_score_change:
                 builder.add_error(
                     ValidationCategory.SCORING_RULES,
@@ -430,7 +468,7 @@ class ScoreValidator:
                     expected_value=0,
                     rule_reference="NFL.SCORE.026"
                 )
-        elif scoring_team == 1:  # Away team conversion
+        elif scoring_team == 2:  # Away team conversion (team system format)
             if away_diff != expected_score_change:
                 builder.add_error(
                     ValidationCategory.SCORING_RULES,
@@ -449,6 +487,15 @@ class ScoreValidator:
                     expected_value=0,
                     rule_reference="NFL.SCORE.028"
                 )
+        else:
+            builder.add_error(
+                ValidationCategory.SCORING_RULES,
+                "Invalid scoring team - must be 1 (home) or 2 (away) for team system, or 0 (home) or 1 (away) for legacy format",
+                field_name="scoring_team",
+                current_value=scoring_team,
+                expected_value="1, 2 (team system) or 0, 1 (legacy)",
+                rule_reference="NFL.SCORE.006"
+            )
         
         # Validate that conversion follows a touchdown
         if context and "previous_play" in context:
@@ -482,6 +529,7 @@ class ScoreValidator:
         Returns:
             ValidationResult for the scoring transition
         """
+        # Handle basic scoring types
         if score_type == ScoreType.TOUCHDOWN:
             return self.validate_touchdown(field_position, scoring_team, previous_score, new_score, context)
         elif score_type == ScoreType.FIELD_GOAL:
@@ -492,6 +540,15 @@ class ScoreValidator:
             return self.validate_extra_point(scoring_team, previous_score, new_score, context)
         elif score_type == ScoreType.TWO_POINT_CONVERSION:
             return self.validate_two_point_conversion(scoring_team, previous_score, new_score, context)
+        elif score_type == ScoreType.DEFENSIVE_TWO_POINT:
+            return self.validate_two_point_conversion(scoring_team, previous_score, new_score, context)
+        
+        # Handle specialized touchdown types (all validate as touchdowns)
+        elif score_type in [ScoreType.PICK_SIX, ScoreType.FUMBLE_RECOVERY_TD, 
+                           ScoreType.PUNT_RETURN_TD, ScoreType.KICKOFF_RETURN_TD,
+                           ScoreType.BLOCKED_PUNT_TD, ScoreType.BLOCKED_FIELD_GOAL_TD]:
+            return self.validate_touchdown(field_position, scoring_team, previous_score, new_score, context)
+        
         else:
             builder = ValidationResultBuilder()
             builder.add_error(

@@ -5,10 +5,10 @@ This module provides clock management strategies for different coaching archetyp
 allowing for realistic tempo variations in play execution.
 """
 
-from .clock_strategy_manager import ClockStrategyManager
-from .base_strategy import ClockStrategy
-from .context import GameContext
-from .strategies import (
+from game_engine.coaching.clock.clock_strategy_manager import ClockStrategyManager
+from game_engine.coaching.clock.base_strategy import ClockStrategy
+from game_engine.coaching.clock.context import GameContext
+from game_engine.coaching.clock.strategies import (
     RunHeavyStrategy,
     AirRaidStrategy,
     WestCoastStrategy,

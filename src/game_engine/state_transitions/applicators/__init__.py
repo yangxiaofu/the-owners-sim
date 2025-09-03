@@ -13,9 +13,9 @@ Key principles:
 - Thread-safe operations
 """
 
-from .transition_applicator import TransitionApplicator
-from .atomic_state_changer import AtomicStateChanger
-from .state_rollback_manager import StateRollbackManager
+from game_engine.state_transitions.applicators.transition_applicator import TransitionApplicator
+from game_engine.state_transitions.applicators.atomic_state_changer import AtomicStateChanger
+from game_engine.state_transitions.applicators.state_rollback_manager import StateRollbackManager
 
 __all__ = [
     'TransitionApplicator',

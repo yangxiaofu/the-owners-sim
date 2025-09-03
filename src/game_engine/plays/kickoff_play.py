@@ -1,8 +1,8 @@
 import random
 from typing import Dict, Tuple
-from .play_types import PlayType
-from .data_structures import PlayResult
-from ..field.field_state import FieldState
+from game_engine.plays.play_types import PlayType
+from game_engine.plays.data_structures import PlayResult
+from game_engine.field.field_state import FieldState
 
 
 class KickoffGameBalance:

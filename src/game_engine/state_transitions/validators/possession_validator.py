@@ -7,7 +7,7 @@ turnovers, punts, kickoffs, and other possession transfer scenarios.
 
 from typing import Any, Dict, Optional, List
 from enum import Enum
-from .validation_result import (
+from game_engine.state_transitions.validators.validation_result import (
     ValidationResult, ValidationResultBuilder, ValidationCategory,
     create_success_result
 )
@@ -112,9 +112,11 @@ class PossessionValidator:
             return self._validate_touchdown_possession(field_position, context)
         
         else:
+            # Handle both enum and string values for robustness
+            reason_display = reason.value if hasattr(reason, 'value') else str(reason)
             builder.add_info(
                 ValidationCategory.POSSESSION_CHANGE,
-                f"Possession change reason '{reason.value}' - assuming valid for special situations",
+                f"Possession change reason '{reason_display}' - assuming valid for special situations",
                 rule_reference="NFL.POSSESSION.003"
             )
         

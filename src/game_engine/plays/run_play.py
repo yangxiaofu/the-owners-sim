@@ -1,13 +1,13 @@
 import random
 from typing import Dict, List
-from .play_types import PlayType
-from .data_structures import PlayResult
-from .statistics_extractor import StatisticsExtractor, RunPlayData
-from ..field.field_state import FieldState
-from ..simulation.blocking.data_structures import RunPlayCall, BlockingResult
-from ..simulation.blocking.simulator import BlockingSimulator
-from ..simulation.blocking.strategies import RunBlockingStrategy
-from .run_plays import DetailedRunSimulator
+from game_engine.plays.play_types import PlayType
+from game_engine.plays.data_structures import PlayResult
+from game_engine.plays.statistics_extractor import StatisticsExtractor, RunPlayData
+from game_engine.field.field_state import FieldState
+from game_engine.simulation.blocking.data_structures import RunPlayCall, BlockingResult
+from game_engine.simulation.blocking.simulator import BlockingSimulator
+from game_engine.simulation.blocking.strategies import RunBlockingStrategy
+from game_engine.plays.run_plays import DetailedRunSimulator
 
 
 class RunGameBalance:
@@ -322,7 +322,7 @@ class RunPlay(PlayType):
         
         # Step 8: Determine outcome and return
         yards = max(-5, int(final_yards))  # Allow negative yards for TFL
-        outcome, final_yards = self._determine_play_outcome(yards, run_type)
+        outcome, final_yards = self._determine_play_outcome(yards, run_type, field_state)
         return outcome, final_yards, expected_yards
     
     def _calculate_yards_from_matchup_matrix(self, offense_ratings: Dict, defense_ratings: Dict,
@@ -405,16 +405,19 @@ class RunPlay(PlayType):
         
         return False
     
-    def _determine_play_outcome(self, yards: int, run_type: str) -> tuple[str, int]:
+    def _determine_play_outcome(self, yards: int, run_type: str, field_state: FieldState) -> tuple[str, int]:
         """SOLID: Single responsibility - determine final play outcome"""
         
         # Fumble check (YAGNI: simple logic)
         if yards <= 0 and random.random() < RunGameBalance.FUMBLE_CHANCE_STUFFED:
             return "fumble", max(RunGameBalance.FUMBLE_MAX_LOSS, yards)
         
-        # Touchdown check
+        # Touchdown check - use field position awareness
+        current_position = field_state.field_position
         if yards >= RunGameBalance.TOUCHDOWN_MIN_YARDS and random.random() < RunGameBalance.TOUCHDOWN_CHANCE:
-            return "touchdown", yards
+            # Return final field position (100) for touchdown, not gained yards
+            final_position = min(100, current_position + yards)
+            return "touchdown", final_position
         
         # Loss vs gain determination
         if yards < 0:

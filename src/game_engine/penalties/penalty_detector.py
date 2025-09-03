@@ -14,13 +14,13 @@ import random
 from typing import Optional, Dict, List, Any
 import logging
 
-from .data_structures import (
+from game_engine.penalties.data_structures import (
     Penalty, PenaltyResult, PenaltyType, PenaltyPhase, PenaltyConstants, 
     SituationalModifiers, create_penalty, get_penalty_summary_stats
 )
-from ..plays.data_structures import PlayResult
-from ..field.game_state import GameState
-from ...database.models.players.player import Player
+from game_engine.plays.data_structures import PlayResult
+from game_engine.field.game_state import GameState
+from src.database.models.players.player import Player
 
 
 class PenaltyDetector:

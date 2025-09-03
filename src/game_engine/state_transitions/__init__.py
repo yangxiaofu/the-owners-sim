@@ -70,7 +70,7 @@ except ImportError as e:
 # Tracking (statistics and auditing)
 try:
     from .tracking import (
-        GameStatisticsTracker, PlayByPlayAuditor, PerformanceMetrics,
+        GameStatisticsTracker, PlayByPlayAuditor, PerformanceTracker,
         create_integrated_tracker
     )
     components['tracking'] = True
@@ -112,7 +112,7 @@ if components.get('applicators'):
 
 if components.get('tracking'):
     __all__.extend([
-        'GameStatisticsTracker', 'PlayByPlayAuditor', 'PerformanceMetrics',
+        'GameStatisticsTracker', 'PlayByPlayAuditor', 'PerformanceTracker',
         'create_integrated_tracker'
     ])
 

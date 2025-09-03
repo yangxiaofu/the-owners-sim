@@ -1,6 +1,6 @@
 from typing import Dict, Optional, List, Union, Any
 from dataclasses import dataclass, field
-from ..field.field_state import FieldState
+from game_engine.field.field_state import FieldState
 try:
     from database.models.players.player import Player
     from database.models.players.positions import RunningBack, OffensiveLineman, DefensiveLineman, Linebacker

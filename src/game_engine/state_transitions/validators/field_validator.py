@@ -7,7 +7,8 @@ and down/distance progression rules.
 """
 
 from typing import Any, Dict, Optional
-from .validation_result import (
+import logging
+from game_engine.state_transitions.validators.validation_result import (
     ValidationResult, ValidationResultBuilder, ValidationCategory,
     create_success_result
 )
@@ -15,6 +16,10 @@ from .validation_result import (
 
 class FieldValidator:
     """Validates field position and down/distance state transitions"""
+    
+    def __init__(self):
+        """Initialize field validator with debug logging."""
+        self.logger = logging.getLogger(__name__)
     
     # NFL Field Constants
     FIELD_MIN_POSITION = 0    # Goal line (safety/touchback zone)
@@ -110,6 +115,12 @@ class FieldValidator:
         Returns:
             ValidationResult with down progression violations
         """
+        # Validation with scoring context support
+        self.logger.debug(
+            f"Validating down progression: {current_down} -> {new_down}, "
+            f"yards: {yards_gained}, context: {bool(context)}"
+        )
+        
         builder = ValidationResultBuilder()
         
         # Validate current down is legal
@@ -138,8 +149,27 @@ class FieldValidator:
         if (self.MIN_DOWN <= current_down <= self.MAX_DOWN and 
             self.MIN_DOWN <= new_down <= self.MAX_DOWN):
             
-            if yards_gained >= yards_to_go:
-                # First down achieved
+            # CHECK FOR SCORING CONTEXT FIRST
+            scoring_context = self._detect_scoring_context(context)
+            self.logger.debug(f"SCORING DETECTION - {scoring_context}")
+            
+            if scoring_context['is_scoring_play']:
+                # Scoring plays reset downs to 1st down
+                if new_down == 1:
+                    self.logger.debug(f"VALID SCORING PLAY - {scoring_context['score_type']} resets down to 1")
+                    return create_success_result()
+                else:
+                    builder.add_error(
+                        ValidationCategory.DOWN_DISTANCE,
+                        f"{scoring_context['score_type']} should reset down to 1st",
+                        field_name="new_down",
+                        current_value=new_down,
+                        expected_value=1,
+                        rule_reference="NFL.SCORE.DOWN.001"
+                    )
+            elif yards_gained >= yards_to_go:
+                # First down achieved (non-scoring)
+                self.logger.debug(f"FIRST DOWN ACHIEVED - {yards_gained} >= {yards_to_go}")
                 if new_down != 1:
                     builder.add_error(
                         ValidationCategory.DOWN_DISTANCE,
@@ -150,8 +180,9 @@ class FieldValidator:
                         rule_reference="NFL.DOWN.003"
                     )
             else:
-                # Down should advance
+                # Down should advance (normal progression)
                 expected_down = current_down + 1
+                self.logger.debug(f"NORMAL DOWN ADVANCE - expected {expected_down}")
                 if current_down == 4:
                     # 4th down failure should result in turnover (handled elsewhere)
                     builder.add_info(
@@ -172,6 +203,130 @@ class FieldValidator:
                     )
         
         return builder.build()
+    
+    def _detect_scoring_context(self, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Detect if this is a scoring play based on context information.
+        
+        Args:
+            context: Validation context that may contain scoring information
+            
+        Returns:
+            Dictionary with scoring detection results:
+            {
+                'is_scoring_play': bool,
+                'score_type': str or None,
+                'detection_method': str
+            }
+        """
+        default_result = {
+            'is_scoring_play': False,
+            'score_type': None,
+            'detection_method': 'no_context'
+        }
+        
+        if not context:
+            self.logger.debug("No context provided for scoring detection")
+            return default_result
+        
+        # Method 1: Check for explicit scoring flags in context
+        if context.get('is_scoring_play'):
+            score_type = context.get('score_type', 'unknown_score')
+            self.logger.debug(f"Scoring detected via context flag: {score_type}")
+            return {
+                'is_scoring_play': True,
+                'score_type': score_type,
+                'detection_method': 'context_flag'
+            }
+        
+        # Method 2: Check for play_result in context
+        play_result = context.get('play_result')
+        if play_result:
+            if hasattr(play_result, 'is_score') and play_result.is_score:
+                score_type = getattr(play_result, 'outcome', 'unknown_score')
+                self.logger.debug(f"Scoring detected via play_result: {score_type}")
+                return {
+                    'is_scoring_play': True,
+                    'score_type': score_type,
+                    'detection_method': 'play_result'
+                }
+        
+        # Method 3: Check for scoring outcomes in context
+        outcome = context.get('outcome')
+        scoring_outcomes = ['touchdown', 'safety', 'field_goal']
+        if outcome in scoring_outcomes:
+            self.logger.debug(f"Scoring detected via outcome: {outcome}")
+            return {
+                'is_scoring_play': True,
+                'score_type': outcome,
+                'detection_method': 'outcome'
+            }
+        
+        # Method 4: Check field position transitions for touchdown
+        field_position = context.get('field_position')
+        new_field_position = context.get('new_field_position')
+        if new_field_position == self.TOUCHDOWN_ZONE:
+            self.logger.debug(f"Touchdown detected via field position: {field_position} -> {new_field_position}")
+            return {
+                'is_scoring_play': True,
+                'score_type': 'touchdown',
+                'detection_method': 'field_position'
+            }
+        elif new_field_position == self.SAFETY_ZONE:
+            self.logger.debug(f"Safety detected via field position: {field_position} -> {new_field_position}")
+            return {
+                'is_scoring_play': True,
+                'score_type': 'safety',
+                'detection_method': 'field_position'
+            }
+        
+        # Method 5: Check for score_transition in context
+        if context.get('score_transition'):
+            score_transition = context['score_transition']
+            if hasattr(score_transition, 'score_occurred') and score_transition.score_occurred:
+                score_type = getattr(score_transition, 'score_type', 'unknown_score')
+                self.logger.debug(f"Scoring detected via score_transition: {score_type}")
+                return {
+                    'is_scoring_play': True,
+                    'score_type': str(score_type),
+                    'detection_method': 'score_transition'
+                }
+        
+        # Method 6: Check for possession change reasons that indicate scoring
+        # Prioritize context over transition property for current play accuracy
+        possession_change_reason = context.get('possession_change_reason')
+        
+        # Only proceed if this is actually a scoring play (not aftermath)
+        is_current_score = context.get('is_scoring_play', False) or context.get('outcome') in ['touchdown', 'field_goal', 'safety']
+        
+        if possession_change_reason and is_current_score:
+            scoring_possession_reasons = [
+                'TOUCHDOWN_SCORED',
+                'FIELD_GOAL_SCORED', 
+                'SAFETY_SCORED'
+            ]
+            
+            # Handle both string and enum values
+            reason_str = str(possession_change_reason)
+            if any(scoring_reason in reason_str for scoring_reason in scoring_possession_reasons):
+                if 'TOUCHDOWN' in reason_str:
+                    score_type = 'touchdown'
+                elif 'FIELD_GOAL' in reason_str:
+                    score_type = 'field_goal'
+                elif 'SAFETY' in reason_str:
+                    score_type = 'safety'
+                else:
+                    score_type = 'unknown_score'
+                    
+                self.logger.debug(f"Scoring detected via possession change reason: {reason_str} -> {score_type}")
+                return {
+                    'is_scoring_play': True,
+                    'score_type': score_type,
+                    'detection_method': 'possession_change_reason'
+                }
+        
+        self.logger.debug("No scoring context detected")
+        return default_result
     
     def validate_yards_to_go(self, yards_to_go: int, field_position: int,
                              context: Optional[Dict[str, Any]] = None) -> ValidationResult:

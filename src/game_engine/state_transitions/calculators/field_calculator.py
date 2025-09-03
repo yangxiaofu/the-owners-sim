@@ -9,9 +9,9 @@ Based on the current game_orchestrator.py field update logic (lines 174, 230).
 
 from typing import Optional
 from dataclasses import dataclass
-from ...plays.data_structures import PlayResult
+from game_engine.plays.data_structures import PlayResult
 # Import the proper FieldTransition from data_structures
-from ..data_structures import FieldTransition
+from game_engine.state_transitions.data_structures import FieldTransition
 
 
 class FieldCalculator:
@@ -49,13 +49,31 @@ class FieldCalculator:
             play_result.yards_gained
         )
         
-        # Check for touchdown
-        is_touchdown = new_field_position >= 100
+        # Check for touchdown - only for plays that actually cross into the end zone
+        # or are explicitly marked as touchdown scoring plays (not field goals)
+        is_touchdown = ((new_field_position >= 100 and 
+                        previous_field_position < 100) or
+                       (play_result.is_score and play_result.outcome == "touchdown"))
         
         # Check for safety  
         is_safety = new_field_position <= 0
         
         # Handle special cases first
+        # Handle field goals - position stays unchanged (ball goes OVER posts, not through)
+        if play_result.play_type == "field_goal":
+            return FieldTransition(
+                new_yard_line=previous_field_position,  # Field position unchanged
+                old_yard_line=previous_field_position,
+                yards_gained=0,  # Field goals don't advance ball position
+                new_down=1,  # Field goal attempts reset down to 1st
+                old_down=previous_down,
+                new_yards_to_go=10,  # Reset to 10 yards for new possession
+                old_yards_to_go=previous_yards_to_go,
+                first_down_achieved=False,  # Field goals don't achieve first downs
+                in_end_zone=False,
+                at_goal_line=previous_field_position == 100
+            )
+        
         if is_touchdown:
             return FieldTransition(
                 new_yard_line=100,
@@ -65,7 +83,7 @@ class FieldCalculator:
                 old_down=previous_down,
                 new_yards_to_go=10,
                 old_yards_to_go=previous_yards_to_go,
-                first_down_achieved=False,
+                first_down_achieved=True,  # Touchdown definitely achieves first down
                 in_end_zone=True,
                 at_goal_line=True
             )
@@ -88,7 +106,8 @@ class FieldCalculator:
         new_down, new_yards_to_go, is_first_down, turnover_on_downs = self._calculate_down_and_distance(
             current_field.down,
             current_field.yards_to_go,
-            play_result.yards_gained
+            play_result.yards_gained,
+            new_field_position
         )
         
         return FieldTransition(
@@ -121,7 +140,7 @@ class FieldCalculator:
         return max(0, min(100, new_position))
     
     def _calculate_down_and_distance(self, current_down: int, yards_to_go: int, 
-                                   yards_gained: int) -> tuple[int, int, bool, bool]:
+                                   yards_gained: int, field_position: int) -> tuple[int, int, bool, bool]:
         """
         Calculate new down and yards to go based on play result.
         
@@ -131,6 +150,7 @@ class FieldCalculator:
             current_down: Current down (1-4)
             yards_to_go: Yards needed for first down
             yards_gained: Yards gained on play
+            field_position: Current field position for goal line calculations
             
         Returns:
             Tuple of (new_down, new_yards_to_go, is_first_down, turnover_on_downs)
@@ -139,17 +159,23 @@ class FieldCalculator:
         
         # Check for first down
         if remaining_yards <= 0:
-            # First down achieved
-            return 1, 10, True, False
+            # First down achieved - use goal line logic to handle "goal to go" situations
+            # This prevents NFL.DISTANCE.004 validation errors when close to end zone
+            proper_yards_to_go = self.calculate_yards_for_first_down(field_position, 10)
+            return 1, proper_yards_to_go, True, False
         
         # Normal down progression
         new_down = current_down + 1
         
         # Check for turnover on downs
         if new_down > 4:
-            return new_down, remaining_yards, False, True
+            # Don't return invalid down - keep current down and signal turnover
+            # The possession calculator will handle the actual possession change
+            return current_down, remaining_yards, False, True
         
-        return new_down, remaining_yards, False, False
+        # Apply goal line logic even for non-first-down situations to prevent NFL.DISTANCE.004
+        goal_line_yards_to_go = self.calculate_yards_for_first_down(field_position, remaining_yards)
+        return new_down, goal_line_yards_to_go, False, False
     
     def is_goal_line_situation(self, field_position: int, yards_to_go: int) -> bool:
         """
@@ -179,11 +205,11 @@ class FieldCalculator:
     def calculate_yards_for_first_down(self, field_position: int, yards_to_go: int) -> int:
         """
         Calculate actual yards needed for first down considering goal line.
-        
+
         Args:
             field_position: Current yard line
             yards_to_go: Normal yards to go
-            
+
         Returns:
             Actual yards needed (may be less than yards_to_go near goal line)
         """

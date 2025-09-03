@@ -1,8 +1,8 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Tuple, Union
-from ..field.field_state import FieldState
-from .data_structures import PlayResult
-from ..personnel.player_selector import PersonnelPackage
+from game_engine.field.field_state import FieldState
+from game_engine.plays.data_structures import PlayResult
+from game_engine.personnel.player_selector import PersonnelPackage
 
 
 class PlayType(ABC):
@@ -22,9 +22,9 @@ class PlayType(ABC):
         """
         pass
     
-    def simulate_legacy(self, offense_team: Dict, defense_team: Dict, field_state: FieldState) -> PlayResult:
+    def simulate_with_team_ratings(self, offense_team: Dict, defense_team: Dict, field_state: FieldState) -> PlayResult:
         """
-        Legacy simulation method for backward compatibility.
+        Simulate play using team rating dictionaries instead of personnel packages.
         
         This method provides backward compatibility for existing code that uses
         team ratings instead of personnel packages. New implementations should
@@ -39,7 +39,7 @@ class PlayType(ABC):
             PlayResult: Complete result of the play execution
         """
         # Create a minimal personnel package for legacy support
-        from ..personnel.player_selector import PersonnelPackage
+        from game_engine.personnel.player_selector import PersonnelPackage
         
         personnel = PersonnelPackage(
             offensive_players=offense_team.get("offense", {}),

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any
-from ...plays.data_structures import PlayResult
-from ...field.game_state import GameState
+from game_engine.plays.data_structures import PlayResult
+from game_engine.field.game_state import GameState
 
 
 class ClockStrategy(ABC):

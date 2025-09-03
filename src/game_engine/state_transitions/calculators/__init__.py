@@ -15,18 +15,14 @@ Key Modules:
 """
 
 # Import main calculator classes  
-from .transition_calculator import TransitionCalculator, calculate_transitions
+from game_engine.state_transitions.calculators.transition_calculator import TransitionCalculator, calculate_transitions
 # Import BaseGameStateTransition from data structures (no longer defined in calculator)
-from ..data_structures import BaseGameStateTransition
-from .field_calculator import FieldCalculator, FieldTransition
-from .possession_calculator import PossessionCalculator, PossessionTransition
-from .score_calculator import ScoreCalculator, ScoreTransition
-from .clock_calculator import ClockCalculator, ClockTransition
-from .special_situations_calculator import (
-    SpecialSituationsCalculator, 
-    SpecialSituationTransition, 
-    KickoffResult
-)
+from game_engine.state_transitions.data_structures import BaseGameStateTransition
+from game_engine.state_transitions.calculators.field_calculator import FieldCalculator
+from game_engine.state_transitions.calculators.possession_calculator import PossessionCalculator
+from game_engine.state_transitions.calculators.score_calculator import ScoreCalculator
+from game_engine.state_transitions.calculators.clock_calculator import ClockCalculator
+from game_engine.state_transitions.calculators.special_situations_calculator import SpecialSituationsCalculator, KickoffResult
 
 __all__ = [
     # Main coordinator
@@ -40,12 +36,5 @@ __all__ = [
     'ScoreCalculator', 
     'ClockCalculator',
     'SpecialSituationsCalculator',
-    
-    # Transition data structures
-    'FieldTransition',
-    'PossessionTransition',
-    'ScoreTransition',
-    'ClockTransition',
-    'SpecialSituationTransition',
     'KickoffResult',
 ]

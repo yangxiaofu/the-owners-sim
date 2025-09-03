@@ -19,8 +19,8 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 
-from ...field.game_state import GameState
-from .atomic_state_changer import StateSnapshot
+from game_engine.field.game_state import GameState
+from game_engine.state_transitions.applicators.atomic_state_changer import StateSnapshot
 
 
 class RollbackLevel(Enum):

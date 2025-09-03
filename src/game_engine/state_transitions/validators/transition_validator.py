@@ -4,20 +4,21 @@ Transition Validator
 Main validation orchestrator that coordinates all validator components
 to ensure state transitions are comprehensive and consistent with NFL rules.
 """
-
+from http.cookiejar import debug
 from typing import Any, Dict, Optional, List, Tuple
 from dataclasses import dataclass
-from .validation_result import (
+from game_engine.state_transitions.validators.validation_result import (
     ValidationResult, ValidationResultBuilder, ValidationCategory,
     create_success_result
 )
-from .field_validator import FieldValidator
-from .possession_validator import PossessionValidator, PossessionChangeReason
-from .score_validator import ScoreValidator, ScoreType
-from .nfl_rules_validator import NFLRulesValidator
+from game_engine.state_transitions.validators.field_validator import FieldValidator
+from game_engine.state_transitions.validators.possession_validator import PossessionValidator, PossessionChangeReason
+from game_engine.state_transitions.validators.score_validator import ScoreValidator
+from game_engine.state_transitions.data_structures.score_transition import ScoreType
+from game_engine.state_transitions.validators.nfl_rules_validator import NFLRulesValidator
 
 # Import the structured GameStateTransition from data_structures
-from ..data_structures import GameStateTransition
+from game_engine.state_transitions.data_structures import GameStateTransition
 
 
 class TransitionValidator:
@@ -111,6 +112,85 @@ class TransitionValidator:
             builder.issues.append(issue)
             if issue.severity.value == "error":
                 builder._is_valid = False
+
+        
+        # DEBUG: Log all parameters before field validator
+        print(f"\n🔍 FIELD VALIDATOR DEBUG - Down Progression Parameters:")
+        print(f"   current_down: {transition.current_down} (type: {type(transition.current_down)})")
+        print(f"   new_down: {transition.new_down} (type: {type(transition.new_down)})")
+        print(f"   yards_gained: {transition.yards_gained} (type: {type(transition.yards_gained)})")
+        print(f"   yards_to_go: {transition.current_yards_to_go} (type: {type(transition.current_yards_to_go)})")
+        print(f"   current_field_position: {transition.current_field_position}")
+        print(f"   new_field_position: {transition.new_field_position}")
+        print(f"   context: {transition.context}")
+        
+        # DEBUG: Log play result data if available
+        print(f"\n📋 PLAY RESULT DEBUG:")
+        print(f"   play_type: {transition.play_type if hasattr(transition, 'play_type') else 'N/A'}")
+        print(f"   play_outcome: {transition.play_outcome if hasattr(transition, 'play_outcome') else 'N/A'}")
+        
+        # Look for play_result in context
+        if transition.context and 'play_result' in transition.context:
+            play_result = transition.context['play_result']
+            print(f"   play_result found in context:")
+            print(f"      type: {type(play_result)}")
+            if hasattr(play_result, '__dict__'):
+                print(f"      attributes: {play_result.__dict__}")
+            else:
+                print(f"      value: {play_result}")
+                
+            # Common play result attributes to check
+            play_result_attrs = ['outcome', 'yards_gained', 'is_score', 'is_turnover', 'is_first_down', 
+                               'down', 'yards_to_go', 'field_position', 'play_type']
+            for attr in play_result_attrs:
+                if hasattr(play_result, attr):
+                    value = getattr(play_result, attr)
+                    print(f"      {attr}: {value} (type: {type(value)})")
+        else:
+            print(f"   No play_result found in context")
+        
+        # Check if there are other play-related fields in the transition
+        play_related_attrs = ['scoring_occurred', 'scoring_team', 'score_type', 'possession_changed', 
+                            'possession_change_reason', 'turnover_occurred']
+        print(f"\n🔄 TRANSITION STATE DEBUG:")
+        for attr in play_related_attrs:
+            if hasattr(transition, attr):
+                value = getattr(transition, attr)
+                print(f"   {attr}: {value}")
+        
+        # DEBUG: Log calculated expectations
+        if isinstance(transition.current_down, int) and isinstance(transition.yards_gained, int) and isinstance(transition.current_yards_to_go, int):
+            print(f"\n🧮 CALCULATION DEBUG:")
+            print(f"   Expected normal progression: {transition.current_down} -> {transition.current_down + 1}")
+            print(f"   First down check: yards_gained ({transition.yards_gained}) >= yards_to_go ({transition.current_yards_to_go}) = {transition.yards_gained >= transition.current_yards_to_go}")
+            
+            # Check scoring context
+            if transition.context:
+                scoring_indicators = []
+                if transition.context.get('is_scoring_play'):
+                    scoring_indicators.append(f"is_scoring_play: {transition.context['is_scoring_play']}")
+                if transition.context.get('score_type'):
+                    scoring_indicators.append(f"score_type: {transition.context['score_type']}")
+                if transition.context.get('outcome'):
+                    scoring_indicators.append(f"outcome: {transition.context['outcome']}")
+                if transition.context.get('field_position') is not None:
+                    scoring_indicators.append(f"field_position: {transition.context['field_position']}")
+                if transition.context.get('new_field_position') is not None:
+                    scoring_indicators.append(f"new_field_position: {transition.context['new_field_position']}")
+                    
+                if scoring_indicators:
+                    print(f"   Scoring context indicators: {', '.join(scoring_indicators)}")
+                else:
+                    print(f"   No obvious scoring context detected")
+            else:
+                print(f"   No context provided")
+        
+        print(f"\n   🎯 EXPECTED VALIDATION OUTCOME:")
+        print(f"      If scoring play -> new_down should be 1")
+        print(f"      If first down -> new_down should be 1") 
+        print(f"      If normal play -> new_down should be {transition.current_down + 1 if isinstance(transition.current_down, int) else '?'}")
+        print(f"      ACTUAL new_down: {transition.new_down}")
+        print()
         
         # Validate down progression
         down_result = self.field_validator.validate_down_progression(
@@ -329,7 +409,10 @@ class TransitionValidator:
         
         # 3. Fourth down and possession consistency
         if transition.current_down == 4:
-            conversion_successful = transition.yards_gained >= transition.current_yards_to_go
+            conversion_successful = (
+                transition.play_type in ["run", "pass"] and 
+                transition.yards_gained >= transition.current_yards_to_go
+            )
             
             if not conversion_successful and not transition.possession_changed:
                 builder.add_error(

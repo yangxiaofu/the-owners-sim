@@ -14,21 +14,26 @@ All transition objects follow these principles:
 - Can be easily tested and verified
 """
 
-from .game_state_transition import BaseGameStateTransition, GameStateTransition
-from .field_transition import FieldTransition
-from .possession_transition import PossessionTransition
-from .score_transition import ScoreTransition
-from .clock_transition import ClockTransition
-from .special_situation_transition import SpecialSituationTransition
-from .transition_utils import enhance_base_transition, extract_base_transition, create_transition_id
+from game_engine.state_transitions.data_structures.game_state_transition import BaseGameStateTransition, GameStateTransition
+from game_engine.state_transitions.data_structures.field_transition import FieldTransition
+from game_engine.state_transitions.data_structures.possession_transition import PossessionTransition, PossessionChangeReason
+from game_engine.state_transitions.data_structures.score_transition import ScoreTransition, ScoreType, ConversionType
+from game_engine.state_transitions.data_structures.clock_transition import ClockTransition, ClockStopReason, TimeoutType
+from game_engine.state_transitions.data_structures.special_situation_transition import SpecialSituationTransition
+from game_engine.state_transitions.data_structures.transition_utils import enhance_base_transition, extract_base_transition, create_transition_id
 
 __all__ = [
     'BaseGameStateTransition',
     'GameStateTransition',
     'FieldTransition',
-    'PossessionTransition', 
+    'PossessionTransition',
+    'PossessionChangeReason',
     'ScoreTransition',
+    'ScoreType',
+    'ConversionType',
     'ClockTransition',
+    'ClockStopReason',
+    'TimeoutType',
     'SpecialSituationTransition',
     # Utility functions
     'enhance_base_transition',

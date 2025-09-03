@@ -1,17 +1,40 @@
-from typing import Dict, List, Any, Optional
-from ..base.entity_loader import EntityLoader
+from typing import Dict, List, Any, Optional, Union
+from game_engine.data.base.entity_loader import EntityLoader
+
+# Try to import database models, fall back to JSON models if unavailable
+DATABASE_AVAILABLE = False
 try:
     from database.models.players.player import Player
     from database.models.players.positions import (
         RunningBack, OffensiveLineman, DefensiveLineman, Linebacker,
         create_running_back, create_offensive_lineman, create_defensive_lineman, create_linebacker
     )
+    DATABASE_AVAILABLE = True
+    PlayerType = Player
 except ImportError:
-    from src.database.models.players.player import Player
-    from src.database.models.players.positions import (
-        RunningBack, OffensiveLineman, DefensiveLineman, Linebacker,
-        create_running_back, create_offensive_lineman, create_defensive_lineman, create_linebacker
-    )
+    try:
+        from src.database.models.players.player import Player
+        from src.database.models.players.positions import (
+            RunningBack, OffensiveLineman, DefensiveLineman, Linebacker,
+            create_running_back, create_offensive_lineman, create_defensive_lineman, create_linebacker
+        )
+        DATABASE_AVAILABLE = True
+        PlayerType = Player
+    except ImportError:
+        # Fall back to JSON player model
+        from game_engine.data.models.json_player import JsonPlayer
+        DATABASE_AVAILABLE = False
+        PlayerType = JsonPlayer
+        # Create dummy classes for compatibility
+        Player = JsonPlayer
+        class RunningBack: pass
+        class OffensiveLineman: pass 
+        class DefensiveLineman: pass
+        class Linebacker: pass
+        def create_running_back(*args, **kwargs): return None
+        def create_offensive_lineman(*args, **kwargs): return None
+        def create_defensive_lineman(*args, **kwargs): return None
+        def create_linebacker(*args, **kwargs): return None
 
 
 class PlayerLoader(EntityLoader[Player]):
@@ -70,68 +93,133 @@ class PlayerLoader(EntityLoader[Player]):
         
         return self._apply_cache(cache_key, loader_func)
     
-    def _map_data(self, raw_data: Dict[str, Any]) -> Player:
+    def _map_data(self, raw_data: Dict[str, Any]) -> PlayerType:
         """
-        Convert raw data dictionary to appropriate Player subclass.
+        Convert raw data dictionary to appropriate Player object.
         
         Args:
             raw_data: Raw player data from data source
             
         Returns:
-            Player object (RunningBack, OffensiveLineman, etc.)
+            Player object (database model or JsonPlayer)
         """
+        if not DATABASE_AVAILABLE:
+            # Use JsonPlayer for simple JSON data
+            return JsonPlayer.from_dict(raw_data)
+        
+        # Database mode - existing logic
         position = raw_data["position"]
         name = raw_data["name"]
         team_id = raw_data["team_id"]
         attributes = raw_data.get("attributes", {})
         role = raw_data.get("role", "starter")
         
-        # Convert role string to PlayerRole enum
-        from database.models.players.player import PlayerRole
-        player_role = PlayerRole.STARTER
-        if role == "backup":
-            player_role = PlayerRole.BACKUP
-        elif role == "depth":
-            player_role = PlayerRole.DEPTH
-        elif role == "practice_squad":
-            player_role = PlayerRole.PRACTICE_SQUAD
+        # Convert role string to PlayerRole enum (database mode only)
+        try:
+            from database.models.players.player import PlayerRole
+            player_role = PlayerRole.STARTER
+            if role == "backup":
+                player_role = PlayerRole.BACKUP
+            elif role == "depth":
+                player_role = PlayerRole.DEPTH
+            elif role == "practice_squad":
+                player_role = PlayerRole.PRACTICE_SQUAD
+        except ImportError:
+            try:
+                from src.database.models.players.player import PlayerRole
+                player_role = PlayerRole.STARTER
+                if role == "backup":
+                    player_role = PlayerRole.BACKUP
+                elif role == "depth":
+                    player_role = PlayerRole.DEPTH
+                elif role == "practice_squad":
+                    player_role = PlayerRole.PRACTICE_SQUAD
+            except ImportError:
+                # Fallback if database isn't available
+                player_role = role
         
         # Create appropriate player subclass based on position using factory functions
-        if position in ["RB", "FB"]:
-            player = create_running_back(name, team_id, position, attributes, player_role)
-        elif position in ["LT", "LG", "C", "RG", "RT", "OL"]:
-            player = create_offensive_lineman(name, team_id, position, attributes, player_role)
-        elif position in ["LE", "DT", "NT", "RE", "DE", "DL"]:
-            player = create_defensive_lineman(name, team_id, position, attributes, player_role)
-        elif position in ["LOLB", "MLB", "ROLB", "ILB", "OLB", "LB"]:
-            player = create_linebacker(name, team_id, position, attributes, player_role)
-        else:
-            # Fallback to base Player class for unknown positions
-            from database.models.players.player import Player, InjuryStatus
-            player = Player(
-                id=raw_data["id"],
-                name=name,
-                position=position,
-                team_id=team_id,
-                speed=attributes.get("speed", 50),
-                strength=attributes.get("strength", 50),
-                agility=attributes.get("agility", 50),
-                stamina=attributes.get("stamina", 50),
-                awareness=attributes.get("awareness", 50),
-                technique=attributes.get("technique", 50),
-                role=player_role,
-                injury_status=InjuryStatus.HEALTHY
-            )
+        try:
+            if position in ["RB", "FB"]:
+                player = create_running_back(name, team_id, position, attributes, player_role)
+            elif position in ["LT", "LG", "C", "RG", "RT", "OL"]:
+                player = create_offensive_lineman(name, team_id, position, attributes, player_role)
+            elif position in ["LE", "DT", "NT", "RE", "DE", "DL"]:
+                player = create_defensive_lineman(name, team_id, position, attributes, player_role)
+            elif position in ["LOLB", "MLB", "ROLB", "ILB", "OLB", "LB"]:
+                player = create_linebacker(name, team_id, position, attributes, player_role)
+            else:
+                # Fallback to base Player class for unknown positions
+                try:
+                    from database.models.players.player import Player, InjuryStatus
+                except ImportError:
+                    from src.database.models.players.player import Player, InjuryStatus
+                
+                player = Player(
+                    id=raw_data["id"],
+                    name=name,
+                    position=position,
+                    team_id=team_id,
+                    speed=attributes.get("speed", 50),
+                    strength=attributes.get("strength", 50),
+                    agility=attributes.get("agility", 50),
+                    stamina=attributes.get("stamina", 50),
+                    awareness=attributes.get("awareness", 50),
+                    technique=attributes.get("technique", 50),
+                    role=player_role,
+                    injury_status=InjuryStatus.HEALTHY
+                )
+            
+            # Set the ID from JSON data (factory functions generate their own IDs)
+            player.id = raw_data["id"]
+            return player
         
-        # Set the ID from JSON data (factory functions generate their own IDs)
-        player.id = raw_data["id"]
-        return player
+        except (ImportError, AttributeError):
+            # Database models not available - this should not happen in database mode
+            # but provide fallback just in case
+            return JsonPlayer.from_dict(raw_data)
     
     # Convenience methods for player-specific queries
     
-    def get_team_roster(self, team_id: int) -> Dict[str, List[Player]]:
+    def get_team_roster(self, team_id: int) -> List[PlayerType]:
         """
-        Get organized roster for a specific team.
+        Get roster for a specific team as a list of players.
+        
+        Args:
+            team_id: ID of team to get roster for
+            
+        Returns:
+            List of players for the team
+        """
+        players = self.load(team_ids=[team_id])
+        
+        # Return as list instead of dict for simplicity
+        player_list = list(players.values())
+        
+        # Sort by role (starters first) and position
+        def sort_key(player):
+            # Role priority (starters first)
+            if DATABASE_AVAILABLE:
+                try:
+                    role_priority = {
+                        "STARTER": 0, "BACKUP": 1, "DEPTH": 2, "PRACTICE_SQUAD": 3
+                    }.get(str(player.role), 4)
+                except:
+                    role_priority = {"starter": 0, "backup": 1, "depth": 2}.get(str(player.role).lower(), 3)
+            else:
+                role_priority = {"starter": 0, "backup": 1, "depth": 2}.get(str(player.role).lower(), 3)
+            
+            return (role_priority, player.position, player.name)
+        
+        player_list.sort(key=sort_key)
+        return player_list
+    
+    def get_team_roster_by_position(self, team_id: int) -> Dict[str, List[PlayerType]]:
+        """
+        Get organized roster for a specific team grouped by position.
+        
+        This method provides the old format for compatibility with existing systems
+        like PlayerSelector that expect position-grouped rosters.
         
         Args:
             team_id: ID of team to get roster for
@@ -141,24 +229,64 @@ class PlayerLoader(EntityLoader[Player]):
         """
         players = self.load(team_ids=[team_id])
         
-        # Organize players by position groups
+        # Organize players by position groups (old format)
         roster = {
             "running_backs": [],
             "offensive_line": [],
             "defensive_line": [], 
-            "linebackers": []
+            "linebackers": [],
+            "quarterbacks": [],
+            "wide_receivers": [],
+            "tight_ends": [],
+            "defensive_backs": [],
+            "kickers": [],
+            "punters": []
         }
         
         for player in players.values():
-            position_group = self._get_position_group(player.position)
+            position_group = self._get_position_group_key(player.position)
             if position_group in roster:
                 roster[position_group].append(player)
         
         # Sort each position group by role (starters first)
         for position_group in roster.values():
-            position_group.sort(key=lambda p: p.role.value)
+            def sort_key(player):
+                if DATABASE_AVAILABLE:
+                    try:
+                        role_priority = {
+                            "STARTER": 0, "BACKUP": 1, "DEPTH": 2, "PRACTICE_SQUAD": 3
+                        }.get(str(player.role), 4)
+                    except:
+                        role_priority = {"starter": 0, "backup": 1, "depth": 2}.get(str(player.role).lower(), 3)
+                else:
+                    role_priority = {"starter": 0, "backup": 1, "depth": 2}.get(str(player.role).lower(), 3)
+                
+                return role_priority
+                
+            position_group.sort(key=sort_key)
         
         return roster
+    
+    def _get_position_group_key(self, position: str) -> str:
+        """Get position group key for compatibility with existing systems."""
+        position_groups = {
+            # Offense
+            'QB': 'quarterbacks',
+            'RB': 'running_backs', 'FB': 'running_backs',
+            'WR': 'wide_receivers', 'TE': 'tight_ends',
+            'LT': 'offensive_line', 'LG': 'offensive_line', 'C': 'offensive_line', 
+            'RG': 'offensive_line', 'RT': 'offensive_line',
+            
+            # Defense  
+            'DE': 'defensive_line', 'DT': 'defensive_line', 'NT': 'defensive_line',
+            'OLB': 'linebackers', 'MLB': 'linebackers', 'ILB': 'linebackers',
+            'CB': 'defensive_backs', 'FS': 'defensive_backs', 'SS': 'defensive_backs',
+            
+            # Special Teams
+            'K': 'kickers', 'P': 'punters'
+        }
+        
+        return position_groups.get(position, 'unknown')
     
     def get_starters(self, team_id: int) -> Dict[str, List[Player]]:
         """
@@ -268,11 +396,26 @@ class PlayerLoader(EntityLoader[Player]):
             
         all_players = self.load(**filters)
         
-        from database.models.players.player import InjuryStatus
         injured_players = []
         for player in all_players.values():
-            if player.injury_status != InjuryStatus.HEALTHY:
-                injured_players.append(player)
+            if DATABASE_AVAILABLE:
+                try:
+                    from database.models.players.player import InjuryStatus
+                    if player.injury_status != InjuryStatus.HEALTHY:
+                        injured_players.append(player)
+                except ImportError:
+                    try:
+                        from src.database.models.players.player import InjuryStatus
+                        if player.injury_status != InjuryStatus.HEALTHY:
+                            injured_players.append(player)
+                    except ImportError:
+                        # JSON mode fallback
+                        if player.injury_status.lower() != "healthy":
+                            injured_players.append(player)
+            else:
+                # JSON mode - check injury_status as string
+                if player.injury_status.lower() != "healthy":
+                    injured_players.append(player)
                 
         return injured_players
     

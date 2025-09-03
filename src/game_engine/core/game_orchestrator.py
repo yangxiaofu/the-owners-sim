@@ -1,14 +1,14 @@
 import random
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
-from .play_executor import PlayExecutor
-from .game_state_manager import create_game_state_manager
-from ..field.game_state import GameState
-from ..plays.data_structures import PlayResult
-from ..data.loaders.team_loader import TeamLoader
-from ..data.loaders.player_loader import PlayerLoader
-from ..personnel.player_selector import PlayerSelector
-from ..coaching import CoachingStaff
+from game_engine.core.play_executor import PlayExecutor
+from game_engine.core.game_state_manager import create_game_state_manager
+from game_engine.field.game_state import GameState
+from game_engine.plays.data_structures import PlayResult
+from game_engine.data.loaders.team_loader import TeamLoader
+from game_engine.data.loaders.player_loader import PlayerLoader
+from game_engine.personnel.player_selector import PlayerSelector
+from game_engine.coaching import CoachingStaff
 
 @dataclass
 class GameResult:
@@ -121,8 +121,8 @@ class SimpleGameEngine:
         # Load team rosters if using individual players
         if hasattr(self.play_executor, 'player_selector') and self.play_executor.player_selector:
             try:
-                home_roster = self.player_loader.get_team_roster(home_team_id)
-                away_roster = self.player_loader.get_team_roster(away_team_id)
+                home_roster = self.player_loader.get_team_roster_by_position(home_team_id)
+                away_roster = self.player_loader.get_team_roster_by_position(away_team_id)
                 
                 self.play_executor.player_selector.set_team_rosters({
                     home_team_id: home_roster,
@@ -185,6 +185,11 @@ class SimpleGameEngine:
         # Get comprehensive tracking summary if available
         tracking_summary = game_state_manager.get_comprehensive_summary()
         
+        # FINAL VALIDATION: Ensure no impossible scores before returning result
+        game_state.scoreboard.fix_invalid_scores()
+        if not game_state.scoreboard.validate_scores():
+            print(f"🚨 WARNING: Game ended with invalid scores - this should not happen!")
+        
         return GameResult(
             home_score=game_state.scoreboard.home_score,
             away_score=game_state.scoreboard.away_score,
@@ -200,7 +205,7 @@ class SimpleGameEngine:
     
     def _simulate_kickoff(self, kicking_team_id: int, receiving_team_id: int):
         """Simulate a kickoff play between two teams"""
-        from ..plays.play_factory import PlayFactory
+        from game_engine.plays.play_factory import PlayFactory
         from unittest.mock import Mock
         
         # Create kickoff play
