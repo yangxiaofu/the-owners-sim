@@ -1,0 +1,288 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "title": "Punt Configuration",
+  "description": "Centralized configuration for punt simulation parameters - Designer balancing file",
+  
+  "punt_execution": {
+    "description": "Base punt distance and trajectory mechanics",
+    "distance_ranges": {
+      "short_punt": {"min": 25, "max": 35, "avg": 30, "hang_time": 3.8},
+      "standard_punt": {"min": 35, "max": 55, "avg": 45, "hang_time": 4.5},
+      "long_punt": {"min": 50, "max": 70, "avg": 60, "hang_time": 5.2},
+      "booming_punt": {"min": 65, "max": 80, "avg": 72, "hang_time": 5.8}
+    },
+    "base_punt_distance": {"min": 35, "max": 65, "avg": 45},
+    "hang_time_range": {"min": 3.8, "max": 5.2, "avg": 4.5},
+    "block_probability": 0.03,
+    "touchback_threshold": 100,
+    "coffin_corner_skill_threshold": 80
+  },
+  
+  "fake_decision_probabilities": {
+    "description": "Situational probabilities for fake punt attempts",
+    "base_fake_rate": 0.04,
+    "situational_modifiers": {
+      "fourth_and_short": {"distance_threshold": 3, "fake_bonus": 0.15},
+      "midfield": {"field_position_range": [40, 60], "fake_bonus": 0.08},
+      "own_territory": {"field_position_max": 25, "fake_penalty": -0.02},
+      "desperate_situation": {"score_deficit_min": 14, "time_remaining_max": 300, "fake_bonus": 0.12},
+      "two_minute_warning": {"fake_bonus": 0.06}
+    },
+    "fake_type_distribution": {
+      "pass": 0.60,
+      "run": 0.40
+    }
+  },
+  
+  "formation_matchups": {
+    "description": "Punt formation vs defensive alignment outcomes",
+    "matchups": {
+      "PUNT": {
+        "defensive_punt_return": {
+          "block_probability": 0.03,
+          "fake_advantage_pass": 0.75,
+          "fake_advantage_run": 0.70,
+          "return_advantage": 1.0,
+          "description": "Standard punt vs punt return coverage"
+        },
+        "defensive_punt_block": {
+          "block_probability": 0.15,
+          "fake_advantage_pass": 0.45,
+          "fake_advantage_run": 0.40,
+          "return_advantage": 0.60,
+          "description": "Punt vs aggressive block rush"
+        },
+        "defensive_punt_safe": {
+          "block_probability": 0.05,
+          "fake_advantage_pass": 0.30,
+          "fake_advantage_run": 0.25,
+          "return_advantage": 0.80,
+          "description": "Punt vs dual-purpose safe defense"
+        },
+        "defensive_spread_return": {
+          "block_probability": 0.04,
+          "fake_advantage_pass": 0.65,
+          "fake_advantage_run": 0.60,
+          "return_advantage": 1.10,
+          "description": "Punt vs modern spread return"
+        }
+      }
+    },
+    "default_matchup": {
+      "block_probability": 0.05,
+      "fake_advantage_pass": 0.70,
+      "fake_advantage_run": 0.65,
+      "return_advantage": 1.0
+    }
+  },
+  
+  "return_mechanics": {
+    "description": "Punt return and fair catch decision mechanics",
+    "fair_catch_probability": {
+      "base_rate": 0.35,
+      "modifiers": {
+        "short_punt": {"distance_threshold": 35, "fair_catch_bonus": 0.15},
+        "long_punt": {"distance_threshold": 55, "fair_catch_penalty": -0.10},
+        "high_hang_time": {"hang_time_threshold": 4.8, "fair_catch_bonus": 0.20},
+        "goal_line": {"field_position_threshold": 90, "fair_catch_penalty": -0.25}
+      }
+    },
+    "muff_probability": {
+      "base_rate": 0.02,
+      "modifiers": {
+        "high_hang_time": {"hang_time_threshold": 5.0, "muff_bonus": 0.01},
+        "short_punt": {"distance_threshold": 35, "muff_bonus": 0.005},
+        "pressure": {"coverage_quality_threshold": 0.8, "muff_bonus": 0.008}
+      }
+    },
+    "return_yards": {
+      "base_return": {"min": 0, "max": 25, "avg": 8.1},
+      "modifiers": {
+        "excellent_coverage": {"coverage_quality_min": 0.9, "return_penalty": -3.5},
+        "poor_coverage": {"coverage_quality_max": 0.6, "return_bonus": 4.2},
+        "short_punt": {"punt_distance_max": 35, "return_bonus": 2.8},
+        "long_punt": {"punt_distance_min": 55, "return_penalty": -1.5}
+      }
+    }
+  },
+  
+  "field_position_mechanics": {
+    "description": "Punt placement and field position outcomes",
+    "touchback_probability": {
+      "field_position_90": 0.15,
+      "field_position_95": 0.45,
+      "field_position_98": 0.75
+    },
+    "out_of_bounds_probability": {
+      "base_rate": 0.18,
+      "coffin_corner_attempt_rate": 0.25,
+      "coffin_corner_success_rate": 0.40
+    },
+    "downed_punt_probability": {
+      "base_rate": 0.25,
+      "modifiers": {
+        "excellent_coverage": {"coverage_quality_min": 0.85, "downed_bonus": 0.15},
+        "near_goal_line": {"field_position_min": 85, "downed_bonus": 0.30}
+      }
+    },
+    "illegal_touching_probability": {
+      "base_rate": 0.08,
+      "desperate_coverage_bonus": 0.03
+    }
+  },
+  
+  "environmental_modifiers": {
+    "description": "Weather and field condition effects on punt execution",
+    "wind_effects": {
+      "calm": {"wind_speed_max": 5, "distance_modifier": 1.0, "accuracy_modifier": 1.0},
+      "light": {"wind_speed_max": 15, "distance_modifier": 0.95, "accuracy_modifier": 0.92},
+      "moderate": {"wind_speed_max": 25, "distance_modifier": 0.85, "accuracy_modifier": 0.80},
+      "strong": {"wind_speed_max": 35, "distance_modifier": 0.70, "accuracy_modifier": 0.65}
+    },
+    "weather_conditions": {
+      "clear": {"distance_modifier": 1.0, "return_modifier": 1.0, "muff_modifier": 1.0},
+      "rain": {"distance_modifier": 0.90, "return_modifier": 0.85, "muff_modifier": 1.25},
+      "snow": {"distance_modifier": 0.82, "return_modifier": 0.75, "muff_modifier": 1.40},
+      "fog": {"distance_modifier": 0.95, "return_modifier": 0.90, "muff_modifier": 1.10}
+    },
+    "field_conditions": {
+      "perfect": {"distance_modifier": 1.0, "return_modifier": 1.0},
+      "wet": {"distance_modifier": 0.92, "return_modifier": 0.88},
+      "frozen": {"distance_modifier": 0.87, "return_modifier": 0.82}
+    },
+    "dome_bonus": {"distance_modifier": 1.02, "accuracy_modifier": 1.03}
+  },
+  
+  "player_attributes": {
+    "description": "Player rating thresholds and modifiers for punt performance",
+    "rating_thresholds": {
+      "elite": 90,
+      "good": 80,
+      "average": 70,
+      "poor": 60
+    },
+    "punter_modifiers": {
+      "punt_distance": {
+        "elite_bonus": 8,
+        "good_bonus": 4,
+        "average_modifier": 0,
+        "poor_penalty": -6
+      },
+      "punt_accuracy": {
+        "elite_bonus": 0.12,
+        "good_bonus": 0.06,
+        "poor_penalty": -0.10
+      },
+      "hang_time": {
+        "elite_bonus": 0.4,
+        "good_bonus": 0.2,
+        "poor_penalty": -0.3
+      },
+      "coffin_corner_skill": {
+        "elite_success_rate": 0.65,
+        "good_success_rate": 0.45,
+        "poor_success_rate": 0.15
+      }
+    },
+    "returner_modifiers": {
+      "return_ability": {
+        "elite_yards_bonus": 4.5,
+        "good_yards_bonus": 2.2,
+        "poor_yards_penalty": -2.8
+      },
+      "ball_security": {
+        "elite_muff_reduction": 0.015,
+        "good_muff_reduction": 0.008,
+        "poor_muff_increase": 0.012
+      },
+      "decision_making": {
+        "elite_fair_catch_bonus": 0.08,
+        "poor_fair_catch_penalty": -0.05
+      }
+    },
+    "coverage_team_modifiers": {
+      "coverage_speed": {
+        "elite_return_reduction": 3.8,
+        "good_return_reduction": 1.9,
+        "poor_return_increase": 2.5
+      },
+      "tackling": {
+        "elite_return_reduction": 2.2,
+        "good_return_reduction": 1.1,
+        "poor_return_increase": 1.8
+      }
+    }
+  },
+  
+  "fake_punt_execution": {
+    "description": "Parameters for fake punt pass and run outcomes",
+    "fake_pass": {
+      "target_selection": {
+        "punter": 0.55,
+        "upback": 0.35,
+        "wing": 0.10
+      },
+      "route_concepts": {
+        "quick_slant": {"success_rate": 0.70, "avg_yards": 8},
+        "checkdown": {"success_rate": 0.80, "avg_yards": 5},
+        "rollout_pass": {"success_rate": 0.65, "avg_yards": 12}
+      },
+      "base_completion_rate": 0.65,
+      "yards_range": {"min": 2, "max": 20, "avg": 9}
+    },
+    "fake_run": {
+      "runner_selection": {
+        "punter": 0.80,
+        "upback": 0.20
+      },
+      "run_concepts": {
+        "punter_scramble": {"success_rate": 0.70, "avg_yards": 6},
+        "punter_keeper": {"success_rate": 0.60, "avg_yards": 4},
+        "upback_dive": {"success_rate": 0.75, "avg_yards": 3}
+      },
+      "base_success_rate": 0.62,
+      "yards_range": {"min": 0, "max": 15, "avg": 5}
+    }
+  },
+  
+  "statistical_attribution": {
+    "description": "Parameters for attributing stats to individual special teams players",
+    "punter_stats": {
+      "punt_attempt_rate": 1.0,
+      "fake_attempt_attribution": 1.0,
+      "long_punt_threshold": 55
+    },
+    "returner_stats": {
+      "return_attempt_rate": 1.0,
+      "fair_catch_rate": 1.0,
+      "muff_attribution": 1.0,
+      "long_return_threshold": 20
+    },
+    "coverage_team": {
+      "tackle_attribution_rate": 0.8,
+      "downed_punt_credit": 0.6,
+      "max_coverage_players_credited": 4
+    },
+    "defense": {
+      "block_credit_primary": 1.0,
+      "block_credit_assist": 0.5,
+      "fake_tackle_attribution": 0.85
+    }
+  },
+  
+  "play_timing": {
+    "description": "Time ranges for punt execution",
+    "real_punt": {
+      "min_seconds": 4.2,
+      "max_seconds": 6.8
+    },
+    "fake_punt": {
+      "min_seconds": 4.5,
+      "max_seconds": 8.5
+    },
+    "punt_return": {
+      "additional_seconds_min": 2.0,
+      "additional_seconds_max": 8.0
+    }
+  }
+}

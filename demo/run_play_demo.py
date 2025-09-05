@@ -5,7 +5,7 @@ Shows the two-phase simulation approach with comprehensive stat tracking
 """
 
 import sys
-sys.path.append('src')
+sys.path.append('../src')
 
 from play_engine.simulation.run_plays import RunPlaySimulator
 from team_management.personnel import TeamRosterGenerator, PersonnelPackageManager
@@ -21,7 +21,6 @@ def main():
     # Create personnel managers
     browns_personnel = PersonnelPackageManager(browns_roster)
     niners_personnel = PersonnelPackageManager(niners_roster)
-
 
     #TODO: create playcalling algorithm by archetypes.
 
@@ -42,9 +41,19 @@ def main():
         offensive_formation=OffensiveFormation.I_FORMATION,
         defensive_formation=DefensiveFormation.FOUR_THREE
     )
-    
+
     # Simulate the play
     play_summary = simulator.simulate_run_play()
+
+
+    """
+    The play summary will need to be adjusted at this stage.  For example, if it's at the 5-yard line. and the play summary calls for a 10 yard play, then it's really a 5 yard play. 
+    I'm trying to understand the best flow for this. Run the play and get the output. Do an adjustment depending on where it's  on the field. But first, I think i need to have a field
+    tracker that tracks the placement of hte ball. this might be the best.  The input of the playsummary will move the ball along the field.  
+    
+    
+    """
+
     
     # Show play results
     print("=== Play Results ===")

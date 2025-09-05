@@ -7,7 +7,7 @@ and optional coverage/blitz packages for realistic football defensive coordinati
 
 from typing import Optional, Dict, Any, List
 from ..play_types.defensive_types import DefensivePlayType
-from formation import DefensiveFormation
+from ..mechanics.formations import DefensiveFormation
 
 
 class DefensivePlayCall:
@@ -57,7 +57,8 @@ class DefensivePlayCall:
             DefensivePlayType.COVER_3, DefensivePlayType.MAN_COVERAGE, DefensivePlayType.ZONE_COVERAGE,
             DefensivePlayType.FOUR_MAN_RUSH, DefensivePlayType.BLITZ, DefensivePlayType.CORNER_BLITZ,
             DefensivePlayType.SAFETY_BLITZ, DefensivePlayType.NICKEL_DEFENSE, DefensivePlayType.DIME_DEFENSE,
-            DefensivePlayType.GOAL_LINE_DEFENSE, DefensivePlayType.PREVENT_DEFENSE, DefensivePlayType.RUN_STUFF
+            DefensivePlayType.GOAL_LINE_DEFENSE, DefensivePlayType.PREVENT_DEFENSE, DefensivePlayType.RUN_STUFF,
+            DefensivePlayType.KICKOFF_RETURN
         ]
         return play_type in valid_types
     

@@ -1,0 +1,376 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "title": "Kickoff Configuration", 
+  "description": "Centralized configuration for NFL 2024 Dynamic Kickoff simulation parameters",
+  
+  "formation_validation": {
+    "description": "2024 Dynamic Kickoff formation alignment requirements",
+    "kicking_team": {
+      "setup_line": "receiving_team_40_yard_line",
+      "players_on_line": 10,
+      "kicker_position": "own_35_yard_line",
+      "movement_restriction": "until_ball_touches_ground_or_player"
+    },
+    "receiving_team": {
+      "setup_zone_start": "own_35_yard_line",
+      "setup_zone_end": "own_30_yard_line", 
+      "minimum_players_in_zone": 9,
+      "minimum_on_restraining_line": 6,
+      "maximum_returners": 2
+    },
+    "landing_zone": {
+      "start": "goal_line",
+      "end": "20_yard_line",
+      "description": "Area where kick must be returned if touched"
+    }
+  },
+  
+  "pre_kick_penalties": {
+    "description": "Pre-snap penalties and their occurrence rates",
+    "offside": {
+      "base_rate": 0.015,
+      "penalty_yards": 5,
+      "automatic_rekick": true,
+      "description": "Player crosses line before kick"
+    },
+    "illegal_formation": {
+      "base_rate": 0.008,
+      "penalty_yards": 5,
+      "automatic_rekick": true,
+      "description": "Improper alignment in setup zones"
+    },
+    "delay_of_game": {
+      "base_rate": 0.005,
+      "penalty_yards": 5,
+      "automatic_rekick": true,
+      "description": "25 second play clock violation"
+    },
+    "false_start": {
+      "base_rate": 0.003,
+      "penalty_yards": 5,
+      "automatic_rekick": true,
+      "description": "Movement before kick"
+    }
+  },
+  
+  "kick_mechanics": {
+    "description": "Kick execution physics and outcomes",
+    "kicker_tiers": {
+      "elite": {
+        "rating_threshold": 90,
+        "avg_distance": 65,
+        "distance_variance": 6,
+        "directional_accuracy": 0.92,
+        "touchback_rate": 0.78,
+        "hang_time_bonus": 0.3
+      },
+      "good": {
+        "rating_threshold": 80,
+        "avg_distance": 63,
+        "distance_variance": 8,
+        "directional_accuracy": 0.85,
+        "touchback_rate": 0.68,
+        "hang_time_bonus": 0.15
+      },
+      "average": {
+        "rating_threshold": 70,
+        "avg_distance": 61,
+        "distance_variance": 10,
+        "directional_accuracy": 0.78,
+        "touchback_rate": 0.58,
+        "hang_time_bonus": 0.0
+      },
+      "poor": {
+        "rating_threshold": 0,
+        "avg_distance": 58,
+        "distance_variance": 12,
+        "directional_accuracy": 0.70,
+        "touchback_rate": 0.45,
+        "hang_time_bonus": -0.2
+      }
+    },
+    "hang_time": {
+      "base_time_seconds": 4.2,
+      "distance_modifier": -0.015,
+      "height_modifier": 0.12,
+      "min_time": 3.5,
+      "max_time": 5.0
+    },
+    "environmental_effects": {
+      "wind": {
+        "calm": {"speed_max": 5, "distance_modifier": 1.0, "accuracy_modifier": 1.0},
+        "light": {"speed_max": 15, "distance_modifier": 0.97, "accuracy_modifier": 0.95},
+        "moderate": {"speed_max": 25, "distance_modifier": 0.90, "accuracy_modifier": 0.85},
+        "strong": {"speed_max": 35, "distance_modifier": 0.80, "accuracy_modifier": 0.70}
+      },
+      "weather": {
+        "clear": {"distance_modifier": 1.0, "accuracy_modifier": 1.0},
+        "rain": {"distance_modifier": 0.95, "accuracy_modifier": 0.88},
+        "snow": {"distance_modifier": 0.90, "accuracy_modifier": 0.82}
+      },
+      "dome_bonus": 1.03
+    }
+  },
+  
+  "landing_zone_outcomes": {
+    "description": "2024 Dynamic Kickoff landing zone rules",
+    "end_zone_touchback": {
+      "field_position": 30,
+      "conditions": ["lands_in_end_zone", "goes_out_of_back"],
+      "description": "Ball lands in end zone or goes out back"
+    },
+    "landing_zone_touchback": {
+      "field_position": 20, 
+      "conditions": ["bounces_from_landing_zone_to_end_zone"],
+      "description": "Bounces from landing zone into end zone"
+    },
+    "must_return": {
+      "conditions": ["touches_in_landing_zone"],
+      "description": "Any ball touching landing zone must be returned"
+    },
+    "short_kick_penalty": {
+      "field_position": 40,
+      "conditions": ["lands_short_of_landing_zone"],
+      "description": "Kick fails to reach landing zone"
+    },
+    "out_of_bounds": {
+      "field_position": 40,
+      "conditions": ["goes_out_of_bounds_untouched"],
+      "alternative": "spot_where_out_of_bounds",
+      "description": "Ball goes out of bounds"
+    }
+  },
+  
+  "onside_kick_mechanics": {
+    "description": "Onside kick rules and recovery rates",
+    "declaration_requirement": {
+      "required_when": ["fourth_quarter_and_trailing"],
+      "2025_rule_change": "allowed_anytime_when_trailing"
+    },
+    "recovery_probabilities": {
+      "declared_onside": 0.25,
+      "surprise_onside": 0.65,
+      "description": "Success rate for kicking team recovery"
+    },
+    "distance_requirements": {
+      "minimum_yards": 10,
+      "beyond_setup_zone_penalty": {
+        "penalty": "unsportsmanlike_conduct",
+        "receiving_team_position": 20
+      }
+    },
+    "execution_parameters": {
+      "avg_distance": 15,
+      "distance_variance": 8,
+      "bounce_unpredictability": 0.4,
+      "recovery_time_window": 2.5
+    }
+  },
+  
+  "coverage_mechanics": {
+    "description": "Coverage team pursuit and tackling",
+    "pursuit_effectiveness": {
+      "elite_coverage": {
+        "rating_threshold": 85,
+        "time_to_returner": 3.6,
+        "gap_discipline": 0.88,
+        "tackle_success": 0.82,
+        "pursuit_angle_accuracy": 0.90
+      },
+      "good_coverage": {
+        "rating_threshold": 75,
+        "time_to_returner": 4.0,
+        "gap_discipline": 0.78,
+        "tackle_success": 0.75,
+        "pursuit_angle_accuracy": 0.82
+      },
+      "average_coverage": {
+        "rating_threshold": 65,
+        "time_to_returner": 4.4,
+        "gap_discipline": 0.68,
+        "tackle_success": 0.68,
+        "pursuit_angle_accuracy": 0.74
+      },
+      "poor_coverage": {
+        "rating_threshold": 0,
+        "time_to_returner": 5.0,
+        "gap_discipline": 0.55,
+        "tackle_success": 0.58,
+        "pursuit_angle_accuracy": 0.65
+      }
+    },
+    "hang_time_effect": {
+      "coverage_time_multiplier": 0.85,
+      "gap_discipline_bonus": 0.05,
+      "tackle_positioning_bonus": 0.08
+    }
+  },
+  
+  "return_mechanics": {
+    "description": "Return team blocking and execution",
+    "returner_decisions": {
+      "end_zone_kneel_probability": 0.87,
+      "fair_catch_probability": 0.04,
+      "return_attempt_base": 0.96
+    },
+    "blocking_effectiveness": {
+      "elite_return_unit": {
+        "rating_threshold": 85,
+        "block_success_rate": 0.82,
+        "sustained_block_rate": 0.68,
+        "scheme_execution": 0.85,
+        "hole_creation": 0.75
+      },
+      "good_return_unit": {
+        "rating_threshold": 75,
+        "block_success_rate": 0.74,
+        "sustained_block_rate": 0.58,
+        "scheme_execution": 0.76,
+        "hole_creation": 0.65
+      },
+      "average_return_unit": {
+        "rating_threshold": 65,
+        "block_success_rate": 0.66,
+        "sustained_block_rate": 0.48,
+        "scheme_execution": 0.68,
+        "hole_creation": 0.55
+      },
+      "poor_return_unit": {
+        "rating_threshold": 0,
+        "block_success_rate": 0.55,
+        "sustained_block_rate": 0.35,
+        "scheme_execution": 0.58,
+        "hole_creation": 0.42
+      }
+    },
+    "return_outcomes": {
+      "base_return_average": 24,
+      "variance": 12,
+      "big_return_threshold": 40,
+      "big_return_probability": 0.085,
+      "touchdown_return_probability": 0.008,
+      "fumble_probability": 0.012,
+      "out_of_bounds_probability": 0.15
+    },
+    "returner_attributes": {
+      "speed_impact": {
+        "elite_speed": {"yards_bonus": 3.5, "big_play_bonus": 0.02},
+        "good_speed": {"yards_bonus": 1.8, "big_play_bonus": 0.01},
+        "poor_speed": {"yards_bonus": -2.2, "big_play_bonus": -0.015}
+      },
+      "vision_impact": {
+        "elite_vision": {"hole_finding": 0.15, "cutback_success": 0.20},
+        "poor_vision": {"hole_finding": -0.12, "cutback_success": -0.15}
+      }
+    }
+  },
+  
+  "post_kick_penalties": {
+    "description": "Penalties during coverage and return phases",
+    "coverage_team_penalties": {
+      "holding": {
+        "base_rate": 0.042,
+        "penalty_yards": 10,
+        "from_spot_of_foul": true,
+        "automatic_first_down": false
+      },
+      "illegal_contact": {
+        "base_rate": 0.018,
+        "penalty_yards": 10,
+        "from_spot_of_foul": true
+      },
+      "unnecessary_roughness": {
+        "base_rate": 0.008,
+        "penalty_yards": 15,
+        "from_end_of_play": true,
+        "automatic_first_down": true
+      },
+      "face_mask": {
+        "base_rate": 0.005,
+        "penalty_yards": 15,
+        "from_end_of_play": true,
+        "automatic_first_down": true
+      }
+    },
+    "return_team_penalties": {
+      "holding": {
+        "base_rate": 0.035,
+        "penalty_yards": 10,
+        "from_spot_of_foul": true
+      },
+      "illegal_block_in_back": {
+        "base_rate": 0.025,
+        "penalty_yards": 10,
+        "from_spot_of_foul": true,
+        "description": "Block in back above waist"
+      },
+      "clipping": {
+        "base_rate": 0.015,
+        "penalty_yards": 15,
+        "from_spot_of_foul": true,
+        "description": "Block below waist from behind"
+      },
+      "illegal_blindside_block": {
+        "base_rate": 0.008,
+        "penalty_yards": 15,
+        "from_spot_of_foul": true
+      }
+    },
+    "situational_modifiers": {
+      "big_return_penalty_bonus": 0.25,
+      "coverage_breakdown_penalty_bonus": 0.15,
+      "goal_line_return_penalty_bonus": 0.30
+    }
+  },
+  
+  "special_situations": {
+    "description": "Edge cases and special kickoff scenarios",
+    "weather_delays": {
+      "severe_weather_rekick_rate": 0.002
+    },
+    "equipment_issues": {
+      "tee_adjustment_delay": 0.001
+    },
+    "injury_scenarios": {
+      "coverage_team_injury": 0.003,
+      "return_team_injury": 0.004,
+      "returner_injury": 0.001
+    }
+  },
+  
+  "statistical_attribution": {
+    "description": "Individual player stat tracking parameters",
+    "kicker_stats": {
+      "kickoff_attempts": 1.0,
+      "touchback_credit": 1.0,
+      "onside_recovery_credit": 1.0
+    },
+    "coverage_team_stats": {
+      "tackle_credit_primary": 1.0,
+      "tackle_credit_assist": 0.5,
+      "coverage_unit_participation": 1.0,
+      "penalty_attribution": 1.0
+    },
+    "return_team_stats": {
+      "return_yards_credit": 1.0,
+      "blocking_participation": 1.0,
+      "penalty_attribution": 1.0
+    },
+    "returner_stats": {
+      "return_attempts": 1.0,
+      "return_yards": 1.0,
+      "return_touchdowns": 1.0,
+      "fumbles": 1.0
+    }
+  },
+  
+  "play_timing": {
+    "description": "Time ranges for kickoff execution phases",
+    "total_play_time": {
+      "regular_return": {"min": 6.5, "max": 12.0},
+      "touchback": {"min": 4.0, "max": 6.5},
+      "onside_kick": {"min": 3.5, "max": 8.0},
+      "out_of_bounds": {"min": 3.0, "max": 5.5}
+    }
+  }
+}

@@ -1,0 +1,193 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "title": "Field Goal Configuration",
+  "description": "Centralized configuration for field goal simulation parameters - Designer balancing file",
+  
+  "distance_accuracy": {
+    "description": "NFL-realistic accuracy curves by distance with variance",
+    "ranges": {
+      "0-30": {"base_accuracy": 0.98, "variance": 0.02, "description": "Extra point range"},
+      "31-40": {"base_accuracy": 0.92, "variance": 0.05, "description": "High confidence range"},
+      "41-50": {"base_accuracy": 0.75, "variance": 0.12, "description": "Standard NFL range"}, 
+      "51-60": {"base_accuracy": 0.45, "variance": 0.20, "description": "Long range attempts"},
+      "61+": {"base_accuracy": 0.15, "variance": 0.25, "description": "Record attempt range"}
+    },
+    "default_accuracy": 0.75
+  },
+  
+  "fake_decision_probabilities": {
+    "description": "Situational probabilities for fake field goal attempts",
+    "base_fake_rate": 0.08,
+    "situational_modifiers": {
+      "short_yardage": {"distance_threshold": 2, "fake_bonus": 0.12},
+      "long_distance": {"distance_threshold": 55, "fake_bonus": 0.03},
+      "fourth_down": {"fake_bonus": 0.07},
+      "red_zone": {"field_position_threshold": 80, "fake_bonus": 0.15},
+      "two_minute_warning": {"fake_bonus": 0.05},
+      "goal_line": {"field_position_threshold": 95, "fake_bonus": 0.25}
+    },
+    "fake_type_distribution": {
+      "pass": 0.65,
+      "run": 0.35
+    }
+  },
+  
+  "formation_matchups": {
+    "description": "Field goal formation vs defensive alignment outcomes",
+    "matchups": {
+      "FIELD_GOAL": {
+        "FIELD_GOAL_BLOCK": {
+          "block_probability": 0.03,
+          "fake_advantage_pass": 0.85,
+          "fake_advantage_run": 0.80,
+          "description": "Standard FG vs FG block alignment"
+        },
+        "PREVENT_FAKE": {
+          "block_probability": 0.08,
+          "fake_advantage_pass": 0.45,
+          "fake_advantage_run": 0.40,
+          "description": "Defense expecting fake"
+        }
+      }
+    },
+    "default_matchup": {
+      "block_probability": 0.05,
+      "fake_advantage_pass": 0.70,
+      "fake_advantage_run": 0.65
+    }
+  },
+  
+  "environmental_modifiers": {
+    "description": "Weather and field condition effects on field goal accuracy",
+    "wind_effects": {
+      "calm": {"wind_speed_max": 5, "accuracy_modifier": 1.0},
+      "light": {"wind_speed_max": 15, "accuracy_modifier": 0.95},
+      "moderate": {"wind_speed_max": 25, "accuracy_modifier": 0.85},
+      "strong": {"wind_speed_max": 35, "accuracy_modifier": 0.70}
+    },
+    "weather_conditions": {
+      "clear": {"accuracy_modifier": 1.0},
+      "rain": {"accuracy_modifier": 0.90},
+      "snow": {"accuracy_modifier": 0.82},
+      "fog": {"accuracy_modifier": 0.88}
+    },
+    "field_conditions": {
+      "perfect": {"accuracy_modifier": 1.0},
+      "wet": {"accuracy_modifier": 0.92},
+      "frozen": {"accuracy_modifier": 0.87}
+    },
+    "dome_bonus": 1.05
+  },
+  
+  "player_attributes": {
+    "description": "Player rating thresholds and modifiers for field goal performance",
+    "rating_thresholds": {
+      "elite": 90,
+      "good": 80,
+      "average": 70,
+      "poor": 60
+    },
+    "kicker_modifiers": {
+      "kicking_accuracy": {
+        "elite_bonus": 0.08,
+        "good_bonus": 0.04,
+        "average_modifier": 0.0,
+        "poor_penalty": -0.08
+      },
+      "kicking_power": {
+        "elite_range_bonus": 8,
+        "good_range_bonus": 4,
+        "poor_range_penalty": -6
+      },
+      "pressure_kicking": {
+        "clutch_bonus": 0.06,
+        "pressure_penalty": -0.06
+      }
+    },
+    "holder_modifiers": {
+      "hold_skill": {
+        "elite_accuracy_bonus": 0.03,
+        "poor_accuracy_penalty": -0.05
+      },
+      "fake_passing": {
+        "elite_completion_bonus": 0.25,
+        "poor_completion_penalty": -0.30
+      },
+      "fake_running": {
+        "elite_yards_bonus": 2.5,
+        "poor_yards_penalty": -2.0
+      }
+    },
+    "long_snapper_modifiers": {
+      "snap_accuracy": {
+        "elite_bonus": 0.02,
+        "poor_penalty": -0.04
+      }
+    }
+  },
+  
+  "fake_field_goal_execution": {
+    "description": "Parameters for fake field goal pass and run outcomes",
+    "fake_pass": {
+      "target_selection": {
+        "tight_end": 0.45,
+        "kicker": 0.30,
+        "fullback": 0.25
+      },
+      "route_concepts": {
+        "quick_slant": {"success_rate": 0.75, "avg_yards": 6},
+        "checkdown": {"success_rate": 0.85, "avg_yards": 4},
+        "corner_route": {"success_rate": 0.60, "avg_yards": 12}
+      },
+      "base_completion_rate": 0.70,
+      "yards_range": {"min": 2, "max": 15, "avg": 7}
+    },
+    "fake_run": {
+      "runner_selection": {
+        "holder": 0.70,
+        "kicker": 0.30
+      },
+      "run_concepts": {
+        "holder_scramble": {"success_rate": 0.65, "avg_yards": 5},
+        "kicker_sweep": {"success_rate": 0.55, "avg_yards": 4},
+        "holder_sneak": {"success_rate": 0.80, "avg_yards": 3}
+      },
+      "base_success_rate": 0.68,
+      "yards_range": {"min": 0, "max": 12, "avg": 4}
+    }
+  },
+  
+  "statistical_attribution": {
+    "description": "Parameters for attributing stats to individual special teams players",
+    "kicker_stats": {
+      "attempt_attribution": 1.0,
+      "fake_run_yards_threshold": 5
+    },
+    "holder_stats": {
+      "fake_pass_attempt_rate": 1.0,
+      "fake_run_attempt_rate": 1.0,
+      "successful_hold_rate": 0.95
+    },
+    "protection_unit": {
+      "block_allowed_probability": 0.15,
+      "max_blockers_credited": 3
+    },
+    "defense": {
+      "block_credit_primary": 1.0,
+      "block_credit_assist": 0.5,
+      "fake_tackle_attribution": 0.8
+    }
+  },
+  
+  "play_timing": {
+    "description": "Time ranges for field goal execution",
+    "real_field_goal": {
+      "min_seconds": 3.2,
+      "max_seconds": 4.8
+    },
+    "fake_field_goal": {
+      "min_seconds": 3.5,
+      "max_seconds": 6.2
+    }
+  }
+}

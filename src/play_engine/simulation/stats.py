@@ -65,6 +65,21 @@ class PlayerStats:
     interceptions: int = 0
     forced_fumbles: int = 0
     
+    # Special teams stats (field goals, punts, kicks)
+    field_goal_attempts: int = 0
+    field_goals_made: int = 0
+    field_goals_missed: int = 0
+    field_goals_blocked: int = 0
+    longest_field_goal: int = 0
+    field_goal_holds: int = 0
+    long_snaps: int = 0
+    special_teams_snaps: int = 0
+    blocks_allowed: int = 0
+    
+    # Additional passing stats for holders on fake field goals
+    passing_touchdowns: int = 0
+    rushing_touchdowns: int = 0
+    
     # Special stats
     penalties: int = 0
     penalty_yards: int = 0
@@ -109,6 +124,10 @@ class PlayerStats:
             'tackles', 'assisted_tackles', 'sacks', 'tackles_for_loss', 'qb_hits', 'qb_pressures', 'qb_hurries',
             # Pass defense stats  
             'passes_defended', 'passes_deflected', 'tipped_passes', 'interceptions', 'forced_fumbles',
+            # Special teams stats
+            'field_goal_attempts', 'field_goals_made', 'field_goals_missed', 'field_goals_blocked',
+            'longest_field_goal', 'field_goal_holds', 'long_snaps', 'special_teams_snaps', 'blocks_allowed',
+            'passing_touchdowns', 'rushing_touchdowns',
             # Special stats
             'penalties', 'penalty_yards'
         }
@@ -151,6 +170,13 @@ class PlayStatsSummary:
     penalty_instance: Optional[object] = None  # PenaltyInstance object
     original_yards: Optional[int] = None  # Yards before penalty
     play_negated: bool = False
+    
+    # Field goal specific information (optional, only populated for field goal plays)
+    field_goal_outcome: Optional[str] = None  # "made", "missed_wide_left", "blocked", "fake_success", etc.
+    is_fake_field_goal: bool = False
+    fake_field_goal_type: Optional[str] = None  # "pass" or "run" if fake
+    field_goal_distance: Optional[int] = None
+    points_scored: int = 0  # 3 for made FG, 6 for fake TD, etc.
     
     def add_player_stats(self, stats: PlayerStats):
         """Add individual player stats to the play summary"""
@@ -262,6 +288,52 @@ class PlayStatsSummary:
                 impacts.append(f"Elite defender {leading_tackler.player_name} ({overall_rating} OVR) made key tackle")
         
         return {'attribute_impacts': impacts}
+    
+    # Field goal specific methods
+    def get_kicker_stats(self) -> Optional[PlayerStats]:
+        """Get kicker's stats for this play"""
+        kickers = [stats for stats in self.player_stats if 'field_goal_attempts' in stats.get_total_stats() or 'field_goals_made' in stats.get_total_stats()]
+        return kickers[0] if kickers else None
+    
+    def get_holder_stats(self) -> Optional[PlayerStats]:
+        """Get holder's stats for this play"""
+        holders = [stats for stats in self.player_stats if 'field_goal_holds' in stats.get_total_stats()]
+        return holders[0] if holders else None
+    
+    def get_special_teams_stats(self) -> List[PlayerStats]:
+        """Get all special teams players who recorded stats this play"""
+        special_teams = [stats for stats in self.player_stats if 
+                        'special_teams_snaps' in stats.get_total_stats() or 
+                        'long_snaps' in stats.get_total_stats() or
+                        'field_goal_holds' in stats.get_total_stats() or
+                        'field_goal_attempts' in stats.get_total_stats()]
+        return special_teams
+    
+    def is_field_goal_play(self) -> bool:
+        """Check if this is a field goal play"""
+        return self.field_goal_outcome is not None
+    
+    def was_field_goal_successful(self) -> bool:
+        """Check if field goal was successful (made or successful fake)"""
+        return self.field_goal_outcome in ["made", "fake_success"] or self.points_scored > 0
+    
+    def get_field_goal_summary(self) -> Optional[Dict[str, Any]]:
+        """Get field goal specific summary information"""
+        if not self.is_field_goal_play():
+            return None
+        
+        summary = {
+            "outcome": self.field_goal_outcome,
+            "distance": self.field_goal_distance,
+            "points_scored": self.points_scored,
+            "is_fake": self.is_fake_field_goal,
+            "successful": self.was_field_goal_successful()
+        }
+        
+        if self.is_fake_field_goal:
+            summary["fake_type"] = self.fake_field_goal_type
+            
+        return summary
 
 
 def create_player_stats_from_player(player) -> PlayerStats:

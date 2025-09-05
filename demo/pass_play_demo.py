@@ -5,7 +5,7 @@ Shows comprehensive NFL-level pass play simulation with Browns vs 49ers real pla
 """
 
 import sys
-sys.path.append('src')
+sys.path.append('../src')
 
 from play_engine.simulation.pass_plays import PassPlaySimulator
 from team_management.personnel import TeamRosterGenerator, PersonnelPackageManager

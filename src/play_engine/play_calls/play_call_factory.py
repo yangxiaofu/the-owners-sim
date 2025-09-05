@@ -10,7 +10,7 @@ from .offensive_play_call import OffensivePlayCall
 from .defensive_play_call import DefensivePlayCall
 from ..play_types.offensive_types import OffensivePlayType
 from ..play_types.defensive_types import DefensivePlayType
-from formation import OffensiveFormation, DefensiveFormation
+from ..mechanics.formations import OffensiveFormation, DefensiveFormation
 
 
 class PlayCallFactory:
@@ -57,6 +57,11 @@ class PlayCallFactory:
             "play_type": OffensivePlayType.RUN,
             "formation": OffensiveFormation.GOAL_LINE,
             "concept": "goal_line_power"
+        },
+        "kickoff": {
+            "play_type": OffensivePlayType.KICKOFF,
+            "formation": OffensiveFormation.KICKOFF,
+            "concept": "regular_kickoff"
         }
     }
     
@@ -103,6 +108,11 @@ class PlayCallFactory:
             "play_type": DefensivePlayType.RUN_STUFF,
             "formation": DefensiveFormation.FOUR_SIX,
             "coverage": "run_support"
+        },
+        "kickoff_return": {
+            "play_type": DefensivePlayType.KICKOFF_RETURN,
+            "formation": DefensiveFormation.KICK_RETURN,
+            "coverage": "return_coverage"
         }
     }
     
@@ -189,7 +199,7 @@ class PlayCallFactory:
             concept="field_goal_attempt"
         )
     
-    @classmethod
+    @classmethod  
     def create_punt(cls) -> OffensivePlayCall:
         """Create a punt play"""
         return OffensivePlayCall(
@@ -197,6 +207,11 @@ class PlayCallFactory:
             OffensiveFormation.PUNT,
             concept="directional_punt"
         )
+    
+    @classmethod
+    def create_kickoff(cls) -> OffensivePlayCall:
+        """Create a kickoff play"""
+        return cls.create_offensive_play("kickoff")
     
     @classmethod
     def create_cover_2(cls, formation: Optional[str] = None) -> DefensivePlayCall:
@@ -223,6 +238,11 @@ class PlayCallFactory:
     def create_goal_line_defense(cls) -> DefensivePlayCall:
         """Create goal line defense"""
         return cls.create_defensive_play("goal_line_defense")
+    
+    @classmethod
+    def create_kickoff_return(cls) -> DefensivePlayCall:
+        """Create kickoff return defense"""
+        return cls.create_defensive_play("kickoff_return")
     
     @classmethod
     def get_available_offensive_plays(cls) -> List[str]:

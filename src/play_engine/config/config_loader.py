@@ -31,7 +31,10 @@ class PlayEngineConfig:
         """Load all configuration files"""
         config_files = {
             'run_play': 'run_play_config.json',
-            'pass_play': 'pass_play_config.json'
+            'pass_play': 'pass_play_config.json',
+            'field_goal': 'field_goal_config.json',
+            'kickoff': 'kickoff_config.json',
+            'punt': 'punt_config.json'
         }
         
         for config_name, filename in config_files.items():
@@ -54,6 +57,18 @@ class PlayEngineConfig:
     def get_pass_play_config(self) -> Dict[str, Any]:
         """Get pass play configuration"""  
         return self._configs.get('pass_play', {})
+    
+    def get_field_goal_config(self) -> Dict[str, Any]:
+        """Get field goal configuration"""
+        return self._configs.get('field_goal', {})
+    
+    def get_kickoff_config(self) -> Dict[str, Any]:
+        """Get kickoff configuration"""
+        return self._configs.get('kickoff', {})
+    
+    def get_punt_config(self) -> Dict[str, Any]:
+        """Get punt configuration"""
+        return self._configs.get('punt', {})
     
     def get_formation_matchup(self, config_type: str, offensive_formation: str, 
                             defensive_formation: str) -> Optional[Dict[str, Any]]:
@@ -160,3 +175,33 @@ def get_run_modifier(category: str, modifier_name: str) -> float:
 def get_pass_modifier(category: str, modifier_name: str) -> float:
     """Get pass play modifier value"""
     return config.get_modifier_value('pass_play', category, modifier_name)
+
+
+def get_field_goal_formation_matchup(offensive_formation: str, defensive_formation: str) -> Optional[Dict[str, Any]]:
+    """Get field goal formation matchup parameters"""
+    return config.get_formation_matchup('field_goal', offensive_formation, defensive_formation)
+
+
+def get_field_goal_player_threshold(threshold_name: str) -> int:
+    """Get field goal player rating threshold"""
+    return config.get_rating_threshold('field_goal', threshold_name)
+
+
+def get_field_goal_modifier(category: str, modifier_name: str) -> float:
+    """Get field goal modifier value"""
+    return config.get_modifier_value('field_goal', category, modifier_name)
+
+
+def get_punt_formation_matchup(offensive_formation: str, defensive_formation: str) -> Optional[Dict[str, Any]]:
+    """Get punt formation matchup parameters"""
+    return config.get_formation_matchup('punt', offensive_formation, defensive_formation)
+
+
+def get_punt_player_threshold(threshold_name: str) -> int:
+    """Get punt player rating threshold"""
+    return config.get_rating_threshold('punt', threshold_name)
+
+
+def get_punt_modifier(category: str, modifier_name: str) -> float:
+    """Get punt modifier value"""
+    return config.get_modifier_value('punt', category, modifier_name)

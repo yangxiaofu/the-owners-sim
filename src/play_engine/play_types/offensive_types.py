@@ -32,3 +32,22 @@ class OffensivePlayType:
     def get_core_plays(cls):
         """Get core plays (most commonly used)"""
         return [cls.RUN, cls.PASS, cls.FIELD_GOAL, cls.PUNT]
+
+
+class PuntPlayType:
+    """Constants for punt execution types - used by PuntSimulator for execution-only logic"""
+    
+    # Punt execution types (received from external play calling systems)
+    REAL_PUNT = "punt_real"
+    FAKE_PUNT_PASS = "punt_fake_pass" 
+    FAKE_PUNT_RUN = "punt_fake_run"
+    
+    @classmethod
+    def get_all_types(cls):
+        """Get a list of all available punt execution types"""
+        return [cls.REAL_PUNT, cls.FAKE_PUNT_PASS, cls.FAKE_PUNT_RUN]
+    
+    @classmethod
+    def is_fake_punt(cls, punt_type: str) -> bool:
+        """Check if punt type is a fake punt"""
+        return punt_type in [cls.FAKE_PUNT_PASS, cls.FAKE_PUNT_RUN]

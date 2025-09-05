@@ -7,7 +7,7 @@ and optional concepts/personnel packages for realistic football play calling.
 
 from typing import Optional, Dict, Any
 from ..play_types.offensive_types import OffensivePlayType
-from formation import OffensiveFormation
+from ..mechanics.formations import OffensiveFormation
 
 
 class OffensivePlayCall:

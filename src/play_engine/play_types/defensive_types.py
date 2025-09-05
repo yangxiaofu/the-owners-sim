@@ -28,6 +28,15 @@ class DefensivePlayType:
     NICKEL_DEFENSE = "defensive_nickel"  # 5 DBs
     DIME_DEFENSE = "defensive_dime"  # 6 DBs
     
+    # Punt defense formations
+    PUNT_RETURN = "defensive_punt_return"      # Standard punt return coverage
+    PUNT_BLOCK = "defensive_punt_block"        # Aggressive punt block rush
+    PUNT_SAFE = "defensive_punt_safe"          # Dual-purpose defend fake + return
+    SPREAD_RETURN = "defensive_spread_return"   # Modern spread punt response
+    
+    # Kickoff return formations
+    KICKOFF_RETURN = "defensive_kickoff_return"  # Standard kickoff return coverage
+    
     @classmethod
     def get_all_types(cls):
         """Get a list of all available defensive play types"""
@@ -37,10 +46,16 @@ class DefensivePlayType:
             cls.BLITZ, cls.CORNER_BLITZ, cls.SAFETY_BLITZ, cls.A_GAP_BLITZ,
             cls.EDGE_RUSH, cls.RUN_STUFF, cls.GAP_CONTROL, cls.PURSUIT_DEFENSE,
             cls.GOAL_LINE_DEFENSE, cls.PREVENT_DEFENSE, cls.NICKEL_DEFENSE,
-            cls.DIME_DEFENSE
+            cls.DIME_DEFENSE, cls.PUNT_RETURN, cls.PUNT_BLOCK, cls.PUNT_SAFE,
+            cls.SPREAD_RETURN, cls.KICKOFF_RETURN
         ]
     
     @classmethod
     def get_core_defenses(cls):
         """Get core defensive plays (most commonly used)"""
         return [cls.COVER_2, cls.COVER_3, cls.BLITZ, cls.FOUR_MAN_RUSH]
+    
+    @classmethod
+    def get_punt_defenses(cls):
+        """Get all punt defensive formations"""
+        return [cls.PUNT_RETURN, cls.PUNT_BLOCK, cls.PUNT_SAFE, cls.SPREAD_RETURN]

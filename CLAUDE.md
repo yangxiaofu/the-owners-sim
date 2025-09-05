@@ -24,6 +24,10 @@ python -m pytest tests/
 python tests/test_penalty_system.py
 python tests/test_run_play.py
 python tests/simple_penalty_validation.py
+python tests/test_punt_system.py
+python tests/test_game_state_manager.py
+python tests/test_field_tracker.py
+python tests/test_down_tracker.py
 
 # Quick validation test
 python quick_test.py
@@ -35,16 +39,19 @@ python test_play_execution.py
 ### Running Demos
 ```bash
 # Main play engine demonstration
-python play_engine_demo.py
+python demo/play_engine_demo.py
 
 # Run play simulation demo
-python run_play_demo.py
+python demo/run_play_demo.py
 
-# Team system demonstration
-python team_system_demo.py
+# Pass play simulation demo
+python demo/pass_play_demo.py
 
-# Penalty system demonstration
-python penalty_demo.py
+# Field position tracking demo
+python field_position_demo.py
+
+# Game state management demo  
+python game_state_demo.py
 ```
 
 ### Development Setup
@@ -86,7 +93,16 @@ The simulation follows a layered architecture with clear separation of concerns:
 
 **5. Simulation Engine (`src/play_engine/simulation/`)**
 - `run_plays.py`: Advanced run play simulation with formation matchups
+- `pass_plays.py`: Pass play simulation with coverage analysis
+- `punt.py`: Punt simulation with returner mechanics
+- `field_goal.py`: Field goal attempt simulation
+- `kickoff.py`: Kickoff and return simulation
 - `stats.py`: Play statistics tracking
+
+**6. Game State Management (`src/play_engine/game_state/`)**
+- `game_state_manager.py`: Unified field position and down situation tracking
+- `field_position.py`: Field tracking with scoring detection
+- `down_situation.py`: Down and distance progression
 
 ### Key Design Patterns
 
@@ -130,6 +146,7 @@ match offensive_play_type:
 - `src/config/penalties/situational_modifiers.json`: Field position/down effects
 - `src/config/penalties/penalty_descriptions.json`: Contextual descriptions
 - `src/config/penalties/home_field_settings.json`: Home field advantage
+- `src/play_engine/config/`: Play-specific configuration files (run_play_config.json, pass_play_config.json, field_goal_config.json, kickoff_config.json, punt_config.json)
 
 ## Testing Strategy
 
