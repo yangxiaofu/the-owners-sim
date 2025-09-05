@@ -39,7 +39,8 @@ def simulate(play_engine_params):
         # Run play simulation
 
         """
-        In this section I want to understand how to simulate an offensive and defensive against each other. 
+        In this section, I want to understand how to simulate an offensive and defensive strategy against each other.
+        The result needs to be  the output of how the two types of offensives including the player stack up against each other.  
         """
 
 
