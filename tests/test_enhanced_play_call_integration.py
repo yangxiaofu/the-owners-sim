@@ -16,11 +16,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 import play_engine
 from play_engine_params import PlayEngineParams
-from play_calls.offensive_play_call import OffensivePlayCall
-from play_calls.defensive_play_call import DefensivePlayCall
-from play_calls.play_call_factory import PlayCallFactory
-from offensive_play_type import OffensivePlayType
-from defensive_play_type import DefensivePlayType
+from play_engine.play_calls.offensive_play_call import OffensivePlayCall
+from play_engine.play_calls.defensive_play_call import DefensivePlayCall
+from play_engine.play_calls.play_call_factory import PlayCallFactory
+from play_engine.play_types.offensive_types import OffensivePlayType
+from play_engine.play_types.defensive_types import DefensivePlayType
 from formation import OffensiveFormation, DefensiveFormation
 from personnel_package_manager import TeamRosterGenerator, PersonnelPackageManager
 # No longer need PlayCallParams - simplified to only enhanced system

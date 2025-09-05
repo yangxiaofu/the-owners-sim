@@ -9,28 +9,17 @@ Implements enhanced two-stage simulation with penalty system:
 
 import random
 from typing import List, Tuple, Dict, Optional
-from .play_stats import PlayerStats, PlayStatsSummary, create_player_stats_from_player
-from formation import OffensiveFormation, DefensiveFormation
-from play_type import PlayType
-from player import Position
-from penalties.penalty_engine import PenaltyEngine, PlayContext, PenaltyResult
-from penalties.penalty_data_structures import PenaltyInstance
+from play_engine.simulation.stats import PlayerStats, PlayStatsSummary, create_player_stats_from_player
+from play_engine.mechanics.formations import OffensiveFormation, DefensiveFormation
+from play_engine.play_types.base_types import PlayType
+from team_management.players.player import Position
+from play_engine.mechanics.penalties.penalty_engine import PenaltyEngine, PlayContext, PenaltyResult
+from play_engine.mechanics.penalties.penalty_data_structures import PenaltyInstance
+from play_engine.config.config_loader import config, get_run_formation_matchup
 
 
 class RunPlaySimulator:
     """Simulates run plays with individual player stat attribution"""
-    
-    # Simple matchup matrix: (offensive_formation, defensive_formation) -> (avg_yards, variance)
-    MATCHUP_MATRIX = {
-        (OffensiveFormation.I_FORMATION, DefensiveFormation.FOUR_THREE): (4.2, 2.5),
-        (OffensiveFormation.I_FORMATION, DefensiveFormation.NICKEL): (5.1, 2.8),
-        (OffensiveFormation.I_FORMATION, DefensiveFormation.GOAL_LINE): (2.3, 1.8),
-        (OffensiveFormation.SINGLEBACK, DefensiveFormation.FOUR_THREE): (3.8, 2.3),
-        (OffensiveFormation.SINGLEBACK, DefensiveFormation.NICKEL): (4.6, 2.6),
-        (OffensiveFormation.SHOTGUN, DefensiveFormation.FOUR_THREE): (3.2, 2.1),
-        (OffensiveFormation.SHOTGUN, DefensiveFormation.NICKEL): (3.5, 2.2),
-        (OffensiveFormation.PISTOL, DefensiveFormation.FOUR_THREE): (4.0, 2.4),
-    }
     
     def __init__(self, offensive_players: List, defensive_players: List, 
                  offensive_formation: str, defensive_formation: str):
@@ -108,27 +97,112 @@ class RunPlaySimulator:
     
     def _determine_play_outcome(self) -> Tuple[int, float]:
         """
-        Phase 1: Determine yards gained and time elapsed using matchup matrix
+        Phase 1: Determine yards gained and time elapsed using matchup matrix + player attributes
         
         Returns:
             Tuple of (yards_gained, time_elapsed)
         """
-        # Get matchup parameters
-        matchup_key = (self.offensive_formation, self.defensive_formation)
+        # Get base matchup parameters from configuration
+        matchup_params = get_run_formation_matchup(self.offensive_formation, self.defensive_formation)
         
-        if matchup_key in self.MATCHUP_MATRIX:
-            avg_yards, variance = self.MATCHUP_MATRIX[matchup_key]
+        if matchup_params:
+            base_avg_yards = matchup_params.get('avg_yards', 3.5)
+            base_variance = matchup_params.get('variance', 2.2)
         else:
-            # Default matchup if not found
-            avg_yards, variance = (3.5, 2.2)
+            # Use configured default if specific matchup not found
+            run_config = config.get_run_play_config()
+            default_matchup = run_config.get('formation_matchups', {}).get('default_matchup', {})
+            base_avg_yards = default_matchup.get('avg_yards', 3.5)
+            base_variance = default_matchup.get('variance', 2.2)
         
-        # Generate yards with normal distribution
-        yards_gained = max(0, int(random.gauss(avg_yards, variance)))
+        # Apply player attribute modifiers
+        modified_avg_yards, modified_variance = self._apply_player_attribute_modifiers(
+            base_avg_yards, base_variance)
         
-        # Time elapsed (3-5 seconds for run plays)
-        time_elapsed = round(random.uniform(2.8, 4.5), 1)
+        # Generate yards with modified distribution
+        yards_gained = max(0, int(random.gauss(modified_avg_yards, modified_variance)))
+        
+        # Time elapsed - use configured timing
+        timing_config = config.get_timing_config('run_play')
+        run_time = timing_config.get('run_play_time', {})
+        min_time = run_time.get('min_seconds', 2.8)
+        max_time = run_time.get('max_seconds', 4.5)
+        time_elapsed = round(random.uniform(min_time, max_time), 1)
         
         return yards_gained, time_elapsed
+    
+    def _apply_player_attribute_modifiers(self, base_avg_yards: float, base_variance: float) -> Tuple[float, float]:
+        """
+        Modify play outcome based on real player attributes
+        
+        Args:
+            base_avg_yards: Base expected yards from formation matchup
+            base_variance: Base variance from formation matchup
+            
+        Returns:
+            Tuple of (modified_avg_yards, modified_variance)
+        """
+        offensive_modifier = 1.0
+        defensive_modifier = 1.0
+        
+        # Get configured thresholds and modifiers
+        player_config = config.get_player_attribute_config('run_play')
+        thresholds = player_config.get('rating_thresholds', {})
+        rb_modifiers = player_config.get('running_back_modifiers', {})
+        
+        elite_threshold = thresholds.get('elite', 90)
+        good_threshold = thresholds.get('good', 80) 
+        poor_threshold = thresholds.get('poor', 65)
+        
+        elite_bonus = rb_modifiers.get('elite_bonus', 0.30)
+        good_bonus = rb_modifiers.get('good_bonus', 0.15)
+        poor_penalty = rb_modifiers.get('poor_penalty', -0.20)
+        
+        # Find key offensive players and their impact
+        running_back = self._find_player_by_position(Position.RB)
+        if running_back and hasattr(running_back, 'ratings'):
+            # RB overall rating impacts yards gained
+            rb_overall = running_back.get_rating('overall')
+            if rb_overall >= elite_threshold:  # Elite RB
+                offensive_modifier += elite_bonus
+            elif rb_overall >= good_threshold:  # Good RB
+                offensive_modifier += good_bonus
+            elif rb_overall <= poor_threshold:  # Poor RB
+                offensive_modifier += poor_penalty  # Note: poor_penalty is already negative
+        
+        # Find key defensive players and their impact
+        lb_modifiers = player_config.get('linebacker_modifiers', {})
+        lb_elite_bonus = lb_modifiers.get('elite_bonus', 0.25)
+        lb_good_bonus = lb_modifiers.get('good_bonus', 0.10)
+        lb_poor_penalty = lb_modifiers.get('poor_penalty', -0.15)
+        
+        linebackers = self._find_defensive_players_by_positions([Position.MIKE, Position.SAM, Position.WILL])
+        if linebackers:
+            # Average LB rating impacts run defense
+            lb_ratings = []
+            for lb in linebackers:
+                if hasattr(lb, 'ratings'):
+                    lb_ratings.append(lb.get_rating('overall'))
+            
+            if lb_ratings:
+                avg_lb_rating = sum(lb_ratings) / len(lb_ratings)
+                if avg_lb_rating >= elite_threshold:  # Elite LB corps
+                    defensive_modifier += lb_elite_bonus
+                elif avg_lb_rating >= good_threshold:  # Good LB corps
+                    defensive_modifier += lb_good_bonus
+                elif avg_lb_rating <= poor_threshold:  # Poor LB corps
+                    defensive_modifier += lb_poor_penalty  # Note: already negative
+        
+        # Apply modifiers (offense increases yards, defense decreases yards)  
+        final_modifier = offensive_modifier / defensive_modifier
+        modified_avg_yards = base_avg_yards * final_modifier
+        
+        # Use configured variance cap
+        stats_config = config.get_statistical_attribution_config('run_play')
+        variance_cap = stats_config.get('variance_cap', 1.2)
+        modified_variance = base_variance * min(final_modifier, variance_cap)
+        
+        return modified_avg_yards, modified_variance
     
     def _attribute_player_stats(self, yards_gained: int, penalty_result: Optional[PenaltyResult] = None) -> List[PlayerStats]:
         """
@@ -155,15 +229,23 @@ class RunPlaySimulator:
             rb_stats.add_carry(yards_gained)
             player_stats.append(rb_stats)
         
-        # Attribute offensive line blocking stats (select 2-3 random linemen)
+        # Attribute offensive line blocking stats - use configured parameters
         if offensive_line:
-            num_blockers = min(len(offensive_line), random.randint(2, 3))
+            stats_config = config.get_statistical_attribution_config('run_play')
+            blocking_config = stats_config.get('blocking', {})
+            
+            min_blockers = blocking_config.get('min_blockers', 2)
+            max_blockers = blocking_config.get('max_blockers', 3)
+            base_success_rate = blocking_config.get('base_success_rate', 0.7)
+            yards_bonus_multiplier = blocking_config.get('yards_bonus_multiplier', 0.05)
+            
+            num_blockers = min(len(offensive_line), random.randint(min_blockers, max_blockers))
             selected_blockers = random.sample(offensive_line, num_blockers)
             
             for blocker in selected_blockers:
                 blocker_stats = create_player_stats_from_player(blocker)
                 # Higher success rate for longer runs
-                success_rate = 0.7 + (yards_gained * 0.05)
+                success_rate = base_success_rate + (yards_gained * yards_bonus_multiplier)
                 blocker_stats.add_block(random.random() < success_rate)
                 player_stats.append(blocker_stats)
         
@@ -216,14 +298,20 @@ class RunPlaySimulator:
         
         tacklers = []
         
+        # Get configured tackling parameters
+        stats_config = config.get_statistical_attribution_config('run_play')
+        tackling_config = stats_config.get('tackling', {})
+        long_run_threshold = tackling_config.get('long_run_threshold', 5)
+        assisted_tackle_prob = tackling_config.get('assisted_tackle_probability', 0.6)
+        
         # More yards = more likely to have assisted tackles
-        if yards_gained >= 5:
+        if yards_gained >= long_run_threshold:
             # Long run: likely 1 primary tackler + 1 assisted
             primary_tackler = random.choice(potential_tacklers)
             tacklers.append((primary_tackler, False))
             
-            # 60% chance of assisted tackle
-            if random.random() < 0.6:
+            # Configured chance of assisted tackle
+            if random.random() < assisted_tackle_prob:
                 remaining = [p for p in potential_tacklers if p != primary_tackler]
                 if remaining:
                     assisted_tackler = random.choice(remaining)

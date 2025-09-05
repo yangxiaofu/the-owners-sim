@@ -1,6 +1,6 @@
 import random
-from offensive_play_type import OffensivePlayType
-from defensive_play_type import DefensivePlayType
+from play_engine.play_types.offensive_types import OffensivePlayType
+from play_engine.play_types.defensive_types import DefensivePlayType
 from play_call_params import PlayCallParams
 
 class PlayCall:

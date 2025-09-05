@@ -33,9 +33,11 @@ class PenaltyConfigLoader:
                        Defaults to src/config/penalties/
         """
         if config_dir is None:
-            # Default to config directory relative to this file
+            # Default to config directory relative to this file (go back to src level)
             current_dir = os.path.dirname(os.path.abspath(__file__))
-            config_dir = os.path.join(current_dir, '..', 'config', 'penalties')
+            # Go up from penalties/ to mechanics/ to play_engine/ to src/ then to config/penalties
+            src_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+            config_dir = os.path.join(src_dir, 'config', 'penalties')
         
         self.config_dir = os.path.abspath(config_dir)
         self._config_cache = None

@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "title": "Pass Play Configuration", 
+  "description": "Centralized configuration for pass play simulation parameters - Designer balancing file",
+  
+  "formation_matchups": {
+    "description": "Formation vs formation matchup matrices with comprehensive pass play statistics",
+    "matchups": {
+      "SHOTGUN": {
+        "FOUR_THREE": {
+          "completion_rate": 0.68,
+          "sack_rate": 0.08,
+          "pressure_rate": 0.22,
+          "deflection_rate": 0.06,
+          "int_rate": 0.025,
+          "avg_air_yards": 9.5,
+          "avg_yac": 5.2,
+          "avg_time_to_throw": 2.6
+        },
+        "NICKEL": {
+          "completion_rate": 0.72,
+          "sack_rate": 0.06,
+          "pressure_rate": 0.18,
+          "deflection_rate": 0.05,
+          "int_rate": 0.020,
+          "avg_air_yards": 8.5,
+          "avg_yac": 5.8,
+          "avg_time_to_throw": 2.4
+        },
+        "DIME": {
+          "completion_rate": 0.74,
+          "sack_rate": 0.04,
+          "pressure_rate": 0.15,
+          "deflection_rate": 0.04,
+          "int_rate": 0.018,
+          "avg_air_yards": 11.0,
+          "avg_yac": 6.0,
+          "avg_time_to_throw": 2.8
+        }
+      },
+      "SINGLEBACK": {
+        "FOUR_THREE": {
+          "completion_rate": 0.65,
+          "sack_rate": 0.10,
+          "pressure_rate": 0.25,
+          "deflection_rate": 0.07,
+          "int_rate": 0.030,
+          "avg_air_yards": 8.0,
+          "avg_yac": 4.5,
+          "avg_time_to_throw": 2.8
+        },
+        "NICKEL": {
+          "completion_rate": 0.70,
+          "sack_rate": 0.08,
+          "pressure_rate": 0.20,
+          "deflection_rate": 0.06,
+          "int_rate": 0.025,
+          "avg_air_yards": 7.5,
+          "avg_yac": 5.0,
+          "avg_time_to_throw": 2.5
+        }
+      },
+      "I_FORMATION": {
+        "FOUR_THREE": {
+          "completion_rate": 0.62,
+          "sack_rate": 0.12,
+          "pressure_rate": 0.28,
+          "deflection_rate": 0.08,
+          "interception_rate": 0.035,
+          "avg_air_yards": 6.5,
+          "avg_yac": 4.0,
+          "avg_time_to_throw": 3.0
+        }
+      },
+      "PISTOL": {
+        "FOUR_THREE": {
+          "completion_rate": 0.67,
+          "sack_rate": 0.09,
+          "pressure_rate": 0.24,
+          "deflection_rate": 0.06,
+          "int_rate": 0.028,
+          "avg_air_yards": 8.8,
+          "avg_yac": 4.8,
+          "avg_time_to_throw": 2.7
+        }
+      },
+      "GOAL_LINE": {
+        "GOAL_LINE": {
+          "completion_rate": 0.58,
+          "sack_rate": 0.14,
+          "pressure_rate": 0.32,
+          "deflection_rate": 0.09,
+          "int_rate": 0.040,
+          "avg_air_yards": 3.0,
+          "avg_yac": 2.5,
+          "avg_time_to_throw": 2.2
+        }
+      }
+    },
+    "default_matchup": {
+      "completion_rate": 0.65,
+      "sack_rate": 0.09,
+      "pressure_rate": 0.24,
+      "deflection_rate": 0.06,
+      "int_rate": 0.025,
+      "avg_air_yards": 8.0,
+      "avg_yac": 4.5,
+      "avg_time_to_throw": 2.5
+    }
+  },
+  
+  "player_attributes": {
+    "description": "Player rating thresholds and modifiers for performance impact",
+    "rating_thresholds": {
+      "elite": 90,
+      "very_good": 85,
+      "good": 80,
+      "average": 75,
+      "below_average": 65,
+      "poor": 60
+    },
+    "quarterback_modifiers": {
+      "elite_accuracy_bonus": 0.08,
+      "good_accuracy_bonus": 0.04,
+      "poor_accuracy_penalty": -0.06,
+      "elite_pressure_resistance": 0.7,
+      "good_pressure_resistance": 0.85,
+      "poor_pressure_vulnerability": 1.3
+    },
+    "receiver_modifiers": {
+      "elite_catch_bonus": 0.8,
+      "good_catch_bonus": 0.9,
+      "poor_catch_penalty": 1.2,
+      "elite_yac_bonus": 0.05,
+      "speed_threshold": 85,
+      "speed_yac_multiplier": 1.2
+    },
+    "offensive_line_modifiers": {
+      "elite_protection_bonus": 0.04,
+      "poor_protection_penalty": -0.8,
+      "pressure_allowance_base": 0.3
+    },
+    "defensive_modifiers": {
+      "elite_coverage_bonus": 0.9,
+      "poor_coverage_penalty": 1.4,
+      "elite_rush_bonus": 1.3,
+      "good_rush_bonus": 1.08,
+      "poor_rush_penalty": 0.7
+    }
+  },
+  
+  "play_mechanics": {
+    "description": "Core pass play mechanics and probabilities",
+    "sack_mechanics": {
+      "min_yards_lost": 5,
+      "max_yards_lost": 12
+    },
+    "target_selection": {
+      "primary_target_probability": 0.75
+    },
+    "pressure_effects": {
+      "accuracy_impact": 0.75,
+      "pressure_to_hit_conversion": 0.4
+    },
+    "tackling": {
+      "long_yac_threshold": 8,
+      "assisted_tackle_probability": 0.6
+    },
+    "time_ranges": {
+      "sack_time_min": 2.0,
+      "sack_time_max": 3.5,
+      "completion_time_min": 2.5,
+      "completion_time_max": 4.0,
+      "incompletion_time_min": 2.0,
+      "incompletion_time_max": 3.5,
+      "interception_time_min": 2.5,
+      "interception_time_max": 5.0,
+      "deflection_time_min": 2.0,
+      "deflection_time_max": 3.5
+    },
+    "blocking": {
+      "min_blockers": 2,
+      "max_blockers": 3,
+      "min_pass_rushers": 1,
+      "max_pass_rushers": 2
+    }
+  },
+  
+  "variance_ranges": {
+    "description": "Variance ranges for statistical outcomes",
+    "air_yards_variance": 3.0,
+    "yac_variance": 2.5,
+    "time_to_throw_variance": 0.6
+  }
+}

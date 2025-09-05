@@ -18,8 +18,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from player import Player, Position
 from personnel_package_manager import PersonnelPackageManager, TeamRosterGenerator
 from formation import OffensiveFormation, DefensiveFormation, FormationMapper
-from offensive_play_type import OffensivePlayType
-from defensive_play_type import DefensivePlayType
+from play_engine.play_types.offensive_types import OffensivePlayType
+from play_engine.play_types.defensive_types import DefensivePlayType
 
 
 class TestPersonnelPackageManager(unittest.TestCase):

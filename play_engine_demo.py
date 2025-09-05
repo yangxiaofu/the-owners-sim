@@ -1,197 +1,201 @@
 #!/usr/bin/env python3
+"""
+Real vs Synthetic Roster Demo
 
-# Add src to path so we can import play_engine
+Demonstrates the integration of real NFL player data with the existing
+synthetic roster generation system. Shows rosters for:
+- Cleveland Browns (team_id: 7) - Real data
+- San Francisco 49ers (team_id: 31) - Real data  
+- Detroit Lions (team_id: 22) - Synthetic data
+"""
+
 import sys
-sys.path.append('src')
+import os
 
-import play_engine
-from play_engine_params import PlayEngineParams
-from offensive_play_type import OffensivePlayType
-from defensive_play_type import DefensivePlayType
-from personnel_package_manager import PersonnelPackageManager, TeamRosterGenerator
-from formation import OffensiveFormation, DefensiveFormation
+# Add src directory to Python path for imports
+sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
 
-# Import enhanced play call system
-from play_calls.offensive_play_call import OffensivePlayCall
-from play_calls.defensive_play_call import DefensivePlayCall
-from play_calls.play_call_factory import PlayCallFactory
+from team_management.personnel import TeamRosterGenerator, PersonnelPackageManager
+from team_management.players.player_loader import get_player_loader, has_real_roster_data
+from constants.team_ids import TeamIDs
+from team_management.teams.team_loader import get_team_by_id
+
+def print_separator(title):
+    """Print a formatted separator"""
+    print("\n" + "=" * 60)
+    print(f" {title}")
+    print("=" * 60)
+
+
+def print_roster_summary(roster, team_name):
+    """Print summary of a team roster"""
+    print(f"\n{team_name} Roster Summary:")
+    print(f"  Total Players: {len(roster)}")
+    
+    # Position counts
+    position_counts = {}
+    total_overall = 0
+    
+    for player in roster:
+        pos = player.primary_position
+        position_counts[pos] = position_counts.get(pos, 0) + 1
+        total_overall += player.get_rating('overall')
+    
+    avg_overall = total_overall / len(roster) if roster else 0
+    print(f"  Average Overall Rating: {avg_overall:.1f}")
+    
+    # Show top 5 players
+    top_players = sorted(roster, key=lambda p: p.get_rating('overall'), reverse=True)[:5]
+    print(f"\n  Top 5 Players:")
+    for i, player in enumerate(top_players, 1):
+        print(f"    {i}. {player}")
+    
+    # Show position distribution
+    print(f"\n  Position Distribution:")
+    for position, count in sorted(position_counts.items()):
+        print(f"    {position}: {count}")
+
+
+def demo_real_roster(team_id, team_name):
+    """Demo real roster functionality"""
+    print_separator(f"Real Roster Demo - {team_name}")
+    
+    # Check if real data exists
+    if not has_real_roster_data(team_id):
+        print(f"❌ No real roster data available for {team_name} (team_id: {team_id})")
+        return
+    
+    print(f"✅ Real roster data available for {team_name} (team_id: {team_id})")
+    
+    # Generate roster using the integrated system
+    roster = TeamRosterGenerator.generate_sample_roster(team_id)
+    print_roster_summary(roster, team_name)
+    
+    # Show personnel package management
+    print(f"\n{team_name} Personnel Package Demo:")
+    manager = PersonnelPackageManager(roster)
+    
+    # Test offensive personnel for different play types
+    offense_shotgun = manager.get_offensive_personnel_for_play("pass_play")
+    print(f"  Shotgun Formation (11 players):")
+    for player in offense_shotgun:
+        print(f"    {player}")
+    
+    return roster
+
+
+def demo_synthetic_roster(team_id, team_name):
+    """Demo synthetic roster functionality"""
+    print_separator(f"Synthetic Roster Demo - {team_name}")
+    
+    print(f"📊 Generating synthetic roster for {team_name} (team_id: {team_id})")
+    
+    # Generate synthetic roster
+    roster = TeamRosterGenerator.generate_sample_roster(team_id)
+    print_roster_summary(roster, team_name)
+    
+    return roster
+
+
+def demo_player_data_loader():
+    """Demo player data loader capabilities"""
+    print_separator("Player Data Loader Demo")
+    
+    loader = get_player_loader()
+    print(f"✅ Loaded {len(loader)} real players")
+    print(f"Available teams with real data: {loader.get_available_teams()}")
+    
+    # Search functionality
+    print(f"\nPlayer Search Demo:")
+    
+    # Search by name
+    watson_results = loader.search_players_by_name("Watson")
+    print(f"  Players with 'Watson' in name: {len(watson_results)}")
+    for player in watson_results:
+        print(f"    {player}")
+    
+    # Get top QBs by overall rating
+    print(f"\nTop Quarterbacks by Overall Rating:")
+    top_qbs = loader.get_top_players_by_attribute("overall", limit=5, position="quarterback")
+    for i, qb in enumerate(top_qbs, 1):
+        print(f"  {i}. {qb.full_name} #{qb.number} - Overall: {qb.overall_rating}")
+    
+    # Team roster summaries
+    print(f"\nTeam Roster Summaries:")
+    for team_id in loader.get_available_teams():
+        team = get_team_by_id(team_id)
+        summary = loader.get_team_roster_summary(team_id)
+        print(f"  {team.city} {team.nickname}:")
+        print(f"    Players: {summary['total_players']}")
+        print(f"    Avg Rating: {summary['avg_overall_rating']:.1f}")
+        print(f"    Best Player: {summary['highest_rated_player']}")
+
+
+def compare_rosters():
+    """Compare real vs synthetic roster characteristics"""
+    print_separator("Real vs Synthetic Roster Comparison")
+    
+    # Get rosters
+    browns_roster = TeamRosterGenerator.generate_sample_roster(TeamIDs.CLEVELAND_BROWNS)
+    niners_roster = TeamRosterGenerator.generate_sample_roster(TeamIDs.SAN_FRANCISCO_49ERS)
+    lions_roster = TeamRosterGenerator.generate_sample_roster(TeamIDs.DETROIT_LIONS)
+    
+    def get_roster_stats(roster, label):
+        ratings = [p.get_rating('overall') for p in roster]
+        avg_rating = sum(ratings) / len(ratings)
+        max_rating = max(ratings)
+        min_rating = min(ratings)
+        
+        # Count unique positions
+        positions = set(p.primary_position for p in roster)
+        
+        print(f"  {label}:")
+        print(f"    Size: {len(roster)} players")
+        print(f"    Avg Rating: {avg_rating:.1f}")
+        print(f"    Rating Range: {min_rating}-{max_rating}")
+        print(f"    Unique Positions: {len(positions)}")
+        print(f"    Data Source: {'Real NFL Data' if 'Browns' in label or '49ers' in label else 'Synthetic'}")
+    
+    get_roster_stats(browns_roster, "Cleveland Browns")
+    get_roster_stats(niners_roster, "San Francisco 49ers") 
+    get_roster_stats(lions_roster, "Detroit Lions")
+
 
 def main():
-    # Generate complete team rosters
-    lions_roster = TeamRosterGenerator.generate_sample_roster("Detroit Lions")
-    commanders_roster = TeamRosterGenerator.generate_sample_roster("Washington Commanders")
+    """Main demo function"""
+    print("🏈 NFL Roster Management System Demo")
+    print("Real Player Data Integration with Synthetic Fallback")
     
-    # Create personnel managers for each team
-    lions_personnel = PersonnelPackageManager(lions_roster)
-    commanders_personnel = PersonnelPackageManager(commanders_roster)
-
-    # STEP 1: Choose formations (independent of play type)
-    offensive_formation = OffensiveFormation.I_FORMATION  # Formation choice
-    defensive_formation = DefensiveFormation.FOUR_THREE   # Formation choice
+    try:
+        # Demo player data loader
+        demo_player_data_loader()
+        
+        # Demo real rosters (MVP teams)
+        browns_roster = demo_real_roster(TeamIDs.CLEVELAND_BROWNS, "Cleveland Browns")
+        niners_roster = demo_real_roster(TeamIDs.SAN_FRANCISCO_49ERS, "San Francisco 49ers")
+        
+        # Demo synthetic roster (non-MVP team)
+        lions_roster = demo_synthetic_roster(TeamIDs.DETROIT_LIONS, "Detroit Lions")
+        
+        # Compare the different roster types
+        compare_rosters()
+        
+        # Final summary
+        print_separator("Demo Summary")
+        print("✅ Real roster integration successful!")
+        print("✅ Synthetic roster fallback working!")
+        print("✅ Personnel package management compatible!")
+        print("\nMVP Teams (Real Data):")
+        print(f"  • Cleveland Browns (ID: {TeamIDs.CLEVELAND_BROWNS})")
+        print(f"  • San Francisco 49ers (ID: {TeamIDs.SAN_FRANCISCO_49ERS})")
+        print("\nOther Teams:")
+        print("  • Fallback to synthetic roster generation")
+        
+    except Exception as e:
+        print(f"❌ Demo failed with error: {e}")
+        import traceback
+        traceback.print_exc()
     
-    # STEP 2: Get personnel based on formations
-    offensive_players = lions_personnel.get_offensive_personnel(offensive_formation)
-    defensive_players = commanders_personnel.get_defensive_personnel(defensive_formation)
-    
-    print("=== Formation-Based Personnel Selection ===")
-    print(f"Lions Offensive Formation: {offensive_formation}")
-    print(f"Lions Offensive Personnel: {lions_personnel.get_personnel_summary(offensive_players)}")
-    print(f"Commanders Defensive Formation: {defensive_formation}")
-    print(f"Commanders Defensive Personnel: {commanders_personnel.get_personnel_summary(defensive_players)}")
-    print()
-    
-    # STEP 3: Now call plays within those formations using enhanced play calls
-    print("=== Enhanced Play Calls Within Formations ===")
-    print(f"From {offensive_formation}, Lions could call: run plays, play action, etc.")
-    print(f"From {defensive_formation}, Commanders could call: Cover 2, blitz packages, etc.")
-    print()
-
-    # Create enhanced play calls with integrated formations and concepts
-    power_run = OffensivePlayCall(OffensivePlayType.RUN, offensive_formation, concept="power")
-    cover_2_defense = DefensivePlayCall(DefensivePlayType.COVER_2, defensive_formation, coverage="zone")
-    
-    print(f"Offensive Play Call: {power_run}")
-    print(f"Defensive Play Call: {cover_2_defense}")
-
-    # Create play engine parameters with enhanced play calls
-    params = PlayEngineParams(
-        offensive_players=offensive_players,  # 11 Lions offensive players
-        defensive_players=defensive_players,  # 11 Commanders defensive players
-        offensive_play_call=power_run,
-        defensive_play_call=cover_2_defense
-    )
-
-    # Call the play engine
-    result = play_engine.simulate(params)
-    print(f"Enhanced play result: {result}")
-    print()
-    
-    # Demonstrate how different plays can be called from the same formation
-    print("=== Multiple Enhanced Play Calls From Same Formation ===")
-    print("The only one that has been programmed so far.")
-    # Same I-Formation personnel, different enhanced play calls
-    run_call = OffensivePlayCall(OffensivePlayType.RUN, offensive_formation, concept="power")
-    cover_2_call = DefensivePlayCall(DefensivePlayType.COVER_2, defensive_formation, coverage="zone")
-    
-    run_params = PlayEngineParams(
-        offensive_players=offensive_players,  # Same I-Formation players
-        defensive_players=defensive_players,  # Same 4-3 players
-        offensive_play_call=run_call,
-        defensive_play_call=cover_2_call
-    )
-    run_result = play_engine.simulate(run_params)
-    print(f"I-Formation Power Run vs 4-3 Cover 2: {run_result}")
-    
-    # Same personnel, different enhanced play call
-    play_action_call = OffensivePlayCall(OffensivePlayType.PLAY_ACTION_PASS, offensive_formation, concept="deep_ball")
-    blitz_call = DefensivePlayCall(DefensivePlayType.BLITZ, defensive_formation, coverage="man", blitz_package="safety_blitz")
-    
-    play_action_params = PlayEngineParams(
-        offensive_players=offensive_players,  # Same I-Formation players
-        defensive_players=defensive_players,  # Same 4-3 players
-        offensive_play_call=play_action_call,
-        defensive_play_call=blitz_call
-    )
-
-    play_action_result = play_engine.simulate(play_action_params)
-    print(f"I-Formation Play Action vs 4-3 Safety Blitz: {play_action_result}")
-    print()
-    
-    # Show how different formations have different personnel with enhanced play calls
-    print("=== Different Formations = Different Personnel with Enhanced Play Calls ===")
-    
-    # Shotgun formation for passing
-    shotgun_formation = OffensiveFormation.SHOTGUN
-    shotgun_players = lions_personnel.get_offensive_personnel(shotgun_formation)
-    print(f"Shotgun Formation Personnel: {lions_personnel.get_personnel_summary(shotgun_players)}")
-    
-    # Nickel defense for passing situations
-    nickel_formation = DefensiveFormation.NICKEL
-    nickel_players = commanders_personnel.get_defensive_personnel(nickel_formation)
-    print(f"Nickel Defense Personnel: {commanders_personnel.get_personnel_summary(nickel_players)}")
-    
-    # Same personnel can run different enhanced passing plays
-    pass_call = OffensivePlayCall(OffensivePlayType.PASS, shotgun_formation, concept="quick_slants")
-    nickel_defense_call = DefensivePlayCall(DefensivePlayType.NICKEL_DEFENSE, nickel_formation, coverage="man")
-    
-    shotgun_pass_params = PlayEngineParams(
-        offensive_players=shotgun_players,
-        defensive_players=nickel_players,
-        offensive_play_call=pass_call,
-        defensive_play_call=nickel_defense_call
-    )
-    shotgun_pass_result = play_engine.simulate(shotgun_pass_params)
-    print(f"Shotgun Quick Slants vs Nickel Man: {shotgun_pass_result}")
-    
-    # Same personnel, different enhanced play call
-    screen_call = OffensivePlayCall(OffensivePlayType.SCREEN_PASS, shotgun_formation, concept="bubble_screen")
-    
-    shotgun_screen_params = PlayEngineParams(
-        offensive_players=shotgun_players,  # Same shotgun personnel
-        defensive_players=nickel_players,   # Same nickel personnel
-        offensive_play_call=screen_call,
-        defensive_play_call=nickel_defense_call
-    )
-    shotgun_screen_result = play_engine.simulate(shotgun_screen_params)
-    print(f"Shotgun Bubble Screen vs Nickel Man: {shotgun_screen_result}")
-    
-    # Advanced Factory-Created Play Combinations
-    print("\n" + "="*60)
-    print("=== ADVANCED FACTORY-CREATED PLAY COMBINATIONS ===")
-    print("="*60)
-    
-    # Show factory-created play combinations
-    print("\n=== Factory-Created Play Combinations ===")
-    
-    # Quick pass vs blitz using factory methods
-    quick_pass = PlayCallFactory.create_quick_pass(OffensiveFormation.SHOTGUN)
-    safety_blitz = PlayCallFactory.create_blitz("safety_blitz")
-    
-    print(f"Factory-created Quick Pass: {quick_pass}")
-    print(f"Factory-created Safety Blitz: {safety_blitz}")
-    
-    quick_pass_params = PlayEngineParams(
-        offensive_players=shotgun_players,
-        defensive_players=nickel_players,
-        offensive_play_call=quick_pass,
-        defensive_play_call=safety_blitz
-    )
-    
-    quick_pass_result = play_engine.simulate(quick_pass_params)
-    print(f"Quick Pass vs Safety Blitz: {quick_pass_result}")
-    
-    # Situational play calling demonstration
-    print("\n=== Situational Play Calling ===")
-    
-    # 3rd and 8 from own 35 - should favor passing
-    third_down_offense = PlayCallFactory.create_situational_offense(down=3, distance=8, field_position=35)
-    third_down_defense = PlayCallFactory.create_situational_defense(down=3, distance=8, field_position=65)
-    
-    print(f"3rd & 8 from own 35-yard line:")
-    print(f"  Offensive call: {third_down_offense}")
-    print(f"  Defensive call: {third_down_defense}")
-    
-    situational_params = PlayEngineParams(
-        offensive_players=shotgun_players,
-        defensive_players=nickel_players,
-        offensive_play_call=third_down_offense,
-        defensive_play_call=third_down_defense
-    )
-    
-    situational_result = play_engine.simulate(situational_params)
-    print(f"  Result: {situational_result}")
-    
-    # Goal line situation - should favor running
-    print(f"\nGoal line from 2-yard line:")
-    goal_line_offense = PlayCallFactory.create_situational_offense(down=1, distance=2, field_position=98)
-    goal_line_defense = PlayCallFactory.create_situational_defense(down=1, distance=2, field_position=2)
-    
-    print(f"  Offensive call: {goal_line_offense}")
-    print(f"  Defensive call: {goal_line_defense}")
-    
-    print("\n=== System Consistency Check ===")
-    print("All play calls now use the enhanced system with integrated formations!")
-    print("No more backward compatibility complexity - clean, single system approach.")
 
 if __name__ == "__main__":
     main()

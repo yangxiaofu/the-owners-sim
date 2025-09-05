@@ -8,8 +8,8 @@ play calls with realistic combinations of play types, formations, and concepts.
 from typing import Dict, List, Optional
 from .offensive_play_call import OffensivePlayCall
 from .defensive_play_call import DefensivePlayCall
-from offensive_play_type import OffensivePlayType
-from defensive_play_type import DefensivePlayType
+from ..play_types.offensive_types import OffensivePlayType
+from ..play_types.defensive_types import DefensivePlayType
 from formation import OffensiveFormation, DefensiveFormation
 
 

@@ -1,0 +1,426 @@
+{
+  "teams": {
+    "1": {
+      "team_id": 1,
+      "city": "Buffalo",
+      "nickname": "Bills",
+      "full_name": "Buffalo Bills",
+      "abbreviation": "BUF",
+      "conference": "AFC",
+      "division": "East",
+      "colors": {
+        "primary": "#00338D",
+        "secondary": "#C60C30"
+      }
+    },
+    "2": {
+      "team_id": 2,
+      "city": "Miami",
+      "nickname": "Dolphins",
+      "full_name": "Miami Dolphins",
+      "abbreviation": "MIA",
+      "conference": "AFC",
+      "division": "East",
+      "colors": {
+        "primary": "#008E97",
+        "secondary": "#FC4C02"
+      }
+    },
+    "3": {
+      "team_id": 3,
+      "city": "New England",
+      "nickname": "Patriots",
+      "full_name": "New England Patriots",
+      "abbreviation": "NE",
+      "conference": "AFC",
+      "division": "East",
+      "colors": {
+        "primary": "#002244",
+        "secondary": "#C60C30"
+      }
+    },
+    "4": {
+      "team_id": 4,
+      "city": "New York",
+      "nickname": "Jets",
+      "full_name": "New York Jets",
+      "abbreviation": "NYJ",
+      "conference": "AFC",
+      "division": "East",
+      "colors": {
+        "primary": "#125740",
+        "secondary": "#000000"
+      }
+    },
+    "5": {
+      "team_id": 5,
+      "city": "Baltimore",
+      "nickname": "Ravens",
+      "full_name": "Baltimore Ravens",
+      "abbreviation": "BAL",
+      "conference": "AFC",
+      "division": "North",
+      "colors": {
+        "primary": "#241773",
+        "secondary": "#000000"
+      }
+    },
+    "6": {
+      "team_id": 6,
+      "city": "Cincinnati",
+      "nickname": "Bengals",
+      "full_name": "Cincinnati Bengals",
+      "abbreviation": "CIN",
+      "conference": "AFC",
+      "division": "North",
+      "colors": {
+        "primary": "#FB4F14",
+        "secondary": "#000000"
+      }
+    },
+    "7": {
+      "team_id": 7,
+      "city": "Cleveland",
+      "nickname": "Browns",
+      "full_name": "Cleveland Browns",
+      "abbreviation": "CLE",
+      "conference": "AFC",
+      "division": "North",
+      "colors": {
+        "primary": "#311D00",
+        "secondary": "#FF3C00"
+      }
+    },
+    "8": {
+      "team_id": 8,
+      "city": "Pittsburgh",
+      "nickname": "Steelers",
+      "full_name": "Pittsburgh Steelers",
+      "abbreviation": "PIT",
+      "conference": "AFC",
+      "division": "North",
+      "colors": {
+        "primary": "#FFB612",
+        "secondary": "#000000"
+      }
+    },
+    "9": {
+      "team_id": 9,
+      "city": "Houston",
+      "nickname": "Texans",
+      "full_name": "Houston Texans",
+      "abbreviation": "HOU",
+      "conference": "AFC",
+      "division": "South",
+      "colors": {
+        "primary": "#03202F",
+        "secondary": "#A71930"
+      }
+    },
+    "10": {
+      "team_id": 10,
+      "city": "Indianapolis",
+      "nickname": "Colts",
+      "full_name": "Indianapolis Colts",
+      "abbreviation": "IND",
+      "conference": "AFC",
+      "division": "South",
+      "colors": {
+        "primary": "#002C5F",
+        "secondary": "#A2AAAD"
+      }
+    },
+    "11": {
+      "team_id": 11,
+      "city": "Jacksonville",
+      "nickname": "Jaguars",
+      "full_name": "Jacksonville Jaguars",
+      "abbreviation": "JAX",
+      "conference": "AFC",
+      "division": "South",
+      "colors": {
+        "primary": "#006778",
+        "secondary": "#9F792C"
+      }
+    },
+    "12": {
+      "team_id": 12,
+      "city": "Tennessee",
+      "nickname": "Titans",
+      "full_name": "Tennessee Titans",
+      "abbreviation": "TEN",
+      "conference": "AFC",
+      "division": "South",
+      "colors": {
+        "primary": "#0C2340",
+        "secondary": "#4B92DB"
+      }
+    },
+    "13": {
+      "team_id": 13,
+      "city": "Denver",
+      "nickname": "Broncos",
+      "full_name": "Denver Broncos",
+      "abbreviation": "DEN",
+      "conference": "AFC",
+      "division": "West",
+      "colors": {
+        "primary": "#FB4F14",
+        "secondary": "#002244"
+      }
+    },
+    "14": {
+      "team_id": 14,
+      "city": "Kansas City",
+      "nickname": "Chiefs",
+      "full_name": "Kansas City Chiefs",
+      "abbreviation": "KC",
+      "conference": "AFC",
+      "division": "West",
+      "colors": {
+        "primary": "#E31837",
+        "secondary": "#FFB81C"
+      }
+    },
+    "15": {
+      "team_id": 15,
+      "city": "Las Vegas",
+      "nickname": "Raiders",
+      "full_name": "Las Vegas Raiders",
+      "abbreviation": "LV",
+      "conference": "AFC",
+      "division": "West",
+      "colors": {
+        "primary": "#000000",
+        "secondary": "#A5ACAF"
+      }
+    },
+    "16": {
+      "team_id": 16,
+      "city": "Los Angeles",
+      "nickname": "Chargers",
+      "full_name": "Los Angeles Chargers",
+      "abbreviation": "LAC",
+      "conference": "AFC",
+      "division": "West",
+      "colors": {
+        "primary": "#0080C6",
+        "secondary": "#FFC20E"
+      }
+    },
+    "17": {
+      "team_id": 17,
+      "city": "Dallas",
+      "nickname": "Cowboys",
+      "full_name": "Dallas Cowboys",
+      "abbreviation": "DAL",
+      "conference": "NFC",
+      "division": "East",
+      "colors": {
+        "primary": "#003594",
+        "secondary": "#041E42"
+      }
+    },
+    "18": {
+      "team_id": 18,
+      "city": "New York",
+      "nickname": "Giants",
+      "full_name": "New York Giants",
+      "abbreviation": "NYG",
+      "conference": "NFC",
+      "division": "East",
+      "colors": {
+        "primary": "#0B2265",
+        "secondary": "#A71930"
+      }
+    },
+    "19": {
+      "team_id": 19,
+      "city": "Philadelphia",
+      "nickname": "Eagles",
+      "full_name": "Philadelphia Eagles",
+      "abbreviation": "PHI",
+      "conference": "NFC",
+      "division": "East",
+      "colors": {
+        "primary": "#004C54",
+        "secondary": "#A5ACAF"
+      }
+    },
+    "20": {
+      "team_id": 20,
+      "city": "Washington",
+      "nickname": "Commanders",
+      "full_name": "Washington Commanders",
+      "abbreviation": "WAS",
+      "conference": "NFC",
+      "division": "East",
+      "colors": {
+        "primary": "#5A1414",
+        "secondary": "#FFB612"
+      }
+    },
+    "21": {
+      "team_id": 21,
+      "city": "Chicago",
+      "nickname": "Bears",
+      "full_name": "Chicago Bears",
+      "abbreviation": "CHI",
+      "conference": "NFC",
+      "division": "North",
+      "colors": {
+        "primary": "#0B162A",
+        "secondary": "#C83803"
+      }
+    },
+    "22": {
+      "team_id": 22,
+      "city": "Detroit",
+      "nickname": "Lions",
+      "full_name": "Detroit Lions",
+      "abbreviation": "DET",
+      "conference": "NFC",
+      "division": "North",
+      "colors": {
+        "primary": "#0076B6",
+        "secondary": "#B0B7BC"
+      }
+    },
+    "23": {
+      "team_id": 23,
+      "city": "Green Bay",
+      "nickname": "Packers",
+      "full_name": "Green Bay Packers",
+      "abbreviation": "GB",
+      "conference": "NFC",
+      "division": "North",
+      "colors": {
+        "primary": "#203731",
+        "secondary": "#FFB612"
+      }
+    },
+    "24": {
+      "team_id": 24,
+      "city": "Minnesota",
+      "nickname": "Vikings",
+      "full_name": "Minnesota Vikings",
+      "abbreviation": "MIN",
+      "conference": "NFC",
+      "division": "North",
+      "colors": {
+        "primary": "#4F2683",
+        "secondary": "#FFC62F"
+      }
+    },
+    "25": {
+      "team_id": 25,
+      "city": "Atlanta",
+      "nickname": "Falcons",
+      "full_name": "Atlanta Falcons",
+      "abbreviation": "ATL",
+      "conference": "NFC",
+      "division": "South",
+      "colors": {
+        "primary": "#A71930",
+        "secondary": "#000000"
+      }
+    },
+    "26": {
+      "team_id": 26,
+      "city": "Carolina",
+      "nickname": "Panthers",
+      "full_name": "Carolina Panthers",
+      "abbreviation": "CAR",
+      "conference": "NFC",
+      "division": "South",
+      "colors": {
+        "primary": "#0085CA",
+        "secondary": "#000000"
+      }
+    },
+    "27": {
+      "team_id": 27,
+      "city": "New Orleans",
+      "nickname": "Saints",
+      "full_name": "New Orleans Saints",
+      "abbreviation": "NO",
+      "conference": "NFC",
+      "division": "South",
+      "colors": {
+        "primary": "#D3BC8D",
+        "secondary": "#000000"
+      }
+    },
+    "28": {
+      "team_id": 28,
+      "city": "Tampa Bay",
+      "nickname": "Buccaneers",
+      "full_name": "Tampa Bay Buccaneers",
+      "abbreviation": "TB",
+      "conference": "NFC",
+      "division": "South",
+      "colors": {
+        "primary": "#D50A0A",
+        "secondary": "#FF7900"
+      }
+    },
+    "29": {
+      "team_id": 29,
+      "city": "Arizona",
+      "nickname": "Cardinals",
+      "full_name": "Arizona Cardinals",
+      "abbreviation": "ARI",
+      "conference": "NFC",
+      "division": "West",
+      "colors": {
+        "primary": "#97233F",
+        "secondary": "#000000"
+      }
+    },
+    "30": {
+      "team_id": 30,
+      "city": "Los Angeles",
+      "nickname": "Rams",
+      "full_name": "Los Angeles Rams",
+      "abbreviation": "LAR",
+      "conference": "NFC",
+      "division": "West",
+      "colors": {
+        "primary": "#003594",
+        "secondary": "#FFA300"
+      }
+    },
+    "31": {
+      "team_id": 31,
+      "city": "San Francisco",
+      "nickname": "49ers",
+      "full_name": "San Francisco 49ers",
+      "abbreviation": "SF",
+      "conference": "NFC",
+      "division": "West",
+      "colors": {
+        "primary": "#AA0000",
+        "secondary": "#B3995D"
+      }
+    },
+    "32": {
+      "team_id": 32,
+      "city": "Seattle",
+      "nickname": "Seahawks",
+      "full_name": "Seattle Seahawks",
+      "abbreviation": "SEA",
+      "conference": "NFC",
+      "division": "West",
+      "colors": {
+        "primary": "#002244",
+        "secondary": "#69BE28"
+      }
+    }
+  },
+  "metadata": {
+    "version": "1.0",
+    "last_updated": "2025-01-02",
+    "total_teams": 32,
+    "description": "Complete NFL team data with numerical team IDs, city, nickname, and organizational information"
+  }
+}

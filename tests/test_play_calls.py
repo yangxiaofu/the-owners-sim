@@ -13,10 +13,10 @@ import os
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from play_calls.offensive_play_call import OffensivePlayCall
-from play_calls.defensive_play_call import DefensivePlayCall
-from offensive_play_type import OffensivePlayType
-from defensive_play_type import DefensivePlayType
+from play_engine.play_calls.offensive_play_call import OffensivePlayCall
+from play_engine.play_calls.defensive_play_call import DefensivePlayCall
+from play_engine.play_types.offensive_types import OffensivePlayType
+from play_engine.play_types.defensive_types import DefensivePlayType
 from formation import OffensiveFormation, DefensiveFormation
 
 

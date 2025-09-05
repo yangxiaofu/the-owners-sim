@@ -27,7 +27,7 @@ class OffensiveFormation:
     @classmethod
     def get_personnel_requirements(cls, formation):
         """Get the required personnel for a specific formation"""
-        from player import Position
+        from team_management.players.player import Position
         
         requirements = {
             cls.I_FORMATION: {
@@ -100,7 +100,7 @@ class DefensiveFormation:
     @classmethod
     def get_personnel_requirements(cls, formation):
         """Get the required personnel for a specific defensive formation"""
-        from player import Position
+        from team_management.players.player import Position
         
         requirements = {
             cls.FOUR_THREE: {
@@ -152,7 +152,7 @@ class FormationMapper:
     @classmethod
     def get_offensive_formation_for_play(cls, play_type):
         """Get the most appropriate offensive formation for a play type"""
-        from offensive_play_type import OffensivePlayType
+        from ..play_types.offensive_types import OffensivePlayType
         
         formation_map = {
             OffensivePlayType.RUN: OffensiveFormation.I_FORMATION,
@@ -174,7 +174,7 @@ class FormationMapper:
     @classmethod
     def get_defensive_formation_for_play(cls, play_type):
         """Get the most appropriate defensive formation for a play type"""
-        from defensive_play_type import DefensivePlayType
+        from ..play_types.defensive_types import DefensivePlayType
         
         formation_map = {
             DefensivePlayType.COVER_0: DefensiveFormation.BLITZ_PACKAGE,

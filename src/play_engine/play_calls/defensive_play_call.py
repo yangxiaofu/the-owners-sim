@@ -6,7 +6,7 @@ and optional coverage/blitz packages for realistic football defensive coordinati
 """
 
 from typing import Optional, Dict, Any, List
-from defensive_play_type import DefensivePlayType
+from ..play_types.defensive_types import DefensivePlayType
 from formation import DefensiveFormation
 
 
