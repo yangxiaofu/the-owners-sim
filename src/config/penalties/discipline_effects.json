@@ -1,0 +1,89 @@
+{
+  "description": "How player discipline attributes affect penalty rates",
+  "version": "1.0",
+  "discipline_modifiers": {
+    "high_discipline": {
+      "threshold": 85,
+      "modifier": 0.5,
+      "description": "Elite discipline - very few penalties"
+    },
+    "good_discipline": {
+      "threshold": 70,
+      "modifier": 0.7,
+      "description": "Good discipline - below average penalties"
+    },
+    "average_discipline": {
+      "threshold": 50,
+      "modifier": 1.0,
+      "description": "Average discipline - normal penalty rates"
+    },
+    "poor_discipline": {
+      "threshold": 30,
+      "modifier": 1.4,
+      "description": "Poor discipline - above average penalties"
+    },
+    "very_poor_discipline": {
+      "threshold": 0,
+      "modifier": 1.8,
+      "description": "Very poor discipline - high penalty rates"
+    }
+  },
+  "attribute_weights": {
+    "description": "How different penalty attributes affect different penalty types",
+    "discipline": {
+      "weight": 0.4,
+      "affects": ["all_penalties"],
+      "description": "Overall penalty frequency - affects all penalty types"
+    },
+    "composure": {
+      "weight": 0.6,
+      "affects": ["unsportsmanlike_conduct", "unnecessary_roughness", "face_mask"],
+      "description": "Emotional control - mainly affects post-play and aggressive penalties"
+    },
+    "experience": {
+      "weight": 0.5,
+      "affects": ["false_start", "delay_of_game", "illegal_formation", "encroachment", "offsides"],
+      "description": "Game knowledge - affects mental error and pre-snap penalties"
+    },
+    "penalty_technique": {
+      "weight": 0.7,
+      "affects": ["offensive_holding", "illegal_contact"],
+      "description": "Technical execution - affects technique-based penalties"
+    }
+  },
+  "position_penalty_tendencies": {
+    "description": "Some positions are more prone to certain penalty types",
+    "offensive_line": {
+      "positions": ["left_tackle", "left_guard", "center", "right_guard", "right_tackle"],
+      "increased_penalties": {
+        "offensive_holding": 1.5,
+        "false_start": 1.3,
+        "illegal_formation": 1.2
+      }
+    },
+    "defensive_line": {
+      "positions": ["defensive_end", "defensive_tackle", "nose_tackle"],
+      "increased_penalties": {
+        "encroachment": 1.4,
+        "offsides": 1.3,
+        "unnecessary_roughness": 1.2
+      }
+    },
+    "linebackers": {
+      "positions": ["mike_linebacker", "sam_linebacker", "will_linebacker", "inside_linebacker", "outside_linebacker"],
+      "increased_penalties": {
+        "face_mask": 1.3,
+        "unnecessary_roughness": 1.2,
+        "illegal_contact": 1.1
+      }
+    },
+    "secondary": {
+      "positions": ["cornerback", "nickel_cornerback", "free_safety", "strong_safety"],
+      "increased_penalties": {
+        "illegal_contact": 1.4,
+        "face_mask": 1.1,
+        "unsportsmanlike_conduct": 1.0
+      }
+    }
+  }
+}

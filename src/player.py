@@ -82,6 +82,12 @@ class Player:
             "agility": 75,
             "awareness": 75,
             
+            # Penalty-related attributes (all positions)
+            "discipline": 75,      # 0-100: Higher = fewer penalties overall
+            "composure": 75,       # 0-100: Higher = fewer emotional/post-play penalties
+            "experience": 75,      # 0-100: Higher = fewer mental error penalties
+            "penalty_technique": 75, # 0-100: Higher = fewer technique-based penalties (separate from position technique)
+            
             # Position-specific ratings
             Position.QB: {"accuracy": 75, "arm_strength": 75, "mobility": 75},
             Position.RB: {"carrying": 75, "vision": 75, "elusiveness": 75},
@@ -122,7 +128,9 @@ class Player:
                     self.ratings[rating] = value
         
         # Apply general defaults
-        for rating in ["overall", "speed", "strength", "agility", "awareness"]:
+        general_ratings = ["overall", "speed", "strength", "agility", "awareness", 
+                          "discipline", "composure", "experience", "penalty_technique"]
+        for rating in general_ratings:
             if rating not in self.ratings:
                 self.ratings[rating] = 75
     
@@ -143,6 +151,47 @@ class Player:
         else:
             # Reduced effectiveness at non-primary positions
             return max(30, self.get_rating("overall") - 25)
+    
+    def get_penalty_modifier(self):
+        """
+        Calculate overall penalty modifier for this player (0.0 to 2.0)
+        Lower values = fewer penalties, higher values = more penalties
+        """
+        # Average the penalty-related attributes
+        discipline = self.get_rating("discipline")
+        composure = self.get_rating("composure") 
+        experience = self.get_rating("experience")
+        technique = self.get_rating("penalty_technique")
+        
+        # Calculate average (higher ratings = better discipline = fewer penalties)
+        avg_rating = (discipline + composure + experience + technique) / 4
+        
+        # Convert to penalty modifier (inverted - high rating = low penalty chance)
+        # 90+ rating = 0.5x penalties, 50 rating = 1.0x penalties, 20- rating = 1.8x penalties
+        if avg_rating >= 85:
+            return 0.5
+        elif avg_rating >= 70:
+            return 0.7
+        elif avg_rating >= 50:
+            return 1.0
+        elif avg_rating >= 30:
+            return 1.4
+        else:
+            return 1.8
+    
+    def is_penalty_prone(self):
+        """Check if this player is penalty-prone (discipline issues)"""
+        return self.get_rating("discipline") < 50 or self.get_rating("composure") < 50
+    
+    def get_discipline_category(self):
+        """Get discipline category for this player"""
+        discipline = self.get_rating("discipline")
+        if discipline >= 85:
+            return "high_discipline"
+        elif discipline >= 50:
+            return "average_discipline" 
+        else:
+            return "low_discipline"
     
     def __str__(self):
         return f"#{self.number} {self.name} ({self.primary_position}) - {self.get_rating('overall')} OVR"

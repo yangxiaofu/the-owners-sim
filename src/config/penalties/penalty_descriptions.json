@@ -1,0 +1,121 @@
+{
+  "description": "Detailed descriptions and contexts for penalty attribution",
+  "version": "1.0",
+  "penalty_contexts": {
+    "offensive_holding": {
+      "contexts": [
+        "Holding while blocking for inside run",
+        "Holding while blocking for outside run", 
+        "Holding during pass protection",
+        "Holding on screen pass block",
+        "Holding during goal line run",
+        "Holding on pulling guard assignment"
+      ],
+      "typical_positions": ["left_tackle", "left_guard", "center", "right_guard", "right_tackle", "tight_end"],
+      "attribution_logic": "Select offensive lineman involved in play direction or pass protection"
+    },
+    "false_start": {
+      "contexts": [
+        "Early movement before snap on silent count",
+        "Flinch on hard count",
+        "Early movement on goal line play",
+        "Premature start on critical third down",
+        "Movement during audible call",
+        "Anticipating snap count incorrectly"
+      ],
+      "typical_positions": ["left_tackle", "left_guard", "center", "right_guard", "right_tackle", "wide_receiver", "tight_end"],
+      "attribution_logic": "Random selection weighted by position and discipline rating"
+    },
+    "face_mask": {
+      "contexts": [
+        "Grabbing face mask during tackle attempt",
+        "Face mask contact while tackling runner",
+        "Incidental face mask during goal line tackle",
+        "Face mask grab during scramble tackle",
+        "Face mask contact on sideline tackle"
+      ],
+      "typical_positions": ["mike_linebacker", "sam_linebacker", "will_linebacker", "strong_safety", "free_safety", "cornerback"],
+      "attribution_logic": "Select from players involved in tackle, weighted by composure"
+    },
+    "unnecessary_roughness": {
+      "contexts": [
+        "Late hit after runner went out of bounds",
+        "Excessive force during tackle",
+        "Hit on player already on ground",
+        "Unnecessary contact after whistle",
+        "Driving runner into ground"
+      ],
+      "typical_positions": ["defensive_end", "defensive_tackle", "mike_linebacker", "sam_linebacker", "strong_safety"],
+      "attribution_logic": "Select aggressive defender with lower composure rating"
+    },
+    "unsportsmanlike_conduct": {
+      "contexts": [
+        "Excessive celebration after big play",
+        "Taunting opponent during play",
+        "Arguing with referee after call",
+        "Throwing ball at opponent",
+        "Inappropriate gesture to crowd",
+        "Trash talking after tackle"
+      ],
+      "typical_positions": ["any"],
+      "attribution_logic": "Any player can commit, weighted by composure and game situation"
+    },
+    "encroachment": {
+      "contexts": [
+        "Crossing line of scrimmage before snap",
+        "Touching offensive player before snap",
+        "Moving into neutral zone early",
+        "Anticipating snap count on goal line"
+      ],
+      "typical_positions": ["defensive_end", "defensive_tackle", "nose_tackle", "outside_linebacker"],
+      "attribution_logic": "Select defensive lineman with lower discipline/experience"
+    },
+    "delay_of_game": {
+      "contexts": [
+        "Play clock expired during audible",
+        "Slow to line up after timeout",
+        "Confusion with play call",
+        "Communication breakdown at line",
+        "Time management error"
+      ],
+      "typical_positions": ["quarterback"],
+      "attribution_logic": "Always attributed to QB (team penalty)"
+    },
+    "illegal_formation": {
+      "contexts": [
+        "Not enough players on line of scrimmage",
+        "Ineligible receiver downfield",
+        "Too many players in backfield",
+        "Improper numbering on line"
+      ],
+      "typical_positions": ["quarterback", "center"],
+      "attribution_logic": "Usually QB for formation call, sometimes center for line setup"
+    },
+    "illegal_contact": {
+      "contexts": [
+        "Contact with receiver beyond 5 yards",
+        "Impeding receiver's route",
+        "Illegal jam at line of scrimmage",
+        "Contact after receiver released"
+      ],
+      "typical_positions": ["cornerback", "nickel_cornerback", "strong_safety", "mike_linebacker"],
+      "attribution_logic": "Select defender covering receiver, based on technique rating"
+    },
+    "offsides": {
+      "contexts": [
+        "Lined up in neutral zone",
+        "Early jump on snap count",
+        "Improper alignment at line",
+        "Movement across line before snap"
+      ],
+      "typical_positions": ["defensive_end", "defensive_tackle", "outside_linebacker", "mike_linebacker"],
+      "attribution_logic": "Random defensive player at line of scrimmage, weighted by experience"
+    }
+  },
+  "generic_descriptions": {
+    "pre_snap": "Penalty occurred before the ball was snapped",
+    "during_play": "Penalty occurred during live play action",
+    "post_play": "Penalty occurred after the play was over",
+    "dead_ball": "Penalty occurred during dead ball period"
+  }
+}

@@ -1,0 +1,126 @@
+{
+  "description": "How game situations affect penalty rates",
+  "version": "1.0",
+  "field_position_modifiers": {
+    "red_zone": {
+      "field_position_range": [80, 100],
+      "modifiers": {
+        "offensive_holding": 1.3,
+        "false_start": 1.5,
+        "delay_of_game": 1.2,
+        "unsportsmanlike_conduct": 1.4,
+        "unnecessary_roughness": 1.3
+      },
+      "description": "Red zone (opponent's 20-yard line or closer) - higher penalty rates due to pressure"
+    },
+    "goal_line": {
+      "field_position_range": [95, 100],
+      "modifiers": {
+        "false_start": 1.8,
+        "offensive_holding": 1.6,
+        "unnecessary_roughness": 1.5,
+        "unsportsmanlike_conduct": 1.6
+      },
+      "description": "Goal line (5-yard line or closer) - very high penalty rates"
+    },
+    "own_end_zone": {
+      "field_position_range": [0, 10],
+      "modifiers": {
+        "false_start": 1.4,
+        "delay_of_game": 1.3,
+        "offensive_holding": 1.2
+      },
+      "description": "Own end zone area - increased offensive penalties due to pressure"
+    }
+  },
+  "down_and_distance_modifiers": {
+    "third_down_long": {
+      "conditions": {"down": 3, "distance_min": 8},
+      "modifiers": {
+        "false_start": 1.3,
+        "delay_of_game": 1.4,
+        "offensive_holding": 1.2,
+        "illegal_contact": 1.3
+      },
+      "description": "3rd and long - pressure situations increase penalties"
+    },
+    "fourth_down": {
+      "conditions": {"down": 4},
+      "modifiers": {
+        "false_start": 0.7,
+        "delay_of_game": 0.8,
+        "offensive_holding": 0.9,
+        "encroachment": 0.8,
+        "unsportsmanlike_conduct": 1.2
+      },
+      "description": "4th down - teams more careful but emotions run higher"
+    },
+    "short_yardage": {
+      "conditions": {"distance_max": 2},
+      "modifiers": {
+        "offensive_holding": 1.4,
+        "unnecessary_roughness": 1.3,
+        "face_mask": 1.2
+      },
+      "description": "Short yardage situations - more physical play"
+    },
+    "first_and_goal": {
+      "conditions": {"down": 1, "field_position_min": 90},
+      "modifiers": {
+        "false_start": 1.6,
+        "offensive_holding": 1.4,
+        "unsportsmanlike_conduct": 1.3,
+        "unnecessary_roughness": 1.2
+      },
+      "description": "First and goal - high-pressure scoring situation"
+    }
+  },
+  "game_situation_modifiers": {
+    "two_minute_warning": {
+      "modifiers": {
+        "delay_of_game": 0.6,
+        "false_start": 1.2,
+        "unsportsmanlike_conduct": 1.4,
+        "unnecessary_roughness": 1.3
+      },
+      "description": "Two-minute warning scenarios - less delay but more emotion"
+    },
+    "overtime": {
+      "modifiers": {
+        "false_start": 1.1,
+        "unsportsmanlike_conduct": 1.3,
+        "unnecessary_roughness": 1.2,
+        "face_mask": 1.1
+      },
+      "description": "Overtime - slightly increased penalty rates due to pressure"
+    },
+    "blowout_game": {
+      "score_differential_min": 21,
+      "modifiers": {
+        "unsportsmanlike_conduct": 1.5,
+        "unnecessary_roughness": 1.4,
+        "false_start": 0.8,
+        "offensive_holding": 0.9
+      },
+      "description": "Blowout games - more emotional penalties, fewer technical ones"
+    }
+  },
+  "weather_modifiers": {
+    "description": "Weather conditions that affect penalty rates (future expansion)",
+    "enabled": false,
+    "conditions": {
+      "heavy_rain": {
+        "modifiers": {
+          "false_start": 1.2,
+          "offensive_holding": 1.1
+        }
+      },
+      "strong_wind": {
+        "modifiers": {
+          "delay_of_game": 1.3,
+          "false_start": 1.1
+        }
+      }
+    }
+  }
+}

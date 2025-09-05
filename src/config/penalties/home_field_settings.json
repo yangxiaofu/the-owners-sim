@@ -1,0 +1,86 @@
+{
+  "description": "Home field advantage effects on penalty rates",
+  "version": "1.0",
+  "home_field_advantage": {
+    "enabled": true,
+    "overall_modifier": 0.85,
+    "description": "Home teams receive 15% fewer penalties overall"
+  },
+  "penalty_specific_modifiers": {
+    "home_team_reductions": {
+      "false_start": 0.75,
+      "delay_of_game": 0.80,
+      "encroachment": 0.90,
+      "offsides": 0.90,
+      "unsportsmanlike_conduct": 0.85
+    },
+    "away_team_increases": {
+      "false_start": 1.25,
+      "delay_of_game": 1.20,
+      "encroachment": 1.10,
+      "offsides": 1.10
+    },
+    "description": "Some penalties are more affected by crowd noise and pressure"
+  },
+  "stadium_effects": {
+    "description": "Different stadiums can have varying home field advantages (future expansion)",
+    "enabled": false,
+    "stadium_types": {
+      "loud_dome": {
+        "false_start_modifier": 1.3,
+        "delay_of_game_modifier": 1.2,
+        "description": "Domed stadiums with loud crowds"
+      },
+      "outdoor_cold": {
+        "false_start_modifier": 1.1,
+        "offensive_holding_modifier": 1.05,
+        "description": "Cold weather outdoor stadiums"
+      },
+      "neutral_site": {
+        "home_field_advantage": 1.0,
+        "description": "Neutral site games have no home field advantage"
+      }
+    }
+  },
+  "crowd_noise_effects": {
+    "description": "How crowd noise affects different penalty types",
+    "noise_level_modifiers": {
+      "quiet_crowd": {
+        "modifier": 1.0,
+        "description": "Normal penalty rates"
+      },
+      "loud_crowd": {
+        "modifier": 0.9,
+        "affected_penalties": ["false_start", "delay_of_game", "encroachment"],
+        "description": "Loud crowd reduces home team pre-snap penalties"
+      },
+      "deafening_crowd": {
+        "modifier": 0.8,
+        "affected_penalties": ["false_start", "delay_of_game", "encroachment", "offsides"],
+        "description": "Extremely loud crowd significantly reduces home team communication penalties"
+      }
+    }
+  },
+  "referee_bias": {
+    "description": "Subtle referee bias toward home teams (very small effect)",
+    "enabled": true,
+    "bias_modifier": 0.95,
+    "affected_penalties": ["offensive_holding", "illegal_contact", "face_mask"],
+    "description": "Slight reduction in subjective penalties for home team"
+  },
+  "prime_time_effects": {
+    "description": "Prime time games may have different penalty dynamics",
+    "enabled": false,
+    "modifiers": {
+      "monday_night": {
+        "unsportsmanlike_conduct": 1.1,
+        "unnecessary_roughness": 1.05,
+        "description": "Slightly more emotional penalties in prime time"
+      },
+      "playoff_games": {
+        "overall_modifier": 0.9,
+        "description": "Fewer overall penalties in playoff games"
+      }
+    }
+  }
+}

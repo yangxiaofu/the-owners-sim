@@ -4,6 +4,8 @@ from play_result import PlayResult
 from play_engine_params import PlayEngineParams
 from offensive_play_type import OffensivePlayType
 from defensive_play_type import DefensivePlayType
+from plays.run_play import RunPlaySimulator
+from formation import OffensiveFormation, DefensiveFormation
 
 def simulate(play_engine_params):
     """
@@ -15,39 +17,38 @@ def simulate(play_engine_params):
     Returns:
         PlayResult: Result of the simulated play whether it's a run, pass, kickoff, punt, field goal.
     """
-
     
-
-    """
-    Steps
-    1. Simulate PLay 
-        Chooses between run, pass, punt, and kickoff
-        The success of the play depends on the strength of the offense and the strength of the defense. 
-        Then there's an output based the simulation. the
-            The playresult will be yards gained, is_turnover_, is_score, time_elapsed, is_kick_off
-        
-    2. 
+    # Get play call objects and extract information
+    offensive_play_call = play_engine_params.get_offensive_play_call()
+    defensive_play_call = play_engine_params.get_defensive_play_call()
     
-    """
-    
-    # Get the offensive play call params
-    offensive_play_params = play_engine_params.get_offensive_play()
-    offensive_play_type = offensive_play_params.get_play_type()
+    offensive_play_type = offensive_play_call.get_play_type()
+    offensive_formation = offensive_play_call.get_formation()
+    defensive_formation = defensive_play_call.get_formation()
     
     # Determine play type and simulate accordingly
     if offensive_play_type == OffensivePlayType.RUN:
-        # Run play simulation
+        # Use new RunPlaySimulator for comprehensive run play simulation
+        offensive_players = play_engine_params.get_offensive_players()
+        defensive_players = play_engine_params.get_defensive_players()
+        
+        # Create and run simulator with formations from play calls
+        simulator = RunPlaySimulator(
+            offensive_players=offensive_players,
+            defensive_players=defensive_players,
+            offensive_formation=offensive_formation,
+            defensive_formation=defensive_formation
+        )
+        
+        # Get comprehensive simulation results
+        play_summary = simulator.simulate_run_play()
+        
+        # Convert to backward-compatible PlayResult
+        # TODO: In future, could return enhanced result with player stats
+        return PlayResult(outcome=OffensivePlayType.RUN, yards=play_summary.yards_gained)
 
-        """
-        In this section, I want to understand how to simulate an offensive and defensive strategy against each other.
-        The result needs to be  the output of how the two types of offensives including the player stack up against each other.  
-        """
 
 
-
-
-        return PlayResult(outcome=OffensivePlayType.RUN, yards=3)
-    
     elif offensive_play_type == OffensivePlayType.PASS:
         # Pass play simulation  
         return PlayResult(outcome=OffensivePlayType.PASS, yards=8)
