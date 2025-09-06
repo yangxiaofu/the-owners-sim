@@ -28,6 +28,9 @@ python tests/test_punt_system.py
 python tests/test_game_state_manager.py
 python tests/test_field_tracker.py
 python tests/test_down_tracker.py
+python tests/test_drive_manager.py
+python tests/test_scoreboard.py
+python tests/test_scoring_mapper.py
 
 # Quick validation test
 python quick_test.py
@@ -47,21 +50,33 @@ python demo/run_play_demo.py
 # Pass play simulation demo
 python demo/pass_play_demo.py
 
+# Ten play comprehensive demo
+python ten_play_demo.py
+
 # Field position tracking demo
 python field_position_demo.py
 
 # Game state management demo  
 python game_state_demo.py
+
+# Simple possession demo
+python simple_possession_demo.py
+
+# Scoreboard system demo
+python scoreboard_demo.py
 ```
 
 ### Development Setup
 ```bash
-# Activate virtual environment
+# Activate virtual environment (required for Python 3.13.5)
 source .venv/bin/activate  # macOS/Linux
 # .venv\Scripts\activate   # Windows
 
 # Install Node.js dependencies (for SQLite3 bindings)
 npm install
+
+# Install Python dependencies (if needed)
+pip install pytest
 ```
 
 ## Architecture Overview
@@ -79,7 +94,13 @@ The simulation follows a layered architecture with clear separation of concerns:
 - Strategy pattern implementation for different play types
 - `offensive_types.py`: RUN, PASS, FIELD_GOAL, PUNT, KICKOFF, TWO_POINT_CONVERSION
 - `defensive_types.py`: Defensive play type constants
+- `punt_types.py`: Specialized punt play variations
 - Supports 6 core play types with consolidated PASS handling (includes PLAY_ACTION_PASS and SCREEN_PASS)
+
+**2a. Play Call System (`src/play_engine/play_calls/`)**
+- `play_call_factory.py`: Factory pattern for creating structured play calls
+- `offensive_play_call.py`: Offensive play call encapsulation with formations and concepts
+- `defensive_play_call.py`: Defensive play call structure and logic
 
 **3. Play Mechanics (`src/play_engine/mechanics/`)**
 - `formations.py`: Formation system with personnel packages
@@ -103,6 +124,16 @@ The simulation follows a layered architecture with clear separation of concerns:
 - `game_state_manager.py`: Unified field position and down situation tracking
 - `field_position.py`: Field tracking with scoring detection
 - `down_situation.py`: Down and distance progression
+- `drive_manager.py`: Drive lifecycle management and drive ending decisions
+
+**7. Game Management (`src/game_management/`)**
+- `scoreboard.py`: Game scoreboard management with quarter/game progression
+- `scoring_mapper.py`: Maps play results to scoring events and point attribution
+
+**8. Core Utilities (root level)**
+- `src/playcall.py`: High-level play calling interface
+- `src/play_call_params.py`: Parameter structures for play calls
+- `src/constants/team_ids.py`: Team ID constants and utilities
 
 ### Key Design Patterns
 
@@ -156,6 +187,17 @@ The project uses multiple testing approaches:
 2. **Interactive Testing** (`test_play_execution.py`): Menu-driven play-by-play testing
 3. **Validation Scripts** (`quick_test.py`, `simple_penalty_validation.py`): Automated validation
 4. **Demo Scripts**: Full system demonstrations with realistic scenarios
+
+## Documentation
+
+Comprehensive documentation is available in `docs/`:
+
+- **Architecture**: `docs/architecture/play_engine.md` - Core system architecture documentation
+- **System Summaries**: 
+  - `docs/PENALTY_SYSTEM_SUMMARY.md` - Penalty system overview
+  - `docs/TEAM_SYSTEM_SUMMARY.md` - Team management system details
+  - `docs/TEST_GUIDE.md` - Testing guidelines and approaches
+- **Planning Documents**: `docs/plans/` - Architecture plans and data flow analysis
 
 ## Key Implementation Details
 

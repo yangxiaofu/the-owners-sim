@@ -50,9 +50,8 @@ def simulate(play_engine_params):
             # Get comprehensive simulation results
             play_summary = simulator.simulate_run_play()
             
-            # Convert to backward-compatible PlayResult
-            # TODO: In future, could return enhanced result with player stats
-            return PlayResult(outcome=OffensivePlayType.RUN, yards=play_summary.yards_gained)
+            # Convert to backward-compatible PlayResult with player stats
+            return PlayResult(outcome=OffensivePlayType.RUN, yards=play_summary.yards_gained, time_elapsed=play_summary.time_elapsed, player_stats_summary=play_summary)
 
         case OffensivePlayType.PASS:
             # Use comprehensive PassPlaySimulator for realistic pass play simulation
@@ -70,9 +69,8 @@ def simulate(play_engine_params):
             # Get comprehensive simulation results
             play_summary = simulator.simulate_pass_play()
             
-            # Convert to backward-compatible PlayResult
-            # TODO: In future, could return enhanced result with comprehensive pass stats
-            return PlayResult(outcome=OffensivePlayType.PASS, yards=play_summary.yards_gained)
+            # Convert to backward-compatible PlayResult with player stats
+            return PlayResult(outcome=OffensivePlayType.PASS, yards=play_summary.yards_gained, time_elapsed=play_summary.time_elapsed, player_stats_summary=play_summary)
         
         case OffensivePlayType.FIELD_GOAL:
             # Use comprehensive FieldGoalSimulator for realistic field goal and fake attempts
@@ -102,7 +100,9 @@ def simulate(play_engine_params):
             return PlayResult(
                 outcome=outcome,
                 yards=fg_result.yards_gained,
-                points=fg_result.points_scored
+                points=fg_result.points_scored,
+                time_elapsed=fg_result.time_elapsed,
+                player_stats_summary=fg_result
             )
         
         case OffensivePlayType.PUNT:
@@ -137,10 +137,12 @@ def simulate(play_engine_params):
             # Get comprehensive simulation results
             punt_result = simulator.simulate_punt_play(punt_params)
             
-            # Convert PlayStatsSummary to backward-compatible PlayResult
+            # Convert PlayStatsSummary to backward-compatible PlayResult with player stats
             return PlayResult(
                 outcome=punt_result.play_type,  # Will be PlayType.PUNT 
-                yards=punt_result.yards_gained  # Net punt yards (punt distance - return yards)
+                yards=punt_result.yards_gained,  # Net punt yards (punt distance - return yards)
+                time_elapsed=punt_result.time_elapsed,
+                player_stats_summary=punt_result
             )
         
         case OffensivePlayType.KICKOFF:
@@ -173,7 +175,9 @@ def simulate(play_engine_params):
             return PlayResult(
                 outcome=outcome,
                 yards=kickoff_result.yards_gained,
-                points=kickoff_result.points_scored
+                points=kickoff_result.points_scored,
+                time_elapsed=kickoff_result.time_elapsed,
+                player_stats_summary=kickoff_result
             )
 
 

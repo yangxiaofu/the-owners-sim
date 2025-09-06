@@ -5,7 +5,10 @@ Shows the two-phase simulation approach with comprehensive stat tracking
 """
 
 import sys
-sys.path.append('../src')
+import os
+
+# Add src directory to Python path for imports
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from play_engine.simulation.run_plays import RunPlaySimulator
 from team_management.personnel import TeamRosterGenerator, PersonnelPackageManager

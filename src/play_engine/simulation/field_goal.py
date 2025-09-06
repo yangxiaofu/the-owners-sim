@@ -32,7 +32,10 @@ class FieldGoalAttemptResult:
         self.is_fake = is_fake
         self.fake_type = fake_type  # "pass" or "run" if fake
         self.distance = distance
-        self.time_elapsed = random.uniform(3.2, 4.8) if not is_fake else random.uniform(3.5, 6.2)
+        # Import timing config at module level to avoid circular imports
+        from play_engine.config.timing_config import NFLTimingConfig
+        min_time, max_time = NFLTimingConfig.get_field_goal_timing(is_fake=is_fake)
+        self.time_elapsed = random.uniform(min_time, max_time)
         
         # Individual player stats
         self.player_stats = {}

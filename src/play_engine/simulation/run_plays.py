@@ -16,6 +16,7 @@ from team_management.players.player import Position
 from play_engine.mechanics.penalties.penalty_engine import PenaltyEngine, PlayContext, PenaltyResult
 from play_engine.mechanics.penalties.penalty_data_structures import PenaltyInstance
 from play_engine.config.config_loader import config, get_run_formation_matchup
+from play_engine.config.timing_config import NFLTimingConfig
 
 
 class RunPlaySimulator:
@@ -122,11 +123,8 @@ class RunPlaySimulator:
         # Generate yards with modified distribution
         yards_gained = max(0, int(random.gauss(modified_avg_yards, modified_variance)))
         
-        # Time elapsed - use configured timing
-        timing_config = config.get_timing_config('run_play')
-        run_time = timing_config.get('run_play_time', {})
-        min_time = run_time.get('min_seconds', 2.8)
-        max_time = run_time.get('max_seconds', 4.5)
+        # Time elapsed - use realistic NFL timing (includes huddle, play clock, execution)
+        min_time, max_time = NFLTimingConfig.get_run_play_timing()
         time_elapsed = round(random.uniform(min_time, max_time), 1)
         
         return yards_gained, time_elapsed

@@ -22,6 +22,7 @@ from team_management.players.player import Position
 from play_engine.mechanics.penalties.penalty_engine import PenaltyEngine, PlayContext, PenaltyResult
 from play_engine.mechanics.penalties.penalty_data_structures import PenaltyInstance
 from play_engine.config.config_loader import config
+from play_engine.config.timing_config import NFLTimingConfig
 
 
 class PuntPlayParams:
@@ -142,7 +143,7 @@ class PuntSimulator:
             summary = PlayStatsSummary(
                 play_type=PlayType.PUNT,
                 yards_gained=0,  # No punt occurred
-                time_elapsed=random.uniform(2.0, 3.0)
+                time_elapsed=random.uniform(*NFLTimingConfig.get_punt_timing())
             )
             summary.penalty_occurred = True
             summary.penalty_instance = pre_snap_penalty.penalty_instance
@@ -245,7 +246,7 @@ class PuntSimulator:
             outcome=PuntOutcome.BLOCKED,
             punt_yards=0,
             return_yards=0,
-            time_elapsed=random.uniform(3.0, 4.5)
+            time_elapsed=random.uniform(*NFLTimingConfig.get_punt_timing())
         )
         blocked_result.blocked = True
         return blocked_result
@@ -266,7 +267,7 @@ class PuntSimulator:
                 outcome=PuntOutcome.TOUCHBACK,
                 punt_yards=touchback_distance,
                 return_yards=0,
-                time_elapsed=random.uniform(4.2, 5.8)
+                time_elapsed=random.uniform(*NFLTimingConfig.get_punt_timing())
             )
         
         # Check for out of bounds (including coffin corner)
@@ -278,14 +279,14 @@ class PuntSimulator:
                     outcome=PuntOutcome.COFFIN_CORNER,
                     punt_yards=punt_distance,
                     return_yards=0,
-                    time_elapsed=random.uniform(4.5, 6.0)
+                    time_elapsed=random.uniform(*NFLTimingConfig.get_punt_timing())
                 )
             else:
                 return PuntResult(
                     outcome=PuntOutcome.OUT_OF_BOUNDS,
                     punt_yards=punt_distance,
                     return_yards=0,
-                    time_elapsed=random.uniform(4.2, 5.8)
+                    time_elapsed=random.uniform(*NFLTimingConfig.get_punt_timing())
                 )
         
         # Check for illegal touching by coverage team
@@ -295,7 +296,7 @@ class PuntSimulator:
                 outcome=PuntOutcome.ILLEGAL_TOUCHING,
                 punt_yards=punt_distance,
                 return_yards=0,
-                time_elapsed=random.uniform(4.5, 6.2)
+                time_elapsed=random.uniform(*NFLTimingConfig.get_punt_timing())
             )
         
         # Punt is returnable - will be processed in return sequence
@@ -366,7 +367,7 @@ class PuntSimulator:
                 outcome=PuntOutcome.FAKE_SUCCESS,
                 punt_yards=0,  # No punt occurred
                 return_yards=0,
-                time_elapsed=random.uniform(4.5, 7.5)
+                time_elapsed=random.uniform(*NFLTimingConfig.get_punt_timing(is_fake=True))
             )
             result.is_fake = True
             result.fake_type = "pass"
@@ -385,7 +386,7 @@ class PuntSimulator:
                 outcome=outcome,
                 punt_yards=0,
                 return_yards=0,
-                time_elapsed=random.uniform(4.5, 7.0)
+                time_elapsed=random.uniform(*NFLTimingConfig.get_punt_timing(is_fake=True))
             )
             result.is_fake = True
             result.fake_type = "pass"
@@ -422,7 +423,7 @@ class PuntSimulator:
                 outcome=PuntOutcome.FAKE_SUCCESS,
                 punt_yards=0,
                 return_yards=0,
-                time_elapsed=random.uniform(4.5, 8.0)
+                time_elapsed=random.uniform(*NFLTimingConfig.get_punt_timing(is_fake=True))
             )
             result.is_fake = True
             result.fake_type = "run"
@@ -441,7 +442,7 @@ class PuntSimulator:
                 outcome=PuntOutcome.FAKE_FAILED,
                 punt_yards=0,
                 return_yards=0,
-                time_elapsed=random.uniform(4.5, 7.5)
+                time_elapsed=random.uniform(*NFLTimingConfig.get_punt_timing(is_fake=True))
             )
             result.is_fake = True
             result.fake_type = "run"

@@ -336,6 +336,435 @@ class PlayStatsSummary:
         return summary
 
 
+class PlayerStatsAccumulator:
+    """
+    Accumulates individual player statistics across multiple plays within a game.
+    
+    Handles merging player stats from PlayStatsSummary objects into running game totals.
+    Provides query methods for accessing accumulated player statistics.
+    """
+    
+    def __init__(self, game_identifier: Optional[str] = None):
+        """
+        Initialize accumulator for tracking player stats across a game.
+        
+        Args:
+            game_identifier: Optional identifier for this game (e.g., "Browns_vs_49ers_Q1")
+        """
+        self.game_id = game_identifier
+        self._player_totals: Dict[str, PlayerStats] = {}
+        self._plays_processed = 0
+    
+    def add_play_stats(self, play_summary: PlayStatsSummary) -> None:
+        """
+        Accumulate player stats from a single play into running game totals.
+        
+        Args:
+            play_summary: PlayStatsSummary containing all player stats from one play
+        """
+        self._plays_processed += 1
+        
+        # Process each player's stats from the play
+        for player_stats in play_summary.player_stats:
+            if player_stats.get_total_stats():  # Only accumulate players with actual stats
+                self._merge_player_stats(player_stats)
+    
+    def _merge_player_stats(self, incoming_stats: PlayerStats) -> None:
+        """
+        Merge incoming player stats into accumulated totals.
+        
+        Args:
+            incoming_stats: PlayerStats from a single play to merge into totals
+        """
+        # Create unique key for this player
+        player_key = f"{incoming_stats.player_name}_{incoming_stats.position}"
+        
+        if player_key not in self._player_totals:
+            # First time seeing this player - create new accumulated stats
+            self._player_totals[player_key] = PlayerStats(
+                player_name=incoming_stats.player_name,
+                player_number=incoming_stats.player_number,
+                position=incoming_stats.position,
+                player_id=incoming_stats.player_id,
+                player_attributes=incoming_stats.player_attributes
+            )
+        
+        # Accumulate stats into existing totals
+        existing = self._player_totals[player_key]
+        
+        # Rushing stats - sum totals
+        existing.carries += incoming_stats.carries
+        existing.rushing_yards += incoming_stats.rushing_yards
+        
+        # Passing stats - sum totals
+        existing.pass_attempts += incoming_stats.pass_attempts
+        existing.completions += incoming_stats.completions
+        existing.passing_yards += incoming_stats.passing_yards
+        existing.passing_tds += incoming_stats.passing_tds
+        existing.interceptions_thrown += incoming_stats.interceptions_thrown
+        existing.sacks_taken += incoming_stats.sacks_taken
+        existing.sack_yards_lost += incoming_stats.sack_yards_lost
+        existing.qb_hits_taken += incoming_stats.qb_hits_taken
+        existing.pressures_faced += incoming_stats.pressures_faced
+        existing.air_yards += incoming_stats.air_yards
+        existing.passing_touchdowns += incoming_stats.passing_touchdowns
+        existing.rushing_touchdowns += incoming_stats.rushing_touchdowns
+        
+        # Receiving stats - sum totals
+        existing.targets += incoming_stats.targets
+        existing.receptions += incoming_stats.receptions
+        existing.receiving_yards += incoming_stats.receiving_yards
+        existing.receiving_tds += incoming_stats.receiving_tds
+        existing.drops += incoming_stats.drops
+        existing.yac += incoming_stats.yac
+        
+        # Blocking stats - sum totals
+        existing.blocks_made += incoming_stats.blocks_made
+        existing.blocks_missed += incoming_stats.blocks_missed
+        existing.pass_blocks += incoming_stats.pass_blocks
+        existing.pressures_allowed += incoming_stats.pressures_allowed
+        existing.sacks_allowed += incoming_stats.sacks_allowed
+        
+        # Defensive stats - sum totals
+        existing.tackles += incoming_stats.tackles
+        existing.assisted_tackles += incoming_stats.assisted_tackles
+        existing.sacks += incoming_stats.sacks
+        existing.tackles_for_loss += incoming_stats.tackles_for_loss
+        existing.qb_hits += incoming_stats.qb_hits
+        existing.qb_pressures += incoming_stats.qb_pressures
+        existing.qb_hurries += incoming_stats.qb_hurries
+        
+        # Pass defense stats - sum totals
+        existing.passes_defended += incoming_stats.passes_defended
+        existing.passes_deflected += incoming_stats.passes_deflected
+        existing.tipped_passes += incoming_stats.tipped_passes
+        existing.interceptions += incoming_stats.interceptions
+        existing.forced_fumbles += incoming_stats.forced_fumbles
+        
+        # Special teams stats - sum totals
+        existing.field_goal_attempts += incoming_stats.field_goal_attempts
+        existing.field_goals_made += incoming_stats.field_goals_made
+        existing.field_goals_missed += incoming_stats.field_goals_missed
+        existing.field_goals_blocked += incoming_stats.field_goals_blocked
+        existing.field_goal_holds += incoming_stats.field_goal_holds
+        existing.long_snaps += incoming_stats.long_snaps
+        existing.special_teams_snaps += incoming_stats.special_teams_snaps
+        existing.blocks_allowed += incoming_stats.blocks_allowed
+        
+        # Handle longest field goal (take maximum)
+        existing.longest_field_goal = max(existing.longest_field_goal, incoming_stats.longest_field_goal)
+        
+        # Penalty stats - sum totals
+        existing.penalties += incoming_stats.penalties
+        existing.penalty_yards += incoming_stats.penalty_yards
+    
+    def get_player_stats(self, player_identifier: str) -> Optional[PlayerStats]:
+        """
+        Get accumulated stats for a specific player.
+        
+        Args:
+            player_identifier: Player key in format "PlayerName_Position"
+            
+        Returns:
+            PlayerStats object with accumulated totals, or None if player not found
+        """
+        return self._player_totals.get(player_identifier)
+    
+    def get_all_players_with_stats(self) -> List[PlayerStats]:
+        """
+        Get all players who have recorded statistics.
+        
+        Returns:
+            List of PlayerStats objects for all players with accumulated stats
+        """
+        return [stats for stats in self._player_totals.values() if stats.get_total_stats()]
+    
+    def get_players_by_position(self, position: str) -> List[PlayerStats]:
+        """
+        Get all players at a specific position who have recorded stats.
+        
+        Args:
+            position: Position code (e.g., "QB", "RB", "WR")
+            
+        Returns:
+            List of PlayerStats objects for players at the specified position
+        """
+        return [stats for stats in self._player_totals.values() 
+                if stats.position == position and stats.get_total_stats()]
+    
+    def get_plays_processed(self) -> int:
+        """
+        Get the number of plays that have been processed by this accumulator.
+        
+        Returns:
+            Number of PlayStatsSummary objects processed
+        """
+        return self._plays_processed
+    
+    def get_player_count(self) -> int:
+        """
+        Get the number of unique players with recorded statistics.
+        
+        Returns:
+            Count of players who have accumulated stats
+        """
+        return len(self.get_all_players_with_stats())
+    
+    def reset(self) -> None:
+        """
+        Reset the accumulator to initial state.
+        
+        Clears all accumulated player stats and resets play count.
+        """
+        self._player_totals.clear()
+        self._plays_processed = 0
+
+
+@dataclass
+class TeamStats:
+    """
+    Team-level statistics accumulated across multiple plays within a game.
+    
+    Separates offensive stats (when team has possession) from defensive stats
+    (when team is defending).
+    """
+    team_id: int
+    
+    # Offensive Stats (when this team has possession)
+    total_yards: int = 0
+    passing_yards: int = 0
+    rushing_yards: int = 0
+    pass_attempts: int = 0
+    completions: int = 0
+    touchdowns: int = 0
+    first_downs: int = 0
+    turnovers: int = 0
+    
+    # Defensive Stats (when this team is defending)
+    sacks: int = 0
+    tackles_for_loss: int = 0
+    interceptions: int = 0
+    forced_fumbles: int = 0
+    passes_defended: int = 0
+    
+    # Special Teams Stats
+    field_goals_attempted: int = 0
+    field_goals_made: int = 0
+    
+    # Penalties (committed by this team)
+    penalties: int = 0
+    penalty_yards: int = 0
+    
+    def get_total_offensive_stats(self) -> Dict[str, int]:
+        """Get all non-zero offensive stats as dictionary"""
+        offensive_fields = {
+            'total_yards', 'passing_yards', 'rushing_yards', 'pass_attempts', 
+            'completions', 'touchdowns', 'first_downs', 'turnovers'
+        }
+        
+        stats = {}
+        for field_name in offensive_fields:
+            value = getattr(self, field_name, 0)
+            if isinstance(value, (int, float)) and value != 0:
+                stats[field_name] = value
+        return stats
+    
+    def get_total_defensive_stats(self) -> Dict[str, int]:
+        """Get all non-zero defensive stats as dictionary"""
+        defensive_fields = {
+            'sacks', 'tackles_for_loss', 'interceptions', 'forced_fumbles', 'passes_defended'
+        }
+        
+        stats = {}
+        for field_name in defensive_fields:
+            value = getattr(self, field_name, 0)
+            if isinstance(value, (int, float)) and value != 0:
+                stats[field_name] = value
+        return stats
+    
+    def get_all_stats(self) -> Dict[str, int]:
+        """Get all non-zero stats as dictionary"""
+        all_fields = {
+            'total_yards', 'passing_yards', 'rushing_yards', 'pass_attempts', 
+            'completions', 'touchdowns', 'first_downs', 'turnovers',
+            'sacks', 'tackles_for_loss', 'interceptions', 'forced_fumbles', 'passes_defended',
+            'field_goals_attempted', 'field_goals_made', 'penalties', 'penalty_yards'
+        }
+        
+        stats = {}
+        for field_name in all_fields:
+            value = getattr(self, field_name, 0)
+            if isinstance(value, (int, float)) and value != 0:
+                stats[field_name] = value
+        return stats
+
+
+class TeamStatsAccumulator:
+    """
+    Accumulates team-level statistics from individual player stats across multiple plays.
+    
+    Takes PlayStatsSummary objects and aggregates offensive stats to the possessing team
+    and defensive stats to the defending team.
+    """
+    
+    def __init__(self, game_identifier: Optional[str] = None):
+        """
+        Initialize accumulator for tracking team stats across a game.
+        
+        Args:
+            game_identifier: Optional identifier for this game
+        """
+        self.game_id = game_identifier
+        self._team_totals: Dict[int, TeamStats] = {}
+        self._plays_processed = 0
+    
+    def add_play_stats(self, play_summary: PlayStatsSummary, 
+                      offensive_team_id: int, defensive_team_id: int) -> None:
+        """
+        Accumulate team stats from a single play into running game totals.
+        
+        Args:
+            play_summary: PlayStatsSummary containing all player stats from one play
+            offensive_team_id: Team ID of the team with possession
+            defensive_team_id: Team ID of the team defending
+        """
+        self._plays_processed += 1
+        
+        # Ensure both teams exist in our tracking
+        if offensive_team_id not in self._team_totals:
+            self._team_totals[offensive_team_id] = TeamStats(team_id=offensive_team_id)
+        if defensive_team_id not in self._team_totals:
+            self._team_totals[defensive_team_id] = TeamStats(team_id=defensive_team_id)
+        
+        # Aggregate offensive stats to possessing team
+        self._aggregate_offensive_stats(play_summary.player_stats, offensive_team_id)
+        
+        # Aggregate defensive stats to defending team  
+        self._aggregate_defensive_stats(play_summary.player_stats, defensive_team_id)
+        
+        # Handle penalties (need to determine which team committed them)
+        self._aggregate_penalty_stats(play_summary, offensive_team_id, defensive_team_id)
+        
+        # Handle play-level stats like yards gained and first downs
+        self._aggregate_play_level_stats(play_summary, offensive_team_id)
+    
+    def _aggregate_offensive_stats(self, player_stats: List[PlayerStats], team_id: int) -> None:
+        """Aggregate offensive stats from all players to the team total"""
+        team = self._team_totals[team_id]
+        
+        for player in player_stats:
+            # Rushing stats
+            team.rushing_yards += player.rushing_yards
+            
+            # Passing stats
+            team.passing_yards += player.passing_yards
+            team.pass_attempts += player.pass_attempts
+            team.completions += player.completions
+            team.touchdowns += player.passing_tds + player.rushing_touchdowns
+            
+            # Special teams
+            team.field_goals_attempted += player.field_goal_attempts
+            team.field_goals_made += player.field_goals_made
+    
+    def _aggregate_defensive_stats(self, player_stats: List[PlayerStats], team_id: int) -> None:
+        """Aggregate defensive stats from all players to the team total"""
+        team = self._team_totals[team_id]
+        
+        for player in player_stats:
+            # Defensive stats
+            team.sacks += player.sacks
+            team.tackles_for_loss += player.tackles_for_loss
+            team.interceptions += player.interceptions
+            team.forced_fumbles += player.forced_fumbles
+            team.passes_defended += player.passes_defended
+    
+    def _aggregate_penalty_stats(self, play_summary: PlayStatsSummary, 
+                                offensive_team_id: int, defensive_team_id: int) -> None:
+        """Aggregate penalty stats - assign to the team that committed the penalty"""
+        if not play_summary.penalty_occurred:
+            return
+        
+        # For now, assign penalties to offensive team (could be enhanced with penalty details)
+        # In a real implementation, we'd check which team actually committed the penalty
+        penalty_team_id = offensive_team_id  # Simplified assumption
+        
+        team = self._team_totals[penalty_team_id]
+        team.penalties += 1
+        
+        # Get penalty yards from the play summary
+        if hasattr(play_summary, 'penalty_instance') and play_summary.penalty_instance:
+            penalty_yards = getattr(play_summary.penalty_instance, 'yards_assessed', 0)
+            team.penalty_yards += penalty_yards
+    
+    def _aggregate_play_level_stats(self, play_summary: PlayStatsSummary, offensive_team_id: int) -> None:
+        """Aggregate play-level stats like total yards and first downs"""
+        team = self._team_totals[offensive_team_id]
+        
+        # Total yards for the play
+        team.total_yards += play_summary.yards_gained
+        
+        # Check for turnovers (simplified - could be enhanced)
+        if any(player.interceptions_thrown > 0 for player in play_summary.player_stats):
+            team.turnovers += 1
+    
+    def get_team_stats(self, team_id: int) -> Optional[TeamStats]:
+        """
+        Get accumulated stats for a specific team.
+        
+        Args:
+            team_id: Team identifier
+            
+        Returns:
+            TeamStats object with accumulated totals, or None if team not found
+        """
+        return self._team_totals.get(team_id)
+    
+    def get_all_teams_stats(self) -> List[TeamStats]:
+        """
+        Get all teams that have recorded statistics.
+        
+        Returns:
+            List of TeamStats objects for all teams with accumulated stats
+        """
+        return list(self._team_totals.values())
+    
+    def get_teams_with_stats(self) -> List[TeamStats]:
+        """
+        Get only teams that have non-zero statistics.
+        
+        Returns:
+            List of TeamStats objects for teams with actual stats recorded
+        """
+        return [team for team in self._team_totals.values() if team.get_all_stats()]
+    
+    def get_plays_processed(self) -> int:
+        """
+        Get the number of plays that have been processed by this accumulator.
+        
+        Returns:
+            Number of PlayStatsSummary objects processed
+        """
+        return self._plays_processed
+    
+    def get_team_count(self) -> int:
+        """
+        Get the number of teams being tracked.
+        
+        Returns:
+            Count of teams in the accumulator
+        """
+        return len(self._team_totals)
+    
+    def reset(self) -> None:
+        """
+        Reset the accumulator to initial state.
+        
+        Clears all accumulated team stats and resets play count.
+        """
+        self._team_totals.clear()
+        self._plays_processed = 0
+
+
 def create_player_stats_from_player(player) -> PlayerStats:
     """Create PlayerStats object from existing Player object"""
     # Check if this is a real player (has attributes from real data)

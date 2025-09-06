@@ -18,6 +18,7 @@ from team_management.players.player import Position
 from play_engine.mechanics.penalties.penalty_engine import PenaltyEngine, PlayContext, PenaltyResult
 from play_engine.mechanics.penalties.penalty_data_structures import PenaltyInstance
 from play_engine.config.config_loader import config, get_pass_formation_matchup
+from play_engine.config.timing_config import NFLTimingConfig
 
 
 class PassPlaySimulator:
@@ -136,7 +137,7 @@ class PassPlaySimulator:
             return {
                 'outcome_type': 'sack',
                 'yards': -pressure_outcome['sack_yards'],
-                'time_elapsed': round(random.uniform(sack_time_min, sack_time_max), 1),
+                'time_elapsed': round(random.uniform(*NFLTimingConfig.get_pass_play_timing()), 1),
                 'qb_sacked': True,
                 'pressure_applied': True
             }
@@ -370,7 +371,7 @@ class PassPlaySimulator:
             return {
                 'outcome_type': 'interception',
                 'yards': 0,
-                'time_elapsed': round(random.uniform(int_time_min, int_time_max), 1),
+                'time_elapsed': round(random.uniform(*NFLTimingConfig.get_pass_play_timing()), 1),
                 'target_receiver': target_receiver,
                 'intercepted': True
             }
@@ -383,7 +384,7 @@ class PassPlaySimulator:
             return {
                 'outcome_type': 'deflected_incomplete', 
                 'yards': 0,
-                'time_elapsed': round(random.uniform(defl_time_min, defl_time_max), 1),
+                'time_elapsed': round(random.uniform(*NFLTimingConfig.get_pass_play_timing()), 1),
                 'target_receiver': target_receiver,
                 'pass_deflected': True
             }
@@ -406,7 +407,7 @@ class PassPlaySimulator:
                 'yards': total_yards,
                 'air_yards': air_yards,
                 'yac': yac,
-                'time_elapsed': round(random.uniform(comp_time_min, comp_time_max), 1),
+                'time_elapsed': round(random.uniform(*NFLTimingConfig.get_pass_play_timing()), 1),
                 'target_receiver': target_receiver,
                 'completed': True
             }
@@ -418,7 +419,7 @@ class PassPlaySimulator:
             return {
                 'outcome_type': 'incomplete',
                 'yards': 0,  
-                'time_elapsed': round(random.uniform(inc_time_min, inc_time_max), 1),
+                'time_elapsed': round(random.uniform(*NFLTimingConfig.get_pass_play_timing()), 1),
                 'target_receiver': target_receiver,
                 'incomplete': True
             }

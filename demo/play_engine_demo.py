@@ -13,7 +13,7 @@ import sys
 import os
 
 # Add src directory to Python path for imports
-sys.path.append(os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from team_management.personnel import TeamRosterGenerator, PersonnelPackageManager
 from team_management.players.player_loader import get_player_loader, has_real_roster_data
