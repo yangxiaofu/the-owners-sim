@@ -1,0 +1,194 @@
+{
+  "1": {
+    "team_name": "Buffalo Bills",
+    "head_coach": "conservative",
+    "offensive_coordinator": "balanced", 
+    "defensive_coordinator": "conservative"
+  },
+  "2": {
+    "team_name": "Miami Dolphins",
+    "head_coach": "aggressive",
+    "offensive_coordinator": "pass_heavy",
+    "defensive_coordinator": "balanced"
+  },
+  "3": {
+    "team_name": "New England Patriots", 
+    "head_coach": "ultra_conservative",
+    "offensive_coordinator": "balanced",
+    "defensive_coordinator": "conservative"
+  },
+  "4": {
+    "team_name": "New York Jets",
+    "head_coach": "balanced",
+    "offensive_coordinator": "balanced",
+    "defensive_coordinator": "aggressive"
+  },
+  "5": {
+    "team_name": "Baltimore Ravens",
+    "head_coach": "balanced",
+    "offensive_coordinator": "balanced",
+    "defensive_coordinator": "aggressive"
+  },
+  "6": {
+    "team_name": "Cincinnati Bengals",
+    "head_coach": "aggressive",
+    "offensive_coordinator": "pass_heavy",
+    "defensive_coordinator": "balanced"
+  },
+  "7": {
+    "team_name": "Cleveland Browns",
+    "head_coach": "balanced",
+    "offensive_coordinator": "balanced", 
+    "defensive_coordinator": "aggressive"
+  },
+  "8": {
+    "team_name": "Pittsburgh Steelers",
+    "head_coach": "conservative",
+    "offensive_coordinator": "balanced",
+    "defensive_coordinator": "conservative"
+  },
+  "9": {
+    "team_name": "Houston Texans",
+    "head_coach": "balanced",
+    "offensive_coordinator": "pass_heavy",
+    "defensive_coordinator": "aggressive"
+  },
+  "10": {
+    "team_name": "Indianapolis Colts",
+    "head_coach": "aggressive",
+    "offensive_coordinator": "pass_heavy",
+    "defensive_coordinator": "balanced"
+  },
+  "11": {
+    "team_name": "Jacksonville Jaguars",
+    "head_coach": "balanced",
+    "offensive_coordinator": "balanced",
+    "defensive_coordinator": "aggressive"
+  },
+  "12": {
+    "team_name": "Tennessee Titans",
+    "head_coach": "conservative",
+    "offensive_coordinator": "balanced",
+    "defensive_coordinator": "conservative"
+  },
+  "13": {
+    "team_name": "Denver Broncos",
+    "head_coach": "aggressive",
+    "offensive_coordinator": "pass_heavy",
+    "defensive_coordinator": "balanced"
+  },
+  "14": {
+    "team_name": "Kansas City Chiefs",
+    "head_coach": "aggressive",
+    "offensive_coordinator": "pass_heavy",
+    "defensive_coordinator": "aggressive"
+  },
+  "15": {
+    "team_name": "Las Vegas Raiders",
+    "head_coach": "balanced",
+    "offensive_coordinator": "balanced",
+    "defensive_coordinator": "balanced"
+  },
+  "16": {
+    "team_name": "Los Angeles Chargers",
+    "head_coach": "aggressive",
+    "offensive_coordinator": "pass_heavy",
+    "defensive_coordinator": "aggressive"
+  },
+  "17": {
+    "team_name": "Dallas Cowboys",
+    "head_coach": "balanced",
+    "offensive_coordinator": "pass_heavy",
+    "defensive_coordinator": "aggressive"
+  },
+  "18": {
+    "team_name": "New York Giants",
+    "head_coach": "balanced",
+    "offensive_coordinator": "balanced",
+    "defensive_coordinator": "aggressive"
+  },
+  "19": {
+    "team_name": "Philadelphia Eagles",
+    "head_coach": "aggressive",
+    "offensive_coordinator": "pass_heavy",
+    "defensive_coordinator": "balanced"
+  },
+  "20": {
+    "team_name": "Washington Commanders",
+    "head_coach": "balanced",
+    "offensive_coordinator": "balanced",
+    "defensive_coordinator": "balanced"
+  },
+  "21": {
+    "team_name": "Chicago Bears",
+    "head_coach": "conservative",
+    "offensive_coordinator": "balanced",
+    "defensive_coordinator": "conservative"
+  },
+  "22": {
+    "team_name": "Detroit Lions",
+    "head_coach": "ultra_aggressive",
+    "offensive_coordinator": "pass_heavy",
+    "defensive_coordinator": "aggressive"
+  },
+  "23": {
+    "team_name": "Green Bay Packers",
+    "head_coach": "balanced",
+    "offensive_coordinator": "balanced",
+    "defensive_coordinator": "balanced"
+  },
+  "24": {
+    "team_name": "Minnesota Vikings",
+    "head_coach": "aggressive",
+    "offensive_coordinator": "pass_heavy",
+    "defensive_coordinator": "aggressive"
+  },
+  "25": {
+    "team_name": "Atlanta Falcons",
+    "head_coach": "balanced",
+    "offensive_coordinator": "balanced",
+    "defensive_coordinator": "balanced"
+  },
+  "26": {
+    "team_name": "Carolina Panthers",
+    "head_coach": "conservative",
+    "offensive_coordinator": "balanced",
+    "defensive_coordinator": "conservative"
+  },
+  "27": {
+    "team_name": "New Orleans Saints",
+    "head_coach": "conservative",
+    "offensive_coordinator": "balanced",
+    "defensive_coordinator": "aggressive"
+  },
+  "28": {
+    "team_name": "Tampa Bay Buccaneers",
+    "head_coach": "conservative",
+    "offensive_coordinator": "balanced",
+    "defensive_coordinator": "aggressive"
+  },
+  "29": {
+    "team_name": "Arizona Cardinals",
+    "head_coach": "balanced",
+    "offensive_coordinator": "balanced",
+    "defensive_coordinator": "balanced"
+  },
+  "30": {
+    "team_name": "Los Angeles Rams",
+    "head_coach": "aggressive",
+    "offensive_coordinator": "pass_heavy",
+    "defensive_coordinator": "aggressive"
+  },
+  "31": {
+    "team_name": "San Francisco 49ers",
+    "head_coach": "aggressive",
+    "offensive_coordinator": "pass_heavy",
+    "defensive_coordinator": "aggressive"
+  },
+  "32": {
+    "team_name": "Seattle Seahawks",
+    "head_coach": "balanced",
+    "offensive_coordinator": "pass_heavy",
+    "defensive_coordinator": "balanced"
+  }
+}

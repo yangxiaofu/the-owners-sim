@@ -1,0 +1,83 @@
+{
+  "name": "West Coast Offensive Coordinator",
+  "description": "Master of timing-based passing attack with emphasis on precision routes and YAC. Uses short passing game as extension of running game with occasional deep shots.",
+  "coach_type": "offensive_coordinator", 
+  "aggression": 0.6,
+  "risk_tolerance": 0.5,
+  "adaptability": 0.7,
+  "conservatism": 0.4,
+  "run_preference": 0.4,
+  "fourth_down_aggression": 0.5,
+  "red_zone_aggression": 0.6,
+  "game_script_adherence": 0.7,
+  "momentum_responsiveness": 0.6,
+  "pressure_handling": 0.8,
+  "situational": {
+    "first_down_aggression": 0.5,
+    "second_down_creativity": 0.6,
+    "third_down_aggression": 0.7,
+    "fourth_down_aggression": 0.5,
+    "red_zone_aggression": 0.6,
+    "goal_line_creativity": 0.5,
+    "midfield_risk_tolerance": 0.5,
+    "two_minute_aggression": 0.7,
+    "clock_management_conservatism": 0.5
+  },
+  "formations": {
+    "i_formation_preference": 0.4,
+    "shotgun_preference": 0.7,
+    "pistol_preference": 0.5,
+    "wildcat_preference": 0.1,
+    "four_wide_preference": 0.5,
+    "heavy_personnel_preference": 0.4,
+    "spread_personnel_preference": 0.6,
+    "balanced_personnel_preference": 0.8
+  },
+  "play_types": {
+    "run_preference": 0.4,
+    "play_action_frequency": 0.8,
+    "screen_frequency": 0.25,
+    "draw_frequency": 0.15,
+    "short_pass_preference": 0.9,
+    "intermediate_pass_preference": 0.7,
+    "deep_pass_preference": 0.4,
+    "trick_play_frequency": 0.08,
+    "fake_punt_aggression": 0.1,
+    "fake_field_goal_aggression": 0.05
+  },
+  "philosophy": {
+    "west_coast_preference": 0.95,
+    "air_raid_preference": 0.3,
+    "ground_and_pound_preference": 0.4,
+    "rpo_usage": 0.5,
+    "motion_usage": 0.7,
+    "formation_creativity": 0.6,
+    "play_action_mastery": 0.9,
+    "gadget_play_frequency": 0.08,
+    "no_huddle_usage": 0.4,
+    "hurry_up_comfort": 0.6,
+    "scripted_opening_reliance": 0.8
+  },
+  "personnel": {
+    "eleven_personnel_usage": 0.7,
+    "twelve_personnel_usage": 0.5,
+    "twenty_one_personnel_usage": 0.3,
+    "ten_personnel_usage": 0.4,
+    "feature_back_reliance": 0.6,
+    "tight_end_involvement": 0.7,
+    "slot_receiver_emphasis": 0.8,
+    "deep_threat_prioritization": 0.4
+  },
+  "situational_calling": {
+    "first_down_pass_rate": 0.6,
+    "second_and_long_creativity": 0.6,
+    "third_down_conversion_aggression": 0.7,
+    "red_zone_fade_preference": 0.4,
+    "red_zone_run_commitment": 0.5,
+    "goal_line_innovation": 0.5,
+    "comeback_route_mastery": 0.9,
+    "clock_killing_run_game": 0.6,
+    "two_minute_drill_efficiency": 0.8
+  },
+  "preferred_playbooks": ["west_coast", "balanced", "timing_routes"]
+}

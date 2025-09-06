@@ -1,0 +1,67 @@
+{
+  "name": "Bill Belichick",
+  "description": "Master strategist known for situational football excellence and adaptability. Takes away opponent's best options while maximizing his team's strengths.",
+  "coach_type": "head_coach",
+  "aggression": 0.6,
+  "risk_tolerance": 0.6,
+  "adaptability": 0.95,
+  "conservatism": 0.5,
+  "run_preference": 0.5,
+  "fourth_down_aggression": 0.5,
+  "red_zone_aggression": 0.6,
+  "game_script_adherence": 0.9,
+  "momentum_responsiveness": 0.8,
+  "pressure_handling": 0.95,
+  "situational": {
+    "first_down_aggression": 0.5,
+    "second_down_creativity": 0.7,
+    "third_down_aggression": 0.8,
+    "fourth_down_aggression": 0.5,
+    "red_zone_aggression": 0.6,
+    "goal_line_creativity": 0.8,
+    "midfield_risk_tolerance": 0.6,
+    "two_minute_aggression": 0.8,
+    "clock_management_conservatism": 0.9
+  },
+  "formations": {
+    "i_formation_preference": 0.6,
+    "shotgun_preference": 0.6,
+    "pistol_preference": 0.4,
+    "wildcat_preference": 0.3,
+    "four_wide_preference": 0.5,
+    "heavy_personnel_preference": 0.7,
+    "spread_personnel_preference": 0.6,
+    "balanced_personnel_preference": 0.9
+  },
+  "play_types": {
+    "run_preference": 0.5,
+    "play_action_frequency": 0.5,
+    "screen_frequency": 0.2,
+    "draw_frequency": 0.15,
+    "short_pass_preference": 0.8,
+    "intermediate_pass_preference": 0.7,
+    "deep_pass_preference": 0.4,
+    "trick_play_frequency": 0.1,
+    "fake_punt_aggression": 0.15,
+    "fake_field_goal_aggression": 0.1
+  },
+  "game_management": {
+    "fourth_down_decision_aggression": 0.5,
+    "two_minute_drill_aggression": 0.8,
+    "overtime_aggression": 0.6,
+    "timeout_usage_intelligence": 0.95,
+    "challenge_flag_wisdom": 0.9,
+    "clock_management_skill": 0.95,
+    "starter_loyalty": 0.5,
+    "rookie_trust": 0.7,
+    "injury_risk_tolerance": 0.3
+  },
+  "coordinator_influence": {
+    "offensive_coordinator_trust": 0.6,
+    "defensive_coordinator_trust": 0.9,
+    "special_teams_coordinator_trust": 0.8,
+    "critical_situation_override_threshold": 0.2,
+    "momentum_shift_override_threshold": 0.3,
+    "game_script_override_threshold": 0.3
+  }
+}

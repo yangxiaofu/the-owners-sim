@@ -1,0 +1,83 @@
+{
+  "name": "4-3 Aggressive Defensive Coordinator",
+  "description": "Attacking 4-3 defense specialist who brings pressure from multiple angles. Emphasizes man coverage and aggressive pass rush to create turnovers.",
+  "coach_type": "defensive_coordinator",
+  "aggression": 0.8,
+  "risk_tolerance": 0.7,
+  "adaptability": 0.6,
+  "conservatism": 0.2,
+  "run_preference": 0.3,
+  "fourth_down_aggression": 0.8,
+  "red_zone_aggression": 0.8,
+  "game_script_adherence": 0.5,
+  "momentum_responsiveness": 0.8,
+  "pressure_handling": 0.7,
+  "situational": {
+    "first_down_aggression": 0.6,
+    "second_down_creativity": 0.7,
+    "third_down_aggression": 0.9,
+    "fourth_down_aggression": 0.8,
+    "red_zone_aggression": 0.8,
+    "goal_line_creativity": 0.6,
+    "midfield_risk_tolerance": 0.8,
+    "two_minute_aggression": 0.8,
+    "clock_management_conservatism": 0.3
+  },
+  "formations": {
+    "i_formation_preference": 0.5,
+    "shotgun_preference": 0.5,
+    "pistol_preference": 0.5,
+    "wildcat_preference": 0.5,
+    "four_wide_preference": 0.5,
+    "heavy_personnel_preference": 0.4,
+    "spread_personnel_preference": 0.6,
+    "balanced_personnel_preference": 0.5
+  },
+  "play_types": {
+    "run_preference": 0.3,
+    "play_action_frequency": 0.5,
+    "screen_frequency": 0.5,
+    "draw_frequency": 0.5,
+    "short_pass_preference": 0.5,
+    "intermediate_pass_preference": 0.5,
+    "deep_pass_preference": 0.5,
+    "trick_play_frequency": 0.5,
+    "fake_punt_aggression": 0.5,
+    "fake_field_goal_aggression": 0.5
+  },
+  "philosophy": {
+    "four_three_preference": 0.9,
+    "three_four_preference": 0.2,
+    "nickel_heavy_preference": 0.7,
+    "zone_coverage_preference": 0.3,
+    "man_coverage_confidence": 0.8,
+    "press_coverage_aggression": 0.9,
+    "safety_help_reliance": 0.4,
+    "blitz_frequency": 0.7,
+    "creative_pressure_usage": 0.8,
+    "four_man_rush_confidence": 0.7,
+    "timing_blitz_mastery": 0.8
+  },
+  "personnel": {
+    "base_defense_reliance": 0.6,
+    "nickel_package_comfort": 0.8,
+    "dime_package_usage": 0.5,
+    "goal_line_personnel_aggression": 0.8,
+    "edge_rusher_rotation": 0.7,
+    "linebacker_versatility": 0.6,
+    "safety_flexibility": 0.7,
+    "cornerback_shadowing": 0.6
+  },
+  "situational": {
+    "first_down_aggression": 0.6,
+    "second_and_long_creativity": 0.8,
+    "third_down_pressure_rate": 0.9,
+    "red_zone_goal_line_aggression": 0.8,
+    "red_zone_coverage_tightness": 0.6,
+    "backed_up_defense_conservatism": 0.4,
+    "prevent_defense_usage": 0.2,
+    "two_minute_drill_aggression": 0.8,
+    "fourth_down_stop_aggression": 0.9
+  },
+  "preferred_defensive_playbooks": ["4_3_aggressive", "man_coverage", "blitz_packages"]
+}

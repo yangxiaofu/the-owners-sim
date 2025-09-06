@@ -1,0 +1,627 @@
+{
+  "name": "Aggressive Playbook",
+  "description": "Pass-heavy offensive playbook with high-risk, high-reward concepts. Favors quick-strike offense and deep passing.",
+  "situations": {
+    "first_down": {
+      "description": "First down with aggressive pass-first mentality",
+      "offensive_plays": [
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
+          "concept": "slants",
+          "weight": 0.5,
+          "success_rate": 0.7,
+          "risk_level": 0.2,
+          "personnel_package": "11"
+        },
+        {
+          "play_type": "PASS",
+          "formation": "FOUR_WIDE",
+          "concept": "quick_out",
+          "weight": 0.2,
+          "success_rate": 0.65,
+          "risk_level": 0.3,
+          "personnel_package": "10"
+        },
+        {
+          "play_type": "RUN",
+          "formation": "SHOTGUN",
+          "concept": "draw",
+          "weight": 0.15,
+          "success_rate": 0.55,
+          "risk_level": 0.4,
+          "personnel_package": "11"
+        },
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
+          "concept": "deep_out",
+          "weight": 0.15,
+          "success_rate": 0.4,
+          "risk_level": 0.8,
+          "personnel_package": "11"
+        }
+      ],
+      "defensive_plays": [
+        {
+          "play_type": "defensive_cover_2",
+          "formation": "FOUR_THREE",
+          "concept": "base_defense",
+          "weight": 0.6,
+          "success_rate": 0.6,
+          "risk_level": 0.3
+        },
+        {
+          "play_type": "defensive_cover_1",
+          "formation": "FOUR_THREE",
+          "concept": "man_coverage",
+          "weight": 0.4,
+          "success_rate": 0.5,
+          "risk_level": 0.5
+        }
+      ]
+    },
+    "second_short": {
+      "description": "Second down with short yardage - still pass-first",
+      "offensive_plays": [
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
+          "concept": "quick_slant",
+          "weight": 0.6,
+          "success_rate": 0.75,
+          "risk_level": 0.2,
+          "personnel_package": "11"
+        },
+        {
+          "play_type": "RUN",
+          "formation": "SHOTGUN",
+          "concept": "power",
+          "weight": 0.25,
+          "success_rate": 0.7,
+          "risk_level": 0.3,
+          "personnel_package": "21"
+        },
+        {
+          "play_type": "PASS",
+          "formation": "FOUR_WIDE",
+          "concept": "comeback",
+          "weight": 0.15,
+          "success_rate": 0.5,
+          "risk_level": 0.6,
+          "personnel_package": "10"
+        }
+      ],
+      "defensive_plays": [
+        {
+          "play_type": "defensive_cover_1",
+          "formation": "FOUR_THREE",
+          "concept": "run_defense",
+          "weight": 0.7,
+          "success_rate": 0.6,
+          "risk_level": 0.3
+        },
+        {
+          "play_type": "defensive_cover_2",
+          "formation": "FOUR_THREE",
+          "concept": "balanced",
+          "weight": 0.3,
+          "success_rate": 0.5,
+          "risk_level": 0.4
+        }
+      ]
+    },
+    "second_medium": {
+      "description": "Second down with medium yardage - aggressive passing",
+      "offensive_plays": [
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
+          "concept": "intermediate_routes",
+          "weight": 0.4,
+          "success_rate": 0.6,
+          "risk_level": 0.4,
+          "personnel_package": "11"
+        },
+        {
+          "play_type": "PASS",
+          "formation": "FOUR_WIDE",
+          "concept": "crossing_routes",
+          "weight": 0.3,
+          "success_rate": 0.5,
+          "risk_level": 0.6,
+          "personnel_package": "10"
+        },
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
+          "concept": "screen",
+          "weight": 0.2,
+          "success_rate": 0.5,
+          "risk_level": 0.6,
+          "personnel_package": "11"
+        },
+        {
+          "play_type": "RUN",
+          "formation": "SHOTGUN",
+          "concept": "draw",
+          "weight": 0.1,
+          "success_rate": 0.4,
+          "risk_level": 0.7,
+          "personnel_package": "11"
+        }
+      ],
+      "defensive_plays": [
+        {
+          "play_type": "defensive_cover_2",
+          "formation": "FOUR_THREE",
+          "concept": "balanced",
+          "weight": 0.6,
+          "success_rate": 0.6,
+          "risk_level": 0.3
+        },
+        {
+          "play_type": "defensive_cover_3",
+          "formation": "NICKEL",
+          "concept": "pass_defense",
+          "weight": 0.4,
+          "success_rate": 0.5,
+          "risk_level": 0.5
+        }
+      ]
+    },
+    "second_long": {
+      "description": "Second down with long yardage - deep passing attack",
+      "offensive_plays": [
+        {
+          "play_type": "PASS",
+          "formation": "FOUR_WIDE",
+          "concept": "four_verticals",
+          "weight": 0.4,
+          "success_rate": 0.3,
+          "risk_level": 0.8,
+          "personnel_package": "10"
+        },
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
+          "concept": "deep_comeback",
+          "weight": 0.3,
+          "success_rate": 0.4,
+          "risk_level": 0.6,
+          "personnel_package": "11"
+        },
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
+          "concept": "screen",
+          "weight": 0.3,
+          "success_rate": 0.4,
+          "risk_level": 0.7,
+          "personnel_package": "11"
+        }
+      ],
+      "defensive_plays": [
+        {
+          "play_type": "defensive_cover_3",
+          "formation": "NICKEL",
+          "concept": "pass_defense",
+          "weight": 0.7,
+          "success_rate": 0.6,
+          "risk_level": 0.4
+        },
+        {
+          "play_type": "defensive_cover_2",
+          "formation": "FOUR_THREE",
+          "concept": "prevent",
+          "weight": 0.3,
+          "success_rate": 0.5,
+          "risk_level": 0.3
+        }
+      ]
+    },
+    "third_short": {
+      "description": "Third down with short yardage - still favor passing",
+      "offensive_plays": [
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
+          "concept": "quick_slant",
+          "weight": 0.6,
+          "success_rate": 0.75,
+          "risk_level": 0.2,
+          "personnel_package": "11"
+        },
+        {
+          "play_type": "RUN",
+          "formation": "I_FORMATION",
+          "concept": "power",
+          "weight": 0.25,
+          "success_rate": 0.6,
+          "risk_level": 0.4,
+          "personnel_package": "21"
+        },
+        {
+          "play_type": "PASS",
+          "formation": "FOUR_WIDE",
+          "concept": "pick_play",
+          "weight": 0.15,
+          "success_rate": 0.5,
+          "risk_level": 0.7,
+          "personnel_package": "10"
+        }
+      ],
+      "defensive_plays": [
+        {
+          "play_type": "defensive_cover_1",
+          "formation": "FOUR_THREE",
+          "concept": "run_blitz",
+          "weight": 0.6,
+          "success_rate": 0.6,
+          "risk_level": 0.5
+        },
+        {
+          "play_type": "defensive_cover_2",
+          "formation": "NICKEL",
+          "concept": "short_coverage",
+          "weight": 0.4,
+          "success_rate": 0.5,
+          "risk_level": 0.4
+        }
+      ]
+    },
+    "third_medium": {
+      "description": "Third down with medium yardage - aggressive routes",
+      "offensive_plays": [
+        {
+          "play_type": "PASS",
+          "formation": "FOUR_WIDE",
+          "concept": "crossing_routes",
+          "weight": 0.4,
+          "success_rate": 0.5,
+          "risk_level": 0.6,
+          "personnel_package": "10"
+        },
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
+          "concept": "comeback",
+          "weight": 0.3,
+          "success_rate": 0.6,
+          "risk_level": 0.4,
+          "personnel_package": "11"
+        },
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
+          "concept": "out_routes",
+          "weight": 0.2,
+          "success_rate": 0.5,
+          "risk_level": 0.5,
+          "personnel_package": "11"
+        },
+        {
+          "play_type": "RUN",
+          "formation": "SHOTGUN",
+          "concept": "draw",
+          "weight": 0.1,
+          "success_rate": 0.25,
+          "risk_level": 0.9,
+          "personnel_package": "11"
+        }
+      ],
+      "defensive_plays": [
+        {
+          "play_type": "defensive_cover_3",
+          "formation": "NICKEL",
+          "concept": "zone_blitz",
+          "weight": 0.5,
+          "success_rate": 0.6,
+          "risk_level": 0.5
+        },
+        {
+          "play_type": "defensive_cover_2",
+          "formation": "NICKEL",
+          "concept": "man_coverage",
+          "weight": 0.5,
+          "success_rate": 0.5,
+          "risk_level": 0.6
+        }
+      ]
+    },
+    "third_long": {
+      "description": "Third down with long yardage - vertical attack",
+      "offensive_plays": [
+        {
+          "play_type": "PASS",
+          "formation": "FOUR_WIDE",
+          "concept": "four_verticals",
+          "weight": 0.3,
+          "success_rate": 0.35,
+          "risk_level": 0.8,
+          "personnel_package": "10"
+        },
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
+          "concept": "deep_comeback",
+          "weight": 0.25,
+          "success_rate": 0.45,
+          "risk_level": 0.6,
+          "personnel_package": "11"
+        },
+        {
+          "play_type": "PASS",
+          "formation": "FOUR_WIDE",
+          "concept": "crossing_routes",
+          "weight": 0.25,
+          "success_rate": 0.4,
+          "risk_level": 0.7,
+          "personnel_package": "10"
+        },
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
+          "concept": "screen",
+          "weight": 0.2,
+          "success_rate": 0.35,
+          "risk_level": 0.8,
+          "personnel_package": "11"
+        }
+      ],
+      "defensive_plays": [
+        {
+          "play_type": "defensive_cover_3",
+          "formation": "NICKEL",
+          "concept": "pass_rush",
+          "weight": 0.6,
+          "success_rate": 0.6,
+          "risk_level": 0.5
+        },
+        {
+          "play_type": "defensive_prevent",
+          "formation": "DIME",
+          "concept": "prevent_defense",
+          "weight": 0.4,
+          "success_rate": 0.5,
+          "risk_level": 0.3
+        }
+      ]
+    },
+    "fourth_down": {
+      "description": "Fourth down - aggressive go-for-it mentality",
+      "offensive_plays": [
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
+          "concept": "quick_slant",
+          "weight": 0.4,
+          "success_rate": 0.5,
+          "risk_level": 0.8,
+          "conditions": {"yards_to_go_max": 5}
+        },
+        {
+          "play_type": "PUNT",
+          "formation": "PUNT",
+          "concept": "standard_punt",
+          "weight": 0.3,
+          "success_rate": 0.8,
+          "risk_level": 0.1,
+          "conditions": {"field_position_max": 50}
+        },
+        {
+          "play_type": "FIELD_GOAL",
+          "formation": "FIELD_GOAL",
+          "concept": "standard_kick",
+          "weight": 0.2,
+          "success_rate": 0.7,
+          "risk_level": 0.2,
+          "conditions": {"field_position_min": 60}
+        },
+        {
+          "play_type": "PASS",
+          "formation": "FOUR_WIDE",
+          "concept": "fade",
+          "weight": 0.1,
+          "success_rate": 0.3,
+          "risk_level": 0.9,
+          "conditions": {"yards_to_go_max": 3}
+        }
+      ],
+      "defensive_plays": [
+        {
+          "play_type": "defensive_punt_return",
+          "formation": "PUNT_RETURN",
+          "concept": "standard_return",
+          "weight": 0.6,
+          "success_rate": 0.7,
+          "risk_level": 0.3
+        },
+        {
+          "play_type": "defensive_punt_block",
+          "formation": "PUNT_BLOCK",
+          "concept": "standard_block",
+          "weight": 0.3,
+          "success_rate": 0.3,
+          "risk_level": 0.7
+        },
+        {
+          "play_type": "defensive_cover_1",
+          "formation": "FOUR_THREE",
+          "concept": "goal_line_stand",
+          "weight": 0.1,
+          "success_rate": 0.6,
+          "risk_level": 0.5
+        }
+      ]
+    },
+    "red_zone": {
+      "description": "Red zone - aggressive passing attack",
+      "offensive_plays": [
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
+          "concept": "fade",
+          "weight": 0.4,
+          "success_rate": 0.45,
+          "risk_level": 0.7,
+          "personnel_package": "11"
+        },
+        {
+          "play_type": "PASS",
+          "formation": "FOUR_WIDE",
+          "concept": "pick_play",
+          "weight": 0.25,
+          "success_rate": 0.5,
+          "risk_level": 0.6,
+          "personnel_package": "10"
+        },
+        {
+          "play_type": "RUN",
+          "formation": "I_FORMATION",
+          "concept": "power",
+          "weight": 0.2,
+          "success_rate": 0.6,
+          "risk_level": 0.4,
+          "personnel_package": "21"
+        },
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
+          "concept": "slant",
+          "weight": 0.15,
+          "success_rate": 0.65,
+          "risk_level": 0.3,
+          "personnel_package": "11"
+        }
+      ],
+      "defensive_plays": [
+        {
+          "play_type": "defensive_cover_2",
+          "formation": "FOUR_THREE",
+          "concept": "red_zone_defense",
+          "weight": 0.6,
+          "success_rate": 0.6,
+          "risk_level": 0.3
+        },
+        {
+          "play_type": "defensive_cover_1",
+          "formation": "FOUR_THREE",
+          "concept": "man_coverage",
+          "weight": 0.4,
+          "success_rate": 0.5,
+          "risk_level": 0.5
+        }
+      ]
+    },
+    "goal_line": {
+      "description": "Goal line - still pass-first even here",
+      "offensive_plays": [
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
+          "concept": "fade",
+          "weight": 0.5,
+          "success_rate": 0.4,
+          "risk_level": 0.8,
+          "personnel_package": "11"
+        },
+        {
+          "play_type": "RUN",
+          "formation": "I_FORMATION",
+          "concept": "power",
+          "weight": 0.3,
+          "success_rate": 0.7,
+          "risk_level": 0.3,
+          "personnel_package": "22"
+        },
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
+          "concept": "quick_slant",
+          "weight": 0.2,
+          "success_rate": 0.6,
+          "risk_level": 0.6,
+          "personnel_package": "11"
+        }
+      ],
+      "defensive_plays": [
+        {
+          "play_type": "defensive_cover_1",
+          "formation": "GOAL_LINE",
+          "concept": "goal_line_defense",
+          "weight": 0.8,
+          "success_rate": 0.7,
+          "risk_level": 0.3
+        },
+        {
+          "play_type": "defensive_cover_0",
+          "formation": "GOAL_LINE",
+          "concept": "all_out_blitz",
+          "weight": 0.2,
+          "success_rate": 0.5,
+          "risk_level": 0.8
+        }
+      ]
+    },
+    "two_minute": {
+      "description": "Two minute drill - maximum aggression",
+      "offensive_plays": [
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
+          "concept": "quick_slant",
+          "weight": 0.3,
+          "success_rate": 0.7,
+          "risk_level": 0.3,
+          "personnel_package": "11"
+        },
+        {
+          "play_type": "PASS",
+          "formation": "FOUR_WIDE",
+          "concept": "deep_routes",
+          "weight": 0.3,
+          "success_rate": 0.35,
+          "risk_level": 0.8,
+          "personnel_package": "10"
+        },
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
+          "concept": "sideline_routes",
+          "weight": 0.25,
+          "success_rate": 0.5,
+          "risk_level": 0.4,
+          "personnel_package": "11"
+        },
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
+          "concept": "spike",
+          "weight": 0.15,
+          "success_rate": 1.0,
+          "risk_level": 0.0,
+          "personnel_package": "11"
+        }
+      ],
+      "defensive_plays": [
+        {
+          "play_type": "defensive_prevent",
+          "formation": "DIME",
+          "concept": "prevent_defense",
+          "weight": 0.5,
+          "success_rate": 0.6,
+          "risk_level": 0.3
+        },
+        {
+          "play_type": "defensive_cover_3",
+          "formation": "NICKEL",
+          "concept": "pass_rush",
+          "weight": 0.5,
+          "success_rate": 0.5,
+          "risk_level": 0.6
+        }
+      ]
+    }
+  }
+}

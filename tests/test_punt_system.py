@@ -156,7 +156,7 @@ class TestPuntSimulator(unittest.TestCase):
         for i in range(10):
             player = MagicMock()
             player.name = f"Offensive Player {i}"
-            player.primary_position = Position.LB if i < 5 else Position.CB
+            player.primary_position = Position.MIKE if i < 5 else Position.CB
             player.get_rating.return_value = 75
             self.offensive_players.append(player)
         
@@ -171,7 +171,7 @@ class TestPuntSimulator(unittest.TestCase):
         for i in range(10):
             player = MagicMock()
             player.name = f"Defensive Player {i}"
-            player.primary_position = Position.LB if i < 5 else Position.CB
+            player.primary_position = Position.MIKE if i < 5 else Position.CB
             player.get_rating.return_value = 75
             self.defensive_players.append(player)
         

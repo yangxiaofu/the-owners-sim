@@ -14,6 +14,7 @@ import math
 from typing import List, Tuple, Dict, Optional, Union
 from play_engine.simulation.stats import PlayerStats, PlayStatsSummary, create_player_stats_from_player
 from play_engine.mechanics.formations import OffensiveFormation, DefensiveFormation
+from play_engine.mechanics.unified_formations import UnifiedDefensiveFormation, SimulatorContext
 from play_engine.play_types.base_types import PlayType
 from play_engine.play_types.offensive_types import PuntPlayType
 from play_engine.play_types.defensive_types import DefensivePlayType
@@ -34,21 +35,21 @@ class PuntPlayParams:
         
         Args:
             punt_type: One of PuntPlayType constants (REAL_PUNT, FAKE_PUNT_PASS, FAKE_PUNT_RUN)
-            defensive_formation: One of DefensivePlayType punt formations
+            defensive_formation: String formation name (like run/pass plays)
             context: PlayContext with game situation information
         """
         # Validate punt_type against enum
         if punt_type not in PuntPlayType.get_all_types():
             raise ValueError(f"Invalid punt type: {punt_type}. Must be one of: {PuntPlayType.get_all_types()}")
         
-        # Validate defensive_formation against punt defense enum
-        punt_defensive_types = DefensivePlayType.get_punt_defenses()
-        if defensive_formation not in punt_defensive_types:
-            raise ValueError(f"Invalid punt defensive formation: {defensive_formation}. Must be one of: {punt_defensive_types}")
-            
+        # Store string formation directly (like run/pass plays do)
         self.punt_type = punt_type
-        self.defensive_formation = defensive_formation
+        self.defensive_formation = defensive_formation  # Store string, not enum
         self.context = context
+    
+    def get_defensive_formation_name(self) -> str:
+        """Get the defensive formation name (already a string)"""
+        return self.defensive_formation
 
 
 class PuntSimulator:
@@ -98,17 +99,17 @@ class PuntSimulator:
                     self.long_snapper = player
                 elif player.primary_position in [Position.FB, Position.RB]:
                     self.upback = player
-                elif player.primary_position in [Position.LB, Position.CB, Position.S]:
+                elif player.primary_position in [Position.MIKE, Position.SAM, Position.WILL, Position.ILB, Position.OLB, Position.CB, Position.FS, Position.SS]:
                     self.coverage_unit.append(player)
         
         for player in self.defensive_players:
             if hasattr(player, 'primary_position'):
-                if player.primary_position in [Position.CB, Position.S, Position.RB]:
+                if player.primary_position in [Position.CB, Position.FS, Position.SS, Position.RB]:
                     if not self.returner:  # First eligible player becomes returner
                         self.returner = player
                     else:
                         self.return_blockers.append(player)
-                elif player.primary_position in [Position.LB, Position.CB]:
+                elif player.primary_position in [Position.MIKE, Position.SAM, Position.WILL, Position.ILB, Position.OLB, Position.CB]:
                     self.return_blockers.append(player)
         
         # Fallback assignments if positions not properly set
@@ -133,24 +134,6 @@ class PuntSimulator:
         """
         context = punt_params.context
         
-        # PRE-SNAP: Check for pre-snap penalties
-        pre_snap_penalty = self.penalty_engine.check_pre_snap_penalty(
-            self.offensive_players, self.defensive_players, context, 0
-        )
-        
-        if pre_snap_penalty.penalty_occurred:
-            # Pre-snap penalty negates play entirely
-            summary = PlayStatsSummary(
-                play_type=PlayType.PUNT,
-                yards_gained=0,  # No punt occurred
-                time_elapsed=random.uniform(*NFLTimingConfig.get_punt_timing())
-            )
-            summary.penalty_occurred = True
-            summary.penalty_instance = pre_snap_penalty.penalty_instance
-            summary.play_negated = True
-            
-            return summary
-        
         # Get formation matchup advantages
         formation_matchup = self._get_formation_matchup(punt_params.defensive_formation)
         
@@ -171,28 +154,26 @@ class PuntSimulator:
                 
             elif punt_params.punt_type == PuntPlayType.FAKE_PUNT_RUN:
                 result = self._execute_fake_punt_run(formation_matchup, context)
+            else:
+                # Safety fallback for unexpected punt types
+                raise ValueError(f"Unknown punt type: {punt_params.punt_type}")
         
-        # DURING-PLAY: Check for during-play penalties
-        during_play_penalty = self.penalty_engine.check_during_play_penalty(
-            self.offensive_players, self.defensive_players, context, result.yards_gained
+        # Check for penalties using proven API (same as other simulators)
+        penalty_result = self.penalty_engine.check_for_penalty(
+            offensive_players=self.offensive_players,
+            defensive_players=self.defensive_players,
+            context=context,
+            original_play_yards=result.yards_gained
         )
         
-        if during_play_penalty.penalty_occurred:
+        # Apply penalty effects if penalty occurred
+        if penalty_result.penalty_occurred:
             result.penalty_occurred = True
-            result.penalty_instance = during_play_penalty.penalty_instance
+            result.penalty_instance = penalty_result.penalty_instance
             result.original_yards = result.yards_gained
-            result.yards_gained = during_play_penalty.modified_yards
-            if during_play_penalty.play_negated:
+            result.yards_gained = penalty_result.modified_yards
+            if penalty_result.play_negated:
                 result.play_negated = True
-        
-        # POST-PLAY: Check for post-play penalties
-        post_play_penalty = self.penalty_engine.check_post_play_penalty(
-            self.offensive_players, self.defensive_players, context, result.yards_gained
-        )
-        
-        if post_play_penalty.penalty_occurred:
-            # Post-play penalties don't affect the punt outcome but apply for next play
-            result.post_play_penalty = post_play_penalty.penalty_instance
         
         # PHASE 4: Attribute individual player statistics
         self._attribute_player_statistics(result, context)

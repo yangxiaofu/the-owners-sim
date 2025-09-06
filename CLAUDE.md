@@ -29,14 +29,15 @@ python tests/test_game_state_manager.py
 python tests/test_field_tracker.py
 python tests/test_down_tracker.py
 python tests/test_drive_manager.py
+python tests/test_drive_manager_comprehensive.py
+python tests/test_play_caller_system.py
 python tests/test_scoreboard.py
 python tests/test_scoring_mapper.py
 
-# Quick validation test
-python quick_test.py
-
-# Interactive testing
-python test_play_execution.py
+# Interactive testing and validation scripts
+python team_stats_interactive_test.py
+python test_drive_manager_simple.py
+python test_team_stats_accumulator.py
 ```
 
 ### Running Demos
@@ -64,6 +65,12 @@ python simple_possession_demo.py
 
 # Scoreboard system demo
 python scoreboard_demo.py
+
+# Single drive comprehensive demo
+python single_drive_demo.py
+
+# Coaching staff system demonstration
+python coaching_staff_demo.py
 ```
 
 ### Development Setup
@@ -87,7 +94,7 @@ The simulation follows a layered architecture with clear separation of concerns:
 
 **1. Play Engine Core (`src/play_engine/core/`)**
 - `engine.py`: Main play simulation orchestrator using match/case statements
-- `result.py`: Play result data structures
+- `play_result.py`: Unified PlayResult class (single source of truth replacing result.py)
 - `params.py`: Play execution parameters
 
 **2. Play Types (`src/play_engine/play_types/`)**
@@ -102,8 +109,18 @@ The simulation follows a layered architecture with clear separation of concerns:
 - `offensive_play_call.py`: Offensive play call encapsulation with formations and concepts
 - `defensive_play_call.py`: Defensive play call structure and logic
 
+**2b. Coaching Staff and Play Calling (`src/play_engine/play_calling/`)**
+- `coaching_staff.py`: Complete coaching staff system with coordinator hierarchy
+- `head_coach.py`, `offensive_coordinator.py`, `defensive_coordinator.py`: Position-specific coaching logic
+- `coach_archetype.py`: Coaching philosophy and style definitions
+- `playbook_loader.py`: Dynamic playbook loading system
+- `game_situation_analyzer.py`: Context-aware play selection logic
+- `fourth_down_matrix.py`: Advanced fourth down decision making
+- `play_caller.py`, `staff_factory.py`: Play calling orchestration and staff creation
+
 **3. Play Mechanics (`src/play_engine/mechanics/`)**
 - `formations.py`: Formation system with personnel packages
+- `unified_formations.py`: Type-safe enum-based formation system with context-aware naming
 - `penalties/`: Comprehensive NFL penalty system with JSON configuration
 
 **4. Team Management (`src/team_management/`)**
@@ -148,9 +165,25 @@ match offensive_play_type:
         raise ValueError(f"Unhandled play type: {offensive_play_type}")
 ```
 
+**Unified Formation System**: Type-safe enum-based formations with context-aware naming:
+```python
+class UnifiedDefensiveFormation(Enum):
+    # Single formation definition with different names for different contexts
+    # coordinator_name="punt_return", punt_name="defensive_punt_return"
+```
+
+**Coaching Staff Architecture**: Hierarchical coaching system with realistic NFL roles:
+```python
+# CoachingStaff -> HeadCoach -> OffensiveCoordinator/DefensiveCoordinator
+# Each coach has archetype-based decision making and situational logic
+```
+
 **JSON Configuration System**: All game data is externalized:
 - `src/data/teams.json`: Complete NFL team dataset with numerical IDs
 - `src/config/penalties/`: 5 JSON files for penalty configuration
+- `src/config/coaching_staff/`: Individual coach profiles with realistic NFL coaching styles
+- `src/config/playbooks/`: Team strategic approaches and play selection preferences
+- `src/config/team_coaching_styles.json`: Maps all 32 NFL teams to coaching philosophies
 - Supports designer-friendly configuration without code changes
 
 **Two-Phase Penalty Integration**:
@@ -177,6 +210,9 @@ match offensive_play_type:
 - `src/config/penalties/situational_modifiers.json`: Field position/down effects
 - `src/config/penalties/penalty_descriptions.json`: Contextual descriptions
 - `src/config/penalties/home_field_settings.json`: Home field advantage
+- `src/config/coaching_staff/`: Individual coach profiles (head_coaches/, offensive_coordinators/, defensive_coordinators/)
+- `src/config/playbooks/`: Team playbook strategies (aggressive.json, balanced.json, conservative.json)
+- `src/config/team_coaching_styles.json`: Team-specific coaching staff assignments (maps team IDs to coaching styles)
 - `src/play_engine/config/`: Play-specific configuration files (run_play_config.json, pass_play_config.json, field_goal_config.json, kickoff_config.json, punt_config.json)
 
 ## Testing Strategy
@@ -184,7 +220,7 @@ match offensive_play_type:
 The project uses multiple testing approaches:
 
 1. **Unit Tests** (`tests/`): Traditional pytest-based unit testing
-2. **Interactive Testing** (`test_play_execution.py`): Menu-driven play-by-play testing
+2. **Interactive Testing**: Menu-driven play-by-play testing and validation scripts
 3. **Validation Scripts** (`quick_test.py`, `simple_penalty_validation.py`): Automated validation
 4. **Demo Scripts**: Full system demonstrations with realistic scenarios
 
@@ -211,6 +247,15 @@ Comprehensive documentation is available in `docs/`:
 - Formation-based personnel selection
 - Offensive/defensive formation compatibility validation
 - Personnel package management for different play types
+- Type-safe enum-based formations eliminate string-based bugs
+- Context-aware naming (coordinator vs simulator vs display names)
+
+### Coaching Staff Integration
+- Realistic NFL coaching hierarchies (Head Coach → Coordinators)
+- Coach archetypes: ultra_conservative, conservative, balanced, aggressive, ultra_aggressive
+- Position-specific specialties: pass_heavy, run_heavy, balanced offensive styles
+- Situational decision making: fourth down matrix, game situation analysis
+- Team-specific coaching assignments for all 32 NFL teams
 
 ### Error Handling
 - Comprehensive validation for team IDs (must be 1-32)
@@ -224,5 +269,8 @@ Recent major changes to be aware of:
 1. **Team Names → Numerical IDs**: `TeamRosterGenerator.generate_sample_roster()` now requires integer team_id instead of string team_name
 2. **Play Type Consolidation**: PLAY_ACTION_PASS and SCREEN_PASS now handled under PASS case
 3. **Match/Case Conversion**: Main play engine converted from if/elif to match/case pattern
+4. **Unified PlayResult**: Single PlayResult class replaces multiple result classes, eliminates import conflicts
+5. **Coaching Staff System**: New hierarchical coaching system with realistic NFL coaching philosophies
+6. **Type-Safe Formations**: String-based formation names replaced with enum-based system
 
 When working with legacy code, check for hardcoded team names and convert to numerical IDs using the constants in `src/constants/team_ids.py`.

@@ -8,6 +8,7 @@ and optional coverage/blitz packages for realistic football defensive coordinati
 from typing import Optional, Dict, Any, List
 from ..play_types.defensive_types import DefensivePlayType
 from ..mechanics.formations import DefensiveFormation
+from ..mechanics.unified_formations import UnifiedDefensiveFormation
 
 
 class DefensivePlayCall:
@@ -58,39 +59,65 @@ class DefensivePlayCall:
             DefensivePlayType.FOUR_MAN_RUSH, DefensivePlayType.BLITZ, DefensivePlayType.CORNER_BLITZ,
             DefensivePlayType.SAFETY_BLITZ, DefensivePlayType.NICKEL_DEFENSE, DefensivePlayType.DIME_DEFENSE,
             DefensivePlayType.GOAL_LINE_DEFENSE, DefensivePlayType.PREVENT_DEFENSE, DefensivePlayType.RUN_STUFF,
-            DefensivePlayType.KICKOFF_RETURN
+            DefensivePlayType.KICKOFF_RETURN,
+            # Add missing special teams defensive play types
+            DefensivePlayType.PUNT_RETURN, DefensivePlayType.PUNT_BLOCK, DefensivePlayType.PUNT_SAFE,
+            DefensivePlayType.SPREAD_RETURN
         ]
         return play_type in valid_types
     
     def _is_valid_defensive_formation(self, formation: str) -> bool:
         """Check if formation is valid defensive formation"""
-        valid_formations = [
+        # ✅ NEW: Support UnifiedDefensiveFormation coordinator names (primary)
+        from ..mechanics.unified_formations import SimulatorContext
+        
+        # Get all valid coordinator context names from unified enum system
+        unified_formation_names = []
+        for enum_formation in UnifiedDefensiveFormation:
+            coordinator_name = enum_formation.for_context(SimulatorContext.COORDINATOR)
+            unified_formation_names.append(coordinator_name)
+        
+        # ✅ LEGACY: Also accept old DefensiveFormation constants (backward compatibility)
+        legacy_formations = [
             DefensiveFormation.FOUR_THREE, DefensiveFormation.THREE_FOUR, DefensiveFormation.FOUR_SIX,
             DefensiveFormation.NICKEL, DefensiveFormation.DIME, DefensiveFormation.QUARTER,
             DefensiveFormation.GOAL_LINE, DefensiveFormation.PREVENT, DefensiveFormation.BLITZ_PACKAGE,
             DefensiveFormation.PUNT_RETURN, DefensiveFormation.KICK_RETURN, DefensiveFormation.FIELD_GOAL_BLOCK
         ]
-        return formation in valid_formations
+        
+        # Accept both new unified names and legacy names
+        return formation in unified_formation_names or formation in legacy_formations
     
     def _is_compatible_play_formation(self, play_type: str, formation: str) -> bool:
         """Check if play type and formation are compatible"""
-        # Specific play type + formation requirements
-        required_formations = {
-            DefensivePlayType.NICKEL_DEFENSE: DefensiveFormation.NICKEL,
-            DefensivePlayType.DIME_DEFENSE: DefensiveFormation.DIME,
-            DefensivePlayType.GOAL_LINE_DEFENSE: DefensiveFormation.GOAL_LINE,
-            DefensivePlayType.PREVENT_DEFENSE: DefensiveFormation.PREVENT
+        # ✅ ENHANCED: Support both old and new formation naming conventions
+        
+        # Create flexible compatibility mappings that work with both naming systems
+        compatibility_map = {
+            DefensivePlayType.NICKEL_DEFENSE: ["nickel", "nickel_defense"],
+            DefensivePlayType.DIME_DEFENSE: ["dime", "dime_defense"],  
+            DefensivePlayType.GOAL_LINE_DEFENSE: ["goal_line_defense"],
+            DefensivePlayType.PREVENT_DEFENSE: ["prevent_defense"]
         }
         
-        if play_type in required_formations:
-            return formation == required_formations[play_type]
+        # Check if this play type has specific formation requirements
+        if play_type in compatibility_map:
+            compatible_formations = compatibility_map[play_type]
+            return formation in compatible_formations
         
-        # Special teams formations match
+        # ✅ ENHANCED: Special teams formations - support both old and new names
         special_teams_formations = [
-            DefensiveFormation.PUNT_RETURN, DefensiveFormation.KICK_RETURN, DefensiveFormation.FIELD_GOAL_BLOCK
+            # Legacy names
+            DefensiveFormation.PUNT_RETURN, DefensiveFormation.KICK_RETURN, DefensiveFormation.FIELD_GOAL_BLOCK,
+            # New unified names  
+            "punt_return", "kick_return", "field_goal_block"
         ]
         
-        # For now, allow all other combinations (could be refined later)
+        # Special teams play types should use special teams formations
+        if play_type == DefensivePlayType.KICKOFF_RETURN:
+            return formation in special_teams_formations
+        
+        # For all other combinations, allow flexibility (could be refined later)
         return True
     
     def get_play_type(self) -> str:

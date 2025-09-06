@@ -14,11 +14,34 @@ import math
 from typing import List, Tuple, Dict, Optional, Union
 from play_engine.simulation.stats import PlayerStats, PlayStatsSummary, create_player_stats_from_player
 from play_engine.mechanics.formations import OffensiveFormation, DefensiveFormation
+from play_engine.mechanics.unified_formations import UnifiedDefensiveFormation, SimulatorContext
 from play_engine.play_types.base_types import PlayType
 from team_management.players.player import Position
 from play_engine.mechanics.penalties.penalty_engine import PenaltyEngine, PlayContext, PenaltyResult
 from play_engine.mechanics.penalties.penalty_data_structures import PenaltyInstance
 from play_engine.config.config_loader import config
+
+
+class FieldGoalPlayParams:
+    """Input parameters for field goal simulator - received from external play calling systems"""
+    
+    def __init__(self, fg_type: str, defensive_formation: str, context: PlayContext):
+        """
+        Initialize field goal play parameters
+        
+        Args:
+            fg_type: Field goal attempt type ("real_fg", "fake_fg_pass", "fake_fg_run")
+            defensive_formation: String formation name (like run/pass plays)
+            context: PlayContext with game situation information
+        """
+        # Store string formation directly (like run/pass plays do)
+        self.fg_type = fg_type
+        self.defensive_formation = defensive_formation  # Store string, not enum
+        self.context = context
+    
+    def get_defensive_formation_name(self) -> str:
+        """Get the defensive formation name (already a string)"""
+        return self.defensive_formation
 
 
 class FieldGoalAttemptResult:
@@ -107,22 +130,31 @@ class FieldGoalSimulator:
         if not self.long_snapper:
             self.long_snapper = self.offensive_players[2]  # Third player as long snapper
     
-    def simulate_field_goal_play(self, context: Optional[PlayContext] = None) -> 'PlayStatsSummary':
+    def simulate_field_goal_play(self, fg_params: Optional[FieldGoalPlayParams] = None, context: Optional[PlayContext] = None) -> 'PlayStatsSummary':
         """
         Main simulation method for field goal attempts
         
         Args:
-            context: PlayContext with game situation information
+            fg_params: FieldGoalPlayParams with validated enum formations (preferred method)
+            context: PlayContext with game situation information (fallback for backward compatibility)
             
         Returns:
             PlayStatsSummary with comprehensive field goal outcome and individual player stats
         """
-        if context is None:
-            context = PlayContext(
-                play_type="field_goal",
-                offensive_formation=self.offensive_formation,
-                defensive_formation=self.defensive_formation
-            )
+        # Handle both new enum-based params and legacy string-based context
+        if fg_params is not None:
+            # ✅ NEW: Use validated enum from FieldGoalPlayParams
+            defensive_formation_name = fg_params.get_defensive_formation_name()
+            context = fg_params.context
+        else:
+            # ✅ LEGACY: Fallback to string-based formation for backward compatibility
+            defensive_formation_name = self.defensive_formation
+            if context is None:
+                context = PlayContext(
+                    play_type="field_goal",
+                    offensive_formation=self.offensive_formation,
+                    defensive_formation=self.defensive_formation
+                )
         
         # Calculate field goal distance
         distance = self._calculate_field_goal_distance(context)
@@ -133,12 +165,12 @@ class FieldGoalSimulator:
         if fake_decision.is_fake:
             # Phase 2A: Execute fake field goal
             if fake_decision.fake_type == "pass":
-                result = self._simulate_fake_fg_pass(context, distance)
+                result = self._simulate_fake_fg_pass(context, distance, defensive_formation_name)
             else:  # fake run
-                result = self._simulate_fake_fg_run(context, distance)
+                result = self._simulate_fake_fg_run(context, distance, defensive_formation_name)
         else:
             # Phase 2B: Execute real field goal
-            result = self._simulate_real_field_goal(context, distance)
+            result = self._simulate_real_field_goal(context, distance, defensive_formation_name)
         
         # Phase 3: Check for penalties
         original_yards = result.yards_gained
@@ -239,7 +271,7 @@ class FieldGoalSimulator:
         
         return FakeDecision(False, None, 1.0 - fake_probability)
     
-    def _simulate_real_field_goal(self, context: PlayContext, distance: int) -> FieldGoalAttemptResult:
+    def _simulate_real_field_goal(self, context: PlayContext, distance: int, defensive_formation_name: str = None) -> FieldGoalAttemptResult:
         """
         Simulate a real field goal attempt
         
@@ -255,7 +287,7 @@ class FieldGoalSimulator:
         hold_quality = self._evaluate_hold_quality(snap_quality)
         
         # Phase 2: Protection check (block probability)
-        is_blocked = self._check_for_block(context)
+        is_blocked = self._check_for_block(context, defensive_formation_name)
         
         if is_blocked:
             return FieldGoalAttemptResult(
@@ -297,7 +329,7 @@ class FieldGoalSimulator:
                 distance=distance
             )
     
-    def _simulate_fake_fg_pass(self, context: PlayContext, distance: int) -> FieldGoalAttemptResult:
+    def _simulate_fake_fg_pass(self, context: PlayContext, distance: int, defensive_formation_name: str = None) -> FieldGoalAttemptResult:
         """
         Simulate a fake field goal pass attempt
         
@@ -311,8 +343,9 @@ class FieldGoalSimulator:
         fake_config = self.fg_config.get('fake_field_goal_execution', {}).get('fake_pass', {})
         formation_config = self.fg_config.get('formation_matchups', {})
         
-        # Get formation advantage
-        matchup = formation_config.get('matchups', {}).get(self.offensive_formation, {}).get(self.defensive_formation, {})
+        # Get formation advantage using appropriate defensive formation name
+        formation_name = defensive_formation_name or self.defensive_formation
+        matchup = formation_config.get('matchups', {}).get(self.offensive_formation, {}).get(formation_name, {})
         fake_advantage = matchup.get('fake_advantage_pass', formation_config.get('default_matchup', {}).get('fake_advantage_pass', 0.7))
         
         # Base completion rate modified by formation advantage
@@ -352,7 +385,7 @@ class FieldGoalSimulator:
                 distance=distance
             )
     
-    def _simulate_fake_fg_run(self, context: PlayContext, distance: int) -> FieldGoalAttemptResult:
+    def _simulate_fake_fg_run(self, context: PlayContext, distance: int, defensive_formation_name: str = None) -> FieldGoalAttemptResult:
         """
         Simulate a fake field goal run attempt
         
@@ -366,8 +399,9 @@ class FieldGoalSimulator:
         fake_config = self.fg_config.get('fake_field_goal_execution', {}).get('fake_run', {})
         formation_config = self.fg_config.get('formation_matchups', {})
         
-        # Get formation advantage  
-        matchup = formation_config.get('matchups', {}).get(self.offensive_formation, {}).get(self.defensive_formation, {})
+        # Get formation advantage using appropriate defensive formation name
+        formation_name = defensive_formation_name or self.defensive_formation
+        matchup = formation_config.get('matchups', {}).get(self.offensive_formation, {}).get(formation_name, {})
         fake_advantage = matchup.get('fake_advantage_run', formation_config.get('default_matchup', {}).get('fake_advantage_run', 0.65))
         
         # Base success rate modified by formation advantage
@@ -489,10 +523,11 @@ class FieldGoalSimulator:
         
         return base_quality
     
-    def _check_for_block(self, context: PlayContext) -> bool:
+    def _check_for_block(self, context: PlayContext, defensive_formation_name: str = None) -> bool:
         """Check if field goal attempt is blocked"""
         formation_config = self.fg_config.get('formation_matchups', {})
-        matchup = formation_config.get('matchups', {}).get(self.offensive_formation, {}).get(self.defensive_formation, {})
+        formation_name = defensive_formation_name or self.defensive_formation
+        matchup = formation_config.get('matchups', {}).get(self.offensive_formation, {}).get(formation_name, {})
         
         block_probability = matchup.get('block_probability', formation_config.get('default_matchup', {}).get('block_probability', 0.05))
         
@@ -667,14 +702,29 @@ class FieldGoalSimulator:
         return [stats for stats in player_stats if stats.get_total_stats()]
 
 
-def get_field_goal_formation_matchup(offensive_formation: str, defensive_formation: str) -> Dict:
-    """Get field goal formation matchup data from configuration"""
+def get_field_goal_formation_matchup(offensive_formation: str, defensive_formation: Union[str, UnifiedDefensiveFormation]) -> Dict:
+    """
+    Get field goal formation matchup data from configuration
+    
+    Args:
+        offensive_formation: Offensive formation string
+        defensive_formation: Either string or UnifiedDefensiveFormation enum
+    
+    Returns:
+        Dict with formation matchup data
+    """
     try:
+        # Convert enum to appropriate context name if needed
+        if isinstance(defensive_formation, UnifiedDefensiveFormation):
+            defensive_formation_name = defensive_formation.for_context(SimulatorContext.FIELD_GOAL_SIMULATOR)
+        else:
+            defensive_formation_name = defensive_formation
+        
         fg_config = config.get_field_goal_config()
         matchups = fg_config.get('formation_matchups', {}).get('matchups', {})
         
-        if offensive_formation in matchups and defensive_formation in matchups[offensive_formation]:
-            return matchups[offensive_formation][defensive_formation]
+        if offensive_formation in matchups and defensive_formation_name in matchups[offensive_formation]:
+            return matchups[offensive_formation][defensive_formation_name]
         else:
             return fg_config.get('formation_matchups', {}).get('default_matchup', {
                 'block_probability': 0.05,

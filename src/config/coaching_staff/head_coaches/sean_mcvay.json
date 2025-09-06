@@ -1,0 +1,67 @@
+{
+  "name": "Sean McVay",
+  "description": "Innovative offensive mind who revolutionized modern NFL play calling with motion, formations, and scheme creativity. Delegates defense while controlling offensive game plan.",
+  "coach_type": "head_coach",
+  "aggression": 0.8,
+  "risk_tolerance": 0.8,
+  "adaptability": 0.7,
+  "conservatism": 0.2,
+  "run_preference": 0.4,
+  "fourth_down_aggression": 0.7,
+  "red_zone_aggression": 0.8,
+  "game_script_adherence": 0.7,
+  "momentum_responsiveness": 0.8,
+  "pressure_handling": 0.7,
+  "situational": {
+    "first_down_aggression": 0.7,
+    "second_down_creativity": 0.9,
+    "third_down_aggression": 0.8,
+    "fourth_down_aggression": 0.7,
+    "red_zone_aggression": 0.8,
+    "goal_line_creativity": 0.9,
+    "midfield_risk_tolerance": 0.8,
+    "two_minute_aggression": 0.8,
+    "clock_management_conservatism": 0.3
+  },
+  "formations": {
+    "i_formation_preference": 0.2,
+    "shotgun_preference": 0.9,
+    "pistol_preference": 0.4,
+    "wildcat_preference": 0.1,
+    "four_wide_preference": 0.8,
+    "heavy_personnel_preference": 0.4,
+    "spread_personnel_preference": 0.9,
+    "balanced_personnel_preference": 0.7
+  },
+  "play_types": {
+    "run_preference": 0.4,
+    "play_action_frequency": 0.8,
+    "screen_frequency": 0.3,
+    "draw_frequency": 0.2,
+    "short_pass_preference": 0.6,
+    "intermediate_pass_preference": 0.8,
+    "deep_pass_preference": 0.6,
+    "trick_play_frequency": 0.1,
+    "fake_punt_aggression": 0.1,
+    "fake_field_goal_aggression": 0.05
+  },
+  "game_management": {
+    "fourth_down_decision_aggression": 0.7,
+    "two_minute_drill_aggression": 0.8,
+    "overtime_aggression": 0.8,
+    "timeout_usage_intelligence": 0.7,
+    "challenge_flag_wisdom": 0.6,
+    "clock_management_skill": 0.7,
+    "starter_loyalty": 0.6,
+    "rookie_trust": 0.5,
+    "injury_risk_tolerance": 0.4
+  },
+  "coordinator_influence": {
+    "offensive_coordinator_trust": 0.95,
+    "defensive_coordinator_trust": 0.9,
+    "special_teams_coordinator_trust": 0.7,
+    "critical_situation_override_threshold": 0.4,
+    "momentum_shift_override_threshold": 0.4,
+    "game_script_override_threshold": 0.5
+  }
+}

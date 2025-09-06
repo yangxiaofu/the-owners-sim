@@ -14,11 +14,34 @@ from typing import List, Tuple, Dict, Optional, Union
 from enum import Enum
 from play_engine.simulation.stats import PlayerStats, PlayStatsSummary, create_player_stats_from_player
 from play_engine.mechanics.formations import OffensiveFormation, DefensiveFormation
+from play_engine.mechanics.unified_formations import UnifiedDefensiveFormation, SimulatorContext
 from play_engine.play_types.base_types import PlayType
 from team_management.players.player import Position
 from play_engine.mechanics.penalties.penalty_engine import PenaltyEngine, PlayContext, PenaltyResult
 from play_engine.mechanics.penalties.penalty_data_structures import PenaltyInstance
 from play_engine.config.config_loader import config
+
+
+class KickoffPlayParams:
+    """Input parameters for kickoff simulator - received from external play calling systems"""
+    
+    def __init__(self, kickoff_type: str, defensive_formation: str, context: PlayContext):
+        """
+        Initialize kickoff play parameters
+        
+        Args:
+            kickoff_type: Type of kickoff attempt ("regular_kickoff", "onside_kick", "squib_kick")
+            defensive_formation: String formation name (like run/pass plays)
+            context: PlayContext with game situation information
+        """
+        # Store string formation directly (like run/pass plays do)
+        self.kickoff_type = kickoff_type
+        self.defensive_formation = defensive_formation  # Store string, not enum
+        self.context = context
+    
+    def get_defensive_formation_name(self) -> str:
+        """Get the defensive formation name (already a string)"""
+        return self.defensive_formation
 
 
 class KickoffOutcome(Enum):
@@ -148,22 +171,31 @@ class KickoffSimulator:
         if not self.return_blockers:
             self.return_blockers = self.receiving_team[2:]
     
-    def simulate_kickoff_play(self, context: Optional[PlayContext] = None) -> KickoffResult:
+    def simulate_kickoff_play(self, kickoff_params: Optional[KickoffPlayParams] = None, context: Optional[PlayContext] = None) -> KickoffResult:
         """
         Main simulation method for kickoff attempts
         
         Args:
-            context: PlayContext with game situation information
+            kickoff_params: KickoffPlayParams with validated enum formations (preferred method)
+            context: PlayContext with game situation information (fallback for backward compatibility)
             
         Returns:
             KickoffResult with comprehensive outcome information
         """
-        if context is None:
-            context = PlayContext(
-                play_type="kickoff",
-                offensive_formation=self.offensive_formation,
-                defensive_formation=self.defensive_formation
-            )
+        # Handle both new enum-based params and legacy string-based context
+        if kickoff_params is not None:
+            # ✅ NEW: Use validated enum from KickoffPlayParams
+            defensive_formation_name = kickoff_params.get_defensive_formation_name()
+            context = kickoff_params.context
+        else:
+            # ✅ LEGACY: Fallback to string-based formation for backward compatibility
+            defensive_formation_name = self.defensive_formation
+            if context is None:
+                context = PlayContext(
+                    play_type="kickoff",
+                    offensive_formation=self.offensive_formation,
+                    defensive_formation=self.defensive_formation
+                )
         
         # Phase 1: Pre-kick setup validation and penalty detection
         pre_kick_result = self._execute_pre_kick_phase(context)
@@ -672,8 +704,17 @@ class KickoffSimulator:
         )
 
 
-def get_kickoff_formation_matchup(offensive_formation: str, defensive_formation: str) -> Dict:
-    """Get kickoff formation matchup data from configuration"""
+def get_kickoff_formation_matchup(offensive_formation: str, defensive_formation_name: str) -> Dict:
+    """
+    Get kickoff formation matchup data from configuration
+    
+    Args:
+        offensive_formation: Offensive formation name (string)
+        defensive_formation_name: Defensive formation name (string, may come from enum.for_context())
+        
+    Returns:
+        Dict with formation matchup effectiveness values
+    """
     try:
         kickoff_config = config.get_kickoff_config()
         # Kickoffs don't use traditional formation matchups like other plays

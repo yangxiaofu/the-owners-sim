@@ -1,0 +1,83 @@
+{
+  "name": "Sean McVay Style OC",
+  "description": "Innovative coordinator who revolutionized play design with extensive motion, misdirection, and formation creativity. Masters of scheme and getting players in space.",
+  "coach_type": "offensive_coordinator",
+  "aggression": 0.8,
+  "risk_tolerance": 0.7,
+  "adaptability": 0.8,
+  "conservatism": 0.2,
+  "run_preference": 0.4,
+  "fourth_down_aggression": 0.7,
+  "red_zone_aggression": 0.8,
+  "game_script_adherence": 0.6,
+  "momentum_responsiveness": 0.8,
+  "pressure_handling": 0.7,
+  "situational": {
+    "first_down_aggression": 0.7,
+    "second_down_creativity": 0.9,
+    "third_down_aggression": 0.8,
+    "fourth_down_aggression": 0.7,
+    "red_zone_aggression": 0.8,
+    "goal_line_creativity": 0.9,
+    "midfield_risk_tolerance": 0.8,
+    "two_minute_aggression": 0.8,
+    "clock_management_conservatism": 0.3
+  },
+  "formations": {
+    "i_formation_preference": 0.2,
+    "shotgun_preference": 0.9,
+    "pistol_preference": 0.4,
+    "wildcat_preference": 0.1,
+    "four_wide_preference": 0.7,
+    "heavy_personnel_preference": 0.4,
+    "spread_personnel_preference": 0.8,
+    "balanced_personnel_preference": 0.7
+  },
+  "play_types": {
+    "run_preference": 0.4,
+    "play_action_frequency": 0.9,
+    "screen_frequency": 0.3,
+    "draw_frequency": 0.2,
+    "short_pass_preference": 0.6,
+    "intermediate_pass_preference": 0.9,
+    "deep_pass_preference": 0.6,
+    "trick_play_frequency": 0.12,
+    "fake_punt_aggression": 0.1,
+    "fake_field_goal_aggression": 0.05
+  },
+  "philosophy": {
+    "west_coast_preference": 0.6,
+    "air_raid_preference": 0.4,
+    "ground_and_pound_preference": 0.4,
+    "rpo_usage": 0.6,
+    "motion_usage": 0.95,
+    "formation_creativity": 0.95,
+    "play_action_mastery": 0.95,
+    "gadget_play_frequency": 0.12,
+    "no_huddle_usage": 0.5,
+    "hurry_up_comfort": 0.7,
+    "scripted_opening_reliance": 0.7
+  },
+  "personnel": {
+    "eleven_personnel_usage": 0.8,
+    "twelve_personnel_usage": 0.6,
+    "twenty_one_personnel_usage": 0.3,
+    "ten_personnel_usage": 0.5,
+    "feature_back_reliance": 0.7,
+    "tight_end_involvement": 0.8,
+    "slot_receiver_emphasis": 0.7,
+    "deep_threat_prioritization": 0.6
+  },
+  "situational_calling": {
+    "first_down_pass_rate": 0.6,
+    "second_and_long_creativity": 0.9,
+    "third_down_conversion_aggression": 0.8,
+    "red_zone_fade_preference": 0.5,
+    "red_zone_run_commitment": 0.4,
+    "goal_line_innovation": 0.9,
+    "comeback_route_mastery": 0.7,
+    "clock_killing_run_game": 0.5,
+    "two_minute_drill_efficiency": 0.8
+  },
+  "preferred_playbooks": ["mcvay_concepts", "motion_heavy", "play_action", "innovative"]
+}
