@@ -33,13 +33,22 @@ class PlayResult:
     
     # Rich game state fields (from DriveManager PlayResult)
     is_scoring_play: bool = False        # Whether this play resulted in scoring
-    is_turnover: bool = False            # Whether possession changed
+    is_turnover: bool = False            # Whether possession changed due to turnover
     turnover_type: Optional[str] = None  # "interception", "fumble", etc.
     achieved_first_down: bool = False    # Whether this play achieved first down
     is_punt: bool = False                # Whether this was a punt play
     is_safety: bool = False              # Whether this resulted in a safety
     penalty_occurred: bool = False       # Whether there was a penalty
     penalty_yards: int = 0               # Net penalty yards (positive = benefit offense)
+    
+    # Possession tracking (new comprehensive system)
+    change_of_possession: bool = False   # Whether possession changed teams (broader than turnover)
+    
+    # Punt-specific tracking (enhanced two-stage system)
+    punt_distance: Optional[int] = None  # Stage 1: How far punt traveled
+    return_yards: Optional[int] = None   # Stage 2: How far returner advanced
+    hang_time: Optional[float] = None    # Stage 1: Punt hang time for coverage
+    coverage_pressure: Optional[float] = None  # Stage 1: Coverage quality (0.0-1.0)
     
     # Player statistics field (from core PlayResult)
     player_stats_summary: Optional[object] = None  # Player statistics summary object

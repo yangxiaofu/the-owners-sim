@@ -71,6 +71,9 @@ python single_drive_demo.py
 
 # Coaching staff system demonstration
 python coaching_staff_demo.py
+
+# Simple punt play demonstration  
+python simple_punt_demo.py
 ```
 
 ### Development Setup

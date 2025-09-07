@@ -45,6 +45,43 @@ class CleanArchitectureDisplay:
     def __init__(self):
         self.play_counter = 0
     
+    def _get_display_concept(self, play_call) -> str:
+        """Safely extract concept/strategy from play call objects"""
+        from play_engine.play_calls.special_teams_play_call import SpecialTeamsPlayCall
+        
+        if isinstance(play_call, SpecialTeamsPlayCall):
+            # Use strategy if available, otherwise derive from play_type
+            if play_call.strategy:
+                return play_call.strategy
+            elif hasattr(play_call, 'play_type'):
+                # Convert play type to readable concept
+                play_type = str(play_call.play_type).lower()
+                if 'punt' in play_type:
+                    return "standard_punt"
+                elif 'field_goal' in play_type:
+                    return "standard_field_goal"
+                elif 'kickoff' in play_type:
+                    return "standard_kickoff"
+                else:
+                    return f"special_teams_{play_type.split('_')[-1]}"
+            else:
+                return "standard_special_teams"
+        elif hasattr(play_call, 'concept'):
+            return play_call.concept or "standard_play"
+        else:
+            return "unknown_play"
+    
+    def _get_display_personnel(self, play_call) -> str:
+        """Safely extract personnel/target info from play call objects"""
+        from play_engine.play_calls.special_teams_play_call import SpecialTeamsPlayCall
+        
+        if isinstance(play_call, SpecialTeamsPlayCall):
+            return play_call.target_area or "standard_target"
+        elif hasattr(play_call, 'personnel_package'):
+            return play_call.personnel_package or "standard_personnel"
+        else:
+            return "unknown_personnel"
+    
     def show_drive_start(self, team_name: str, starting_position: int, time_remaining: int):
         """Show drive start with architectural context"""
         print("\n🏈 " + "=" * 80)
@@ -78,22 +115,31 @@ class CleanArchitectureDisplay:
         print(f"   " + "-" * 76)
     
     def show_special_teams_execution(self, strategic_choice: FourthDownDecisionType, 
-                                   offensive_call: OffensivePlayCall, defensive_call: DefensivePlayCall):
+                                   offensive_call, defensive_call):
         """Show special teams coordinator execution details"""
         print(f"   🏟️  SPECIAL TEAMS EXECUTION:")
         
+        # Use helper methods to safely extract concept/strategy
+        offensive_concept = self._get_display_concept(offensive_call)
+        defensive_coverage = getattr(defensive_call, 'coverage', 'standard_coverage') or 'standard_coverage'
+        
         if strategic_choice == FourthDownDecisionType.PUNT:
-            print(f"      Offensive ST: {offensive_call.concept.replace('_', ' ').title()} ({offensive_call.get_formation()})")
-            print(f"      Defensive ST: {defensive_call.coverage.replace('_', ' ').title()} ({defensive_call.get_formation()})")
+            print(f"      Offensive ST: {offensive_concept.replace('_', ' ').title()} ({offensive_call.get_formation()})")
+            print(f"      Defensive ST: {defensive_coverage.replace('_', ' ').title()} ({defensive_call.get_formation()})")
         elif strategic_choice == FourthDownDecisionType.FIELD_GOAL:
-            print(f"      Offensive ST: {offensive_call.concept.replace('_', ' ').title()} ({offensive_call.get_formation()})")  
-            print(f"      Defensive ST: {defensive_call.coverage.replace('_', ' ').title()} ({defensive_call.get_formation()})")
+            print(f"      Offensive ST: {offensive_concept.replace('_', ' ').title()} ({offensive_call.get_formation()})")  
+            print(f"      Defensive ST: {defensive_coverage.replace('_', ' ').title()} ({defensive_call.get_formation()})")
     
-    def show_regular_play_execution(self, offensive_call: OffensivePlayCall, defensive_call: DefensivePlayCall):
+    def show_regular_play_execution(self, offensive_call, defensive_call):
         """Show regular coordinator execution details"""  
         print(f"   🏃 REGULAR COORDINATOR EXECUTION:")
-        print(f"      Offensive: {offensive_call.concept.replace('_', ' ').title()} ({offensive_call.get_formation()})")
-        print(f"      Defensive: {defensive_call.coverage.replace('_', ' ').title()} ({defensive_call.get_formation()})")
+        
+        # Use helper methods to safely extract concept/strategy
+        offensive_concept = self._get_display_concept(offensive_call)
+        defensive_coverage = getattr(defensive_call, 'coverage', 'standard_coverage') or 'standard_coverage'
+        
+        print(f"      Offensive: {offensive_concept.replace('_', ' ').title()} ({offensive_call.get_formation()})")
+        print(f"      Defensive: {defensive_coverage.replace('_', ' ').title()} ({defensive_call.get_formation()})")
     
     def show_play_result(self, play_result: PlayResult, strategic_choice: Optional[FourthDownDecisionType] = None):
         """Show play result with architectural context"""

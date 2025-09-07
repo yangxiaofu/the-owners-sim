@@ -166,13 +166,19 @@ def simulate(play_engine_params):
                 # Get comprehensive simulation results
                 punt_result = simulator.simulate_punt_play(punt_params)
                 
-                # Convert PlayStatsSummary to backward-compatible PlayResult with player stats
+                # Convert PlayStatsSummary to enhanced PlayResult with two-stage data
                 return PlayResult(
-                    outcome=punt_result.play_type,  # Will be PlayType.PUNT 
+                    outcome=punt_result.play_type,  # Specific punt outcome
                     yards=punt_result.yards_gained,  # Net punt yards (punt distance - return yards)
                     time_elapsed=punt_result.time_elapsed,
                     player_stats_summary=punt_result,
-                    is_punt=True  # Mark as punt for drive management
+                    is_punt=True,  # Mark as punt for drive management
+                    change_of_possession=True,  # ✅ Punts always change possession
+                    is_turnover=False,  # Normal punt is not a turnover (unless blocked/muffed)
+                    punt_distance=getattr(punt_result, 'punt_distance', None),
+                    return_yards=getattr(punt_result, 'return_yards', None),
+                    hang_time=getattr(punt_result, 'hang_time', None),
+                    coverage_pressure=getattr(punt_result, 'coverage_pressure', None)
                 )
                 
             except Exception as e:

@@ -17,6 +17,7 @@ from .coach_archetype import BaseCoachArchetype, CoachType
 from .fourth_down_matrix import FourthDownDecisionType
 from ..play_calls.offensive_play_call import OffensivePlayCall
 from ..play_calls.defensive_play_call import DefensivePlayCall
+from ..play_calls.special_teams_play_call import SpecialTeamsPlayCall
 from ..play_types.offensive_types import OffensivePlayType
 from ..play_types.defensive_types import DefensivePlayType
 from ..mechanics.unified_formations import UnifiedOffensiveFormation, UnifiedDefensiveFormation, SimulatorContext
@@ -66,7 +67,7 @@ class SpecialTeamsCoordinator(BaseCoachArchetype):
         self.coach_type = CoachType.SPECIAL_TEAMS_COORDINATOR
         super().__post_init__()
     
-    def select_offensive_special_teams_play(self, decision_type: FourthDownDecisionType, context: Dict[str, Any]) -> OffensivePlayCall:
+    def select_offensive_special_teams_play(self, decision_type: FourthDownDecisionType, context: Dict[str, Any]) -> SpecialTeamsPlayCall:
         """
         Select offensive special teams play based on head coach's strategic decision
         
@@ -75,7 +76,7 @@ class SpecialTeamsCoordinator(BaseCoachArchetype):
             context: Game context for situational adjustments
         
         Returns:
-            OffensivePlayCall for special teams execution
+            SpecialTeamsPlayCall for special teams execution
         """
         if decision_type == FourthDownDecisionType.PUNT:
             return self._select_punt_play(context)
@@ -84,7 +85,7 @@ class SpecialTeamsCoordinator(BaseCoachArchetype):
         else:
             raise ValueError(f"SpecialTeamsCoordinator cannot handle decision type: {decision_type}")
     
-    def select_defensive_special_teams_play(self, opponent_decision: FourthDownDecisionType, context: Dict[str, Any]) -> DefensivePlayCall:
+    def select_defensive_special_teams_play(self, opponent_decision: FourthDownDecisionType, context: Dict[str, Any]) -> SpecialTeamsPlayCall:
         """
         Select defensive special teams play based on predicted opponent decision
         
@@ -93,7 +94,7 @@ class SpecialTeamsCoordinator(BaseCoachArchetype):
             context: Game context for situational adjustments
         
         Returns:
-            DefensivePlayCall for special teams defense
+            SpecialTeamsPlayCall for special teams defense
         """
         if opponent_decision == FourthDownDecisionType.PUNT:
             return self._select_punt_defense(context)
@@ -102,7 +103,7 @@ class SpecialTeamsCoordinator(BaseCoachArchetype):
         else:
             raise ValueError(f"SpecialTeamsCoordinator cannot handle opponent decision: {opponent_decision}")
     
-    def _select_punt_play(self, context: Dict[str, Any]) -> OffensivePlayCall:
+    def _select_punt_play(self, context: Dict[str, Any]) -> SpecialTeamsPlayCall:
         """Select punt execution strategy"""
         # Determine punt strategy based on field position and game situation
         field_position = context.get('field_position', 50)
@@ -122,14 +123,14 @@ class SpecialTeamsCoordinator(BaseCoachArchetype):
         if fake_punt_consideration:
             concept = "fake_punt_run"  # Could expand with more fake options
         
-        return OffensivePlayCall(
+        return SpecialTeamsPlayCall(
             play_type=OffensivePlayType.PUNT,
             formation=OffensiveFormation.PUNT,
-            concept=concept,
-            personnel_package="punt_team"
+            strategy=concept,
+            target_area="punt_team"
         )
     
-    def _select_field_goal_play(self, context: Dict[str, Any]) -> OffensivePlayCall:
+    def _select_field_goal_play(self, context: Dict[str, Any]) -> SpecialTeamsPlayCall:
         """Select field goal attempt strategy"""
         field_position = context.get('field_position', 50)
         yards_to_go = context.get('yards_to_go', 10)
@@ -149,14 +150,14 @@ class SpecialTeamsCoordinator(BaseCoachArchetype):
         if fake_fg_consideration:
             concept = "fake_field_goal_run"  # Could expand with pass options
         
-        return OffensivePlayCall(
+        return SpecialTeamsPlayCall(
             play_type=OffensivePlayType.FIELD_GOAL,
             formation=OffensiveFormation.FIELD_GOAL,
-            concept=concept,
-            personnel_package="field_goal_team"
+            strategy=concept,
+            target_area="field_goal_team"
         )
     
-    def _select_punt_defense(self, context: Dict[str, Any]) -> DefensivePlayCall:
+    def _select_punt_defense(self, context: Dict[str, Any]) -> SpecialTeamsPlayCall:
         """Select punt return/coverage strategy"""
         # Determine punt return strategy
         punt_block_decision = self._should_rush_punt(context)
@@ -179,14 +180,14 @@ class SpecialTeamsCoordinator(BaseCoachArchetype):
                 coverage = "safe_punt_return"
                 play_type = DefensivePlayType.PUNT_RETURN
         
-        return DefensivePlayCall(
+        return SpecialTeamsPlayCall(
             play_type=play_type,
             formation=formation,
             coverage=coverage,
-            blitz_package="punt_rush" if punt_block_decision else None
+            strategy="punt_rush" if punt_block_decision else None
         )
     
-    def _select_field_goal_defense(self, context: Dict[str, Any]) -> DefensivePlayCall:
+    def _select_field_goal_defense(self, context: Dict[str, Any]) -> SpecialTeamsPlayCall:
         """Select field goal block/defense strategy"""
         # Determine field goal defense strategy
         block_decision = self._should_rush_field_goal(context)
@@ -208,11 +209,11 @@ class SpecialTeamsCoordinator(BaseCoachArchetype):
             coverage = "field_goal_return_coverage"
             play_type = DefensivePlayType.PUNT_SAFE  # Use compatible safe punt tactics
         
-        return DefensivePlayCall(
+        return SpecialTeamsPlayCall(
             play_type=play_type,
             formation=formation,
             coverage=coverage,
-            blitz_package="field_goal_rush" if block_decision else None
+            strategy="field_goal_rush" if block_decision else None
         )
     
     def _should_rush_punt(self, context: Dict[str, Any]) -> bool:

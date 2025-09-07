@@ -145,9 +145,25 @@ class PuntSimulator:
             if punt_params.punt_type == PuntPlayType.REAL_PUNT:
                 result = self._execute_real_punt(formation_matchup, context)
                 
-                # For real punts, check return scenarios
+                # For real punts, use two-stage return system
                 if result.outcome == "returnable":
-                    result = self._execute_return_sequence(result, formation_matchup, context)
+                    # Stage 1: Punt physics and coverage setup
+                    punt_physics, return_opportunity = self._simulate_stage_1_punt_physics(context, formation_matchup)
+                    
+                    # Stage 2: Return decision and execution
+                    return_yards, final_outcome, total_time = self._simulate_stage_2_return_execution(
+                        punt_physics, return_opportunity, context
+                    )
+                    
+                    # Create enhanced result with two-stage data
+                    result = PuntResult(
+                        outcome=final_outcome,
+                        punt_yards=punt_physics.distance,
+                        return_yards=return_yards,
+                        hang_time=punt_physics.hang_time,
+                        coverage_pressure=return_opportunity.coverage_pressure,
+                        time_elapsed=total_time
+                    )
                     
             elif punt_params.punt_type == PuntPlayType.FAKE_PUNT_PASS:
                 result = self._execute_fake_punt_pass(formation_matchup, context)
@@ -178,12 +194,18 @@ class PuntSimulator:
         # PHASE 4: Attribute individual player statistics
         self._attribute_player_statistics(result, context)
         
-        # Convert result to PlayStatsSummary
+        # Convert result to PlayStatsSummary with enhanced punt data
         summary = PlayStatsSummary(
             play_type=PlayType.PUNT,
             yards_gained=result.net_yards,  # Net punt yards (punt - return)
             time_elapsed=result.time_elapsed
         )
+        
+        # Add punt-specific fields to summary for engine.py access
+        summary.punt_distance = getattr(result, 'punt_yards', None)
+        summary.return_yards = getattr(result, 'return_yards', None)
+        summary.hang_time = getattr(result, 'hang_time', None)
+        summary.coverage_pressure = getattr(result, 'coverage_pressure', None)
         
         # Add penalty information if occurred
         if hasattr(result, 'penalty_occurred') and result.penalty_occurred:
@@ -235,7 +257,7 @@ class PuntSimulator:
     def _execute_real_punt(self, formation_matchup: Dict, context: PlayContext) -> 'PuntResult':
         """Execute a real punt attempt"""
         # Calculate punt distance based on punter skill and conditions
-        punt_distance = self._calculate_punt_distance()
+        punt_distance = self._calculate_punt_distance(context)
         
         # Determine initial punt placement
         field_position = getattr(context, 'field_position', 50)
@@ -432,7 +454,7 @@ class PuntSimulator:
             
             return result
     
-    def _calculate_punt_distance(self) -> int:
+    def _calculate_punt_distance(self, context: PlayContext) -> int:
         """Calculate punt distance based on punter skill and conditions"""
         base_config = self.punt_config.get('punt_execution', {}).get('base_punt_distance', {})
         base_avg = base_config.get('avg', 45)
@@ -443,7 +465,7 @@ class PuntSimulator:
         punter_modifier = self._get_punter_distance_modifier()
         
         # Apply environmental modifiers (wind, weather, etc.)
-        environmental_modifier = self._get_environmental_modifier()
+        environmental_modifier = self._get_environmental_modifier(context)
         
         # Calculate final distance
         modified_avg = base_avg + punter_modifier
@@ -488,8 +510,145 @@ class PuntSimulator:
         
         return max(0.1, min(0.8, base_fair_catch))  # Cap between 10% and 80%
     
+    def _simulate_stage_1_punt_physics(self, context: PlayContext, formation_matchup: Dict) -> tuple:
+        """Stage 1: Simulate punt flight physics and coverage setup"""
+        # Calculate punt distance using existing logic
+        base_distance_config = self.punt_config.get('punt_execution', {}).get('base_punt_distance', {})
+        base_distance = base_distance_config.get('avg', 45)
+        
+        # Apply punter skill and environmental factors
+        punter_modifier = self._get_punter_distance_modifier()
+        environmental_modifier = self._get_environmental_modifier(context)
+        
+        punt_distance = int(base_distance * punter_modifier * environmental_modifier)
+        punt_distance = max(25, min(75, punt_distance))  # Realistic bounds
+        
+        # Calculate hang time based on distance (physics-based)
+        if punt_distance < 35:
+            hang_time = random.uniform(3.8, 4.2)
+        elif punt_distance < 50:
+            hang_time = random.uniform(4.2, 4.8)
+        else:
+            hang_time = random.uniform(4.8, 5.5)
+        
+        # Determine punt placement strategy
+        placement = self._determine_punt_placement(context)
+        
+        # Calculate coverage pressure based on hang time and distance
+        coverage_pressure = self._calculate_coverage_pressure(punt_distance, hang_time, formation_matchup)
+        
+        # Calculate blocking quality based on return formation
+        blocking_quality = self._calculate_blocking_quality(formation_matchup)
+        
+        # Determine available return lanes
+        available_lanes = self._get_available_return_lanes(placement, formation_matchup)
+        
+        # Create return opportunity assessment
+        return_opportunity = ReturnOpportunity(
+            coverage_pressure=coverage_pressure,
+            blocking_quality=blocking_quality,
+            available_lanes=available_lanes,
+            field_position_factor=context.field_position / 100.0
+        )
+        
+        punt_physics = PuntPhysics(punt_distance, hang_time, placement)
+        
+        return punt_physics, return_opportunity
+    
+    def _simulate_stage_2_return_execution(self, punt_physics: 'PuntPhysics', 
+                                         return_opportunity: 'ReturnOpportunity',
+                                         context: PlayContext) -> tuple:
+        """Stage 2: Simulate return decision making and execution"""
+        # Returner decision: fair catch vs attempt return
+        fair_catch_prob = return_opportunity.get_fair_catch_probability()
+        
+        # Adjust for game situation (aggressive when behind, conservative when ahead)
+        score_differential = getattr(context, 'score_differential', 0)
+        time_remaining = getattr(context, 'time_remaining', 900)
+        
+        if score_differential > 10 and time_remaining < 300:  # Behind late
+            fair_catch_prob *= 0.6  # More aggressive
+        elif score_differential < -10:  # Ahead by a lot
+            fair_catch_prob *= 1.4  # More conservative
+            
+        # Fair catch decision
+        if random.random() < fair_catch_prob:
+            return 0, PuntOutcome.FAIR_CATCH, punt_physics.hang_time
+        
+        # Return attempt - simulate execution
+        return_yards = self._execute_return_attempt(punt_physics, return_opportunity)
+        
+        # Calculate total play time (hang time + return time)
+        return_time = max(1.5, return_yards * 0.15 + random.uniform(1.0, 3.0))
+        total_time = punt_physics.hang_time + return_time
+        
+        return return_yards, PuntOutcome.PUNT_RETURN, total_time
+    
+    def _calculate_coverage_pressure(self, punt_distance: int, hang_time: float, formation_matchup: Dict) -> float:
+        """Calculate coverage team pressure level based on physics"""
+        # Coverage team needs to travel punt_distance in hang_time
+        required_speed = punt_distance / hang_time  # yards per second
+        
+        # Base coverage quality from formation matchup
+        base_pressure = formation_matchup.get('coverage_advantage', 0.5)
+        
+        # Physics modifier: longer hang time = better coverage
+        if hang_time > 5.0:
+            physics_modifier = 1.2  # Great coverage
+        elif hang_time < 4.0:
+            physics_modifier = 0.7  # Poor coverage (short hang time)
+        else:
+            physics_modifier = 1.0
+        
+        coverage_pressure = base_pressure * physics_modifier
+        return min(1.0, max(0.1, coverage_pressure))
+    
+    def _calculate_blocking_quality(self, formation_matchup: Dict) -> float:
+        """Calculate return blocking quality"""
+        return formation_matchup.get('return_advantage', 0.5)
+    
+    def _get_available_return_lanes(self, placement: str, formation_matchup: Dict) -> list:
+        """Determine available return lanes based on punt placement and formation"""
+        if placement == "sideline":
+            return ["middle", "far_side"]  # Limited options
+        elif placement == "corner":
+            return ["middle"]  # Very limited
+        else:
+            return ["left", "middle", "right"]  # Full options
+    
+    def _determine_punt_placement(self, context: PlayContext) -> str:
+        """Determine punt placement strategy"""
+        field_position = getattr(context, 'field_position', 50)
+        
+        if field_position > 60:  # In opponent territory
+            return "corner" if random.random() < 0.3 else "sideline"
+        else:
+            return "middle" if random.random() < 0.6 else "sideline"
+    
+    def _execute_return_attempt(self, punt_physics: 'PuntPhysics', return_opportunity: 'ReturnOpportunity') -> int:
+        """Execute the actual return based on Stage 1 conditions"""
+        base_return = 8.1  # NFL average
+        
+        # Primary factor: coverage pressure vs blocking quality
+        advantage = return_opportunity.blocking_quality - return_opportunity.coverage_pressure
+        
+        # Apply returner skill
+        returner_modifier = self._get_returner_skill_modifier()
+        
+        # Calculate expected return
+        expected_return = base_return * (1.0 + advantage) * returner_modifier
+        
+        # Add variance
+        return_yards = random.gauss(expected_return, expected_return * 0.4)
+        
+        # Explosive play check (5% chance based on advantage)
+        if advantage > 0.3 and random.random() < 0.05:
+            return_yards += random.randint(15, 40)  # Breakaway potential
+        
+        return max(0, int(return_yards))
+    
     def _calculate_return_yards(self, punt_distance: int, formation_matchup: Dict) -> int:
-        """Calculate punt return yards based on multiple factors"""
+        """Legacy method - kept for compatibility"""
         base_return_config = self.punt_config.get('return_mechanics', {}).get('return_yards', {})
         base_return = base_return_config.get('base_return', {}).get('avg', 8.1)
         
@@ -601,7 +760,7 @@ class PuntSimulator:
         
         return 1.0
     
-    def _get_environmental_modifier(self) -> float:
+    def _get_environmental_modifier(self, context: PlayContext) -> float:
         """Get environmental modifier for conditions (wind, weather, etc.)"""
         # For now, return baseline - could be expanded with weather context from PlayContext
         return 1.0
@@ -679,15 +838,53 @@ class PuntSimulator:
             result.player_stats[player.name] = coverage_stats
 
 
+class PuntPhysics:
+    """Stage 1: Punt flight physics and trajectory data"""
+    
+    def __init__(self, distance: int, hang_time: float, placement: str):
+        self.distance = distance
+        self.hang_time = hang_time
+        self.placement = placement  # "middle", "sideline", "corner"
+
+
+class CoverageSetup:
+    """Stage 1: Coverage team rush and pressure assessment"""
+    
+    def __init__(self, pressure_level: float, arrival_time: float):
+        self.pressure_level = pressure_level  # 0.0-1.0 (higher = more pressure)
+        self.arrival_time = arrival_time      # How long coverage takes to reach returner
+
+
+class ReturnOpportunity:
+    """Stage 1 Output: The situation returner inherits when catching punt"""
+    
+    def __init__(self, coverage_pressure: float, blocking_quality: float, 
+                 available_lanes: list, field_position_factor: float):
+        self.coverage_pressure = coverage_pressure
+        self.blocking_quality = blocking_quality
+        self.available_lanes = available_lanes  # ["fair_catch"] or ["left", "middle", "right"]
+        self.field_position_factor = field_position_factor
+        
+    def get_fair_catch_probability(self) -> float:
+        """Calculate probability of fair catch based on Stage 1 conditions"""
+        base_fair_catch = 0.25
+        pressure_factor = self.coverage_pressure * 0.4
+        blocking_factor = (1.0 - self.blocking_quality) * 0.2
+        return min(0.85, base_fair_catch + pressure_factor + blocking_factor)
+
+
 class PuntResult:
     """Result data structure for punt attempts - internal use only"""
     
-    def __init__(self, outcome: str, punt_yards: int = 0, return_yards: int = 0, time_elapsed: float = 4.5):
+    def __init__(self, outcome: str, punt_yards: int = 0, return_yards: int = 0, 
+                 hang_time: float = 4.5, coverage_pressure: float = 0.5, time_elapsed: float = 4.5):
         self.outcome = outcome
-        self.punt_yards = punt_yards
-        self.return_yards = return_yards
-        self.net_yards = punt_yards - return_yards  # Key punt metric
-        self.time_elapsed = time_elapsed
+        self.punt_yards = punt_yards          # Stage 1: Punt distance
+        self.return_yards = return_yards      # Stage 2: Return yards
+        self.net_yards = punt_yards - return_yards  # Net punt effect
+        self.hang_time = hang_time           # Stage 1: Coverage rush time
+        self.coverage_pressure = coverage_pressure  # Stage 1: Coverage quality
+        self.time_elapsed = time_elapsed     # Total play time (Stage 1 + Stage 2)
         
         # Punt-specific flags
         self.is_fake = False
