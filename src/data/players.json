@@ -8,58 +8,140 @@
       "positions": ["quarterback"],
       "team_id": 7,
       "attributes": {
-        "overall": 84,
+        "overall": 82,
         "speed": 82,
-        "accuracy": 88,
+        "accuracy": 85,
         "arm_strength": 90,
-        "awareness": 85,
+        "awareness": 83,
         "discipline": 75,
-        "composure": 85,
-        "experience": 78,
+        "composure": 80,
+        "experience": 85,
         "penalty_technique": 80,
-        "leadership": 82
+        "leadership": 78
+      }
+    },
+    "1001b": {
+      "player_id": 1001,
+      "first_name": "Joe",
+      "last_name": "Flacco",
+      "number": 15,
+      "positions": ["quarterback"],
+      "team_id": 7,
+      "attributes": {
+        "overall": 78,
+        "speed": 65,
+        "accuracy": 82,
+        "arm_strength": 88,
+        "awareness": 92,
+        "discipline": 90,
+        "composure": 88,
+        "experience": 95,
+        "penalty_technique": 92,
+        "leadership": 90
+      }
+    },
+    "1001c": {
+      "player_id": 1001,
+      "first_name": "Dillon",
+      "last_name": "Gabriel",
+      "number": 8,
+      "positions": ["quarterback"],
+      "team_id": 7,
+      "attributes": {
+        "overall": 72,
+        "speed": 78,
+        "accuracy": 80,
+        "arm_strength": 82,
+        "awareness": 75,
+        "discipline": 85,
+        "composure": 75,
+        "experience": 65,
+        "penalty_technique": 85,
+        "leadership": 70
       }
     },
     "1002": {
       "player_id": 1002,
-      "first_name": "Nick",
-      "last_name": "Chubb",
-      "number": 24,
+      "first_name": "Dylan",
+      "last_name": "Sampson",
+      "number": 22,
       "positions": ["running_back"],
       "team_id": 7,
       "attributes": {
-        "overall": 88,
-        "speed": 85,
-        "strength": 90,
-        "agility": 87,
-        "hands": 75,
-        "awareness": 80,
-        "discipline": 92,
-        "composure": 88,
-        "experience": 82,
-        "penalty_technique": 90,
-        "power": 92
+        "overall": 76,
+        "speed": 88,
+        "strength": 82,
+        "agility": 85,
+        "hands": 78,
+        "awareness": 72,
+        "discipline": 85,
+        "composure": 75,
+        "experience": 65,
+        "penalty_technique": 82,
+        "power": 85
       }
     },
     "1003": {
       "player_id": 1003,
-      "first_name": "Amari",
-      "last_name": "Cooper",
-      "number": 2,
+      "first_name": "Jerry",
+      "last_name": "Jeudy",
+      "number": 3,
       "positions": ["wide_receiver"],
       "team_id": 7,
       "attributes": {
-        "overall": 85,
-        "speed": 88,
-        "hands": 90,
+        "overall": 86,
+        "speed": 90,
+        "hands": 88,
         "route_running": 92,
-        "agility": 89,
+        "agility": 90,
         "awareness": 85,
         "discipline": 88,
         "composure": 86,
-        "experience": 85,
+        "experience": 80,
+        "penalty_technique": 88,
+        "release": 92
+      }
+    },
+    "1003b": {
+      "player_id": 1003,
+      "first_name": "David",
+      "last_name": "Bell",
+      "number": 18,
+      "positions": ["wide_receiver"],
+      "team_id": 7,
+      "attributes": {
+        "overall": 78,
+        "speed": 82,
+        "hands": 85,
+        "route_running": 88,
+        "agility": 85,
+        "awareness": 82,
+        "discipline": 88,
+        "composure": 82,
+        "experience": 75,
         "penalty_technique": 85,
-        "release": 90
+        "release": 86
+      }
+    },
+    "1003c": {
+      "player_id": 1003,
+      "first_name": "Cedric",
+      "last_name": "Tillman",
+      "number": 19,
+      "positions": ["wide_receiver"],
+      "team_id": 7,
+      "attributes": {
+        "overall": 80,
+        "speed": 88,
+        "hands": 82,
+        "route_running": 85,
+        "agility": 88,
+        "awareness": 80,
+        "discipline": 85,
+        "composure": 80,
+        "experience": 72,
+        "penalty_technique": 82,
+        "release": 85
       }
     },
     "1004": {
@@ -230,6 +312,27 @@
         "penalty_technique": 90,
         "leadership": 85,
         "pocket_presence": 88
+      }
+    },
+    "2001b": {
+      "player_id": 2001,
+      "first_name": "Mac",
+      "last_name": "Jones",
+      "number": 10,
+      "positions": ["quarterback"],
+      "team_id": 31,
+      "attributes": {
+        "overall": 80,
+        "speed": 72,
+        "accuracy": 85,
+        "arm_strength": 80,
+        "awareness": 85,
+        "discipline": 88,
+        "composure": 85,
+        "experience": 75,
+        "penalty_technique": 88,
+        "leadership": 82,
+        "pocket_presence": 85
       }
     },
     "2002": {
@@ -545,20 +648,20 @@
     },
     "1014": {
       "player_id": 1014,
-      "first_name": "Dustin",
-      "last_name": "Hopkins",
-      "number": 7,
+      "first_name": "Andre",
+      "last_name": "Szmyt",
+      "number": 19,
       "positions": ["kicker"],
       "team_id": 7,
       "attributes": {
-        "overall": 82,
-        "kick_power": 88,
-        "kick_accuracy": 85,
-        "discipline": 90,
-        "composure": 88,
-        "experience": 85,
-        "penalty_technique": 95,
-        "clutch": 82
+        "overall": 76,
+        "kick_power": 85,
+        "kick_accuracy": 78,
+        "discipline": 88,
+        "composure": 82,
+        "experience": 70,
+        "penalty_technique": 90,
+        "clutch": 78
       }
     },
     "1015": {
@@ -644,20 +747,20 @@
     },
     "2016": {
       "player_id": 2016,
-      "first_name": "Mitch",
-      "last_name": "Wishnowsky",
-      "number": 18,
+      "first_name": "Thomas",
+      "last_name": "Morstead",
+      "number": 7,
       "positions": ["punter"],
       "team_id": 31,
       "attributes": {
-        "overall": 80,
-        "punt_power": 85,
-        "punt_accuracy": 82,
-        "hang_time": 85,
-        "discipline": 88,
-        "composure": 85,
-        "experience": 80,
-        "penalty_technique": 88
+        "overall": 82,
+        "punt_power": 88,
+        "punt_accuracy": 85,
+        "hang_time": 88,
+        "discipline": 92,
+        "composure": 90,
+        "experience": 95,
+        "penalty_technique": 95
       }
     },
     "2017": {
@@ -679,6 +782,50 @@
         "experience": 75,
         "penalty_technique": 85,
         "power": 88
+      }
+    },
+    "2018": {
+      "player_id": 2018,
+      "first_name": "Isaac",
+      "last_name": "Guerendo",
+      "number": 31,
+      "positions": ["running_back"],
+      "team_id": 31,
+      "attributes": {
+        "overall": 78,
+        "speed": 95,
+        "strength": 78,
+        "agility": 88,
+        "hands": 78,
+        "awareness": 72,
+        "discipline": 80,
+        "composure": 75,
+        "experience": 68,
+        "penalty_technique": 82,
+        "power": 80,
+        "elusiveness": 90
+      }
+    },
+    "2019": {
+      "player_id": 2019,
+      "first_name": "Ricky",
+      "last_name": "Pearsall",
+      "number": 14,
+      "positions": ["wide_receiver"],
+      "team_id": 31,
+      "attributes": {
+        "overall": 76,
+        "speed": 88,
+        "hands": 80,
+        "route_running": 82,
+        "agility": 85,
+        "awareness": 75,
+        "discipline": 82,
+        "composure": 75,
+        "experience": 68,
+        "penalty_technique": 80,
+        "release": 82,
+        "contested_catch": 78
       }
     },
     "1016": {
@@ -723,24 +870,61 @@
         "release": 88,
         "return_ability": 85
       }
+    },
+    "1018": {
+      "player_id": 1018,
+      "first_name": "Raheim",
+      "last_name": "Sanders",
+      "number": 35,
+      "positions": ["running_back"],
+      "team_id": 7,
+      "attributes": {
+        "overall": 74,
+        "speed": 85,
+        "strength": 80,
+        "agility": 82,
+        "hands": 75,
+        "awareness": 70,
+        "discipline": 82,
+        "composure": 72,
+        "experience": 60,
+        "penalty_technique": 80,
+        "power": 83
+      }
     }
   },
   "metadata": {
-    "version": "1.0",
+    "version": "1.1",
     "teams_included": [7, 31],
-    "total_players": 30,
-    "last_updated": "2025-01-02",
-    "description": "Real NFL player rosters for Cleveland Browns and San Francisco 49ers with comprehensive attributes including multiple positions per player",
+    "total_players": 35,
+    "last_updated": "2025-01-07",
+    "description": "Updated NFL player rosters for Cleveland Browns and San Francisco 49ers with current 2024-2025 players and comprehensive attributes",
     "player_id_ranges": {
       "cleveland_browns": "1001-1999",
       "san_francisco_49ers": "2001-2999"
     },
+    "recent_updates": {
+      "browns_changes": [
+        "Nick Chubb → Dylan Sampson (#22) - Nick Chubb moved to Houston Texans",
+        "Dustin Hopkins → Andre Szmyt (#19) - New kicker for 2025 season", 
+        "Added Raheim Sanders (#35) - Undrafted free agent running back",
+        "Updated existing QBs: Joe Flacco (#15), Dillon Gabriel (#8)",
+        "Updated WR corps: Jerry Jeudy (#3), David Bell (#18), Cedric Tillman (#19)"
+      ],
+      "49ers_changes": [
+        "Added Mac Jones (#10) - Backup quarterback signed as free agent",
+        "Added Isaac Guerendo (#31) - Second-year running back depth",
+        "Added Ricky Pearsall (#14) - Second-year wide receiver",
+        "Mitch Wishnowsky → Thomas Morstead (#7) - Veteran punter signed"
+      ]
+    },
     "features": [
-      "Real player names and jersey numbers",
+      "Real player names and jersey numbers from 2024-2025 NFL season",
       "Multiple positions per player (e.g., linebacker/safety)",
       "Comprehensive attribute system with 10+ ratings per player",
       "NFL-accurate discipline and penalty-related attributes",
-      "Position-specific attributes (e.g., arm_strength for QBs)"
+      "Position-specific attributes (e.g., arm_strength for QBs)",
+      "Current roster updates reflecting trades, signings, and roster moves"
     ]
   }
 }

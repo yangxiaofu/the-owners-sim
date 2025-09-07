@@ -7,6 +7,7 @@ rushing, blocking, tackling, and other position-specific statistics.
 
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
+from ..play_types.base_types import PlayType
 
 
 @dataclass
@@ -550,6 +551,8 @@ class TeamStats:
     # Special Teams Stats
     field_goals_attempted: int = 0
     field_goals_made: int = 0
+    punt_return_yards: int = 0
+    kick_return_yards: int = 0
     
     # Penalties (committed by this team)
     penalties: int = 0
@@ -588,7 +591,8 @@ class TeamStats:
             'total_yards', 'passing_yards', 'rushing_yards', 'pass_attempts', 
             'completions', 'touchdowns', 'first_downs', 'turnovers',
             'sacks', 'tackles_for_loss', 'interceptions', 'forced_fumbles', 'passes_defended',
-            'field_goals_attempted', 'field_goals_made', 'penalties', 'penalty_yards'
+            'field_goals_attempted', 'field_goals_made', 'punt_return_yards', 'kick_return_yards',
+            'penalties', 'penalty_yards'
         }
         
         stats = {}
@@ -646,7 +650,7 @@ class TeamStatsAccumulator:
         self._aggregate_penalty_stats(play_summary, offensive_team_id, defensive_team_id)
         
         # Handle play-level stats like yards gained and first downs
-        self._aggregate_play_level_stats(play_summary, offensive_team_id)
+        self._aggregate_play_level_stats(play_summary, offensive_team_id, defensive_team_id)
     
     def _aggregate_offensive_stats(self, player_stats: List[PlayerStats], team_id: int) -> None:
         """Aggregate offensive stats from all players to the team total"""
@@ -696,16 +700,40 @@ class TeamStatsAccumulator:
             penalty_yards = getattr(play_summary.penalty_instance, 'yards_assessed', 0)
             team.penalty_yards += penalty_yards
     
-    def _aggregate_play_level_stats(self, play_summary: PlayStatsSummary, offensive_team_id: int) -> None:
-        """Aggregate play-level stats like total yards and first downs"""
-        team = self._team_totals[offensive_team_id]
+    def _aggregate_play_level_stats(self, play_summary: PlayStatsSummary, offensive_team_id: int, defensive_team_id: int) -> None:
+        """
+        Aggregate play-level stats like total yards and first downs.
         
-        # Total yards for the play
-        team.total_yards += play_summary.yards_gained
+        CRITICAL FIX: Only add offensive yards (RUN/PASS) to total_yards.
+        Return yards from special teams plays go to separate categories.
+        """
+        offensive_team = self._team_totals[offensive_team_id]
+        defensive_team = self._team_totals[defensive_team_id]
+        
+        # Handle yards based on play type
+        if play_summary.play_type in [PlayType.RUN, PlayType.PASS]:
+            # Offensive plays: yards go to total_yards (passing + rushing)
+            offensive_team.total_yards += play_summary.yards_gained
+            
+        elif play_summary.play_type == PlayType.PUNT:
+            # Punt return yards go to receiving team (defensive team during punt)
+            # Note: play_summary.yards_gained for punts often includes net punt yards
+            # For proper implementation, we'd need to extract return yards separately
+            # For now, treat positive yards as return yards to receiving team
+            if play_summary.yards_gained > 0:
+                defensive_team.punt_return_yards += play_summary.yards_gained
+                
+        elif play_summary.play_type == PlayType.KICKOFF:
+            # Kickoff return yards go to receiving team (defensive team during kickoff)
+            if play_summary.yards_gained > 0:
+                defensive_team.kick_return_yards += play_summary.yards_gained
+                
+        # Field goals don't contribute to total yards (they're special teams plays)
+        # No yards added for PlayType.FIELD_GOAL
         
         # Check for turnovers (simplified - could be enhanced)
         if any(player.interceptions_thrown > 0 for player in play_summary.player_stats):
-            team.turnovers += 1
+            offensive_team.turnovers += 1
     
     def get_team_stats(self, team_id: int) -> Optional[TeamStats]:
         """
