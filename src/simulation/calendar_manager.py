@@ -6,13 +6,18 @@ Handles event scheduling, conflict detection, and daily execution of all simulat
 """
 
 from datetime import datetime, date, timedelta
-from typing import Dict, List, Optional, Tuple, Set
+from typing import Dict, List, Optional, Tuple, Set, Any
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from enum import Enum
 import logging
 
 from .events.base_simulation_event import BaseSimulationEvent, SimulationResult, EventType
+from .processors.base_processor import BaseResultProcessor, ProcessingStrategy, ProcessorConfig
+from .processors import (GameResultProcessor, TrainingResultProcessor, ScoutingResultProcessor, 
+                        AdministrativeResultProcessor, RestResultProcessor)
+from .results.base_result import ProcessingContext, ProcessingResult, AnySimulationResult
+from .season_state_manager import SeasonStateManager
 
 
 class SchedulingError(Exception):
@@ -36,6 +41,7 @@ class DaySimulationResult:
     successful_events: int
     failed_events: int
     event_results: List[SimulationResult] = field(default_factory=list)
+    processing_results: List[ProcessingResult] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
     total_duration_hours: float = 0.0
     teams_involved: Set[int] = field(default_factory=set)
@@ -46,6 +52,14 @@ class DaySimulationResult:
         if self.events_executed == 0:
             return 0.0
         return self.successful_events / self.events_executed
+    
+    @property
+    def processing_success_rate(self) -> float:
+        """Calculate success rate of result processing for this day"""
+        if not self.processing_results:
+            return 1.0  # No processing = perfect success
+        successful = sum(1 for p in self.processing_results if p.processed_successfully)
+        return successful / len(self.processing_results)
 
 
 @dataclass
@@ -56,6 +70,12 @@ class CalendarStats:
     teams_with_events: Set[int] = field(default_factory=set)
     date_range: Optional[Tuple[date, date]] = None
     total_scheduled_hours: float = 0.0
+    
+    # Result processing statistics
+    result_processing_enabled: bool = False
+    total_processed_results: int = 0
+    processing_success_rate: float = 0.0
+    season_state_tracked: bool = False
 
 
 class CalendarManager:
@@ -66,17 +86,27 @@ class CalendarManager:
     Provides the foundation for season-long simulations with multiple event types.
     """
     
-    def __init__(self, start_date: date, conflict_resolution: ConflictResolution = ConflictResolution.REJECT):
+    def __init__(self, start_date: date, 
+                 conflict_resolution: ConflictResolution = ConflictResolution.REJECT,
+                 enable_result_processing: bool = True,
+                 processing_strategy: ProcessingStrategy = ProcessingStrategy.FULL_PROGRESSION,
+                 season_year: int = 2024):
         """
         Initialize calendar manager
         
         Args:
             start_date: Starting date for the simulation calendar
             conflict_resolution: How to handle scheduling conflicts
+            enable_result_processing: Whether to enable result processing pipeline
+            processing_strategy: Default processing strategy for results
+            season_year: Year of the season being simulated
         """
         self.current_date = start_date
         self.start_date = start_date
         self.conflict_resolution = conflict_resolution
+        self.enable_result_processing = enable_result_processing
+        self.processing_strategy = processing_strategy
+        self.season_year = season_year
         
         # Event storage - indexed by date for efficient access
         self._events_by_date: Dict[date, List[BaseSimulationEvent]] = defaultdict(list)
@@ -92,6 +122,60 @@ class CalendarManager:
         
         # Logger for debugging and monitoring
         self.logger = logging.getLogger(__name__)
+        
+        # Result processing system
+        if self.enable_result_processing:
+            self._initialize_result_processing()
+    
+    def _initialize_result_processing(self) -> None:
+        """Initialize the result processing system"""
+        # Create season state manager
+        self.season_state_manager = SeasonStateManager(season_year=self.season_year)
+        
+        # Initialize result processors with default configuration
+        processor_config = ProcessorConfig(strategy=self.processing_strategy)
+        
+        self._result_processors = [
+            GameResultProcessor(processor_config),
+            TrainingResultProcessor(processor_config),
+            ScoutingResultProcessor(processor_config),
+            AdministrativeResultProcessor(processor_config),
+            RestResultProcessor(processor_config)
+        ]
+        
+        self.logger.info(f"Initialized result processing with {len(self._result_processors)} processors")
+    
+    def get_season_state_manager(self) -> Optional[SeasonStateManager]:
+        """Get the season state manager if result processing is enabled"""
+        return getattr(self, 'season_state_manager', None)
+    
+    def set_processing_strategy(self, strategy: ProcessingStrategy) -> None:
+        """Update the processing strategy for all processors"""
+        self.processing_strategy = strategy
+        
+        if self.enable_result_processing and hasattr(self, '_result_processors'):
+            for processor in self._result_processors:
+                processor.config.strategy = strategy
+            self.logger.info(f"Updated processing strategy to {strategy.value}")
+    
+    def _process_event_result(self, event_result: SimulationResult, context: ProcessingContext) -> Optional[ProcessingResult]:
+        """Process an event result through the appropriate processor"""
+        if not self.enable_result_processing:
+            return None
+        
+        # Find appropriate processor for this result type
+        for processor in self._result_processors:
+            if processor.can_process(event_result):
+                processing_result = processor.process_with_error_handling(event_result, context)
+                
+                # Apply to season state manager
+                if hasattr(self, 'season_state_manager'):
+                    self.season_state_manager.apply_processing_result(processing_result, context)
+                
+                return processing_result
+        
+        self.logger.warning(f"No processor found for result type: {type(event_result).__name__}")
+        return None
     
     def schedule_event(self, event: BaseSimulationEvent, 
                       target_date: Optional[date] = None) -> Tuple[bool, str]:
@@ -231,6 +315,19 @@ class CalendarManager:
         
         self.logger.info(f"Starting simulation for {target_date} with {len(events)} events")
         
+        # Create processing context for this day
+        context = None
+        if self.enable_result_processing:
+            # Calculate season week (rough approximation based on start date)
+            days_elapsed = (target_date - self.start_date).days
+            season_week = max(1, days_elapsed // 7)
+            
+            context = ProcessingContext(
+                current_date=datetime.combine(target_date, datetime.min.time()),
+                season_week=season_week,
+                season_phase="regular_season"  # Could be enhanced to detect actual phase
+            )
+        
         for event in events:
             try:
                 # Execute event simulation
@@ -244,6 +341,17 @@ class CalendarManager:
                 if event_result.success:
                     result.successful_events += 1
                     self.logger.debug(f"Successfully simulated {event.event_name}")
+                    
+                    # Process the event result if processing is enabled
+                    if self.enable_result_processing and context:
+                        try:
+                            processing_result = self._process_event_result(event_result, context)
+                            if processing_result:
+                                result.processing_results.append(processing_result)
+                        except Exception as e:
+                            error_msg = f"Error processing result for {event.event_name}: {str(e)}"
+                            result.errors.append(error_msg)
+                            self.logger.error(error_msg, exc_info=True)
                 else:
                     result.failed_events += 1
                     error_msg = f"Event {event.event_name} failed: {event_result.error_message}"
@@ -259,8 +367,12 @@ class CalendarManager:
         # Store simulation result
         self._simulation_history[target_date] = result
         
+        processing_summary = ""
+        if result.processing_results:
+            processing_summary = f" (processing: {result.processing_success_rate:.1%})"
+        
         self.logger.info(f"Completed simulation for {target_date}: "
-                        f"{result.successful_events}/{result.events_executed} events successful")
+                        f"{result.successful_events}/{result.events_executed} events successful{processing_summary}")
         
         return result
     
@@ -347,7 +459,64 @@ class CalendarManager:
                 stats.teams_with_events.update(event.involved_teams)
                 stats.total_scheduled_hours += event.duration_hours
         
+        # Add processing statistics
+        stats.result_processing_enabled = self.enable_result_processing
+        stats.season_state_tracked = hasattr(self, 'season_state_manager')
+        
+        # Calculate processing statistics from simulation history
+        total_processing_results = 0
+        successful_processing_results = 0
+        
+        for day_result in self._simulation_history.values():
+            total_processing_results += len(day_result.processing_results)
+            successful_processing_results += sum(1 for p in day_result.processing_results if p.processed_successfully)
+        
+        stats.total_processed_results = total_processing_results
+        if total_processing_results > 0:
+            stats.processing_success_rate = successful_processing_results / total_processing_results
+        
         return stats
+    
+    def get_processing_summary(self) -> Dict[str, Any]:
+        """Get a summary of result processing activity"""
+        if not self.enable_result_processing:
+            return {"result_processing_enabled": False}
+        
+        summary = {
+            "result_processing_enabled": True,
+            "processing_strategy": self.processing_strategy.value,
+            "season_year": self.season_year
+        }
+        
+        if hasattr(self, 'season_state_manager'):
+            summary["season_state"] = self.season_state_manager.get_season_summary()
+        
+        if hasattr(self, '_result_processors'):
+            processor_stats = []
+            for processor in self._result_processors:
+                processor_stats.append(processor.get_processing_stats())
+            summary["processor_statistics"] = processor_stats
+        
+        return summary
+    
+    def get_simulation_history(self, start_date: Optional[date] = None, 
+                              end_date: Optional[date] = None) -> Dict[date, DaySimulationResult]:
+        """Get simulation history within date range"""
+        if not start_date and not end_date:
+            return dict(self._simulation_history)
+        
+        filtered_history = {}
+        for sim_date, day_result in self._simulation_history.items():
+            include = True
+            if start_date and sim_date < start_date:
+                include = False
+            if end_date and sim_date > end_date:
+                include = False
+            
+            if include:
+                filtered_history[sim_date] = day_result
+        
+        return filtered_history
     
     def clear_schedule(self) -> int:
         """

@@ -3,39 +3,50 @@ Base Simulation Event
 
 Abstract base class defining the interface for all simulatable events in the calendar system.
 Every event type (games, training, scouting, etc.) must implement the simulate() method.
+
+Now supports enhanced result types while maintaining backward compatibility.
 """
 
 from abc import ABC, abstractmethod
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from dataclasses import dataclass
 from enum import Enum
 
-
-class EventType(Enum):
-    """Types of simulatable events"""
-    GAME = "game"
-    TRAINING = "training" 
-    SCOUTING = "scouting"
-    REST_DAY = "rest_day"
-    ADMINISTRATIVE = "administrative"
-
-
-@dataclass
-class SimulationResult:
-    """Base result class for all event simulations"""
-    event_type: EventType
-    event_name: str
-    date: datetime
-    teams_affected: List[int]
-    duration_hours: float
-    success: bool = True
-    error_message: Optional[str] = None
-    metadata: Dict[str, Any] = None
+# Import the enhanced result types
+try:
+    from ..results.base_result import SimulationResult, EventType, AnySimulationResult
+    ENHANCED_RESULTS_AVAILABLE = True
+except ImportError:
+    # Fallback to local definitions for backward compatibility
+    ENHANCED_RESULTS_AVAILABLE = False
     
-    def __post_init__(self):
-        if self.metadata is None:
-            self.metadata = {}
+    class EventType(Enum):
+        """Types of simulatable events"""
+        GAME = "game"
+        TRAINING = "training" 
+        SCOUTING = "scouting"
+        REST_DAY = "rest_day"
+        ADMINISTRATIVE = "administrative"
+
+    @dataclass
+    class SimulationResult:
+        """Base result class for all event simulations"""
+        event_type: EventType
+        event_name: str
+        date: datetime
+        teams_affected: List[int]
+        duration_hours: float
+        success: bool = True
+        error_message: Optional[str] = None
+        metadata: Dict[str, Any] = None
+        
+        def __post_init__(self):
+            if self.metadata is None:
+                self.metadata = {}
+    
+    # Type alias for backward compatibility
+    AnySimulationResult = SimulationResult
 
 
 class BaseSimulationEvent(ABC):
@@ -64,7 +75,7 @@ class BaseSimulationEvent(ABC):
         self.event_id = self._generate_event_id()
     
     @abstractmethod
-    def simulate(self) -> SimulationResult:
+    def simulate(self) -> AnySimulationResult:
         """
         Execute this event's simulation logic.
         
@@ -72,7 +83,8 @@ class BaseSimulationEvent(ABC):
         It should contain all the logic for simulating this specific event type.
         
         Returns:
-            SimulationResult: Result of the simulation with outcome data
+            AnySimulationResult: Result of the simulation with outcome data
+            Can be SimulationResult (base) or any enhanced result type like GameResult, TrainingResult, etc.
         """
         pass
     
