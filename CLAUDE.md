@@ -44,6 +44,12 @@ python tests/test_run_play.py
 python tests/test_scoreboard.py
 python tests/test_scoring_mapper.py
 
+# Schedule generator tests
+python tests/test_scheduling/test_phase0.py
+
+# Simulation system tests
+python tests/test_result_processing_system.py
+
 # Interactive testing and validation scripts
 python tests/simple_penalty_validation.py
 ```
@@ -55,6 +61,12 @@ python full_game_demo.py
 
 # Phase 4 comprehensive system demonstration
 python phase_4_demo.py
+
+# Calendar-based simulation demo
+python calendar_manager_demo.py
+
+# Result processing system demo
+python result_processing_demo.py
 ```
 
 ### Development Setup
@@ -145,6 +157,22 @@ The simulation follows a layered architecture with clear separation of concerns:
 - `src/play_call_params.py`: Parameter structures for play calls
 - `src/constants/team_ids.py`: Team ID constants and utilities
 
+**9. Schedule Generator (`src/scheduling/`)**
+- `data/division_structure.py`: NFL organizational structure with 32 teams
+- `data/schedule_models.py`: ScheduledGame, WeekSchedule, SeasonSchedule models
+- `loaders/calendar_adapter.py`: Integration with CalendarManager system
+- `config.py`: Comprehensive configuration for schedule generation
+- `utils/date_utils.py`: NFL season date calculations and utilities
+- `validators/`: Schedule validation and constraint checking (future)
+- `generator/`: Schedule generation algorithms (future phases)
+
+**10. Simulation System (`src/simulation/`)**
+- `calendar_manager.py`: Day-by-day simulation orchestration
+- `events/`: Polymorphic event system for games, training, scouting, etc.
+- `processors/`: Result processing strategies for different event types
+- `results/`: Enhanced result types with metadata
+- `season_state_manager.py`: Season-wide state tracking
+
 ### Key Design Patterns
 
 **Match/Case Play Selection**: The main play engine uses Python's match/case for clean play type routing:
@@ -208,6 +236,7 @@ class UnifiedDefensiveFormation(Enum):
 - `src/config/playbooks/`: Team playbook strategies (aggressive.json, balanced.json, conservative.json)
 - `src/config/team_coaching_styles.json`: Team-specific coaching staff assignments (maps team IDs to coaching styles)
 - `src/play_engine/config/`: Play-specific configuration files (run_play_config.json, pass_play_config.json, field_goal_config.json, kickoff_config.json, punt_config.json)
+- `requirements_scheduling.txt`: Dependencies for schedule generator module
 
 ## Testing Strategy
 
@@ -268,5 +297,7 @@ Recent major changes to be aware of:
 5. **Coaching Staff System**: New hierarchical coaching system with realistic NFL coaching philosophies
 6. **Type-Safe Formations**: String-based formation names replaced with enum-based system
 7. **Special Teams Coordinator**: New dedicated special teams coordinator with independent play calling for punts, field goals, and kickoffs
+8. **Schedule Generator**: New NFL schedule generation system with CalendarManager integration for season simulation
+9. **Simulation Events**: Enhanced event system with polymorphic processing for games, training, scouting, and administrative events
 
 When working with legacy code, check for hardcoded team names and convert to numerical IDs using the constants in `src/constants/team_ids.py`.
