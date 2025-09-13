@@ -27,7 +27,7 @@ class OffensiveFormation:
     @classmethod
     def get_personnel_requirements(cls, formation):
         """Get the required personnel for a specific formation"""
-        from team_management.players.player import Position
+        from ...team_management.players.player import Position
         
         requirements = {
             cls.I_FORMATION: {
@@ -100,7 +100,7 @@ class DefensiveFormation:
     @classmethod
     def get_personnel_requirements(cls, formation):
         """Get the required personnel for a specific defensive formation"""
-        from team_management.players.player import Position
+        from ...team_management.players.player import Position
         
         requirements = {
             cls.FOUR_THREE: {

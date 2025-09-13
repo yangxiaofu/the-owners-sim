@@ -17,63 +17,44 @@ This is "The Owners Sim" - a comprehensive NFL football simulation engine writte
 
 ### Running Tests
 ```bash
-# Run all tests
+# Run all tests with pytest
 python -m pytest tests/
 
 # Run specific test files
 python tests/test_penalty_system.py
-python tests/test_run_play.py
-python tests/simple_penalty_validation.py
-python tests/test_punt_system.py
 python tests/test_game_state_manager.py
 python tests/test_field_tracker.py
 python tests/test_down_tracker.py
 python tests/test_drive_manager.py
 python tests/test_drive_manager_comprehensive.py
+python tests/test_game_loop_controller.py
+python tests/test_centralized_stats_aggregator.py
+python tests/test_drive_flow_integration.py
+python tests/test_phase_4_comprehensive.py
+
+# Additional test files available
+python tests/test_comprehensive_play_execution.py
+python tests/test_enhanced_play_call_integration.py
+python tests/test_personnel_package_manager.py
 python tests/test_play_caller_system.py
+python tests/test_play_calls.py
+python tests/test_possession_manager.py
+python tests/test_punt_system.py
+python tests/test_run_play.py
 python tests/test_scoreboard.py
 python tests/test_scoring_mapper.py
 
 # Interactive testing and validation scripts
-python team_stats_interactive_test.py
-python test_drive_manager_simple.py
-python test_team_stats_accumulator.py
+python tests/simple_penalty_validation.py
 ```
 
 ### Running Demos
 ```bash
-# Main play engine demonstration
-python demo/play_engine_demo.py
+# Full game simulation demonstration
+python full_game_demo.py
 
-# Run play simulation demo
-python demo/run_play_demo.py
-
-# Pass play simulation demo
-python demo/pass_play_demo.py
-
-# Ten play comprehensive demo
-python ten_play_demo.py
-
-# Field position tracking demo
-python field_position_demo.py
-
-# Game state management demo  
-python game_state_demo.py
-
-# Simple possession demo
-python simple_possession_demo.py
-
-# Scoreboard system demo
-python scoreboard_demo.py
-
-# Single drive comprehensive demo
-python single_drive_demo.py
-
-# Coaching staff system demonstration
-python coaching_staff_demo.py
-
-# Simple punt play demonstration  
-python simple_punt_demo.py
+# Phase 4 comprehensive system demonstration
+python phase_4_demo.py
 ```
 
 ### Development Setup
@@ -111,10 +92,12 @@ The simulation follows a layered architecture with clear separation of concerns:
 - `play_call_factory.py`: Factory pattern for creating structured play calls
 - `offensive_play_call.py`: Offensive play call encapsulation with formations and concepts
 - `defensive_play_call.py`: Defensive play call structure and logic
+- `special_teams_play_call.py`: Special teams play call with formation and strategy support
 
 **2b. Coaching Staff and Play Calling (`src/play_engine/play_calling/`)**
 - `coaching_staff.py`: Complete coaching staff system with coordinator hierarchy
 - `head_coach.py`, `offensive_coordinator.py`, `defensive_coordinator.py`: Position-specific coaching logic
+- `special_teams_coordinator.py`: Dedicated special teams play calling and decisions
 - `coach_archetype.py`: Coaching philosophy and style definitions
 - `playbook_loader.py`: Dynamic playbook loading system
 - `game_situation_analyzer.py`: Context-aware play selection logic
@@ -147,8 +130,15 @@ The simulation follows a layered architecture with clear separation of concerns:
 - `drive_manager.py`: Drive lifecycle management and drive ending decisions
 
 **7. Game Management (`src/game_management/`)**
+- `game_loop_controller.py`: Complete game loop orchestration coordinating all components
 - `scoreboard.py`: Game scoreboard management with quarter/game progression
 - `scoring_mapper.py`: Maps play results to scoring events and point attribution
+- `full_game_simulator.py`: Modular full game simulator for incremental development
+- `game_manager.py`: Complete game orchestration with coin toss and game flow
+- `drive_transition_manager.py`: Handles drive transitions and special teams scenarios
+- `box_score_generator.py`: NFL-style box score generation from player statistics
+- `play_by_play_display.py`: Real-time game commentary and formatting system
+- `game_stats_reporter.py`: Comprehensive end-of-game reporting and analysis
 
 **8. Core Utilities (root level)**
 - `src/playcall.py`: High-level play calling interface
@@ -177,8 +167,9 @@ class UnifiedDefensiveFormation(Enum):
 
 **Coaching Staff Architecture**: Hierarchical coaching system with realistic NFL roles:
 ```python
-# CoachingStaff -> HeadCoach -> OffensiveCoordinator/DefensiveCoordinator
+# CoachingStaff -> HeadCoach -> OffensiveCoordinator/DefensiveCoordinator/SpecialTeamsCoordinator
 # Each coach has archetype-based decision making and situational logic
+# Special teams coordinator handles punts, field goals, kickoffs independently
 ```
 
 **JSON Configuration System**: All game data is externalized:
@@ -259,6 +250,7 @@ Comprehensive documentation is available in `docs/`:
 - Position-specific specialties: pass_heavy, run_heavy, balanced offensive styles
 - Situational decision making: fourth down matrix, game situation analysis
 - Team-specific coaching assignments for all 32 NFL teams
+- Special teams coordinator: Dedicated special teams philosophy (aggressive, conservative, balanced)
 
 ### Error Handling
 - Comprehensive validation for team IDs (must be 1-32)
@@ -275,5 +267,6 @@ Recent major changes to be aware of:
 4. **Unified PlayResult**: Single PlayResult class replaces multiple result classes, eliminates import conflicts
 5. **Coaching Staff System**: New hierarchical coaching system with realistic NFL coaching philosophies
 6. **Type-Safe Formations**: String-based formation names replaced with enum-based system
+7. **Special Teams Coordinator**: New dedicated special teams coordinator with independent play calling for punts, field goals, and kickoffs
 
 When working with legacy code, check for hardcoded team names and convert to numerical IDs using the constants in `src/constants/team_ids.py`.

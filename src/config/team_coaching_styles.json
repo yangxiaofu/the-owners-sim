@@ -37,9 +37,9 @@
   },
   "7": {
     "team_name": "Cleveland Browns",
-    "head_coach": "balanced",
-    "offensive_coordinator": "balanced", 
-    "defensive_coordinator": "aggressive"
+    "head_coach": "kevin_stefanski",
+    "offensive_coordinator": "tommy_rees", 
+    "defensive_coordinator": "jim_schwartz"
   },
   "8": {
     "team_name": "Pittsburgh Steelers",
@@ -181,9 +181,9 @@
   },
   "31": {
     "team_name": "San Francisco 49ers",
-    "head_coach": "aggressive",
-    "offensive_coordinator": "pass_heavy",
-    "defensive_coordinator": "aggressive"
+    "head_coach": "kyle_shanahan",
+    "offensive_coordinator": "klay_kubiak",
+    "defensive_coordinator": "robert_saleh"
   },
   "32": {
     "team_name": "Seattle Seahawks",

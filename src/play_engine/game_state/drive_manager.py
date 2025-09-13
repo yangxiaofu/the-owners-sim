@@ -1,18 +1,20 @@
 """
-Drive Manager - Drive State Machine
+Drive Manager - Focused Drive Simulator
 
-Manages individual drive execution as a focused state machine that:
+Simulates individual drive execution with minimal game-level dependencies:
 - Accepts external play results and updates drive state
 - Provides current drive situation for external play callers  
 - Tracks drive-level statistics internally
-- Determines when drives end and why
-- Returns comprehensive drive results for game-level coordination
+- Determines when drives end and basic reason
+- Returns drive-specific results only
 
 Does NOT handle:
 - Play calling (external responsibility)
 - Play execution (external responsibility)  
 - Drive transitions (external responsibility)
-- Kickoffs (external responsibility)
+- Game clock management (external responsibility)
+- Possession changes (external responsibility)
+- Next drive field positions (external responsibility)
 """
 
 from dataclasses import dataclass, field
@@ -88,7 +90,7 @@ class DriveSituation:
     down: int
     yards_to_go: int
     field_position: int
-    possessing_team: str
+    possessing_team_id: int
     
     # Game context (injected externally when requested)
     time_remaining: Optional[int] = None
@@ -137,13 +139,13 @@ class DriveSituation:
 
 @dataclass
 class DriveResult:
-    """Comprehensive drive outcome with all relevant information"""
+    """Drive outcome with drive-specific information only"""
     # Drive status
     drive_ended: bool
     end_reason: Optional[DriveEndReason] = None
     
     # Drive identification
-    possessing_team: str = ""
+    possessing_team_id: int = 1
     
     # Field position tracking  
     starting_position: FieldPosition = None
@@ -156,10 +158,6 @@ class DriveResult:
     points_scored: int = 0
     scoring_type: Optional[str] = None
     
-    # Transition guidance (for external systems)
-    possession_should_change: bool = False
-    next_possessing_team: Optional[str] = None
-    recommended_next_position: int = 25  # Standard kickoff position
     
     # Detailed play history
     play_by_play: List[PlayResult] = field(default_factory=list)
@@ -172,7 +170,7 @@ class DriveManagerError(Exception):
 
 class DriveManager:
     """
-    Drive state machine that manages individual drive execution.
+    Focused drive simulator for embedding in game-level systems.
     
     Responsibilities:
     - Track drive state (field position, down situation)
@@ -185,13 +183,16 @@ class DriveManager:
     - Play calling (external)
     - Play execution (external)
     - Drive transitions (external)
+    - Game clock management (external)
+    - Possession determination (external)
+    - Next drive setup (external)
     """
     
     def __init__(
         self, 
         starting_position: FieldPosition,
         starting_down_state: DownState,
-        possessing_team: str
+        possessing_team_id: int
     ):
         """
         Initialize drive with starting conditions
@@ -199,25 +200,26 @@ class DriveManager:
         Args:
             starting_position: Starting field position for the drive
             starting_down_state: Starting down and distance situation  
-            possessing_team: Team that has possession for this drive
+            possessing_team_id: Team ID (1-32) that has possession for this drive
         """
         # Validate inputs
         if not starting_position:
             raise DriveManagerError("starting_position is required")
         if not starting_down_state:
             raise DriveManagerError("starting_down_state is required")
-        if not possessing_team:
-            raise DriveManagerError("possessing_team is required")
+        if not isinstance(possessing_team_id, int) or possessing_team_id < 1 or possessing_team_id > 32:
+            raise DriveManagerError("possessing_team_id must be an integer between 1 and 32")
             
         # Drive state
         self.starting_position = starting_position
         self.current_position = starting_position
         self.current_down_state = starting_down_state
-        self.possessing_team = possessing_team
+        self.possessing_team_id = possessing_team_id
         
         # Drive tracking
         self.drive_ended = False
         self.end_reason: Optional[DriveEndReason] = None
+        
         
         # Internal components for state management
         self.field_tracker = FieldTracker()
@@ -228,6 +230,15 @@ class DriveManager:
         
         # Play history
         self.play_history: List[PlayResult] = []
+    
+    def get_possessing_team_id(self) -> int:
+        """
+        Get the team ID that has possession for this drive
+        
+        Returns:
+            Team ID (1-32) that has possession
+        """
+        return self.possessing_team_id
     
     def get_current_situation(
         self, 
@@ -249,7 +260,7 @@ class DriveManager:
             down=self.current_down_state.current_down,
             yards_to_go=self.current_down_state.yards_to_go,
             field_position=self.current_position.yard_line,
-            possessing_team=self.possessing_team
+            possessing_team_id=self.possessing_team_id
         )
         
         # Inject game context if provided
@@ -317,6 +328,7 @@ class DriveManager:
             self._end_drive(DriveEndReason.TURNOVER_ON_DOWNS)
             return
             
+            
         # Update down state if drive continues
         if down_result.new_down_state:
             self.current_down_state = down_result.new_down_state
@@ -337,6 +349,18 @@ class DriveManager:
         """Get current drive statistics (while drive is ongoing)"""
         return self.stats
     
+    def get_play_history(self) -> List[PlayResult]:
+        """Get list of all plays run during this drive"""
+        return self.play_history.copy()
+    
+    def get_current_field_position(self) -> FieldPosition:
+        """Get current field position"""
+        return self.current_position
+    
+    def get_current_down_state(self) -> DownState:
+        """Get current down and distance"""
+        return self.current_down_state
+    
     def get_drive_result(self) -> DriveResult:
         """
         Get comprehensive drive results and statistics
@@ -347,15 +371,12 @@ class DriveManager:
         return DriveResult(
             drive_ended=self.drive_ended,
             end_reason=self.end_reason,
-            possessing_team=self.possessing_team,
+            possessing_team_id=self.possessing_team_id,
             starting_position=self.starting_position,
             final_field_position=self.current_position,
             drive_stats=self.stats,
             points_scored=self._calculate_points_scored(),
             scoring_type=self._get_scoring_type(),
-            possession_should_change=self._should_change_possession(),
-            next_possessing_team=self._get_next_possessing_team(),
-            recommended_next_position=self._get_recommended_next_position(),
             play_by_play=self.play_history.copy()
         )
     
@@ -409,6 +430,7 @@ class DriveManager:
         elif field_result.scoring_type == "safety":
             self._end_drive(DriveEndReason.SAFETY)
     
+    
     def _end_drive(self, reason: DriveEndReason) -> None:
         """Mark drive as ended with specified reason"""
         self.drive_ended = True
@@ -458,45 +480,5 @@ class DriveManager:
             return "safety"
         return None
     
-    def _should_change_possession(self) -> bool:
-        """Determine if possession should change after this drive"""
-        if not self.drive_ended:
-            return False
-            
-        # Most drive endings result in possession change
-        return self.end_reason in [
-            DriveEndReason.TOUCHDOWN,
-            DriveEndReason.FIELD_GOAL, 
-            DriveEndReason.FIELD_GOAL_MISSED,
-            DriveEndReason.TURNOVER_INTERCEPTION,
-            DriveEndReason.TURNOVER_FUMBLE,
-            DriveEndReason.TURNOVER_ON_DOWNS,
-            DriveEndReason.PUNT
-        ]
     
-    def _get_next_possessing_team(self) -> Optional[str]:
-        """Get which team should have possession next (simplified)"""
-        if not self._should_change_possession():
-            return None
-        return "Opponent"  # Simplified - would need proper team mapping
     
-    def _get_recommended_next_position(self) -> int:
-        """Get recommended starting position for next drive"""
-        if not self.drive_ended:
-            return 25
-            
-        if self.end_reason in [DriveEndReason.TOUCHDOWN, DriveEndReason.FIELD_GOAL]:
-            return 25  # Kickoff
-        elif self.end_reason == DriveEndReason.SAFETY:
-            return 20  # Free kick
-        elif self.end_reason in [DriveEndReason.TURNOVER_INTERCEPTION, DriveEndReason.TURNOVER_FUMBLE]:
-            return 100 - self.current_position.yard_line  # Spot of turnover, flipped
-        elif self.end_reason == DriveEndReason.TURNOVER_ON_DOWNS:
-            return 100 - self.current_position.yard_line  # Spot of failed conversion, flipped
-        elif self.end_reason == DriveEndReason.FIELD_GOAL_MISSED:
-            return 100 - self.current_position.yard_line  # Spot of missed field goal attempt, flipped
-        elif self.end_reason == DriveEndReason.PUNT:
-            # Simplified punt logic - would need actual punt result
-            return max(20, 100 - self.current_position.yard_line - 40)  # Rough punt average
-        else:
-            return 25  # Default

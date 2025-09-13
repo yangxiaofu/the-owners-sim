@@ -533,13 +533,17 @@ class TeamStats:
     
     # Offensive Stats (when this team has possession)
     total_yards: int = 0
-    passing_yards: int = 0
+    passing_yards: int = 0  # Gross passing yards (completions only)
     rushing_yards: int = 0
     pass_attempts: int = 0
     completions: int = 0
     touchdowns: int = 0
     first_downs: int = 0
     turnovers: int = 0
+    
+    # Sack statistics (offensive perspective)
+    times_sacked: int = 0
+    sack_yards_lost: int = 0  # Total yards lost to sacks
     
     # Defensive Stats (when this team is defending)
     sacks: int = 0
@@ -558,11 +562,22 @@ class TeamStats:
     penalties: int = 0
     penalty_yards: int = 0
     
+    def get_net_passing_yards(self) -> int:
+        """
+        Calculate net passing yards (NFL standard).
+        Net passing = gross passing yards - sack yards lost
+        
+        Returns:
+            Net passing yards for the team
+        """
+        return self.passing_yards - self.sack_yards_lost
+    
     def get_total_offensive_stats(self) -> Dict[str, int]:
         """Get all non-zero offensive stats as dictionary"""
         offensive_fields = {
             'total_yards', 'passing_yards', 'rushing_yards', 'pass_attempts', 
-            'completions', 'touchdowns', 'first_downs', 'turnovers'
+            'completions', 'touchdowns', 'first_downs', 'turnovers',
+            'times_sacked', 'sack_yards_lost'
         }
         
         stats = {}
@@ -665,6 +680,10 @@ class TeamStatsAccumulator:
             team.pass_attempts += player.pass_attempts
             team.completions += player.completions
             team.touchdowns += player.passing_tds + player.rushing_touchdowns
+            
+            # Sack stats (offensive perspective)
+            team.times_sacked += player.sacks_taken
+            team.sack_yards_lost += player.sack_yards_lost
             
             # Special teams
             team.field_goals_attempted += player.field_goal_attempts

@@ -136,9 +136,9 @@ class GameClock:
                 result.new_phase = GamePhase.HALFTIME
             elif self.quarter == 4:
                 result.half_ended = True
-                result.game_ended = True
                 result.clock_events.append("End of regulation")
-                result.new_phase = GamePhase.GAME_OVER
+                # Note: Don't set game_ended=True here - let GameManager decide based on score
+                # GameManager will handle overtime vs game end logic
             elif self.quarter >= 5:
                 # Overtime handling - would need game context to determine if game actually ends
                 result.clock_events.append(f"End of overtime Q{self.quarter}")

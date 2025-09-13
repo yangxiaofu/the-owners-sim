@@ -1,0 +1,67 @@
+{
+  "name": "Kevin Stefanski",
+  "description": "Analytical and balanced head coach. Two-time NFL Coach of the Year (2020, 2023) known for modern offensive concepts, excellent game management, and player development.",
+  "coach_type": "head_coach",
+  "aggression": 0.6,
+  "risk_tolerance": 0.5,
+  "adaptability": 0.9,
+  "conservatism": 0.5,
+  "run_preference": 0.5,
+  "fourth_down_aggression": 0.5,
+  "red_zone_aggression": 0.6,
+  "game_script_adherence": 0.8,
+  "momentum_responsiveness": 0.7,
+  "pressure_handling": 0.9,
+  "situational": {
+    "first_down_aggression": 0.5,
+    "second_down_creativity": 0.7,
+    "third_down_aggression": 0.7,
+    "fourth_down_aggression": 0.5,
+    "red_zone_aggression": 0.6,
+    "goal_line_creativity": 0.7,
+    "midfield_risk_tolerance": 0.5,
+    "two_minute_aggression": 0.7,
+    "clock_management_conservatism": 0.7
+  },
+  "formations": {
+    "i_formation_preference": 0.4,
+    "shotgun_preference": 0.7,
+    "pistol_preference": 0.6,
+    "wildcat_preference": 0.1,
+    "four_wide_preference": 0.6,
+    "heavy_personnel_preference": 0.5,
+    "spread_personnel_preference": 0.6,
+    "balanced_personnel_preference": 0.8
+  },
+  "play_types": {
+    "run_preference": 0.5,
+    "play_action_frequency": 0.6,
+    "screen_frequency": 0.4,
+    "draw_frequency": 0.3,
+    "short_pass_preference": 0.6,
+    "intermediate_pass_preference": 0.7,
+    "deep_pass_preference": 0.4,
+    "trick_play_frequency": 0.1,
+    "fake_punt_aggression": 0.1,
+    "fake_field_goal_aggression": 0.05
+  },
+  "game_management": {
+    "fourth_down_decision_aggression": 0.5,
+    "two_minute_drill_aggression": 0.7,
+    "overtime_aggression": 0.6,
+    "timeout_usage_intelligence": 0.9,
+    "challenge_flag_wisdom": 0.8,
+    "clock_management_skill": 0.9,
+    "starter_loyalty": 0.7,
+    "rookie_trust": 0.6,
+    "injury_risk_tolerance": 0.3
+  },
+  "coordinator_influence": {
+    "offensive_coordinator_trust": 0.8,
+    "defensive_coordinator_trust": 0.9,
+    "special_teams_coordinator_trust": 0.8,
+    "critical_situation_override_threshold": 0.4,
+    "momentum_shift_override_threshold": 0.3,
+    "game_script_override_threshold": 0.3
+  }
+}

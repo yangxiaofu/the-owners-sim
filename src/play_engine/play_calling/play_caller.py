@@ -144,7 +144,7 @@ class PlayCaller(PlayCallerBase):
             'down': situation.down,
             'yards_to_go': situation.yards_to_go,
             'field_position': situation.field_position,
-            'possessing_team': situation.possessing_team
+            'possessing_team': situation.possessing_team_id
         }
         
         # Add time remaining if available

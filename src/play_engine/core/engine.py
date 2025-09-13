@@ -107,7 +107,7 @@ def simulate(play_engine_params):
                 # Convert to backward-compatible PlayResult
                 # Map field goal outcomes to appropriate result format
                 if fg_result.field_goal_outcome == "made":
-                    outcome = OffensivePlayType.FIELD_GOAL
+                    outcome = "field_goal_made"
                 elif fg_result.is_fake_field_goal:
                     outcome = f"fake_{fg_result.fake_field_goal_type}_{fg_result.field_goal_outcome}"
                 else:

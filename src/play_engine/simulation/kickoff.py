@@ -12,14 +12,14 @@ import random
 import math
 from typing import List, Tuple, Dict, Optional, Union
 from enum import Enum
-from play_engine.simulation.stats import PlayerStats, PlayStatsSummary, create_player_stats_from_player
-from play_engine.mechanics.formations import OffensiveFormation, DefensiveFormation
-from play_engine.mechanics.unified_formations import UnifiedDefensiveFormation, SimulatorContext
-from play_engine.play_types.base_types import PlayType
-from team_management.players.player import Position
-from play_engine.mechanics.penalties.penalty_engine import PenaltyEngine, PlayContext, PenaltyResult
-from play_engine.mechanics.penalties.penalty_data_structures import PenaltyInstance
-from play_engine.config.config_loader import config
+from .stats import PlayerStats, PlayStatsSummary, create_player_stats_from_player
+from ..mechanics.formations import OffensiveFormation, DefensiveFormation
+from ..mechanics.unified_formations import UnifiedDefensiveFormation, SimulatorContext
+from ..play_types.base_types import PlayType
+from ...team_management.players.player import Position
+from ..mechanics.penalties.penalty_engine import PenaltyEngine, PlayContext, PenaltyResult
+from ..mechanics.penalties.penalty_data_structures import PenaltyInstance
+from ..config.config_loader import config
 
 
 class KickoffPlayParams:

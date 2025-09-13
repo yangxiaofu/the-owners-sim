@@ -1,9 +1,9 @@
 import random
 from typing import List, Dict, Any
-from team_management.players.player import Player, Position
-from play_engine.mechanics.formations import OffensiveFormation, DefensiveFormation, FormationMapper
-from team_management.teams.team_loader import get_team_by_id, Team
-from team_management.players.player_loader import get_real_roster_for_team, has_real_roster_data, RealPlayer
+from .players.player import Player, Position
+from ..play_engine.mechanics.formations import OffensiveFormation, DefensiveFormation, FormationMapper
+from .teams.team_loader import get_team_by_id, Team
+from .players.player_loader import get_real_roster_for_team, has_real_roster_data, RealPlayer
 
 
 class PersonnelPackageManager:
@@ -119,17 +119,18 @@ class TeamRosterGenerator:
     """Utility class to generate sample team rosters for testing"""
     
     @classmethod
-    def generate_sample_roster(cls, team_id: int = 1) -> List[Player]:
+    def load_team_roster(cls, team_id: int) -> List[Player]:
         """
-        Generate a complete 53-man roster with realistic ratings
+        Load complete team roster from available data sources
         
-        First checks for real roster data, falls back to synthetic generation
+        First attempts to load real NFL player data from JSON configuration,
+        falls back to synthetic roster generation if real data unavailable.
         
         Args:
-            team_id: Numerical team ID (1-32) to generate roster for
+            team_id: Numerical team ID (1-32) to load roster for
             
         Returns:
-            List of Player objects representing the team's roster
+            List of Player objects representing the team's complete roster
         """
         # Check if real roster data exists for this team
         if has_real_roster_data(team_id):
