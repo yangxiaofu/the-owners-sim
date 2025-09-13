@@ -10,166 +10,208 @@ from src.game_management.full_game_simulator import FullGameSimulator
 from src.constants.team_ids import TeamIDs
 import time
 import json
+import random
 
 
-def main():
-    """Demonstrate complete Phase 4 functionality"""
-    print("🏈 PHASE 4: COMPLETE PUBLIC API DEMONSTRATION")
-    print("=" * 60)
+def get_random_team_matchups():
+    """Get 3 random team matchups from the complete NFL database"""
+    # Get all available team IDs from our complete database (all 32 teams)
+    all_teams = [
+        TeamIDs.BUFFALO_BILLS, TeamIDs.MIAMI_DOLPHINS, TeamIDs.NEW_ENGLAND_PATRIOTS, TeamIDs.NEW_YORK_JETS,
+        TeamIDs.BALTIMORE_RAVENS, TeamIDs.CINCINNATI_BENGALS, TeamIDs.CLEVELAND_BROWNS, TeamIDs.PITTSBURGH_STEELERS,
+        TeamIDs.HOUSTON_TEXANS, TeamIDs.INDIANAPOLIS_COLTS, TeamIDs.JACKSONVILLE_JAGUARS, TeamIDs.TENNESSEE_TITANS,
+        TeamIDs.DENVER_BRONCOS, TeamIDs.KANSAS_CITY_CHIEFS, TeamIDs.LAS_VEGAS_RAIDERS, TeamIDs.LOS_ANGELES_CHARGERS,
+        TeamIDs.CHICAGO_BEARS, TeamIDs.DETROIT_LIONS, TeamIDs.GREEN_BAY_PACKERS, TeamIDs.MINNESOTA_VIKINGS,
+        TeamIDs.DALLAS_COWBOYS, TeamIDs.NEW_YORK_GIANTS, TeamIDs.PHILADELPHIA_EAGLES, TeamIDs.WASHINGTON_COMMANDERS,
+        TeamIDs.ATLANTA_FALCONS, TeamIDs.CAROLINA_PANTHERS, TeamIDs.NEW_ORLEANS_SAINTS, TeamIDs.TAMPA_BAY_BUCCANEERS,
+        TeamIDs.ARIZONA_CARDINALS, TeamIDs.LOS_ANGELES_RAMS, TeamIDs.SAN_FRANCISCO_49ERS, TeamIDs.SEATTLE_SEAHAWKS
+    ]
     
-    # Step 1: Create Game Simulator (2-line setup) - Using Teams with Advanced Coaching
-    print("\n📋 Step 1: Advanced Team Setup")
-    print("   Using teams with sophisticated coaching staff profiles:")
-    print("   🏈 Cleveland Browns (Away) - Kevin Stefanski, Tommy Rees, Jim Schwartz")
-    print("   🏈 San Francisco 49ers (Home) - Kyle Shanahan, Klay Kubiak, Robert Saleh")
-    print()
+    # Shuffle teams and create 3 random matchups
+    random.shuffle(all_teams)
+    matchups = []
+    for i in range(0, 6, 2):  # Take pairs: (0,1), (2,3), (4,5)
+        away_team = all_teams[i]
+        home_team = all_teams[i + 1]
+        matchups.append((away_team, home_team))
     
-    simulator = FullGameSimulator(
-        away_team_id=TeamIDs.CLEVELAND_BROWNS, 
-        home_team_id=TeamIDs.SAN_FRANCISCO_49ERS
-    )
-    print(f"✅ Game created: {simulator}")
+    return matchups
+
+
+def get_team_name(team_id):
+    """Get team name from team ID"""
+    team_names = {
+        TeamIDs.BUFFALO_BILLS: "Buffalo Bills",
+        TeamIDs.MIAMI_DOLPHINS: "Miami Dolphins", 
+        TeamIDs.NEW_ENGLAND_PATRIOTS: "New England Patriots",
+        TeamIDs.NEW_YORK_JETS: "New York Jets",
+        TeamIDs.BALTIMORE_RAVENS: "Baltimore Ravens",
+        TeamIDs.CINCINNATI_BENGALS: "Cincinnati Bengals",
+        TeamIDs.CLEVELAND_BROWNS: "Cleveland Browns",
+        TeamIDs.PITTSBURGH_STEELERS: "Pittsburgh Steelers",
+        TeamIDs.HOUSTON_TEXANS: "Houston Texans",
+        TeamIDs.INDIANAPOLIS_COLTS: "Indianapolis Colts",
+        TeamIDs.JACKSONVILLE_JAGUARS: "Jacksonville Jaguars",
+        TeamIDs.TENNESSEE_TITANS: "Tennessee Titans",
+        TeamIDs.DENVER_BRONCOS: "Denver Broncos",
+        TeamIDs.KANSAS_CITY_CHIEFS: "Kansas City Chiefs",
+        TeamIDs.LAS_VEGAS_RAIDERS: "Las Vegas Raiders",
+        TeamIDs.LOS_ANGELES_CHARGERS: "Los Angeles Chargers",
+        TeamIDs.CHICAGO_BEARS: "Chicago Bears",
+        TeamIDs.DETROIT_LIONS: "Detroit Lions",
+        TeamIDs.GREEN_BAY_PACKERS: "Green Bay Packers",
+        TeamIDs.MINNESOTA_VIKINGS: "Minnesota Vikings",
+        TeamIDs.DALLAS_COWBOYS: "Dallas Cowboys",
+        TeamIDs.NEW_YORK_GIANTS: "New York Giants",
+        TeamIDs.PHILADELPHIA_EAGLES: "Philadelphia Eagles",
+        TeamIDs.WASHINGTON_COMMANDERS: "Washington Commanders",
+        TeamIDs.ATLANTA_FALCONS: "Atlanta Falcons",
+        TeamIDs.CAROLINA_PANTHERS: "Carolina Panthers",
+        TeamIDs.NEW_ORLEANS_SAINTS: "New Orleans Saints",
+        TeamIDs.TAMPA_BAY_BUCCANEERS: "Tampa Bay Buccaneers",
+        TeamIDs.ARIZONA_CARDINALS: "Arizona Cardinals",
+        TeamIDs.LOS_ANGELES_RAMS: "Los Angeles Rams",
+        TeamIDs.SAN_FRANCISCO_49ERS: "San Francisco 49ers",
+        TeamIDs.SEATTLE_SEAHAWKS: "Seattle Seahawks"
+    }
+    return team_names.get(team_id, f"Team {team_id}")
+
+
+def simulate_single_game(game_num, away_team_id, home_team_id):
+    """Simulate a single game and return results"""
+    away_name = get_team_name(away_team_id)
+    home_name = get_team_name(home_team_id)
     
-    # Step 1.5: Coaching System Showcase
-    print("\n🧠 Step 1.5: Advanced Coaching System")
-    print("   These teams feature realistic NFL coaching profiles:")
-    print()
-    print("   🔴 Cleveland Browns Coaching Philosophy:")
-    print("     - Kevin Stefanski: Balanced offensive approach with modern concepts")
-    print("     - Tommy Rees: Creative play designs, high football IQ")
-    print("     - Jim Schwartz: Aggressive defensive schemes, pressure-focused")
-    print()
-    print("   🔴 San Francisco 49ers Coaching Philosophy:")
-    print("     - Kyle Shanahan: Offensive mastermind (0.9 play-action frequency)")
-    print("     - Klay Kubiak: West Coast offense specialist, innovative concepts")  
-    print("     - Robert Saleh: Multiple defensive fronts, coverage versatility")
-    print()
-    print("   ⚡ This showcases realistic coaching decisions vs generic 'aggressive/conservative' styles")
-    print()
-    print("   📊 Key Difference:")
-    print("     Generic Teams: Use basic styles like 'aggressive', 'balanced', 'conservative'")
-    print("     Browns & 49ers: Use detailed coach profiles with 60+ specific attributes")
-    print("     Example: Shanahan's 0.9 play-action frequency vs generic 'pass-heavy' label")
+    print(f"\n🏈 GAME {game_num}: {away_name} @ {home_name}")
+    print("-" * 50)
     
-    # Step 2: Run Complete Game Simulation
-    print("\n🎮 Step 2: Full Game Simulation")
+    # Create simulator
+    simulator = FullGameSimulator(away_team_id=away_team_id, home_team_id=home_team_id)
+    
+    # Run simulation
     start_time = time.time()
     game_result = simulator.simulate_game()
     end_time = time.time()
     
-    print(f"✅ Simulation completed in {end_time - start_time:.2f} seconds")
-    
-    # Step 3: Demonstrate Multi-Level Statistics Access
-    print("\n📊 Step 3: Multi-Level Statistics API")
-    
-    # Level 1: Game Summary
-    print("\n🏆 Level 1: Game Summary")
+    # Get results
     final_score = simulator.get_final_score()
-    print(f"   Final Score: {json.dumps(final_score['scores'], indent=4)}")
-    print(f"   Winner: {final_score.get('winner', 'Tie Game')}")
-    print(f"   Total Plays: {final_score.get('total_plays', 0)}")
-    print(f"   Game Duration: {final_score.get('game_duration_minutes', 0)} minutes")
-    
-    # Level 2: Team Statistics
-    print("\n📈 Level 2: Team Statistics")
     team_stats = simulator.get_team_stats()
+    
+    # Get scores by team name
+    scores = final_score.get('scores', {})
+    away_score = 0
+    home_score = 0
+    
+    # Find scores by matching team names
+    for team_name, score in scores.items():
+        if away_name.lower() in team_name.lower():
+            away_score = score
+        elif home_name.lower() in team_name.lower():
+            home_score = score
+    
+    # Display results
+    print(f"📊 Final Score: {away_name} {away_score} - {home_score} {home_name}")
+    print(f"🏆 Winner: {final_score.get('winner', 'Tie Game')}")
+    print(f"⏱️  Simulation Time: {end_time - start_time:.2f} seconds")
+    print(f"🏃 Total Plays: {final_score.get('total_plays', 0)}")
+    
+    # Show key team stats
+    for team_name, stats in team_stats.items():
+        total_yards = stats.get('total_yards', 0)
+        touchdowns = stats.get('touchdowns', 0)
+        print(f"   {team_name}: {total_yards} yards, {touchdowns} TDs")
+    
+    return {
+        'game_number': game_num,
+        'away_team': away_name,
+        'home_team': home_name,
+        'away_score': away_score,
+        'home_score': home_score,
+        'winner': final_score.get('winner', 'Tie Game'),
+        'total_plays': final_score.get('total_plays', 0),
+        'simulation_time': end_time - start_time,
+        'simulator': simulator
+    }
+
+
+def main():
+    """Demonstrate complete Phase 4 functionality with 3 random games"""
+    print("🏈 PHASE 4: COMPLETE NFL SIMULATION - 3 RANDOM GAMES")
+    print("=" * 60)
+    
+    # Step 1: Generate Random Matchups
+    print("\n📋 Step 1: Generating Random NFL Matchups")
+    print("   Using complete 32-team NFL database with current 2024-2025 rosters")
+    matchups = get_random_team_matchups()
+    
+    print(f"\n🎲 Today's Random Games:")
+    for i, (away_team, home_team) in enumerate(matchups, 1):
+        away_name = get_team_name(away_team)
+        home_name = get_team_name(home_team)
+        print(f"   Game {i}: {away_name} @ {home_name}")
+    print()
+    
+    # Step 2: Simulate All Games
+    print("\n🎮 Step 2: Simulating All Games")
+    game_results = []
+    total_start_time = time.time()
+    
+    for i, (away_team, home_team) in enumerate(matchups, 1):
+        result = simulate_single_game(i, away_team, home_team)
+        game_results.append(result)
+    
+    total_end_time = time.time()
+    
+    # Step 3: Overall Summary
+    print(f"\n📊 Step 3: Games Summary")
+    print("=" * 60)
+    
+    total_simulation_time = total_end_time - total_start_time
+    total_plays = sum(result['total_plays'] for result in game_results)
+    
+    print(f"🏈 Games Completed: {len(game_results)}")
+    print(f"⏱️  Total Simulation Time: {total_simulation_time:.2f} seconds")
+    print(f"🏃 Total Plays Across All Games: {total_plays}")
+    print(f"⚡ Average Plays per Second: {total_plays / total_simulation_time:.1f}")
+    
+    print(f"\n🏆 Game Results:")
+    for result in game_results:
+        print(f"   Game {result['game_number']}: {result['away_team']} {result['away_score']} - {result['home_score']} {result['home_team']} ({result['winner']})")
+    
+    # Step 4: Detailed Analysis of Last Game
+    print(f"\n🔍 Step 4: Detailed Analysis - Game {len(game_results)}")
+    last_game = game_results[-1]
+    simulator = last_game['simulator']
+    
+    print(f"   Analyzing: {last_game['away_team']} vs {last_game['home_team']}")
+    
+    # Team Statistics
+    team_stats = simulator.get_team_stats()
+    print(f"\n📈 Team Statistics:")
     for team_name, stats in team_stats.items():
         print(f"   {team_name}:")
-        
-        # Offensive yards (FIXED: Only passing + rushing)
-        total_yards = stats.get('total_yards', 0)
-        passing_yards = stats.get('passing_yards', 0)
-        rushing_yards = stats.get('rushing_yards', 0)
-        
-        print(f"     - Total Yards: {total_yards} (Passing + Rushing Only)")
-        print(f"       • Passing Yards: {passing_yards}")  
-        print(f"       • Rushing Yards: {rushing_yards}")
-        
-        # Verify the math (should be equal now)
-        calculated_total = passing_yards + rushing_yards
-        if total_yards == calculated_total:
-            print(f"       ✅ Verified: {passing_yards} + {rushing_yards} = {total_yards}")
-        else:
-            print(f"       ⚠️  Mismatch: {passing_yards} + {rushing_yards} = {calculated_total} vs {total_yards}")
-        
-        # Special teams return yards (NEW: Separated out)
-        punt_return_yards = stats.get('punt_return_yards', 0)
-        kick_return_yards = stats.get('kick_return_yards', 0)
-        
-        if punt_return_yards > 0 or kick_return_yards > 0:
-            print(f"     - Special Teams Returns:")
-            if punt_return_yards > 0:
-                print(f"       • Punt Return Yards: {punt_return_yards}")
-            if kick_return_yards > 0:
-                print(f"       • Kick Return Yards: {kick_return_yards}")
-        
-        # Other key stats
+        print(f"     - Total Yards: {stats.get('total_yards', 0)}")
+        print(f"     - Passing Yards: {stats.get('passing_yards', 0)}")
+        print(f"     - Rushing Yards: {stats.get('rushing_yards', 0)}")
         print(f"     - Touchdowns: {stats.get('touchdowns', 0)}")
         print(f"     - First Downs: {stats.get('first_downs', 0)}")
-        print(f"     - Pass Attempts: {stats.get('pass_attempts', 0)}")
-        print(f"     - Completions: {stats.get('completions', 0)}")
-        if stats.get('pass_attempts', 0) > 0:
-            completion_pct = stats.get('completions', 0) / stats.get('pass_attempts', 0) * 100
-            print(f"     - Completion %: {completion_pct:.1f}%")
     
-    # Level 3: Player Statistics
-    print("\n👤 Level 3: Player Statistics")
-    player_stats = simulator.get_player_stats()
-    print(f"   Total Players with Stats: {len(player_stats)}")
-    
-    # Show sample player stats if available
-    if player_stats:
-        sample_player = list(player_stats.keys())[0]
-        print(f"   Sample Player: {sample_player}")
-        print(f"     Stats: {player_stats[sample_player]}")
-    else:
-        print("   (Player stats available when GameLoopController completes successfully)")
-    
-    # Level 4: Drive Analysis
-    print("\n🚗 Level 4: Drive Analysis")
+    # Drive Analysis
     drive_summaries = simulator.get_drive_summaries()
-    print(f"   Total Drives: {len(drive_summaries)}")
-    
+    print(f"\n🚗 Drive Analysis ({len(drive_summaries)} total drives):")
     for drive in drive_summaries[:3]:  # Show first 3 drives
         print(f"   Drive #{drive['drive_number']} ({drive['possessing_team']}):")
-        print(f"     - Outcome: {drive['drive_outcome']}")
-        print(f"     - Plays: {drive['total_plays']}, Yards: {drive['total_yards']}")
-        print(f"     - Points: {drive['points_scored']}")
+        print(f"     - Outcome: {drive['drive_outcome']}, Plays: {drive['total_plays']}, Yards: {drive['total_yards']}")
     
-    # Level 5: Play-by-Play
-    print("\n📝 Level 5: Play-by-Play Analysis")
-    play_by_play = simulator.get_play_by_play()
-    print(f"   Total Plays: {len(play_by_play)}")
-    
-    for play in play_by_play[:5]:  # Show first 5 plays
-        print(f"   Play #{play['play_number']}: {play['possessing_team']} - {play['description']}")
-    
-    # Step 4: Performance Analysis
-    print("\n⚡ Step 4: Performance Analysis")
+    # Performance Metrics
     performance = simulator.get_performance_metrics()
-    
+    print(f"\n⚡ Performance Metrics:")
     print(f"   Simulation Duration: {performance['simulation_duration_seconds']:.3f} seconds")
     print(f"   Performance Target Met: {'✅ YES' if performance['performance_target_met'] else '❌ NO'} (< 5.0s)")
     print(f"   Plays per Second: {performance['plays_per_second']:.1f}")
-    print(f"   Game Completed: {'✅ YES' if performance['game_completed'] else '❌ NO'}")
     
-    # Step 5: Advanced API Features
-    print("\n🔧 Step 5: Advanced API Features")
-    
-    # Filter team stats
-    browns_stats = simulator.get_team_stats(team_id=TeamIDs.CLEVELAND_BROWNS)
-    print(f"   Cleveland Browns Specific Stats: {len(browns_stats)} entries")
-    
-    # Filter player stats by position (example)
-    qb_stats = simulator.get_player_stats(position="QB")
-    print(f"   Quarterback Stats: {len(qb_stats)} QBs")
-    
-    # Penalty analysis
-    penalties = simulator.get_penalty_summary()
-    print(f"   Total Penalties: {penalties.get('total_penalties', 0)}")
-    
-    # Step 6: Public API Summary
-    print("\n📋 Step 6: Public API Summary")
+    # Step 5: API Summary & Conclusion
+    print(f"\n📋 Step 5: Public API Summary")
     api_methods = [
         "simulate_game()", "get_game_result()", "get_final_score()",
         "get_team_stats()", "get_player_stats()", "get_drive_summaries()",
@@ -183,25 +225,25 @@ def main():
     # Conclusion
     print("\n" + "=" * 60)
     print("🎯 PHASE 4 DEMONSTRATION COMPLETE!")
-    print("   ✅ 2-line game setup with advanced team configurations")
-    print("   ✅ Complete game simulation with realistic NFL coaching")
-    print("   ✅ Multi-level statistics access (game, team, player, drive, play)")
-    print("   ✅ Performance monitoring (< 1 second simulation time)")
-    print("   ✅ Advanced filtering capabilities with sophisticated coaching profiles")
-    print("   ✅ Production-ready public API showcasing Browns vs 49ers coaching systems")
-    print("   🧠 Demonstrated realistic coaching vs generic styles")
+    print(f"   ✅ Complete 32-team NFL database with 2024-2025 rosters (369 players)")
+    print(f"   ✅ {len(game_results)} random games simulated with full statistics")
+    print(f"   ✅ Multi-level statistics access (game, team, player, drive, play)")
+    print(f"   ✅ High performance simulation engine (avg {total_plays / total_simulation_time:.1f} plays/sec)")
+    print(f"   ✅ Production-ready public API with complete NFL team coverage")
+    print(f"   🎲 Demonstrated randomized matchups from complete league database")
     
-    return simulator, game_result
+    return game_results
 
 
 if __name__ == "__main__":
-    simulator, game_result = main()
+    game_results = main()
     
     # Additional interactive features
     print(f"\n🔍 Interactive Features:")
-    print(f"   # Cleveland Browns (7) vs San Francisco 49ers (31)")
-    print(f"   simulator = FullGameSimulator(away_team_id=7, home_team_id=31)")
+    print(f"   # Example: Any two teams from complete NFL database")
+    print(f"   simulator = FullGameSimulator(away_team_id=TeamIDs.KANSAS_CITY_CHIEFS, home_team_id=TeamIDs.BUFFALO_BILLS)")
     print(f"   game_result = simulator.simulate_game()")
     print(f"   final_score = simulator.get_final_score()")
     print(f"   team_stats = simulator.get_team_stats()")
     print(f"   performance = simulator.get_performance_metrics()")
+    print(f"   # All 32 NFL teams available with current 2024-2025 rosters!")

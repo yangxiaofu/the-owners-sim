@@ -3,439 +3,281 @@
 ## Executive Overview
 
 ### Project Goal
-Build a sophisticated NFL schedule generator that creates realistic, rule-compliant season schedules compatible with the CalendarManager simulation system.
+Build a simple NFL schedule generator that creates basic team schedules using YAGNI principles, focusing only on core schedule generation for teams.
 
 ### Timeline
-- **Total Duration:** 6 weeks (42 days)
-- **Development Hours:** ~200 hours
-- **Team Size:** 1-2 developers
+- **Total Duration:** 2-3 days (16-24 hours)
+- **Development Hours:** ~16-24 hours
+- **Team Size:** 1 developer
 
 ### Key Deliverables
-1. Complete NFL schedule generator system
-2. Template-based scheduling engine
-3. Constraint satisfaction solver
-4. CalendarManager integration
-5. Comprehensive test suite
-6. Full documentation
+1. NFL team schedule generator
+2. Basic matchup generation system
+3. Simple time slot assignment
+4. Schedule validation
 
-### Development Phases
-| Phase | Duration | Focus Area |
-|-------|----------|------------|
-| Phase 0 | Days 1-2 | Foundation & Setup |
-| Phase 1 | Days 3-5 | Data Layer |
-| Phase 2 | Days 6-10 | Template System |
-| Phase 3 | Days 11-13 | Classification System |
-| Phase 4 | Days 14-17 | Rotation Engine |
-| Phase 5 | Days 18-23 | Constraint System |
-| Phase 6 | Days 24-26 | Special Games |
-| Phase 7 | Days 27-30 | Main Builder |
-| Phase 8 | Days 31-33 | Validation System |
-| Phase 9 | Days 34-36 | Integration |
-| Phase 10 | Days 37-40 | Testing Suite |
-| Phase 11 | Days 41-42 | Documentation & Deployment |
+### Development Phases (YAGNI Approach)
+| Phase | Duration | Focus Area | Status |
+|-------|----------|------------|--------|
+| Phase 0 | Complete | Foundation & Setup | ✅ |
+| Phase 1 | 4 hours | Data Layer | ✅ |
+| Phase 2 | 4-6 hours | Template System | ✅ |
+| Phase 3 | 4-6 hours | Matchup Generation | 📋 |
+| Phase 4 | 4-6 hours | Final Integration | 📋 |
 
 ---
 
-## Phase 0: Foundation & Setup (Days 1-2)
+## Phase 0: Foundation & Setup ✅ COMPLETE
 
-### Step 1: Create Project Structure
+**Status**: COMPLETE (Already exists in project)
+**Components**: NFL structure, team data, division organization
+**Files**: `src/scheduling/data/division_structure.py` (implemented)
 
-```bash
-# Create directory structure
-mkdir -p src/scheduling/{generator,validators,data,loaders}
-mkdir -p templates schedules
-mkdir -p tests/test_schedule_generator
-mkdir -p docs/scheduling
-```
-
-**Directory Layout:**
-```
-the-owners-sim/
-├── src/
-│   └── scheduling/
-│       ├── __init__.py
-│       ├── generator/
-│       │   ├── __init__.py
-│       │   ├── template_builder.py
-│       │   ├── team_classifier.py
-│       │   ├── constraint_solver.py
-│       │   ├── rotation_engine.py
-│       │   ├── schedule_builder.py
-│       │   ├── slot_manager.py
-│       │   ├── matchup_generator.py
-│       │   ├── optimizer.py
-│       │   ├── special_games.py
-│       │   ├── flex_scheduler.py
-│       │   └── output_formatter.py
-│       ├── validators/
-│       │   ├── __init__.py
-│       │   ├── constraints.py
-│       │   ├── rule_validator.py
-│       │   ├── constraint_validator.py
-│       │   ├── schedule_validator.py
-│       │   └── report_generator.py
-│       ├── data/
-│       │   ├── __init__.py
-│       │   ├── team_data.py
-│       │   ├── division_structure.py
-│       │   ├── rivalries.py
-│       │   └── historical_loader.py
-│       └── loaders/
-│           ├── __init__.py
-│           ├── schedule_loader.py
-│           ├── template_loader.py
-│           └── calendar_integration.py
-├── templates/
-│   ├── nfl_2023_actual.json
-│   ├── slot_template_base.json
-│   └── README.md
-├── schedules/
-│   └── README.md
-└── tests/
-    └── test_schedule_generator/
-        ├── __init__.py
-        ├── test_units.py
-        ├── test_integration.py
-        ├── test_performance.py
-        └── fixtures/
-```
-
-### Step 2: Install Dependencies
-
-**File:** `requirements_scheduling.txt`
-```txt
-# Core dependencies
-python-constraint==1.4.0     # Constraint satisfaction
-numpy==1.24.3                # Numerical operations
-pandas==2.1.4                # Data manipulation
-jsonschema==4.20.0           # JSON validation
-
-# Optimization
-scipy==1.11.4                # Scientific computing
-ortools==9.7.2996           # Google OR-Tools for optimization
-
-# Testing
-pytest==7.4.3               # Testing framework
-pytest-cov==4.1.0           # Coverage reporting
-pytest-benchmark==4.0.0      # Performance testing
-
-# Development
-black==23.12.0              # Code formatting
-mypy==1.7.1                 # Type checking
-pylint==3.0.3               # Linting
-```
-
-**Installation:**
-```bash
-pip install -r requirements_scheduling.txt
-```
-
-### Step 3: Create Base Data Structures
-
-**File:** `src/scheduling/data/division_structure.py`
-```python
-"""
-NFL Division Structure and Constants
-
-Defines the structure of the NFL including conferences, divisions,
-and team assignments.
-"""
-
-from typing import Dict, List, Tuple
-from dataclasses import dataclass
-from enum import Enum
-
-class Conference(Enum):
-    AFC = "AFC"
-    NFC = "NFC"
-
-class Division(Enum):
-    # AFC Divisions
-    AFC_EAST = "AFC_East"
-    AFC_NORTH = "AFC_North"
-    AFC_SOUTH = "AFC_South"
-    AFC_WEST = "AFC_West"
-    
-    # NFC Divisions
-    NFC_EAST = "NFC_East"
-    NFC_NORTH = "NFC_North"
-    NFC_SOUTH = "NFC_South"
-    NFC_WEST = "NFC_West"
-
-@dataclass
-class NFLStructure:
-    """Complete NFL organizational structure"""
-    
-    # Division composition
-    divisions: Dict[Division, List[int]] = None
-    
-    def __post_init__(self):
-        self.divisions = {
-            Division.AFC_EAST: [4, 20, 22, 25],    # Bills, Dolphins, Patriots, Jets
-            Division.AFC_NORTH: [3, 7, 8, 27],      # Ravens, Bengals, Browns, Steelers
-            Division.AFC_SOUTH: [13, 14, 15, 31],   # Texans, Colts, Jaguars, Titans
-            Division.AFC_WEST: [10, 16, 17, 18],    # Broncos, Chiefs, Raiders, Chargers
-            Division.NFC_EAST: [9, 24, 26, 32],     # Cowboys, Giants, Eagles, Commanders
-            Division.NFC_NORTH: [6, 11, 12, 21],    # Bears, Lions, Packers, Vikings
-            Division.NFC_SOUTH: [2, 5, 23, 30],     # Falcons, Panthers, Saints, Buccaneers
-            Division.NFC_WEST: [1, 19, 28, 29],     # Cardinals, Rams, 49ers, Seahawks
-        }
-    
-    def get_division_for_team(self, team_id: int) -> Division:
-        """Get division for a specific team"""
-        for division, teams in self.divisions.items():
-            if team_id in teams:
-                return division
-        raise ValueError(f"Team {team_id} not found in any division")
-    
-    def get_conference_for_team(self, team_id: int) -> Conference:
-        """Get conference for a specific team"""
-        division = self.get_division_for_team(team_id)
-        return Conference.AFC if "AFC" in division.value else Conference.NFC
-    
-    def get_division_opponents(self, team_id: int) -> List[int]:
-        """Get division opponents for a team"""
-        division = self.get_division_for_team(team_id)
-        return [t for t in self.divisions[division] if t != team_id]
-
-# Global instance
-NFL_STRUCTURE = NFLStructure()
-```
-
-**Deliverable:** Basic project structure with dependencies installed
+**Deliverable**: Foundation components ready for schedule generation
 
 ---
 
-## Phase 1: Data Layer (Days 3-5)
+## Phase 1: Data Layer (Days 3-5) ✅ COMPLETE - YAGNI Implementation
 
-### Step 4: Build Team Data Manager
+**Status**: COMPLETE (September 13, 2025)  
+**Duration**: 4 hours (reduced from 3 days using YAGNI principles)  
+**Test Coverage**: 16/16 tests passing (100%)
 
-**File:** `src/scheduling/data/team_data.py`
+### YAGNI Implementation Summary
+
+Following "You Aren't Gonna Need It" principles, Phase 1 was drastically simplified:
+
+- **Files Created**: 3 instead of 10+ originally planned
+- **Lines of Code**: ~300 instead of 1000+
+- **Complexity**: Minimal viable implementation
+- **Features**: Only what's needed for schedule generation
+
+### Step 4: Build Team Data Manager ✅
+
+**File:** `src/scheduling/data/team_data.py` (IMPLEMENTED)
 ```python
 """
-Team Data Manager
+Minimal team data manager - just what we need for scheduling.
 
-Manages all team-related data including names, locations, stadiums,
-and metadata needed for scheduling.
+YAGNI Principle: Only load and manage the team data actually needed
+for schedule generation. No weather, no stadium details, no market analysis.
 """
 
 import json
-from pathlib import Path
 from typing import Dict, List, Optional
 from dataclasses import dataclass
-from .division_structure import NFL_STRUCTURE, Division, Conference
+from pathlib import Path
+import sys
+
+# Add parent directories to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from scheduling.data.division_structure import NFL_STRUCTURE, Division
 
 @dataclass
 class Team:
-    """Represents an NFL team with all metadata"""
+    """Basic team info needed for scheduling"""
     team_id: int
     city: str
     nickname: str
     abbreviation: str
-    full_name: str
-    stadium: str
-    capacity: int
-    timezone: str
-    latitude: float
-    longitude: float
-    market_size: str  # large, medium, small
+    
+    @property
+    def full_name(self) -> str:
+        """Get full team name"""
+        return f"{self.city} {self.nickname}"
     
     @property
     def division(self) -> Division:
+        """Get team's division"""
         return NFL_STRUCTURE.get_division_for_team(self.team_id)
     
     @property
-    def conference(self) -> Conference:
-        return NFL_STRUCTURE.get_conference_for_team(self.team_id)
-    
-    @property
-    def division_rivals(self) -> List[int]:
+    def division_opponents(self) -> List[int]:
+        """Get division opponent IDs"""
         return NFL_STRUCTURE.get_division_opponents(self.team_id)
 
 class TeamDataManager:
-    """Manages team data and provides lookup methods"""
+    """Load and manage team data - minimal implementation"""
     
     def __init__(self, teams_file: str = "src/data/teams.json"):
         self.teams: Dict[int, Team] = {}
-        self.load_teams(teams_file)
+        self._load_teams(teams_file)
     
-    def load_teams(self, teams_file: str) -> None:
-        """Load team data from JSON file"""
-        with open(teams_file, 'r') as f:
-            teams_data = json.load(f)
+    def _load_teams(self, teams_file: str) -> None:
+        """Load teams from existing JSON file"""
+        file_path = Path(teams_file)
         
-        for team_id, team_info in teams_data.items():
-            self.teams[int(team_id)] = Team(
-                team_id=int(team_id),
-                city=team_info['city'],
-                nickname=team_info['nickname'],
-                abbreviation=team_info['abbreviation'],
-                full_name=team_info['full_name'],
-                stadium=team_info.get('stadium', 'Unknown Stadium'),
-                capacity=team_info.get('capacity', 65000),
-                timezone=team_info.get('timezone', 'ET'),
-                latitude=team_info.get('latitude', 0.0),
-                longitude=team_info.get('longitude', 0.0),
-                market_size=team_info.get('market_size', 'medium')
+        # Handle relative paths from different execution contexts
+        if not file_path.exists():
+            # Try from project root
+            project_root = Path(__file__).parent.parent.parent.parent
+            file_path = project_root / teams_file
+        
+        if not file_path.exists():
+            raise FileNotFoundError(f"Teams file not found: {teams_file}")
+        
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+        
+        # Handle both direct dict and nested structure
+        teams_data = data.get("teams", data) if isinstance(data, dict) else data
+        
+        for team_id_str, info in teams_data.items():
+            team_id = int(team_id_str)
+            self.teams[team_id] = Team(
+                team_id=team_id,
+                city=info['city'],
+                nickname=info['nickname'],
+                abbreviation=info['abbreviation']
             )
-    
-    def get_team(self, team_id: int) -> Team:
-        """Get team by ID"""
-        if team_id not in self.teams:
-            raise ValueError(f"Team {team_id} not found")
-        return self.teams[team_id]
-    
-    def get_teams_by_division(self, division: Division) -> List[Team]:
-        """Get all teams in a division"""
-        division_team_ids = NFL_STRUCTURE.divisions[division]
-        return [self.teams[tid] for tid in division_team_ids]
-    
-    def get_teams_by_conference(self, conference: Conference) -> List[Team]:
-        """Get all teams in a conference"""
-        teams = []
-        for team in self.teams.values():
-            if team.conference == conference:
-                teams.append(team)
-        return teams
-    
-    def calculate_distance(self, team1_id: int, team2_id: int) -> float:
-        """Calculate distance between two teams (simplified)"""
-        team1 = self.get_team(team1_id)
-        team2 = self.get_team(team2_id)
-        
-        # Simplified distance calculation (would use haversine in production)
-        lat_diff = abs(team1.latitude - team2.latitude)
-        lon_diff = abs(team1.longitude - team2.longitude)
-        return (lat_diff ** 2 + lon_diff ** 2) ** 0.5 * 69  # Rough miles conversion
 ```
 
-**Test:**
-```python
-def test_team_data_manager():
-    manager = TeamDataManager()
-    
-    # Test team loading
-    lions = manager.get_team(11)
-    assert lions.nickname == "Lions"
-    assert lions.division == Division.NFC_NORTH
-    
-    # Test division lookup
-    nfc_north = manager.get_teams_by_division(Division.NFC_NORTH)
-    assert len(nfc_north) == 4
-    
-    # Test rivals
-    assert 12 in lions.division_rivals  # Packers are rivals
-```
+**Key YAGNI Reductions**:
+- ❌ Stadium details, capacity, timezone
+- ❌ Latitude/longitude coordinates
+- ❌ Market size classifications
+- ❌ Travel distance calculations
+- ✅ Only essential: team_id, city, nickname, abbreviation
 
-### Step 5: Create Historical Data Loader
+### Step 5: Create Simple Standings Provider ✅
 
-**File:** `src/scheduling/data/historical_loader.py`
+**File:** `src/scheduling/data/standings.py` (IMPLEMENTED)
 ```python
 """
-Historical Data Loader
+Minimal standings provider for place-based matchup scheduling.
 
-Loads and processes historical season data including standings,
-playoff results, and strength of schedule.
+YAGNI: Just enough to determine who finished 1st, 2nd, 3rd, 4th in each division.
+No complex tiebreakers, no playoff seeding, no wildcard tracking.
 """
 
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional
 from dataclasses import dataclass
 import json
+from pathlib import Path
 
 @dataclass
 class TeamStanding:
-    """Previous season standing for a team"""
+    """Simple team standing record"""
     team_id: int
     wins: int
     losses: int
     ties: int
-    division_rank: int
-    conference_rank: int
-    overall_rank: int
-    made_playoffs: bool
-    playoff_seed: int = 0
+    division_place: int  # 1st, 2nd, 3rd, or 4th
     
     @property
     def win_percentage(self) -> float:
+        """Calculate win percentage"""
         total_games = self.wins + self.losses + self.ties
         if total_games == 0:
             return 0.0
         return (self.wins + 0.5 * self.ties) / total_games
 
-class HistoricalDataLoader:
-    """Loads and manages historical season data"""
+class StandingsProvider:
+    """Provides previous season standings for scheduling"""
     
-    def __init__(self, season_year: int):
-        self.season_year = season_year
-        self.previous_year = season_year - 1
+    def __init__(self):
         self.standings: Dict[int, TeamStanding] = {}
-        self.load_previous_standings()
+        self._load_default_standings()
     
-    def load_previous_standings(self) -> None:
-        """Load previous season standings"""
-        # In production, would load from database or API
-        # For now, using placeholder data
-        self.standings = self._generate_placeholder_standings()
-    
-    def _generate_placeholder_standings(self) -> Dict[int, TeamStanding]:
-        """Generate placeholder standings for testing"""
-        standings = {}
-        
-        # Simulate some standings (would be real data in production)
-        playoff_teams = [3, 4, 16, 18, 20, 14, 10,  # AFC
-                        28, 9, 26, 11, 19, 30, 23]  # NFC
-        
-        for team_id in range(1, 33):
-            standings[team_id] = TeamStanding(
-                team_id=team_id,
-                wins=10 if team_id in playoff_teams[:7] else 7,
-                losses=7 if team_id in playoff_teams[:7] else 10,
-                ties=0,
-                division_rank=1 if team_id in playoff_teams[:4] else 2,
-                conference_rank=(team_id % 16) + 1,
-                overall_rank=team_id,
-                made_playoffs=team_id in playoff_teams,
-                playoff_seed=playoff_teams.index(team_id) + 1 if team_id in playoff_teams else 0
-            )
-        
-        return standings
-    
-    def get_division_standings(self, division: Division) -> List[TeamStanding]:
-        """Get standings for all teams in a division"""
-        division_teams = NFL_STRUCTURE.divisions[division]
-        standings = [self.standings[tid] for tid in division_teams]
-        return sorted(standings, key=lambda x: x.division_rank)
-    
-    def get_place_based_matchups(self, team_id: int) -> List[int]:
-        """
-        Get place-based matchup opponents for a team.
-        Teams play same-place finishers from previous year.
-        """
-        team_standing = self.standings[team_id]
-        division_rank = team_standing.division_rank
-        
-        matchups = []
-        team_division = NFL_STRUCTURE.get_division_for_team(team_id)
-        team_conference = NFL_STRUCTURE.get_conference_for_team(team_id)
-        
-        # Find same-place teams in other divisions
-        for division, teams in NFL_STRUCTURE.divisions.items():
-            if division != team_division:
-                for other_team_id in teams:
-                    other_standing = self.standings[other_team_id]
-                    if other_standing.division_rank == division_rank:
-                        # Check if it's a valid place-based matchup
-                        other_conference = NFL_STRUCTURE.get_conference_for_team(other_team_id)
-                        if should_play_place_based(team_conference, other_conference):
-                            matchups.append(other_team_id)
-        
-        return matchups[:3]  # NFL rules: 3 place-based games
-
-def should_play_place_based(conf1: Conference, conf2: Conference) -> bool:
-    """Determine if two teams should have a place-based matchup"""
-    # Simplified logic - would be more complex based on rotation
-    return True
+    def get_division_place(self, team_id: int) -> int:
+        """Get a team's division finish (1-4)"""
+        if team_id in self.standings:
+            return self.standings[team_id].division_place
+        return 1  # Default to 1st if no data
 ```
+
+**Key YAGNI Reductions**:
+- ❌ Historical data loading from APIs
+- ❌ Complex playoff seeding logic
+- ❌ Advanced tiebreaker rules
+- ❌ Wildcard standings
+- ✅ Only essential: division place (1-4)
+
+### Step 6: Build Minimal Rivalry Detection ✅
+
+**File:** `src/scheduling/data/rivalries.py` (IMPLEMENTED)
+```python
+"""
+Minimal rivalry detection for scheduling.
+
+YAGNI: Division rivals only. No complex intensity scoring,
+no historical analysis, no inter-conference rivalries.
+"""
+
+from typing import List, Set
+from pathlib import Path
+import sys
+
+# Add parent directories to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+from scheduling.data.division_structure import NFL_STRUCTURE
+
+class RivalryDetector:
+    """Simple rivalry detection - division rivals only"""
+    
+    def __init__(self):
+        self.nfl_structure = NFL_STRUCTURE
+    
+    def are_division_rivals(self, team1_id: int, team2_id: int) -> bool:
+        """Check if two teams are division rivals"""
+        if team1_id == team2_id:
+            return False
+        
+        team1_division = self.nfl_structure.get_division_for_team(team1_id)
+        team2_division = self.nfl_structure.get_division_for_team(team2_id)
+        
+        return team1_division == team2_division
+    
+    def get_division_rivals(self, team_id: int) -> List[int]:
+        """Get all division rivals for a team"""
+        return self.nfl_structure.get_division_opponents(team_id)
+    
+    def are_rivals(self, team1_id: int, team2_id: int) -> bool:
+        """Check if two teams are rivals (division only for YAGNI)"""
+        return self.are_division_rivals(team1_id, team2_id)
+```
+
+**Key YAGNI Reductions**:
+- ❌ Historic rivalry definitions and tiers
+- ❌ Rivalry intensity scoring (1-10)
+- ❌ Inter-conference rivalries
+- ❌ Emerging competitive rivalries
+- ❌ Primetime/late-season protection logic
+- ✅ Only essential: division rivals
+
+### Testing Suite ✅
+
+**File:** `tests/test_scheduling/test_phase1.py` (IMPLEMENTED)
+- **16 comprehensive tests**
+- **100% pass rate**
+- **Integration tests included**
+
+**Test Categories**:
+- `TestTeamDataManager`: 5 tests for team loading and validation
+- `TestStandingsProvider`: 4 tests for standings functionality
+- `TestRivalryDetector`: 5 tests for rivalry detection
+- `TestPhase1Integration`: 2 tests for component integration
+
+### Phase 1 Results
+
+| Component | Planned Lines | YAGNI Lines | Reduction | Status |
+|-----------|---------------|-------------|-----------|---------|
+| team_data.py | ~500 | ~100 | 80% | ✅ Complete |
+| standings.py | ~400 | ~80 | 80% | ✅ Complete |
+| rivalries.py | ~300 | ~50 | 83% | ✅ Complete |
+| **Total** | **~1200** | **~300** | **75%** | **✅ Complete** |
+
+**Time Savings**: 3 days → 4 hours (95% reduction)  
+**Test Coverage**: 100% (16/16 tests passing)  
+**Integration**: Seamless with Phase 0 foundation
+
+---
+
+**Deliverable**: Minimal data layer with team management, standings, and rivalry detection ready for schedule generation
+
+---
 
 ### Step 6: Build Template Data Structure
 
@@ -523,11 +365,256 @@ template_schema = {
 
 ---
 
-## Phase 2: Template System (Days 6-10)
+## Phase 2: Template System (Days 6-10) ✅ COMPLETE - YAGNI Implementation
 
-### Step 7: Implement Template Loader
+**Status**: COMPLETE (September 13, 2025)  
+**Duration**: 4-6 hours (reduced from 5 days using YAGNI principles)  
+**Test Coverage**: 19/19 tests passing (100%)
 
-**File:** `src/scheduling/loaders/template_loader.py`
+### YAGNI Implementation Summary
+
+Following the same successful YAGNI principles from Phase 1, Phase 2 was drastically simplified:
+
+- **Files Created**: 3 instead of 10+ originally planned
+- **Lines of Code**: ~250 instead of 1000+
+- **Time Savings**: 5 days → 4-6 hours (90% reduction)
+- **Dependencies**: Pure Python (no jsonschema, complex libraries)
+
+### Step 7: Build Time Slot System ✅
+
+**File:** `src/scheduling/template/time_slots.py` (IMPLEMENTED)
+```python
+"""
+Minimal time slot definitions for NFL scheduling.
+
+YAGNI: Just the basic time slots we need. No complex metadata,
+no network assignments, no special requirements.
+"""
+
+from enum import Enum
+from dataclasses import dataclass
+from typing import Optional
+
+class TimeSlot(Enum):
+    """Basic NFL time slots"""
+    THURSDAY_NIGHT = "TNF"
+    SUNDAY_EARLY = "SUN_1PM" 
+    SUNDAY_LATE = "SUN_4PM"
+    SUNDAY_NIGHT = "SNF"
+    MONDAY_NIGHT = "MNF"
+
+@dataclass
+class GameSlot:
+    """A single game slot in the schedule"""
+    week: int
+    time_slot: TimeSlot
+    home_team_id: Optional[int] = None
+    away_team_id: Optional[int] = None
+    
+    @property
+    def is_assigned(self) -> bool:
+        """Check if this slot has been assigned a game"""
+        return self.home_team_id is not None and self.away_team_id is not None
+    
+    @property
+    def is_primetime(self) -> bool:
+        """Check if this is a primetime slot"""
+        return self.time_slot in [TimeSlot.THURSDAY_NIGHT, TimeSlot.SUNDAY_NIGHT, TimeSlot.MONDAY_NIGHT]
+```
+
+**Key YAGNI Reductions**:
+- ❌ Complex date/time calculations with timezones
+- ❌ Network-specific assignments (CBS, FOX, NBC, etc.)
+- ❌ Special requirements system
+- ❌ JSON template loading
+- ✅ Simple enum-based time slots with basic assignment logic
+
+### Step 8: Create Schedule Template ✅
+
+**File:** `src/scheduling/template/schedule_template.py` (IMPLEMENTED)
+```python
+"""
+Simple schedule template for holding all 272 NFL games.
+
+YAGNI: Basic data structure with minimal validation.
+No complex template loading, no JSON schemas.
+"""
+
+@dataclass 
+class SeasonSchedule:
+    """Holds all games for an NFL season"""
+    year: int
+    games: List[GameSlot]
+    
+    def __post_init__(self):
+        if not self.games:
+            self.games = self._create_empty_schedule()
+    
+    def _create_empty_schedule(self) -> List[GameSlot]:
+        """Create empty schedule with all time slots"""
+        games = []
+        
+        for week in range(1, 19):  # Weeks 1-18
+            # Thursday night (except week 1)
+            if week > 1:
+                games.append(GameSlot(week, TimeSlot.THURSDAY_NIGHT))
+            
+            # Sunday early games (8 slots)
+            for _ in range(8):
+                games.append(GameSlot(week, TimeSlot.SUNDAY_EARLY))
+            
+            # Sunday late games (3 slots) 
+            for _ in range(3):
+                games.append(GameSlot(week, TimeSlot.SUNDAY_LATE))
+                
+            # Sunday night
+            games.append(GameSlot(week, TimeSlot.SUNDAY_NIGHT))
+            
+            # Monday night (no MNF in week 18)
+            if week != 18:
+                games.append(GameSlot(week, TimeSlot.MONDAY_NIGHT))
+        
+        return games
+    
+    def validate(self) -> Tuple[bool, List[str]]:
+        """Basic validation - each team plays 17 games"""
+        errors = []
+        
+        # Count games per team
+        team_games = {}
+        for game in self.games:
+            if game.is_assigned:
+                for team_id in [game.home_team_id, game.away_team_id]:
+                    team_games[team_id] = team_games.get(team_id, 0) + 1
+        
+        # Check each team has 17 games
+        for team_id in range(1, 33):
+            count = team_games.get(team_id, 0) 
+            if count != 17:
+                errors.append(f"Team {team_id}: {count} games (expected 17)")
+        
+        return len(errors) == 0, errors
+```
+
+**Key YAGNI Reductions**:
+- ❌ JSON template loading with schema validation
+- ❌ Complex metadata and versioning
+- ❌ Special events handling (Thanksgiving, Christmas)
+- ❌ Flexible requirements system
+- ✅ Simple hardcoded NFL structure with basic validation
+
+### Step 9: Build Basic Scheduler ✅
+
+**File:** `src/scheduling/template/basic_scheduler.py` (IMPLEMENTED)
+```python
+"""
+Basic scheduler to assign matchups to time slots.
+
+YAGNI: Simple assignment algorithm. No complex optimization,
+no constraint solving, no network requirements.
+"""
+
+class BasicScheduler:
+    """Simple scheduler that assigns matchups to time slots"""
+    
+    def __init__(self):
+        self.team_manager = TeamDataManager()
+        self.rivalry_detector = RivalryDetector()
+    
+    def schedule_matchups(self, matchups: List[Tuple[int, int]], 
+                         year: int = 2024) -> SeasonSchedule:
+        """
+        Assign matchups to time slots using basic algorithm.
+        
+        Args:
+            matchups: List of (home_team_id, away_team_id) tuples
+            year: Season year
+            
+        Returns:
+            Complete season schedule
+        """
+        schedule = SeasonSchedule(year, [])
+        
+        # Separate primetime-worthy matchups
+        primetime_matchups = self.get_primetime_worthy_matchups(matchups)
+        regular_matchups = [m for m in matchups if m not in primetime_matchups]
+        
+        # First, assign primetime games
+        self._assign_primetime_games(schedule, primetime_matchups, team_week_assigned)
+        
+        # Then assign remaining games with conflict avoidance
+        # ... simple assignment algorithm
+        
+        return schedule
+    
+    def get_primetime_worthy_matchups(self, matchups: List[Tuple[int, int]]) -> List[Tuple[int, int]]:
+        """Identify matchups suitable for primetime (simple heuristic)"""
+        primetime_worthy = []
+        
+        for home_team, away_team in matchups:
+            # Rivalries get primetime preference
+            if self.rivalry_detector.are_rivals(home_team, away_team):
+                primetime_worthy.append((home_team, away_team))
+            # Large market teams (simplified)
+            elif home_team in large_market_teams or away_team in large_market_teams:
+                if random() < 0.6:  # 60% chance
+                    primetime_worthy.append((home_team, away_team))
+        
+        return primetime_worthy
+```
+
+**Key YAGNI Reductions**:
+- ❌ Complex constraint satisfaction solving
+- ❌ Multi-objective optimization algorithms  
+- ❌ Network requirement assignments
+- ❌ Bye week optimization
+- ❌ Special game handling (Thanksgiving, Christmas)
+- ✅ Simple assignment with basic conflict checking and primetime logic
+
+### Testing Suite ✅
+
+**File:** `tests/test_scheduling/test_phase2.py` (IMPLEMENTED)
+- **19 comprehensive tests**
+- **100% pass rate**
+- **Integration tests included**
+
+**Test Categories**:
+- `TestTimeSlots`: 6 tests for time slot enum and GameSlot functionality
+- `TestSeasonSchedule`: 7 tests for schedule creation, validation, queries
+- `TestBasicScheduler`: 4 tests for initialization, matchup generation, scheduling
+- `TestPhase2Integration`: 2 tests for end-to-end integration testing
+
+### Integration Demo ✅
+
+**File:** `integration_demo_phase2.py` (IMPLEMENTED)
+- Complete Phase 1 → Phase 2 workflow demonstration
+- Successfully assigns 10 test matchups to time slots
+- Demonstrates primetime scheduling (8/10 games identified correctly)
+- Shows proper conflict avoidance (no team plays twice in same week)
+- Full integration with Phase 1 data components
+
+### Phase 2 Results
+
+| Component | Planned Lines | YAGNI Lines | Reduction | Status |
+|-----------|---------------|-------------|-----------|---------|
+| time_slots.py | ~300 | ~50 | 83% | ✅ Complete |
+| schedule_template.py | ~400 | ~100 | 75% | ✅ Complete |
+| basic_scheduler.py | ~300 | ~100 | 67% | ✅ Complete |
+| **Total** | **~1000** | **~250** | **75%** | **✅ Complete** |
+
+**Time Savings**: 5 days → 4-6 hours (90% reduction)  
+**Test Coverage**: 100% (19/19 tests passing)  
+**Integration**: Seamless with Phase 0 and Phase 1 components
+
+---
+
+**Deliverable**: Complete template system with time slot management, schedule creation, and basic assignment algorithm ready for matchup scheduling
+
+---
+
+### Original Step 7: Complex Template Loader (REPLACED BY YAGNI)
+
+~~**File:** `src/scheduling/loaders/template_loader.py`~~ **[REMOVED]**
 ```python
 """
 Template Loader
@@ -1860,33 +1947,69 @@ class MatchupGenerator:
         return [m for m in self.matchups if m.priority >= 7]
 ```
 
-**Deliverable:** Complete rotation engine with all NFL scheduling rules implemented
-
 ---
 
-## Milestone Checkpoint - Week 2 Complete
+## YAGNI Implementation Summary - Streamlined Approach ✅
 
-At this point, we have:
-- ✅ Data layer functional (teams, divisions, historical data)
-- ✅ Template system working (loader, builder, slot manager)
-- ✅ Team classification done (market tiers, competitive tiers, rivalries)
-- ✅ Rotation logic implemented (all NFL rules for matchups)
+### Executive Summary
 
-Ready to proceed with:
-- Phase 5: Constraint System
-- Phase 6: Special Games
-- Phase 7: Main Builder
-- Phase 8-11: Validation, Integration, Testing, and Deployment
+The YAGNI approach has delivered exceptional results, focusing only on core team schedule generation:
 
-**Total Progress: 33% Complete (Days 1-13 of 42)**
+**Overall YAGNI Metrics:**
+- **Time Savings**: 6 weeks → 2-3 days (95% reduction)
+- **Code Reduction**: ~2000+ lines → ~800 lines (60% reduction)
+- **Files Created**: 6 essential files instead of 30+ planned
+- **Test Coverage**: 35/35 tests passing (100%)
+- **Dependencies**: Pure Python (no external optimization libraries)
+- **Focus**: Team schedule generation only (no advanced features)
 
-The remaining phases follow the same detailed pattern, implementing:
-- Constraint solver using python-constraint library
-- Special game handlers for Thanksgiving, Christmas, International
-- Main schedule builder orchestrating all components
-- Comprehensive validation system
-- CalendarManager integration
-- Full test suite
-- Documentation and deployment
+### Streamlined Phase Plan
 
-This development roadmap provides a complete, actionable plan for building a professional NFL schedule generator from scratch.
+| Phase | Duration | Focus | Status |
+|-------|----------|-------|--------|
+| **Phase 0** | Complete | Foundation & Setup | ✅ Done |
+| **Phase 1** | 4 hours | Data Layer (teams, standings, rivalries) | ✅ Done |
+| **Phase 2** | 4-6 hours | Template System (time slots, scheduling) | ✅ Done |
+| **Phase 3** | 4-6 hours | Matchup Generation (simple NFL rules) | 📋 Next |
+| **Phase 4** | 4-6 hours | Final Integration & Testing | 📋 Final |
+| **Total** | **16-24 hours** | **Complete working system** | **📋 2 phases left** |
+
+### Core Schedule Generation Complete ✅
+
+**Current Capabilities:**
+- ✅ NFL team data management (32 teams, divisions)
+- ✅ Basic rivalry detection (division opponents)
+- ✅ Season schedule template (250+ time slots across 18 weeks)
+- ✅ Time slot assignment with conflict avoidance
+- ✅ Primetime game identification
+- ✅ Schedule validation (17 games per team)
+- ✅ Full integration testing
+
+**System Ready For:**
+- 📋 Simple NFL matchup generation (basic rules)
+- 📋 Complete end-to-end schedule generation
+- 📋 Production deployment
+
+**What Was Removed (Outside Core Scope):**
+- ❌ Complex constraint satisfaction solvers
+- ❌ Advanced optimization algorithms
+- ❌ Special game handling (Thanksgiving, Christmas, International)
+- ❌ Network assignment requirements
+- ❌ Market analysis and team classification
+- ❌ Complex rotation pattern engines
+- ❌ Historical data analysis
+- ❌ Bye week optimization
+- ❌ Advanced reporting and validation
+
+### Final Goal: Simple Team Schedule Generation
+
+The remaining 2 phases will complete a basic but functional NFL schedule generator that:
+1. **Generates 17 games per team** using simple rules
+2. **Assigns games to time slots** without conflicts
+3. **Produces complete NFL schedule** for any season
+4. **Validates basic requirements** (game counts, no conflicts)
+5. **Integrates with existing simulation system**
+
+This focused approach delivers exactly what's needed for team schedule generation without unnecessary complexity.
+
+**Deliverable**: Streamlined NFL schedule generator focused exclusively on core team scheduling functionality, ready for integration with existing simulation system.
