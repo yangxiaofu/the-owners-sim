@@ -1,0 +1,30 @@
+# NFL Schedule Generator Dependencies
+# Compatible with Python 3.13.5
+
+# Core scheduling dependencies
+python-constraint==1.4.0     # Constraint satisfaction problem solving
+numpy==1.26.4                # Numerical operations (Python 3.13 compatible)
+pandas==2.2.2                # Data manipulation and analysis
+jsonschema==4.23.0           # JSON validation for schedule formats
+
+# Optimization libraries
+scipy==1.14.1                # Scientific computing and optimization
+ortools==9.11.4210           # Google OR-Tools for advanced constraint solving
+
+# Testing (extends existing pytest)
+pytest-benchmark==4.0.0      # Performance benchmarking
+pytest-mock==3.14.0          # Advanced mocking support
+pytest-asyncio==0.24.0       # Async test support
+
+# Development tools
+black==24.8.0                # Code formatting
+mypy==1.11.2                 # Static type checking
+pylint==3.3.1                # Code quality analysis
+
+# Data handling
+python-dateutil==2.9.0       # Advanced date parsing
+pytz==2024.2                 # Timezone support for game scheduling
+
+# Optional performance enhancers
+numba==0.60.0                # JIT compilation for performance-critical code
+cython==3.0.11               # C-extensions for optimization (optional)
