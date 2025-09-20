@@ -36,20 +36,25 @@ python -m pytest tests/test_game_loop_controller.py::TestGameLoopController::tes
 python -m pytest tests/test_scheduling/
 
 # Key test files for core functionality
-python tests/test_penalty_system.py
-python tests/test_game_state_manager.py
-python tests/test_drive_manager.py
-python tests/test_game_loop_controller.py
-python tests/test_phase_4_comprehensive.py
+PYTHONPATH=src python tests/test_penalty_system.py
+PYTHONPATH=src python tests/test_game_state_manager.py
+PYTHONPATH=src python tests/test_drive_manager.py
+PYTHONPATH=src python tests/test_game_loop_controller.py
+PYTHONPATH=. python tests/test_phase_4_comprehensive.py
 
 # Season simulation and progression tests
-python tests/test_phase_2_integration.py
-python tests/test_phase_3_season_progression.py
-python tests/test_daily_persister.py
-python tests/test_season_init_perfect.py
+PYTHONPATH=src python tests/test_phase_2_integration.py
+PYTHONPATH=src python tests/test_phase_3_season_progression.py
+PYTHONPATH=src python tests/test_daily_persister.py
+PYTHONPATH=src python tests/test_season_init_perfect.py
 
 # Interactive validation scripts
 python tests/simple_penalty_validation.py
+
+# Diagnostic scripts (run from project root)
+PYTHONPATH=src python team_corruption_tracker.py
+PYTHONPATH=src python simple_stats_check.py
+PYTHONPATH=src python verify_player_stats_persistence.py
 ```
 
 ### Running Demos
@@ -65,14 +70,20 @@ python result_processing_demo.py
 
 # Interactive NFL season simulation (terminal-based)
 python interactive_season_demo.py
+```
 
-# Diagnostic and tracking scripts
-python team_corruption_tracker.py
-python verify_player_stats_persistence.py
-python final_persistence_verification.py
-python track_transaction_failures.py
-python test_index_mismatch_issue.py
-python simulate_interactive_demo_issue.py
+### Diagnostic Scripts
+```bash
+# All diagnostic scripts require PYTHONPATH=src prefix
+PYTHONPATH=src python team_corruption_tracker.py
+PYTHONPATH=src python verify_player_stats_persistence.py
+PYTHONPATH=src python final_persistence_verification.py
+PYTHONPATH=src python track_transaction_failures.py
+PYTHONPATH=src python test_index_mismatch_issue.py
+PYTHONPATH=src python simulate_interactive_demo_issue.py
+
+# Check detailed_transaction_tracking.log for persistence debugging
+tail -f detailed_transaction_tracking.log
 ```
 
 ### Development Setup
@@ -87,8 +98,22 @@ npm install
 # Install Python dependencies (if needed)
 pip install pytest
 
-# For advanced season simulation features
+# For advanced season simulation features (includes linting/formatting tools)
 pip install -r requirements_scheduling.txt
+```
+
+### Code Quality Tools
+```bash
+# Code formatting (if requirements_scheduling.txt is installed)
+black src/ tests/
+
+# Type checking
+mypy src/
+
+# Code quality analysis
+pylint src/
+
+# Note: These tools are included in requirements_scheduling.txt but not required for basic functionality
 ```
 
 ## Architecture Overview
@@ -299,6 +324,23 @@ Comprehensive documentation is available in `docs/`:
   - `docs/TEAM_SYSTEM_SUMMARY.md` - Team management system details
   - `docs/TEST_GUIDE.md` - Testing guidelines and approaches
 - **Planning Documents**: `docs/plans/` - Architecture plans and data flow analysis
+
+## Common Issues and Troubleshooting
+
+### Database Issues
+- **Empty stats/standings**: Run diagnostic scripts like `team_corruption_tracker.py` or `simple_stats_check.py`
+- **Transaction failures**: Check `detailed_transaction_tracking.log` for persistence errors
+- **Data inconsistency**: Use validation scripts in tests/ directory for verification
+
+### Testing Issues
+- **Test failures**: Always run with `PYTHONPATH=src` or `PYTHONPATH=.` prefix for imports
+- **Module not found**: Ensure virtual environment is activated and dependencies installed
+- **Performance issues**: Use `pytest-benchmark` (included in requirements_scheduling.txt)
+
+### Development Workflow
+- **Before committing**: Run relevant tests and consider using black/pylint if available
+- **New features**: Follow existing patterns and add corresponding tests
+- **Team ID validation**: Always use numerical IDs (1-32), never team name strings
 
 ## Key Implementation Details
 

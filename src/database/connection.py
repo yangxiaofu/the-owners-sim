@@ -395,7 +395,45 @@ class DatabaseConnection:
             conn.close()
         
         return dynasty_id
-    
+
+    def update_dynasty_team(self, dynasty_id: str, team_id: int) -> bool:
+        """
+        Update the team_id for an existing dynasty.
+
+        Args:
+            dynasty_id: Dynasty identifier to update
+            team_id: New team ID (1-32)
+
+        Returns:
+            True if update successful, False otherwise
+        """
+        conn = sqlite3.connect(self.db_path)
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute('''
+                UPDATE dynasties
+                SET team_id = ?, last_played = CURRENT_TIMESTAMP
+                WHERE dynasty_id = ?
+            ''', (team_id, dynasty_id))
+
+            affected_rows = cursor.rowcount
+            conn.commit()
+
+            if affected_rows > 0:
+                self.logger.info(f"Updated dynasty {dynasty_id} to team_id {team_id}")
+                return True
+            else:
+                self.logger.warning(f"No dynasty found with ID {dynasty_id}")
+                return False
+
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error updating dynasty team: {e}")
+            return False
+        finally:
+            conn.close()
+
     def get_connection(self) -> sqlite3.Connection:
         """
         Get a database connection.

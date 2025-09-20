@@ -14,6 +14,9 @@ from datetime import datetime
 from demo.weekly_simulation_controller import WeeklySimulationController
 from demo.daily_simulation_controller import DailySimulationController
 from demo.results_display_formatter import ResultsDisplayFormatter
+from user_team.user_team_manager import UserTeamManager
+from team_management.teams.team_loader import TeamDataLoader
+from constants.team_ids import TeamIDs
 
 
 class InteractiveInterface:
@@ -34,13 +37,17 @@ class InteractiveInterface:
         self.daily_controller = DailySimulationController()
         self.formatter = ResultsDisplayFormatter()
         self.running = True
-        
+
         # Simulation mode: 'weekly' or 'daily'
         self.simulation_mode = 'weekly'  # Default to weekly for backward compatibility
-        
+
         # Demo state
         self.last_week_results: Optional[Dict[str, Any]] = None
         self.last_day_results: Optional[Dict[str, Any]] = None
+
+        # Team management
+        self.team_loader = TeamDataLoader()
+        self.user_team_manager: Optional[UserTeamManager] = None
         
     @property
     def controller(self):
@@ -144,6 +151,26 @@ class InteractiveInterface:
             if 'season_start' in result:
                 print(f"Season Dates: {result['season_start']} to {result['season_end']}")
             print()
+
+            # Team selection step
+            print(self.formatter.format_info("Now choose your team to manage in this dynasty:"))
+            time.sleep(1)
+
+            selected_team_id = self._select_user_team()
+            if selected_team_id:
+                # Update dynasty with selected team
+                update_success = self._update_dynasty_team(selected_team_id)
+                if update_success:
+                    # Initialize user team manager
+                    self._initialize_user_team_manager(selected_team_id)
+                    print()
+                else:
+                    print(self.formatter.format_warning("Dynasty team update failed, but continuing with default team"))
+                    print()
+            else:
+                print(self.formatter.format_warning("No team selected, using default team"))
+                print()
+
             input("Press Enter to begin the season...")
             return True
         else:
@@ -692,3 +719,137 @@ class InteractiveInterface:
             print()
 
         input("Press Enter to return to leaderboards menu...")
+
+    def _select_user_team(self) -> Optional[int]:
+        """
+        Interactive team selection UI.
+
+        Returns:
+            Selected team ID (1-32) if successful, None if cancelled
+        """
+        print(self.formatter.clear_screen())
+        print(self.formatter.format_header("🏈 TEAM SELECTION"))
+        print()
+        print("Choose your team to manage in this dynasty:")
+        print()
+
+        # Display teams by divisions
+        divisions = [
+            ("AFC EAST", TeamIDs.get_division_teams("AFC_EAST")),
+            ("AFC NORTH", TeamIDs.get_division_teams("AFC_NORTH")),
+            ("AFC SOUTH", TeamIDs.get_division_teams("AFC_SOUTH")),
+            ("AFC_WEST", TeamIDs.get_division_teams("AFC_WEST")),
+            ("NFC EAST", TeamIDs.get_division_teams("NFC_EAST")),
+            ("NFC NORTH", TeamIDs.get_division_teams("NFC_NORTH")),
+            ("NFC SOUTH", TeamIDs.get_division_teams("NFC_SOUTH")),
+            ("NFC WEST", TeamIDs.get_division_teams("NFC_WEST"))
+        ]
+
+        for division_name, team_ids in divisions:
+            print(f"{division_name}:")
+
+            # Display teams in pairs for better formatting
+            for i in range(0, len(team_ids), 2):
+                left_team_id = team_ids[i]
+                left_team = self.team_loader.get_team_by_id(left_team_id)
+                left_text = f"  {left_team_id:2d}. {left_team.full_name}"
+
+                if i + 1 < len(team_ids):
+                    right_team_id = team_ids[i + 1]
+                    right_team = self.team_loader.get_team_by_id(right_team_id)
+                    right_text = f"{right_team_id:2d}. {right_team.full_name}"
+                    print(f"{left_text:<35} {right_text}")
+                else:
+                    print(left_text)
+            print()
+
+        # Get team selection
+        while True:
+            try:
+                print("Enter team number (1-32) or 'q' to cancel: ", end="")
+                choice = input().strip().lower()
+
+                if choice == 'q':
+                    return None
+
+                team_id = int(choice)
+                if 1 <= team_id <= 32:
+                    # Get team and confirm
+                    selected_team = self.team_loader.get_team_by_id(team_id)
+                    if selected_team:
+                        print()
+                        print(f"Selected: {selected_team.full_name} ({selected_team.conference} {selected_team.division})")
+                        print("Confirm selection? (Y/n): ", end="")
+                        confirm = input().strip().lower()
+
+                        if confirm in ['', 'y', 'yes']:
+                            print()
+                            print(self.formatter.format_success(f"Team selected: {selected_team.full_name}"))
+                            return team_id
+                        else:
+                            print()
+                            print("Selection cancelled. Choose again:")
+                            continue
+                    else:
+                        print(self.formatter.format_error(f"Team {team_id} not found"))
+                        continue
+                else:
+                    print(self.formatter.format_error("Please enter a number between 1 and 32"))
+                    continue
+
+            except ValueError:
+                print(self.formatter.format_error("Please enter a valid number"))
+                continue
+            except KeyboardInterrupt:
+                print("\nSelection cancelled.")
+                return None
+
+    def _update_dynasty_team(self, team_id: int) -> bool:
+        """
+        Update dynasty record with selected team.
+
+        Args:
+            team_id: Selected team ID
+
+        Returns:
+            True if update successful, False otherwise
+        """
+        try:
+            # Get dynasty ID from controller
+            dynasty_id = self.controller.dynasty_id
+            if not dynasty_id:
+                print(self.formatter.format_error("No dynasty ID available for team update"))
+                return False
+
+            # Update database
+            db_connection = self.controller.season_controller.season_initializer.db_connection
+            success = db_connection.update_dynasty_team(dynasty_id, team_id)
+
+            if success:
+                team = self.team_loader.get_team_by_id(team_id)
+                print(self.formatter.format_success(f"Dynasty updated with team: {team.full_name}"))
+                return True
+            else:
+                print(self.formatter.format_error("Failed to update dynasty team"))
+                return False
+
+        except Exception as e:
+            print(self.formatter.format_error(f"Error updating dynasty team: {e}"))
+            return False
+
+    def _initialize_user_team_manager(self, team_id: int) -> None:
+        """
+        Initialize UserTeamManager with selected team.
+
+        Args:
+            team_id: Selected team ID
+        """
+        try:
+            self.user_team_manager = UserTeamManager()
+            self.user_team_manager.set_user_team(team_id)
+
+            team_name = self.user_team_manager.get_user_team_name()
+            print(self.formatter.format_info(f"User team manager initialized: {team_name}"))
+
+        except Exception as e:
+            print(self.formatter.format_error(f"Error initializing user team manager: {e}"))
