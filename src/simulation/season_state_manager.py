@@ -207,7 +207,7 @@ class SeasonStateManager:
     def _apply_state_changes(self, processing_result: ProcessingResult, context: ProcessingContext) -> None:
         """Apply state changes to team and player states"""
         for key, value in processing_result.state_changes.items():
-            self._apply_single_state_change(key, value, context)
+            self._apply_single_state_change(key, value, context, processing_result.teams_updated)
             
             # Log state change for debugging
             self.state_changes_log.append({
@@ -217,12 +217,12 @@ class SeasonStateManager:
                 "source": processing_result.processing_type
             })
     
-    def _apply_single_state_change(self, key: str, value: Any, context: ProcessingContext) -> None:
+    def _apply_single_state_change(self, key: str, value: Any, context: ProcessingContext, teams_updated: List[int]) -> None:
         """Apply a single state change"""
         if key.startswith("team_"):
             self._apply_team_state_change(key, value, context)
         elif key.startswith("player_"):
-            self._apply_player_state_change(key, value, context)
+            self._apply_player_state_change(key, value, context, teams_updated)
         elif key in ["game_history_entry", "training_history_entry", "scouting_history_entry", 
                      "administrative_history_entry", "rest_history_entry"]:
             # Store historical entries for later analysis
@@ -277,7 +277,7 @@ class SeasonStateManager:
             if context.current_date:
                 team_state.last_game_date = context.current_date.date() if isinstance(context.current_date, datetime) else context.current_date
     
-    def _apply_player_state_change(self, key: str, value: Any, context: ProcessingContext) -> None:
+    def _apply_player_state_change(self, key: str, value: Any, context: ProcessingContext, teams_updated: List[int]) -> None:
         """Apply state change to player"""
         # Parse player name from key (e.g., "player_John_Smith_passing_yards")
         parts = key.split("_")
@@ -319,8 +319,8 @@ class SeasonStateManager:
             team_id = 0
             if hasattr(context, 'team_id'):
                 team_id = context.team_id
-            elif len(processing_result.teams_updated) == 1:
-                team_id = processing_result.teams_updated[0]
+            elif len(teams_updated) == 1:
+                team_id = teams_updated[0]
             
             self.player_stats[player_name] = PlayerSeasonStats(
                 player_name=player_name,
@@ -352,8 +352,8 @@ class SeasonStateManager:
     
     def _apply_statistics_updates(self, processing_result: ProcessingResult, context: ProcessingContext) -> None:
         """Apply statistics updates (currently just logged)"""
-        if processing_result.statistics:
-            self.logger.debug(f"Statistics updated: {list(processing_result.statistics.keys())}")
+        if processing_result.statistics_generated:
+            self.logger.debug(f"Statistics updated: {list(processing_result.statistics_generated.keys())}")
     
     def _process_side_effects(self, processing_result: ProcessingResult, context: ProcessingContext) -> None:
         """Process side effects and add to narrative"""

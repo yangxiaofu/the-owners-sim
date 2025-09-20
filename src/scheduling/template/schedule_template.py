@@ -29,12 +29,12 @@ class SeasonSchedule:
             if week > 1:
                 games.append(GameSlot(week, TimeSlot.THURSDAY_NIGHT))
             
-            # Sunday early games (8 slots)
-            for _ in range(8):
+            # Sunday early games (10 slots) - increased for 272 game capacity
+            for _ in range(10):
                 games.append(GameSlot(week, TimeSlot.SUNDAY_EARLY))
             
-            # Sunday late games (3 slots) 
-            for _ in range(3):
+            # Sunday late games (5 slots) - increased for 272 game capacity
+            for _ in range(5):
                 games.append(GameSlot(week, TimeSlot.SUNDAY_LATE))
                 
             # Sunday night

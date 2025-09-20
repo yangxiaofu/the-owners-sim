@@ -1,0 +1,67 @@
+{
+  "name": "Aggressive Head Coach",
+  "description": "Bold, high-risk head coach who emphasizes attacking strategies, fourth-down conversions, and pushing the tempo. Willing to take chances for big gains.",
+  "coach_type": "head_coach",
+  "aggression": 0.8,
+  "risk_tolerance": 0.8,
+  "adaptability": 0.8,
+  "conservatism": 0.2,
+  "run_preference": 0.3,
+  "fourth_down_aggression": 0.7,
+  "red_zone_aggression": 0.8,
+  "game_script_adherence": 0.5,
+  "momentum_responsiveness": 0.8,
+  "pressure_handling": 0.6,
+  "situational": {
+    "first_down_aggression": 0.7,
+    "second_down_creativity": 0.8,
+    "third_down_aggression": 0.8,
+    "fourth_down_aggression": 0.7,
+    "red_zone_aggression": 0.8,
+    "goal_line_creativity": 0.8,
+    "midfield_risk_tolerance": 0.8,
+    "two_minute_aggression": 0.9,
+    "clock_management_conservatism": 0.3
+  },
+  "formations": {
+    "i_formation_preference": 0.2,
+    "shotgun_preference": 0.8,
+    "pistol_preference": 0.6,
+    "wildcat_preference": 0.2,
+    "four_wide_preference": 0.8,
+    "heavy_personnel_preference": 0.3,
+    "spread_personnel_preference": 0.8,
+    "balanced_personnel_preference": 0.5
+  },
+  "play_types": {
+    "run_preference": 0.3,
+    "play_action_frequency": 0.6,
+    "screen_frequency": 0.5,
+    "draw_frequency": 0.2,
+    "short_pass_preference": 0.4,
+    "intermediate_pass_preference": 0.6,
+    "deep_pass_preference": 0.7,
+    "trick_play_frequency": 0.2,
+    "fake_punt_aggression": 0.2,
+    "fake_field_goal_aggression": 0.1
+  },
+  "game_management": {
+    "fourth_down_decision_aggression": 0.7,
+    "two_minute_drill_aggression": 0.9,
+    "overtime_aggression": 0.8,
+    "timeout_usage_intelligence": 0.6,
+    "challenge_flag_wisdom": 0.6,
+    "clock_management_skill": 0.6,
+    "starter_loyalty": 0.5,
+    "rookie_trust": 0.7,
+    "injury_risk_tolerance": 0.6
+  },
+  "coordinator_influence": {
+    "offensive_coordinator_trust": 0.8,
+    "defensive_coordinator_trust": 0.6,
+    "special_teams_coordinator_trust": 0.6,
+    "critical_situation_override_threshold": 0.3,
+    "momentum_shift_override_threshold": 0.2,
+    "game_script_override_threshold": 0.2
+  }
+}

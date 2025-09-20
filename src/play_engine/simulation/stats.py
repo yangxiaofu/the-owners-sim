@@ -8,6 +8,14 @@ rushing, blocking, tackling, and other position-specific statistics.
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from ..play_types.base_types import PlayType
+try:
+    from ...constants.player_stats_fields import PlayerStatField, ALL_STAT_FIELDS
+except ImportError:
+    # Handle direct execution cases
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '../../..'))
+    from constants.player_stats_fields import PlayerStatField, ALL_STAT_FIELDS
 
 
 @dataclass
@@ -16,16 +24,17 @@ class PlayerStats:
     player_name: str
     player_number: int
     position: str
+    team_id: Optional[int] = None  # Team ID this player belongs to
     player_id: Optional[int] = None  # Unique player ID for real players
     player_attributes: Optional[Dict[str, int]] = None  # Real player ratings/attributes
     
     # Rushing stats
-    carries: int = 0
+    rushing_attempts: int = 0  # Database-compatible name (was: carries)
     rushing_yards: int = 0
-    
+
     # Passing stats (QB)
-    pass_attempts: int = 0
-    completions: int = 0
+    passing_attempts: int = 0  # Database-compatible name (was: pass_attempts)
+    passing_completions: int = 0  # Database-compatible name (was: completions)
     passing_yards: int = 0
     passing_tds: int = 0
     interceptions_thrown: int = 0
@@ -76,10 +85,14 @@ class PlayerStats:
     long_snaps: int = 0
     special_teams_snaps: int = 0
     blocks_allowed: int = 0
+
+    # Extra point stats
+    extra_points_made: int = 0
+    extra_points_attempted: int = 0
     
     # Additional passing stats for holders on fake field goals
     passing_touchdowns: int = 0
-    rushing_touchdowns: int = 0
+    rushing_tds: int = 0  # Database-compatible name (was: rushing_touchdowns)
     
     # Special stats
     penalties: int = 0
@@ -87,7 +100,7 @@ class PlayerStats:
     
     def add_carry(self, yards: int):
         """Add rushing attempt and yards"""
-        self.carries += 1
+        self.rushing_attempts += 1
         self.rushing_yards += yards
     
     def add_tackle(self, assisted: bool = False):
@@ -111,33 +124,109 @@ class PlayerStats:
     
     def get_total_stats(self) -> Dict[str, int]:
         """Get all non-zero stats as dictionary"""
-        stat_fields = {
-            # Rushing stats
-            'carries', 'rushing_yards',
-            # Passing stats (QB)  
-            'pass_attempts', 'completions', 'passing_yards', 'passing_tds', 'interceptions_thrown',
-            'sacks_taken', 'sack_yards_lost', 'qb_hits_taken', 'pressures_faced', 'air_yards',
-            # Receiving stats (WR/TE)
-            'targets', 'receptions', 'receiving_yards', 'receiving_tds', 'drops', 'yac',
-            # Blocking stats (OL)
-            'blocks_made', 'blocks_missed', 'pass_blocks', 'pressures_allowed', 'sacks_allowed',
-            # Defensive stats
-            'tackles', 'assisted_tackles', 'sacks', 'tackles_for_loss', 'qb_hits', 'qb_pressures', 'qb_hurries',
-            # Pass defense stats  
-            'passes_defended', 'passes_deflected', 'tipped_passes', 'interceptions', 'forced_fumbles',
-            # Special teams stats
-            'field_goal_attempts', 'field_goals_made', 'field_goals_missed', 'field_goals_blocked',
-            'longest_field_goal', 'field_goal_holds', 'long_snaps', 'special_teams_snaps', 'blocks_allowed',
-            'passing_touchdowns', 'rushing_touchdowns',
-            # Special stats
-            'penalties', 'penalty_yards'
-        }
-        
+        # Use canonical stat fields from enum
+        stat_fields = ALL_STAT_FIELDS
+
         stats = {}
         for field_name, value in self.__dict__.items():
             if field_name in stat_fields and isinstance(value, (int, float)) and value != 0:
                 stats[field_name] = value
         return stats
+
+    def get_total_yards(self) -> int:
+        """
+        Calculate total yards for this player across all categories.
+
+        NFL Standard: Total yards = rushing yards + receiving yards
+        Note: Passing yards are credited separately and not included in "total yards"
+        for the purposes of player evaluation (QBs have passing yards as their primary metric)
+
+        Returns:
+            Total yards accumulated by this player
+        """
+        return self.rushing_yards + self.receiving_yards
+
+    def get_total_touchdowns(self) -> int:
+        """
+        Calculate total touchdowns scored by this player across all categories.
+
+        Includes rushing touchdowns, receiving touchdowns, and passing touchdowns.
+        Note: passing_tds is for QBs who throw TD passes, passing_touchdowns is for
+        non-QBs who throw TD passes (e.g., trick plays)
+
+        Returns:
+            Total touchdowns scored by this player
+        """
+        return self.rushing_tds + self.receiving_tds + self.passing_tds + self.passing_touchdowns
+
+    # Legacy compatibility properties (TEMPORARY - will be removed after migration)
+    @property
+    def passing_interceptions(self) -> int:
+        """LEGACY: Use PlayerStatField.INTERCEPTIONS_THROWN instead"""
+        return getattr(self, PlayerStatField.INTERCEPTIONS_THROWN.value)
+
+    @property
+    def rushing_touchdowns(self) -> int:
+        """LEGACY: Use PlayerStatField.RUSHING_TOUCHDOWNS instead"""
+        return getattr(self, PlayerStatField.RUSHING_TOUCHDOWNS.value)
+
+    @rushing_touchdowns.setter
+    def rushing_touchdowns(self, value: int) -> None:
+        """LEGACY SETTER: Use PlayerStatField.RUSHING_TOUCHDOWNS instead"""
+        setattr(self, PlayerStatField.RUSHING_TOUCHDOWNS.value, value)
+
+    @property
+    def pass_deflections(self) -> int:
+        """LEGACY: Use PlayerStatField.PASSES_DEFENDED instead"""
+        return getattr(self, PlayerStatField.PASSES_DEFENDED.value)
+
+    @property
+    def field_goals_attempted(self) -> int:
+        """LEGACY: Use PlayerStatField.FIELD_GOAL_ATTEMPTS instead"""
+        return getattr(self, PlayerStatField.FIELD_GOAL_ATTEMPTS.value)
+
+    # Legacy properties for old simulation layer names
+    @property
+    def carries(self) -> int:
+        """LEGACY: Use rushing_attempts instead"""
+        return self.rushing_attempts
+
+    @carries.setter
+    def carries(self, value: int) -> None:
+        """LEGACY SETTER: Use rushing_attempts instead"""
+        self.rushing_attempts = value
+
+    @property
+    def pass_attempts(self) -> int:
+        """LEGACY: Use passing_attempts instead"""
+        return self.passing_attempts
+
+    @pass_attempts.setter
+    def pass_attempts(self, value: int) -> None:
+        """LEGACY SETTER: Use passing_attempts instead"""
+        self.passing_attempts = value
+
+    @property
+    def completions(self) -> int:
+        """LEGACY: Use passing_completions instead"""
+        return self.passing_completions
+
+    @completions.setter
+    def completions(self, value: int) -> None:
+        """LEGACY SETTER: Use passing_completions instead"""
+        self.passing_completions = value
+
+    @property
+    def pass_completions(self) -> int:
+        """LEGACY: Use passing_completions instead"""
+        return self.passing_completions
+
+    @pass_completions.setter
+    def pass_completions(self, value: int) -> None:
+        """LEGACY SETTER: Use passing_completions instead"""
+        self.passing_completions = value
+
+    # Note: rushing_tds is now the canonical field name, no legacy property needed
     
     def get_player_attribute(self, attribute_name: str, default: int = 75) -> int:
         """Get a specific player attribute/rating"""
@@ -193,7 +282,7 @@ class PlayStatsSummary:
     
     def get_rushing_leader(self) -> PlayerStats:
         """Get player with most rushing yards this play"""
-        rushers = [stats for stats in self.player_stats if stats.carries > 0]
+        rushers = [stats for stats in self.player_stats if stats.rushing_attempts > 0]
         if not rushers:
             return None
         return max(rushers, key=lambda x: x.rushing_yards)
@@ -207,7 +296,7 @@ class PlayStatsSummary:
     
     def get_passing_leader(self) -> PlayerStats:
         """Get quarterback with most passing yards this play"""
-        passers = [stats for stats in self.player_stats if stats.pass_attempts > 0]
+        passers = [stats for stats in self.player_stats if stats.passing_attempts > 0]
         if not passers:
             return None
         return max(passers, key=lambda x: x.passing_yards)
@@ -386,6 +475,7 @@ class PlayerStatsAccumulator:
                 player_name=incoming_stats.player_name,
                 player_number=incoming_stats.player_number,
                 position=incoming_stats.position,
+                team_id=incoming_stats.team_id,
                 player_id=incoming_stats.player_id,
                 player_attributes=incoming_stats.player_attributes
             )
@@ -394,12 +484,12 @@ class PlayerStatsAccumulator:
         existing = self._player_totals[player_key]
         
         # Rushing stats - sum totals
-        existing.carries += incoming_stats.carries
+        existing.rushing_attempts += incoming_stats.rushing_attempts
         existing.rushing_yards += incoming_stats.rushing_yards
-        
+
         # Passing stats - sum totals
-        existing.pass_attempts += incoming_stats.pass_attempts
-        existing.completions += incoming_stats.completions
+        existing.passing_attempts += incoming_stats.passing_attempts
+        existing.passing_completions += incoming_stats.passing_completions
         existing.passing_yards += incoming_stats.passing_yards
         existing.passing_tds += incoming_stats.passing_tds
         existing.interceptions_thrown += incoming_stats.interceptions_thrown
@@ -409,7 +499,7 @@ class PlayerStatsAccumulator:
         existing.pressures_faced += incoming_stats.pressures_faced
         existing.air_yards += incoming_stats.air_yards
         existing.passing_touchdowns += incoming_stats.passing_touchdowns
-        existing.rushing_touchdowns += incoming_stats.rushing_touchdowns
+        existing.rushing_tds += incoming_stats.rushing_tds
         
         # Receiving stats - sum totals
         existing.targets += incoming_stats.targets
@@ -535,8 +625,8 @@ class TeamStats:
     total_yards: int = 0
     passing_yards: int = 0  # Gross passing yards (completions only)
     rushing_yards: int = 0
-    pass_attempts: int = 0
-    completions: int = 0
+    passing_attempts: int = 0  # Database-compatible name
+    passing_completions: int = 0  # Database-compatible name
     touchdowns: int = 0
     first_downs: int = 0
     turnovers: int = 0
@@ -575,8 +665,8 @@ class TeamStats:
     def get_total_offensive_stats(self) -> Dict[str, int]:
         """Get all non-zero offensive stats as dictionary"""
         offensive_fields = {
-            'total_yards', 'passing_yards', 'rushing_yards', 'pass_attempts', 
-            'completions', 'touchdowns', 'first_downs', 'turnovers',
+            'total_yards', 'passing_yards', 'rushing_yards', 'passing_attempts',
+            'passing_completions', 'touchdowns', 'first_downs', 'turnovers',
             'times_sacked', 'sack_yards_lost'
         }
         
@@ -603,8 +693,8 @@ class TeamStats:
     def get_all_stats(self) -> Dict[str, int]:
         """Get all non-zero stats as dictionary"""
         all_fields = {
-            'total_yards', 'passing_yards', 'rushing_yards', 'pass_attempts', 
-            'completions', 'touchdowns', 'first_downs', 'turnovers',
+            'total_yards', 'passing_yards', 'rushing_yards', 'passing_attempts',
+            'passing_completions', 'touchdowns', 'first_downs', 'turnovers',
             'sacks', 'tackles_for_loss', 'interceptions', 'forced_fumbles', 'passes_defended',
             'field_goals_attempted', 'field_goals_made', 'punt_return_yards', 'kick_return_yards',
             'penalties', 'penalty_yards'
@@ -677,9 +767,9 @@ class TeamStatsAccumulator:
             
             # Passing stats
             team.passing_yards += player.passing_yards
-            team.pass_attempts += player.pass_attempts
-            team.completions += player.completions
-            team.touchdowns += player.passing_tds + player.rushing_touchdowns
+            team.passing_attempts += player.passing_attempts
+            team.passing_completions += player.passing_completions
+            team.touchdowns += player.passing_tds + player.rushing_tds
             
             # Sack stats (offensive perspective)
             team.times_sacked += player.sacks_taken
@@ -812,24 +902,30 @@ class TeamStatsAccumulator:
         self._plays_processed = 0
 
 
-def create_player_stats_from_player(player) -> PlayerStats:
+def create_player_stats_from_player(player, team_id: Optional[int] = None) -> PlayerStats:
     """Create PlayerStats object from existing Player object"""
     # Check if this is a real player (has attributes from real data)
     player_id = None
     player_attributes = None
-    
+
+    # Try to extract team_id from player object if not provided
+    extracted_team_id = team_id
+    if team_id is None and hasattr(player, 'team_id'):
+        extracted_team_id = player.team_id
+
     # Real players will have more comprehensive attributes
     if hasattr(player, 'ratings') and player.ratings:
         # This is likely a real player - extract ID if available
-        # For now, use a hash of name+number as pseudo-ID since real player_id 
+        # For now, use a hash of name+number as pseudo-ID since real player_id
         # isn't directly accessible from Player object
         player_id = hash(f"{player.name}_{player.number}") % 10000
         player_attributes = player.ratings.copy()
-    
+
     return PlayerStats(
         player_name=player.name,
-        player_number=player.number, 
+        player_number=player.number,
         position=player.primary_position,
+        team_id=extracted_team_id,
         player_id=player_id,
         player_attributes=player_attributes
     )

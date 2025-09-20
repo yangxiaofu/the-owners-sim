@@ -87,7 +87,7 @@ class FullGameSimulator:
         print(f"   Game Status: {self.game_manager.get_game_state().phase.value}")
 
     
-    def simulate_game(self) -> GameResult:
+    def simulate_game(self, date=None) -> GameResult:
         """
         Main game simulation method - Complete NFL game simulation
         
@@ -117,7 +117,8 @@ class FullGameSimulator:
                 away_coaching_staff_config=self.away_coaching_staff,
                 home_roster=self.home_roster,
                 away_roster=self.away_roster,
-                overtime_manager=overtime_manager
+                overtime_manager=overtime_manager,
+                game_date=date
             )
             
             print("✅ GameLoopController initialized successfully")
@@ -165,7 +166,7 @@ class FullGameSimulator:
             game_state = self.game_manager.get_game_state()
             
             # Create minimal GameResult for compatibility
-            fallback_result = self._create_fallback_game_result(game_state, simulation_start_time)
+            fallback_result = self._create_fallback_game_result(game_state, simulation_start_time, date)
             self._game_result = fallback_result
             self._simulation_duration = time.time() - simulation_start_time
             
@@ -410,7 +411,7 @@ class FullGameSimulator:
         else:
             return f"Team {team_id}"
     
-    def _create_fallback_game_result(self, game_state, start_time) -> GameResult:
+    def _create_fallback_game_result(self, game_state, start_time, date=None) -> GameResult:
         """Create minimal GameResult when full simulation fails"""
         from .game_loop_controller import GameResult
         
@@ -426,7 +427,8 @@ class FullGameSimulator:
             total_drives=0,  # No drives completed in fallback
             game_duration_minutes=int((time.time() - start_time) / 60),
             drive_results=[],
-            final_statistics=None
+            final_statistics=None,
+            date=date
         )
     
     def get_away_coaching_staff(self):
@@ -469,25 +471,34 @@ class FullGameSimulator:
         if not hasattr(self, '_game_result') or not self._game_result:
             return {
                 "scores": {
-                    self.away_team.full_name: 0,
-                    self.home_team.full_name: 0
+                    self.away_team.team_id: 0,
+                    self.home_team.team_id: 0
                 },
-                "winner": None,
+                "team_names": {
+                    self.away_team.team_id: self.away_team.full_name,
+                    self.home_team.team_id: self.home_team.full_name
+                },
+                "winner_id": None,
+                "winner_name": None,
                 "game_completed": False,
                 "simulation_time": 0.0
             }
         
         game_result = self._game_result
         
-        # Convert team ID-based scores to team name-based scores
-        scores = {}
-        for team_id, score in game_result.final_score.items():
-            team_name = self._get_team_name(team_id)
-            scores[team_name] = score
+        # Keep original team ID-based scores for system consistency
+        scores = game_result.final_score  # Maintains team IDs as keys: {22: 21, 23: 14}
+        
+        # Create team names mapping for display purposes
+        team_names = {}
+        for team_id in game_result.final_score.keys():
+            team_names[team_id] = self._get_team_name(team_id)
             
         return {
-            "scores": scores,
-            "winner": game_result.winner.full_name if game_result.winner else None,
+            "scores": scores,  # Team ID keyed: {22: 21, 23: 14}
+            "team_names": team_names,  # Team ID to name mapping: {22: "Detroit Lions", 23: "Green Bay Packers"}
+            "winner_id": game_result.winner.team_id if game_result.winner else None,
+            "winner_name": game_result.winner.full_name if game_result.winner else None,
             "total_plays": game_result.total_plays,
             "total_drives": game_result.total_drives,
             "game_duration_minutes": game_result.game_duration_minutes,

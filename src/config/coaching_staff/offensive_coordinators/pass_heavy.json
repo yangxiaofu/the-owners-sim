@@ -1,0 +1,83 @@
+{
+  "name": "Pass-Heavy Offensive Coordinator",
+  "description": "Aggressive passing game coordinator who emphasizes aerial attack, spread formations, and downfield passing concepts. Modern air raid influence.",
+  "coach_type": "offensive_coordinator",
+  "aggression": 0.7,
+  "risk_tolerance": 0.7,
+  "adaptability": 0.7,
+  "conservatism": 0.3,
+  "run_preference": 0.3,
+  "fourth_down_aggression": 0.6,
+  "red_zone_aggression": 0.7,
+  "game_script_adherence": 0.5,
+  "momentum_responsiveness": 0.7,
+  "pressure_handling": 0.6,
+  "situational": {
+    "first_down_aggression": 0.7,
+    "second_down_creativity": 0.8,
+    "third_down_aggression": 0.8,
+    "fourth_down_aggression": 0.6,
+    "red_zone_aggression": 0.7,
+    "goal_line_creativity": 0.7,
+    "midfield_risk_tolerance": 0.7,
+    "two_minute_aggression": 0.8,
+    "clock_management_conservatism": 0.3
+  },
+  "formations": {
+    "i_formation_preference": 0.2,
+    "shotgun_preference": 0.8,
+    "pistol_preference": 0.4,
+    "wildcat_preference": 0.05,
+    "four_wide_preference": 0.8,
+    "heavy_personnel_preference": 0.2,
+    "spread_personnel_preference": 0.8,
+    "balanced_personnel_preference": 0.4
+  },
+  "play_types": {
+    "run_preference": 0.3,
+    "play_action_frequency": 0.6,
+    "screen_frequency": 0.5,
+    "draw_frequency": 0.2,
+    "short_pass_preference": 0.5,
+    "intermediate_pass_preference": 0.7,
+    "deep_pass_preference": 0.8,
+    "trick_play_frequency": 0.1,
+    "fake_punt_aggression": 0.1,
+    "fake_field_goal_aggression": 0.05
+  },
+  "philosophy": {
+    "west_coast_preference": 0.4,
+    "air_raid_preference": 0.8,
+    "ground_and_pound_preference": 0.2,
+    "rpo_usage": 0.7,
+    "motion_usage": 0.8,
+    "formation_creativity": 0.8,
+    "play_action_mastery": 0.7,
+    "gadget_play_frequency": 0.1,
+    "no_huddle_usage": 0.7,
+    "hurry_up_comfort": 0.8,
+    "scripted_opening_reliance": 0.5
+  },
+  "personnel": {
+    "eleven_personnel_usage": 0.8,
+    "twelve_personnel_usage": 0.3,
+    "twenty_one_personnel_usage": 0.2,
+    "ten_personnel_usage": 0.7,
+    "feature_back_reliance": 0.4,
+    "tight_end_involvement": 0.4,
+    "slot_receiver_emphasis": 0.8,
+    "deep_threat_prioritization": 0.8
+  },
+  "situational_calling": {
+    "first_down_pass_rate": 0.7,
+    "second_and_long_creativity": 0.8,
+    "third_down_conversion_aggression": 0.8,
+    "red_zone_fade_preference": 0.7,
+    "red_zone_run_commitment": 0.3,
+    "goal_line_innovation": 0.7,
+    "comeback_route_mastery": 0.8,
+    "clock_killing_run_game": 0.3,
+    "two_minute_drill_efficiency": 0.8
+  },
+  "preferred_playbooks": ["air_raid", "spread", "modern_passing"]
+}

@@ -15,8 +15,6 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from scheduling.data.team_data import TeamDataManager
-from scheduling.data.rivalries import RivalryDetector
-from scheduling.data.standings import StandingsProvider
 from scheduling.data.division_structure import NFL_STRUCTURE, Division, Conference
 
 
@@ -30,8 +28,12 @@ class SimpleMatchupGenerator:
     
     def __init__(self):
         self.team_manager = TeamDataManager()
-        self.rivalry_detector = RivalryDetector()
-        self.standings_provider = StandingsProvider()
+    
+    def _are_division_rivals(self, team1: int, team2: int) -> bool:
+        """Check if two teams are in the same division"""
+        t1 = self.team_manager.get_team(team1)
+        t2 = self.team_manager.get_team(team2)
+        return t1.division == t2.division
         
     def generate_season_matchups(self, year: int = 2024) -> List[Tuple[int, int]]:
         """
@@ -190,7 +192,7 @@ class SimpleMatchupGenerator:
                     continue
                 
                 pair = tuple(sorted([team1, team2]))
-                is_division_pair = self.rivalry_detector.are_division_rivals(team1, team2)
+                is_division_pair = self._are_division_rivals(team1, team2)
                 current_games = pair_counts[pair]
                 
                 if not is_division_pair and current_games == 0:
@@ -211,7 +213,7 @@ class SimpleMatchupGenerator:
                     if team1 == team2:
                         continue
                     
-                    is_division_pair = self.rivalry_detector.are_division_rivals(team1, team2)
+                    is_division_pair = self._are_division_rivals(team1, team2)
                     if not is_division_pair:
                         opponent = team2
                         break
@@ -364,7 +366,7 @@ class SimpleMatchupGenerator:
         # Check division games (should mostly play twice, but allow some flexibility for YAGNI)
         division_pairs = defaultdict(int)
         for home_team, away_team in matchups:
-            if self.rivalry_detector.are_division_rivals(home_team, away_team):
+            if self._are_division_rivals(home_team, away_team):
                 pair = tuple(sorted([home_team, away_team]))
                 division_pairs[pair] += 1
         

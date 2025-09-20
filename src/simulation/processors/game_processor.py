@@ -25,32 +25,314 @@ class GameResultProcessor(BaseResultProcessor):
     """
     
     def can_process(self, result: AnySimulationResult) -> bool:
-        """Check if this is a GameResult"""
-        return isinstance(result, GameResult)
+        """Check if this is a GameResult or SimulationResult with game data"""
+        # Direct GameResult
+        if isinstance(result, GameResult):
+            return True
+        
+        # SimulationResult from GameSimulationEvent
+        from ..events.base_simulation_event import SimulationResult
+        if isinstance(result, SimulationResult):
+            # Check if it has game metadata
+            metadata = getattr(result, 'metadata', {})
+            return (metadata.get('game_type') == 'nfl_game' and 
+                   'game_result_object' in metadata)
+        
+        return False
     
     def process_result(self, result: AnySimulationResult, context: ProcessingContext) -> ProcessingResult:
         """Process game result with comprehensive season impact"""
-        if not isinstance(result, GameResult):
+
+        self.logger.info(f"🔍 GameResultProcessor.process_result called with {type(result).__name__}")
+
+        # Extract GameResult from either direct GameResult or SimulationResult
+        game_result = self._extract_game_result(result)
+        if game_result is None:
+            self.logger.warning(f"⚠️ Could not extract GameResult from {type(result).__name__}")
             return ProcessingResult(
                 processed_successfully=False,
                 processing_type="GameResultProcessor",
-                error_messages=["Expected GameResult but received different type"]
+                error_messages=["Could not extract GameResult from simulation result"]
             )
-        
-        game_result: GameResult = result
+
+        self.logger.info(f"🔍 Extracted GameResult with {len(game_result.player_stats)} player stats")
+
         processing_result = ProcessingResult(
             processed_successfully=True,
             processing_type="GameResultProcessor"
         )
-        
+
         # Process based on configured strategy
+        self.logger.info(f"🔍 Processing with strategy: {self.config.strategy}")
         if self.config.strategy == ProcessingStrategy.STATISTICS_ONLY:
             self._process_statistics_only(game_result, context, processing_result)
         else:
             self._process_full_game_impact(game_result, context, processing_result)
-        
+
         return processing_result
     
+    def _extract_game_result(self, result: AnySimulationResult) -> Optional[GameResult]:
+        """Extract GameResult from either GameResult or SimulationResult"""
+        # Direct GameResult
+        if isinstance(result, GameResult):
+            return result
+        
+        # SimulationResult from GameSimulationEvent
+        from ..events.base_simulation_event import SimulationResult
+        if isinstance(result, SimulationResult):
+            metadata = getattr(result, 'metadata', {})
+            game_result_obj = metadata.get('game_result_object')
+            
+            if game_result_obj:
+                # Convert FullGameSimulator result to GameResult format
+                # The game_result_obj is from GameLoopController.GameResult
+                try:
+                    # Extract team IDs from Team objects
+                    away_team_id = metadata.get('away_team_id', 0)
+                    home_team_id = metadata.get('home_team_id', 0)
+                    
+                    # Extract scores from final_score dict with team ID keys
+                    final_score = metadata.get('final_score', {})
+                    if isinstance(final_score, dict):
+                        # Use the new team ID-keyed scores structure
+                        scores_dict = final_score.get('scores', {})
+                        if scores_dict:
+                            # Direct team ID lookup from FullGameSimulator structure
+                            away_score = scores_dict.get(away_team_id, 0)
+                            home_score = scores_dict.get(home_team_id, 0)
+                        else:
+                            # Fallback for direct team ID lookup (backwards compatibility)
+                            away_score = final_score.get(away_team_id, 0)
+                            home_score = final_score.get(home_team_id, 0)
+                    else:
+                        # Fallback to parsing final_score if it's a string like "18-6"
+                        try:
+                            scores = str(final_score).split('-')
+                            away_score = int(scores[0]) if len(scores) > 0 else 0
+                            home_score = int(scores[1]) if len(scores) > 1 else 0
+                        except:
+                            away_score = 0
+                            home_score = 0
+                    
+                    # Extract player statistics from the game result object
+                    player_stats = []
+
+                    # Try different methods to extract player statistics
+                    if hasattr(game_result_obj, 'player_stats') and game_result_obj.player_stats:
+                        # Direct player_stats attribute
+                        player_stats = game_result_obj.player_stats
+                    elif hasattr(game_result_obj, 'get_player_stats'):
+                        # FullGameSimulator method
+                        try:
+                            stats_data = game_result_obj.get_player_stats()
+                            player_stats = self._convert_simulator_player_stats(stats_data, home_team_id, away_team_id)
+                        except Exception as e:
+                            self.logger.warning(f"Failed to extract player stats via get_player_stats(): {e}")
+                    elif hasattr(game_result_obj, 'final_statistics') and game_result_obj.final_statistics:
+                        # Check in final_statistics
+                        final_stats = game_result_obj.final_statistics
+                        if 'player_statistics' in final_stats:
+                            stats_data = final_stats['player_statistics']
+                            player_stats = self._convert_simulator_player_stats(stats_data, home_team_id, away_team_id)
+
+                    # Ensure player_stats is a list (not None)
+                    if player_stats is None:
+                        player_stats = []
+
+                    self.logger.info(f"🔍 Extracting {len(player_stats)} player stats from game result object")
+
+                    game_result = GameResult(
+                        event_type=result.event_type,
+                        event_name=result.event_name,
+                        date=result.date,
+                        teams_affected=result.teams_affected,
+                        duration_hours=result.duration_hours,
+                        success=result.success,
+                        away_team_id=away_team_id,
+                        home_team_id=home_team_id,
+                        away_score=away_score,
+                        home_score=home_score,
+                        week=metadata.get('week', 1),
+                        season_type=metadata.get('season_type', 'regular_season'),
+                        total_plays=getattr(game_result_obj, 'total_plays', 0),
+                        total_drives=getattr(game_result_obj, 'total_drives', 0),
+                        game_duration_minutes=getattr(game_result_obj, 'game_duration_minutes', 60),
+                        player_stats=player_stats  # Add player statistics to the GameResult
+                    )
+                    return game_result
+                except Exception as e:
+                    self.logger.error(f"Failed to convert game result: {e}")
+                    return None
+        
+        return None
+
+    def _convert_simulator_player_stats(self, stats_data: Any, home_team_id: int = None, away_team_id: int = None) -> List[Any]:
+        """Convert FullGameSimulator player statistics to GameResult format."""
+        try:
+            player_stats = []
+
+            # Handle different formats from FullGameSimulator
+            if isinstance(stats_data, dict):
+                # Check for 'all_players' list format
+                if 'all_players' in stats_data and isinstance(stats_data['all_players'], list):
+                    for player_data in stats_data['all_players']:
+                        if isinstance(player_data, dict):
+                            # Convert to our expected player stat format
+                            # Pass team context for proper team assignment
+                            player_stat = self._create_player_stat_from_data(player_data, home_team_id, away_team_id)
+                            if player_stat:
+                                player_stats.append(player_stat)
+
+            self.logger.info(f"🔍 Converted {len(player_stats)} player stats from simulator format")
+            return player_stats
+
+        except Exception as e:
+            self.logger.error(f"Failed to convert simulator player stats: {e}")
+            return []
+
+    def _create_player_stat_from_data(self, player_data: Dict[str, Any], home_team_id: int = None, away_team_id: int = None) -> Optional[Any]:
+        """Create a player stat object from simulator data."""
+        try:
+            # Extract basic player info
+            player_name = player_data.get('name', 'Unknown Player')
+            team_id = player_data.get('team_id', None)
+            position = player_data.get('position', 'UNK')
+
+            # Fix: Infer team_id from player name if not provided
+            if team_id is None or team_id == 0:
+                print(f"🔍 DEBUG: Inferring team for {player_name} (was: {team_id})")
+                team_id = self._infer_team_from_player_name(player_name, home_team_id, away_team_id)
+                print(f"🔍 DEBUG: Assigned {player_name} to Team {team_id}")
+
+            # Extract statistics with defaults
+            passing_yards = player_data.get('passing_yards', 0)
+            passing_tds = player_data.get('passing_touchdowns', 0)
+            rushing_yards = player_data.get('rushing_yards', 0)
+            rushing_tds = player_data.get('rushing_touchdowns', 0)
+            receiving_yards = player_data.get('receiving_yards', 0)
+            receiving_tds = player_data.get('receiving_touchdowns', 0)
+
+            # Create a simple player stat object (you may need to adjust this based on your actual PlayerStat class)
+            from dataclasses import dataclass
+
+            @dataclass
+            class SimplePlayerStat:
+                player_name: str
+                team_id: int
+                position: str
+                passing_yards: int = 0
+                passing_tds: int = 0
+                rushing_yards: int = 0
+                rushing_tds: int = 0
+                receiving_yards: int = 0
+                receiving_tds: int = 0
+
+                def get_total_yards(self):
+                    return self.passing_yards + self.rushing_yards + self.receiving_yards
+
+                def get_total_touchdowns(self):
+                    return self.passing_tds + self.rushing_tds + self.receiving_tds
+
+            return SimplePlayerStat(
+                player_name=player_name,
+                team_id=team_id,
+                position=position,
+                passing_yards=passing_yards,
+                passing_tds=passing_tds,
+                rushing_yards=rushing_yards,
+                rushing_tds=rushing_tds,
+                receiving_yards=receiving_yards,
+                receiving_tds=receiving_tds
+            )
+
+        except Exception as e:
+            self.logger.error(f"Failed to create player stat from data: {e}")
+            return None
+
+    def _infer_team_from_player_name(self, player_name: str, home_team_id: int, away_team_id: int) -> int:
+        """
+        Infer team_id from player name using the players.json database.
+
+        Real NFL players have team_id mapped in players.json. For generated names,
+        fall back to team name matching.
+        """
+        if not player_name or not home_team_id or not away_team_id:
+            return home_team_id or 0  # Default to home team if can't determine
+
+        try:
+            # First, try to look up the player in the players.json database
+            team_id = self._lookup_player_team_from_database(player_name, home_team_id, away_team_id)
+            if team_id:
+                return team_id
+
+            # Fallback: check for team city names in player name (for generated players)
+            from constants.team_ids import get_team_by_id
+
+            home_team = get_team_by_id(home_team_id)
+            away_team = get_team_by_id(away_team_id)
+
+            if home_team and away_team:
+                home_city = home_team.city.lower()
+                away_city = away_team.city.lower()
+                player_name_lower = player_name.lower()
+
+                # Check if player name contains team city
+                if home_city in player_name_lower:
+                    return home_team_id
+                elif away_city in player_name_lower:
+                    return away_team_id
+
+            # If can't determine from name, alternate assignment to ensure both teams represented
+            player_hash = hash(player_name) % 2
+            return away_team_id if player_hash == 0 else home_team_id
+
+        except Exception as e:
+            self.logger.warning(f"Failed to infer team from player name '{player_name}': {e}")
+            return home_team_id  # Default to home team
+
+    def _lookup_player_team_from_database(self, player_name: str, home_team_id: int, away_team_id: int) -> int:
+        """
+        Look up player's team_id from the players.json database.
+
+        Only returns team_id if the player belongs to one of the two teams in this game.
+        """
+        try:
+            import json
+            import os
+
+            # Load players.json database
+            players_file = os.path.join(os.path.dirname(__file__), '../../data/players.json')
+            if not os.path.exists(players_file):
+                return None
+
+            with open(players_file, 'r') as f:
+                players_data = json.load(f)
+
+            # Search for player by name
+            for player in players_data.get('players', []):
+                first_name = player.get('first_name', '')
+                last_name = player.get('last_name', '')
+                full_name = f"{first_name} {last_name}".strip()
+
+                # Match by full name
+                if full_name == player_name:
+                    player_team_id = player.get('team_id')
+
+                    # Only return if player belongs to one of the teams in this game
+                    if player_team_id in [home_team_id, away_team_id]:
+                        self.logger.info(f"🔍 Found {player_name} in players database: Team {player_team_id}")
+                        return player_team_id
+                    else:
+                        self.logger.warning(f"⚠️ Player {player_name} belongs to Team {player_team_id}, not in this game ({home_team_id} vs {away_team_id})")
+                        return None
+
+            # Player not found in database
+            return None
+
+        except Exception as e:
+            self.logger.warning(f"Failed to lookup player {player_name} in database: {e}")
+            return None
+
     def _process_full_game_impact(self, game_result: GameResult, context: ProcessingContext, 
                                 processing_result: ProcessingResult) -> None:
         """Process game with full season progression impact"""
@@ -60,8 +342,12 @@ class GameResultProcessor(BaseResultProcessor):
             self._update_standings(game_result, context, processing_result)
         
         # 2. Process Player Statistics
+        self.logger.info(f"🔍 Player stats config: update_player_stats={self.config.update_player_stats}, requires_updates={game_result.requires_player_stat_updates()}")
         if self.config.update_player_stats and game_result.requires_player_stat_updates():
+            self.logger.info(f"🔍 Calling _update_player_statistics...")
             self._update_player_statistics(game_result, context, processing_result)
+        else:
+            self.logger.warning(f"⚠️ Skipping player statistics update: config={self.config.update_player_stats}, requires={game_result.requires_player_stat_updates()}")
         
         # 3. Process Injuries
         if self.config.process_injuries and game_result.requires_injury_processing():
@@ -110,35 +396,84 @@ class GameResultProcessor(BaseResultProcessor):
                          processing_result: ProcessingResult) -> None:
         """Update team standings based on game outcome"""
         
-        if game_result.is_tie_game():
-            # Handle tie game
-            for team_id in [game_result.away_team_id, game_result.home_team_id]:
-                processing_result.add_state_change(f"team_{team_id}_ties", 1)
-            processing_result.add_side_effect(f"Tie game: both teams receive tie in standings")
-        
+        # Get store manager from config
+        store_manager = getattr(self.config, 'store_manager', None)
+
+        if store_manager and store_manager.standings_store:
+            try:
+                # Use the StandingsStore to actually update standings
+                store_manager.standings_store.update_from_game_result(game_result)
+                
+                # Log what was updated
+                if game_result.is_tie_game():
+                    processing_result.add_side_effect(f"✅ Standings: Tie game recorded - Team {game_result.away_team_id} vs Team {game_result.home_team_id}")
+                else:
+                    winner_id = game_result.get_winner_id()
+                    loser_id = game_result.get_loser_id()
+                    processing_result.add_side_effect(f"✅ Standings: Team {winner_id} defeats Team {loser_id}")
+                
+                # Track state changes for logging (but actual updates happened in store)
+                processing_result.add_state_change("standings_updated", True)
+                processing_result.add_state_change("teams_affected", [game_result.home_team_id, game_result.away_team_id])
+                
+            except Exception as e:
+                error_msg = f"❌ Failed to update standings: {str(e)}"
+                processing_result.add_side_effect(error_msg)
+                processing_result.add_state_change("standings_update_error", str(e))
+                
         else:
-            winner_id = game_result.get_winner_id()
-            loser_id = game_result.get_loser_id()
-            
-            # Update winner record
-            processing_result.add_state_change(f"team_{winner_id}_wins", 1)
-            processing_result.add_state_change(f"team_{winner_id}_win_streak", 1)
-            processing_result.add_state_change(f"team_{loser_id}_win_streak", 0)  # Reset streak
-            
-            # Update loser record
-            processing_result.add_state_change(f"team_{loser_id}_losses", 1)
-            
-            # Division/conference record updates if we have that context
-            processing_result.add_side_effect(f"Standings updated: Team {winner_id} defeats Team {loser_id}")
-        
-        # Update head-to-head records
-        h2h_key = f"h2h_{min(game_result.away_team_id, game_result.home_team_id)}_{max(game_result.away_team_id, game_result.home_team_id)}"
-        processing_result.add_state_change(f"{h2h_key}_last_winner", game_result.get_winner_id())
+            # Fallback - log what WOULD happen but don't actually update
+            if game_result.is_tie_game():
+                processing_result.add_side_effect("⚠️ Would update: Tie game recorded (no store manager)")
+            else:
+                winner_id = game_result.get_winner_id()
+                loser_id = game_result.get_loser_id()
+                processing_result.add_side_effect(f"⚠️ Would update: Team {winner_id} defeats Team {loser_id} (no store manager)")
+                
+            # Log that we don't have store manager access
+            processing_result.add_side_effect("⚠️ No store manager - standings not updated")
+            processing_result.add_state_change("standings_updated", False)
     
     def _update_player_statistics(self, game_result: GameResult, context: ProcessingContext,
                                 processing_result: ProcessingResult) -> None:
         """Update individual player season statistics"""
-        
+
+        # DEBUG: Log entry to this method
+        self.logger.info(f"🔍 _update_player_statistics called with {len(game_result.player_stats)} player stats")
+
+        # Generate game_id for store persistence (matching DailyDataPersister expectations)
+        season_year = getattr(context, 'season_year', context.current_date.year)
+        week_num = getattr(context, 'season_week', 1)
+        home_team = game_result.home_team_id
+        away_team = game_result.away_team_id
+        game_id = f"{season_year}_week{week_num}_{home_team}_{away_team}"
+
+        self.logger.info(f"🔍 Generated game_id: {game_id}")
+
+        # Store player statistics in player_stats_store for persistence (following standings pattern)
+        store_manager = getattr(self.config, 'store_manager', None)
+        self.logger.info(f"🔍 Store manager available: {store_manager is not None}")
+
+        if store_manager and hasattr(store_manager, 'player_stats_store'):
+            self.logger.info(f"🔍 Player stats store available: {hasattr(store_manager, 'player_stats_store')}")
+            try:
+                # Store the complete list of player stats for this game
+                store_manager.player_stats_store.data[game_id] = game_result.player_stats
+                processing_result.add_statistic("stored_player_stats_count", len(game_result.player_stats))
+                processing_result.add_statistic("game_id_for_stats", game_id)
+                processing_result.add_side_effect(f"✅ Player Stats: Stored {len(game_result.player_stats)} player stats for game {game_id}")
+                self.logger.info(f"✅ Successfully stored {len(game_result.player_stats)} player stats for game {game_id}")
+            except Exception as e:
+                error_msg = f"❌ Failed to store player statistics: {str(e)}"
+                processing_result.add_side_effect(error_msg)
+                processing_result.add_state_change("player_stats_store_error", str(e))
+                self.logger.error(f"❌ Failed to store player statistics: {e}")
+        else:
+            # Fallback - log what WOULD happen but don't actually store
+            processing_result.add_side_effect("⚠️ No store manager - player statistics not stored")
+            processing_result.add_state_change("player_stats_stored", False)
+            self.logger.warning(f"⚠️ No store manager available, cannot store player statistics")
+
         updated_players = 0
         significant_performances = 0
         

@@ -20,37 +20,35 @@ This is "The Owners Sim" - a comprehensive NFL football simulation engine writte
 # Run all tests with pytest
 python -m pytest tests/
 
-# Run specific test files
+# Run a single test file
+python -m pytest tests/test_penalty_system.py
+
+# Run tests with verbose output
+python -m pytest -v tests/
+
+# Run tests matching a pattern
+python -m pytest -k "penalty" tests/
+
+# Run specific test function
+python -m pytest tests/test_game_loop_controller.py::TestGameLoopController::test_full_game_simulation
+
+# Schedule generator tests (Phase 0-3 available)
+python -m pytest tests/test_scheduling/
+
+# Key test files for core functionality
 python tests/test_penalty_system.py
 python tests/test_game_state_manager.py
-python tests/test_field_tracker.py
-python tests/test_down_tracker.py
 python tests/test_drive_manager.py
-python tests/test_drive_manager_comprehensive.py
 python tests/test_game_loop_controller.py
-python tests/test_centralized_stats_aggregator.py
-python tests/test_drive_flow_integration.py
 python tests/test_phase_4_comprehensive.py
 
-# Additional test files available
-python tests/test_comprehensive_play_execution.py
-python tests/test_enhanced_play_call_integration.py
-python tests/test_personnel_package_manager.py
-python tests/test_play_caller_system.py
-python tests/test_play_calls.py
-python tests/test_possession_manager.py
-python tests/test_punt_system.py
-python tests/test_run_play.py
-python tests/test_scoreboard.py
-python tests/test_scoring_mapper.py
+# Season simulation and progression tests
+python tests/test_phase_2_integration.py
+python tests/test_phase_3_season_progression.py
+python tests/test_daily_persister.py
+python tests/test_season_init_perfect.py
 
-# Schedule generator tests
-python tests/test_scheduling/test_phase0.py
-
-# Simulation system tests
-python tests/test_result_processing_system.py
-
-# Interactive testing and validation scripts
+# Interactive validation scripts
 python tests/simple_penalty_validation.py
 ```
 
@@ -62,11 +60,19 @@ python full_game_demo.py
 # Phase 4 comprehensive system demonstration
 python phase_4_demo.py
 
-# Calendar-based simulation demo
-python calendar_manager_demo.py
-
 # Result processing system demo
 python result_processing_demo.py
+
+# Interactive NFL season simulation (terminal-based)
+python interactive_season_demo.py
+
+# Diagnostic and tracking scripts
+python team_corruption_tracker.py
+python verify_player_stats_persistence.py
+python final_persistence_verification.py
+python track_transaction_failures.py
+python test_index_mismatch_issue.py
+python simulate_interactive_demo_issue.py
 ```
 
 ### Development Setup
@@ -80,6 +86,9 @@ npm install
 
 # Install Python dependencies (if needed)
 pip install pytest
+
+# For advanced season simulation features
+pip install -r requirements_scheduling.txt
 ```
 
 ## Architecture Overview
@@ -157,7 +166,22 @@ The simulation follows a layered architecture with clear separation of concerns:
 - `src/play_call_params.py`: Parameter structures for play calls
 - `src/constants/team_ids.py`: Team ID constants and utilities
 
-**9. Schedule Generator (`src/scheduling/`)**
+**9. Data Management (`src/database/`, `src/stores/`, `src/persistence/`)**
+- `database/api.py`: Clean database API for data retrieval (single source of truth)
+- `database/connection.py`: SQLite database connection management
+- `stores/base_store.py`: In-memory data store abstraction
+- `stores/standings_store.py`: NFL standings and team performance tracking
+- `persistence/daily_persister.py`: Daily simulation data persistence
+
+**10. Shared Components (`src/shared/`)**
+- Common utilities and shared data structures
+- Cross-system interfaces and abstractions
+
+**11. Team Registry (`src/team_registry/`)**
+- Enhanced team management and metadata system
+- Team attribute and characteristic management
+
+**12. Schedule Generator (`src/scheduling/`)**
 - `data/division_structure.py`: NFL organizational structure with 32 teams
 - `data/schedule_models.py`: ScheduledGame, WeekSchedule, SeasonSchedule models
 - `loaders/calendar_adapter.py`: Integration with CalendarManager system
@@ -166,12 +190,16 @@ The simulation follows a layered architecture with clear separation of concerns:
 - `validators/`: Schedule validation and constraint checking (future)
 - `generator/`: Schedule generation algorithms (future phases)
 
-**10. Simulation System (`src/simulation/`)**
+**13. Simulation System (`src/simulation/`)**
 - `calendar_manager.py`: Day-by-day simulation orchestration
+- `season_progression_controller.py`: High-level season simulation orchestrator
+- `season_initializer.py`: Season setup and initialization system
+- `dynasty_context.py`: Dynasty-level context and management
 - `events/`: Polymorphic event system for games, training, scouting, etc.
 - `processors/`: Result processing strategies for different event types
 - `results/`: Enhanced result types with metadata
 - `season_state_manager.py`: Season-wide state tracking
+- `mock_store_manager.py`: Mock store implementation for testing
 
 ### Key Design Patterns
 
@@ -213,6 +241,18 @@ class UnifiedDefensiveFormation(Enum):
 2. Phase 2A: Penalty determination and effects
 3. Phase 2B: Player statistics attribution
 
+**Database-Driven Persistence Architecture**:
+- In-memory stores for fast access during simulation
+- `DatabaseAPI` as single source of truth for data retrieval
+- `DailyDataPersister` for batch persistence after each simulation day
+- SQLite database for permanent storage with dynasty support
+
+**Season Progression Architecture**:
+- `SeasonProgressionController`: High-level season orchestrator
+- `SeasonInitializer`: Dynasty and season setup
+- `CalendarManager`: Day-by-day event processing
+- Dynasty-scoped data with multi-season support
+
 ## Data Management
 
 ### Team System
@@ -237,6 +277,8 @@ class UnifiedDefensiveFormation(Enum):
 - `src/config/team_coaching_styles.json`: Team-specific coaching staff assignments (maps team IDs to coaching styles)
 - `src/play_engine/config/`: Play-specific configuration files (run_play_config.json, pass_play_config.json, field_goal_config.json, kickoff_config.json, punt_config.json)
 - `requirements_scheduling.txt`: Dependencies for schedule generator module
+- `data/database/nfl_simulation.db`: SQLite database for persistent storage
+- Dynasty context and season initialization configurations
 
 ## Testing Strategy
 
@@ -286,6 +328,14 @@ Comprehensive documentation is available in `docs/`:
 - Graceful handling of invalid play types with descriptive errors
 - Clear migration paths for breaking changes
 
+### Interactive Season Simulation
+- `interactive_season_demo.py`: Terminal-based NFL season simulator
+- **Daily Mode**: Day-by-day simulation with detailed control
+- **Weekly Mode**: Week-by-week simulation for faster progression
+- **Statistics Persistence**: Automatic saving of player and team statistics to SQLite database
+- **Real-time Standings**: Live tracking of division and conference standings
+- **Dynasty Support**: Multi-season dynasty management with persistent data
+
 ## Migration Notes
 
 Recent major changes to be aware of:
@@ -299,5 +349,10 @@ Recent major changes to be aware of:
 7. **Special Teams Coordinator**: New dedicated special teams coordinator with independent play calling for punts, field goals, and kickoffs
 8. **Schedule Generator**: New NFL schedule generation system with CalendarManager integration for season simulation
 9. **Simulation Events**: Enhanced event system with polymorphic processing for games, training, scouting, and administrative events
+10. **Database Architecture**: New SQLite-based persistence with `DatabaseAPI` for retrieval and `DailyDataPersister` for persistence
+11. **Season Progression**: `SeasonProgressionController` for complete season simulation orchestration
+12. **Dynasty System**: Multi-season dynasty support with dynasty context management
+13. **File Cleanup**: Several demo files removed - only `full_game_demo.py`, `phase_4_demo.py`, and `result_processing_demo.py` remain as root-level demos
+14. **Interactive Season Demo**: New `interactive_season_demo.py` provides terminal-based season simulation with daily/weekly modes
 
 When working with legacy code, check for hardcoded team names and convert to numerical IDs using the constants in `src/constants/team_ids.py`.

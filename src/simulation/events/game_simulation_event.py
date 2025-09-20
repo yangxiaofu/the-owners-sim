@@ -13,25 +13,28 @@ from .base_simulation_event import BaseSimulationEvent, SimulationResult, EventT
 
 # Import dependencies with fallback handling
 try:
-    from src.game_management.full_game_simulator import FullGameSimulator
+    from game_management.full_game_simulator import FullGameSimulator
     FULL_GAME_SIMULATOR_AVAILABLE = True
 except ImportError:
     try:
-        # Alternative import path
-        import sys
-        from pathlib import Path
-        sys.path.append(str(Path(__file__).parent.parent.parent))
-        from game_management.full_game_simulator import FullGameSimulator
+        # Fallback import path
+        from src.game_management.full_game_simulator import FullGameSimulator
         FULL_GAME_SIMULATOR_AVAILABLE = True
     except ImportError:
         print("⚠️  FullGameSimulator not available - GameSimulationEvent will use placeholder")
         FULL_GAME_SIMULATOR_AVAILABLE = False
 
 try:
-    from src.constants.team_ids import TeamIDs
+    from stores.store_manager import StoreManager
+    STORE_MANAGER_AVAILABLE = True
+except ImportError:
+    STORE_MANAGER_AVAILABLE = False
+
+try:
+    from constants.team_ids import TeamIDs
 except ImportError:
     try:
-        from constants.team_ids import TeamIDs
+        from src.constants.team_ids import TeamIDs
     except ImportError:
         print("⚠️  TeamIDs not available - using fallback team mapping")
         # Fallback team mapping
@@ -52,7 +55,7 @@ class GameSimulationEvent(BaseSimulationEvent):
     
     def __init__(self, date: datetime, away_team_id: int, home_team_id: int,
                  week: int = 1, season_type: str = "regular_season",
-                 overtime_type: str = "regular_season"):
+                 overtime_type: str = "regular_season", team_registry=None, store_manager=None):
         """
         Initialize NFL game simulation event
         
@@ -63,6 +66,8 @@ class GameSimulationEvent(BaseSimulationEvent):
             week: Week number in season
             season_type: Type of season (preseason, regular_season, playoffs)
             overtime_type: Overtime rules (regular_season or playoffs)
+            team_registry: Optional Dynasty Team Registry for consistent team data
+            store_manager: Optional StoreManager for immediate result persistence
         """
         # Validate team IDs
         if not (1 <= away_team_id <= 32):
@@ -77,6 +82,8 @@ class GameSimulationEvent(BaseSimulationEvent):
         self.week = week
         self.season_type = season_type
         self.overtime_type = overtime_type
+        self.team_registry = team_registry  # Store injected registry for consistent team data
+        self.store_manager = store_manager  # Store manager for immediate persistence
         
         # Create descriptive event name
         away_name = self._get_team_abbreviation(away_team_id)
@@ -109,12 +116,43 @@ class GameSimulationEvent(BaseSimulationEvent):
                 print(f"Simulating NFL game: {self.event_name} on {self.date.strftime('%Y-%m-%d')}")
                 
                 # Run the game simulation
-                game_result = simulator.simulate_game()
+                game_result = simulator.simulate_game(date=self.date)
                 
+                # Process game results through store manager for immediate persistence
+                game_id = None
+                player_stats_for_result = []
+
+                if self.store_manager and STORE_MANAGER_AVAILABLE:
+                    try:
+                        game_id = f"{self.season_type}_{self.week}_{self.away_team_id}_{self.home_team_id}_{self.date.strftime('%Y%m%d')}"
+                        transaction_result = self.store_manager.process_game_complete(game_id, game_result)
+                        if transaction_result.success:
+                            print(f"✅ Game results persisted: {game_id}")
+
+                            # Extract player stats from store after successful persistence
+                            try:
+                                # Get the player stats that were just stored
+                                player_stats_store = self.store_manager.player_stats_store
+                                if hasattr(player_stats_store, 'data') and game_id in player_stats_store.data:
+                                    stored_stats = player_stats_store.data[game_id]
+                                    if stored_stats:
+                                        player_stats_for_result = stored_stats
+                                        print(f"✅ Extracted {len(player_stats_for_result)} player stats from store")
+                                    else:
+                                        print(f"⚠️  No player stats found in store for game {game_id}")
+                                else:
+                                    print(f"⚠️  Game {game_id} not found in player stats store")
+                            except Exception as e:
+                                print(f"⚠️  Error extracting player stats from store: {e}")
+                        else:
+                            print(f"⚠️  Game results persistence failed: {transaction_result.errors}")
+                    except Exception as e:
+                        print(f"❌ Error persisting game results: {e}")
+
                 # Extract key results from game simulation
                 final_score = simulator.get_final_score()
                 performance_metrics = simulator.get_performance_metrics()
-                
+
                 # Convert to standard SimulationResult format
                 return SimulationResult(
                     event_type=EventType.GAME,
@@ -135,7 +173,8 @@ class GameSimulationEvent(BaseSimulationEvent):
                         "total_drives": game_result.total_drives,
                         "game_duration_minutes": game_result.game_duration_minutes,
                         "simulation_performance": performance_metrics,
-                        "game_result_object": game_result  # Store full result for detailed access
+                        "game_result_object": game_result,  # Store full result for detailed access
+                        "player_stats": player_stats_for_result  # Store player stats for persistence
                     }
                 )
                 
@@ -256,21 +295,50 @@ class GameSimulationEvent(BaseSimulationEvent):
     
     def _get_team_abbreviation(self, team_id: int) -> str:
         """
-        Get team abbreviation for display purposes
+        Get team abbreviation for display purposes using Dynasty Team Registry
         
         Args:
-            team_id: Team ID (1-32)
+            team_id: Team ID
             
         Returns:
             Team abbreviation string
         """
-        # This is a simplified mapping - in a full implementation you'd
-        # load this from the team data system
+        # PRIORITY 1: Use injected registry (fixes import path issues)
+        if (self.team_registry and 
+            hasattr(self.team_registry, 'is_initialized') and 
+            self.team_registry.is_initialized() and
+            hasattr(self.team_registry, 'get_team_abbreviation')):
+            try:
+                return self.team_registry.get_team_abbreviation(team_id)
+            except Exception as e:
+                # Log but continue to fallback
+                print(f"⚠️  Injected registry failed for team {team_id}: {e}")
+        
+        # PRIORITY 2: Try to import registry (original approach, may fail due to import path issues)
+        try:
+            # Import registry here to avoid circular imports
+            from team_registry import get_registry
+            
+            # Use registry if available and initialized
+            registry = get_registry()
+            if registry and hasattr(registry, 'is_initialized') and registry.is_initialized():
+                return registry.get_team_abbreviation(team_id)
+        
+        except ImportError:
+            # Registry not available due to import path issues - this was the root cause
+            pass
+        except Exception:
+            # Registry not initialized or other error, fall back
+            pass
+        
+        # Fallback: Basic team abbreviation mapping
+        # This is kept for backwards compatibility but should not be used
+        # when registry is properly initialized
         team_abbrevs = {
-            1: "ARI", 2: "ATL", 3: "BAL", 4: "BUF", 5: "CAR", 6: "CHI", 7: "CIN", 8: "CLE",
-            9: "DAL", 10: "DEN", 11: "DET", 12: "GB", 13: "HOU", 14: "IND", 15: "JAX", 16: "KC",
-            17: "LV", 18: "LAC", 19: "LAR", 20: "MIA", 21: "MIN", 22: "NE", 23: "NO", 24: "NYG",
-            25: "NYJ", 26: "PHI", 27: "PIT", 28: "SF", 29: "SEA", 30: "TB", 31: "TEN", 32: "WAS"
+            1: "BUF", 2: "MIA", 3: "NE", 4: "NYJ", 5: "BAL", 6: "CIN", 7: "CLE", 8: "PIT",
+            9: "HOU", 10: "IND", 11: "JAX", 12: "TEN", 13: "DEN", 14: "KC", 15: "LV", 16: "LAC",
+            17: "DAL", 18: "NYG", 19: "PHI", 20: "WAS", 21: "CHI", 22: "DET", 23: "GB", 24: "MIN",
+            25: "ATL", 26: "CAR", 27: "NO", 28: "TB", 29: "ARI", 30: "LAR", 31: "SF", 32: "SEA"
         }
         return team_abbrevs.get(team_id, f"T{team_id}")
     

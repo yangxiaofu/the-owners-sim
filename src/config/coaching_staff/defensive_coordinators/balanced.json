@@ -1,0 +1,71 @@
+{
+  "name": "Balanced Defensive Coordinator",
+  "description": "Well-rounded defensive coordinator who adapts schemes to game situations. Balanced approach between pressure and coverage with sound fundamentals.",
+  "coach_type": "defensive_coordinator",
+  "aggression": 0.5,
+  "risk_tolerance": 0.5,
+  "adaptability": 0.7,
+  "conservatism": 0.5,
+  "run_preference": 0.5,
+  "fourth_down_aggression": 0.5,
+  "red_zone_aggression": 0.5,
+  "game_script_adherence": 0.7,
+  "momentum_responsiveness": 0.6,
+  "pressure_handling": 0.7,
+  "situational": {
+    "first_down_aggression": 0.5,
+    "second_down_creativity": 0.6,
+    "third_down_aggression": 0.7,
+    "fourth_down_aggression": 0.5,
+    "red_zone_aggression": 0.5,
+    "goal_line_creativity": 0.6,
+    "midfield_risk_tolerance": 0.5,
+    "two_minute_aggression": 0.6,
+    "clock_management_conservatism": 0.5
+  },
+  "formations": {
+    "i_formation_preference": 0.5,
+    "shotgun_preference": 0.5,
+    "pistol_preference": 0.5,
+    "wildcat_preference": 0.5,
+    "four_wide_preference": 0.5,
+    "heavy_personnel_preference": 0.5,
+    "spread_personnel_preference": 0.5,
+    "balanced_personnel_preference": 0.8
+  },
+  "defensive_philosophy": {
+    "base_4_3_preference": 0.6,
+    "base_3_4_preference": 0.4,
+    "nickel_usage": 0.6,
+    "dime_usage": 0.3,
+    "goal_line_package_preference": 0.7,
+    "prevent_defense_usage": 0.4,
+    "cover_2_preference": 0.6,
+    "cover_3_preference": 0.5,
+    "cover_4_preference": 0.4,
+    "man_coverage_preference": 0.5,
+    "zone_coverage_preference": 0.5,
+    "blitz_frequency": 0.5,
+    "pressure_creativity": 0.6
+  },
+  "personnel_usage": {
+    "base_defense_frequency": 0.6,
+    "nickel_frequency": 0.6,
+    "dime_frequency": 0.3,
+    "goal_line_frequency": 0.7,
+    "linebacker_blitz_rate": 0.4,
+    "safety_blitz_rate": 0.2,
+    "corner_blitz_rate": 0.1,
+    "edge_rusher_drop_rate": 0.2
+  },
+  "situational_tendencies": {
+    "third_and_short_aggression": 0.6,
+    "third_and_long_creativity": 0.7,
+    "red_zone_tightness": 0.6,
+    "goal_line_stack": 0.7,
+    "two_minute_prevent_usage": 0.5,
+    "comeback_situation_aggression": 0.6,
+    "garbage_time_conservatism": 0.7
+  },
+  "preferred_schemes": ["balanced_4_3", "multiple_fronts", "situational_defense"]
+}

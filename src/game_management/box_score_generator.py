@@ -8,8 +8,8 @@ Formats player statistics in traditional box score format for end-of-game report
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 
-from src.play_engine.simulation.stats import PlayerStatsAccumulator, PlayerStats, TeamStatsAccumulator
-from src.team_management.teams.team_loader import Team
+from play_engine.simulation.stats import PlayerStatsAccumulator, PlayerStats, TeamStatsAccumulator
+from team_management.teams.team_loader import Team
 
 
 @dataclass

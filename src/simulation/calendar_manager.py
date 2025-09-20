@@ -90,7 +90,9 @@ class CalendarManager:
                  conflict_resolution: ConflictResolution = ConflictResolution.REJECT,
                  enable_result_processing: bool = True,
                  processing_strategy: ProcessingStrategy = ProcessingStrategy.FULL_PROGRESSION,
-                 season_year: int = 2024):
+                 season_year: int = 2024,
+                 daily_persister: Optional[Any] = None,
+                 store_manager: Optional[Any] = None):
         """
         Initialize calendar manager
         
@@ -100,6 +102,8 @@ class CalendarManager:
             enable_result_processing: Whether to enable result processing pipeline
             processing_strategy: Default processing strategy for results
             season_year: Year of the season being simulated
+            daily_persister: Optional DailyDataPersister for database persistence
+            store_manager: Optional StoreManager for updating standings and stats
         """
         self.current_date = start_date
         self.start_date = start_date
@@ -107,6 +111,8 @@ class CalendarManager:
         self.enable_result_processing = enable_result_processing
         self.processing_strategy = processing_strategy
         self.season_year = season_year
+        self.daily_persister = daily_persister
+        self.store_manager = store_manager
         
         # Event storage - indexed by date for efficient access
         self._events_by_date: Dict[date, List[BaseSimulationEvent]] = defaultdict(list)
@@ -133,7 +139,10 @@ class CalendarManager:
         self.season_state_manager = SeasonStateManager(season_year=self.season_year)
         
         # Initialize result processors with default configuration
-        processor_config = ProcessorConfig(strategy=self.processing_strategy)
+        processor_config = ProcessorConfig(
+            strategy=self.processing_strategy,
+            store_manager=self.store_manager
+        )
         
         self._result_processors = [
             GameResultProcessor(processor_config),
@@ -366,6 +375,18 @@ class CalendarManager:
         
         # Store simulation result
         self._simulation_history[target_date] = result
+        
+        # Persist to database if configured
+        if self.daily_persister:
+            try:
+                persistence_success = self.daily_persister.persist_day(result)
+                if persistence_success:
+                    self.logger.info(f"Successfully persisted {target_date} to database")
+                else:
+                    self.logger.warning(f"Failed to persist {target_date} to database")
+            except Exception as e:
+                self.logger.error(f"Error persisting {target_date}: {e}", exc_info=True)
+                # Continue simulation even if persistence fails
         
         processing_summary = ""
         if result.processing_results:

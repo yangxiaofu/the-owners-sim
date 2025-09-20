@@ -1,0 +1,71 @@
+{
+  "name": "Conservative Defensive Coordinator",
+  "description": "Fundamentally sound defensive coordinator who emphasizes gap discipline, coverage responsibility, and limiting big plays. Bend-don't-break philosophy.",
+  "coach_type": "defensive_coordinator",
+  "aggression": 0.3,
+  "risk_tolerance": 0.3,
+  "adaptability": 0.6,
+  "conservatism": 0.8,
+  "run_preference": 0.7,
+  "fourth_down_aggression": 0.2,
+  "red_zone_aggression": 0.3,
+  "game_script_adherence": 0.8,
+  "momentum_responsiveness": 0.4,
+  "pressure_handling": 0.8,
+  "situational": {
+    "first_down_aggression": 0.3,
+    "second_down_creativity": 0.4,
+    "third_down_aggression": 0.5,
+    "fourth_down_aggression": 0.2,
+    "red_zone_aggression": 0.3,
+    "goal_line_creativity": 0.4,
+    "midfield_risk_tolerance": 0.3,
+    "two_minute_aggression": 0.4,
+    "clock_management_conservatism": 0.8
+  },
+  "formations": {
+    "i_formation_preference": 0.7,
+    "shotgun_preference": 0.3,
+    "pistol_preference": 0.4,
+    "wildcat_preference": 0.3,
+    "four_wide_preference": 0.2,
+    "heavy_personnel_preference": 0.7,
+    "spread_personnel_preference": 0.2,
+    "balanced_personnel_preference": 0.8
+  },
+  "defensive_philosophy": {
+    "base_4_3_preference": 0.8,
+    "base_3_4_preference": 0.7,
+    "nickel_usage": 0.4,
+    "dime_usage": 0.2,
+    "goal_line_package_preference": 0.9,
+    "prevent_defense_usage": 0.7,
+    "cover_2_preference": 0.8,
+    "cover_3_preference": 0.7,
+    "cover_4_preference": 0.6,
+    "man_coverage_preference": 0.3,
+    "zone_coverage_preference": 0.8,
+    "blitz_frequency": 0.2,
+    "pressure_creativity": 0.3
+  },
+  "personnel_usage": {
+    "base_defense_frequency": 0.8,
+    "nickel_frequency": 0.4,
+    "dime_frequency": 0.2,
+    "goal_line_frequency": 0.9,
+    "linebacker_blitz_rate": 0.2,
+    "safety_blitz_rate": 0.1,
+    "corner_blitz_rate": 0.05,
+    "edge_rusher_drop_rate": 0.4
+  },
+  "situational_tendencies": {
+    "third_and_short_aggression": 0.4,
+    "third_and_long_creativity": 0.4,
+    "red_zone_tightness": 0.9,
+    "goal_line_stack": 0.9,
+    "two_minute_prevent_usage": 0.8,
+    "comeback_situation_aggression": 0.3,
+    "garbage_time_conservatism": 0.9
+  },
+  "preferred_schemes": ["bend_dont_break", "zone_coverage", "gap_discipline"]
+}

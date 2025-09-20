@@ -33,6 +33,9 @@ class ProcessorConfig:
     enable_state_updates: bool = True
     enable_side_effects: bool = True
     
+    # Store manager for direct data store updates
+    store_manager: Optional[Any] = None
+    
     # Specific feature toggles
     update_standings: bool = True
     update_player_stats: bool = True

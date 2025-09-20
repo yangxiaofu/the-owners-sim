@@ -30,6 +30,7 @@ from ..play_engine.simulation.stats import PlayerStatsAccumulator, TeamStatsAccu
 from ..team_management.teams.team_loader import Team
 from .centralized_stats_aggregator import CentralizedStatsAggregator
 from .scoreboard import ScoringType
+from shared.game_result import GameResult
 
 
 @dataclass
@@ -46,19 +47,6 @@ class DriveResult:
     points_scored: int = 0
 
 
-@dataclass 
-class GameResult:
-    """Complete game result with comprehensive statistics"""
-    home_team: Team
-    away_team: Team
-    final_score: Dict[int, int]
-    winner: Optional[Team]
-    total_plays: int
-    total_drives: int
-    game_duration_minutes: int
-    drive_results: List[DriveResult] = field(default_factory=list)
-    final_statistics: Optional[Dict[str, Any]] = None
-
 
 class GameLoopController:
     """
@@ -72,7 +60,8 @@ class GameLoopController:
                  home_team: Team, away_team: Team,
                  home_coaching_staff_config: Dict, away_coaching_staff_config: Dict,
                  home_roster: List, away_roster: List,
-                 overtime_manager: IOvertimeManager = None):
+                 overtime_manager: IOvertimeManager = None,
+                 game_date=None):
         """
         Initialize game loop controller with all required components
         
@@ -91,6 +80,7 @@ class GameLoopController:
         self.away_team = away_team
         self.home_roster = home_roster
         self.away_roster = away_roster
+        self.game_date = game_date
         
         # Initialize overtime manager with default if none provided
         self.overtime_manager = overtime_manager or RegularSeasonOvertimeManager()
@@ -174,7 +164,6 @@ class GameLoopController:
     
     def _run_quarter(self, quarter: int) -> None:
         """Run a single quarter with drive sequences"""
-        print(f"\n--- Quarter {quarter} ---")
         
         # Run drives until quarter ends
         while not self._is_quarter_complete():
@@ -201,7 +190,6 @@ class GameLoopController:
         Returns:
             DriveResult with complete drive statistics
         """
-        print(f"  🏃 Starting drive for team {possessing_team_id}")
         
         # Create DriveManager for this drive - need proper FieldPosition and DownState objects
         from ..play_engine.game_state.field_position import FieldPosition, FieldZone
@@ -264,8 +252,6 @@ class GameLoopController:
             points_scored=0  # TODO: Calculate from scoring plays
         )
         
-        print(f"    Drive ended: {drive_result.drive_outcome} ({drive_result.total_plays} plays, {drive_result.total_yards} yards)")
-        
         return drive_result
     
     def _run_play(self, drive_manager: DriveManager, possessing_team_id: int) -> PlayResult:
@@ -325,8 +311,6 @@ class GameLoopController:
             field_position=current_situation.field_position
         )
         
-        print(f"      Play: {play_result.outcome} for {play_result.yards} yards")
-        
         return play_result
     
     def _handle_drive_transition(self, drive_result: DriveResult) -> None:
@@ -381,7 +365,6 @@ class GameLoopController:
         self.next_drive_field_position = transition_result.new_starting_field_position
         self.next_drive_possessing_team_id = transition_result.new_possessing_team_id
         
-        print(f"    Drive transition: {transition_result.description}")
     
     def _create_coaching_staff_from_config(self, config: Dict, team_id: int) -> CoachingStaff:
         """Create CoachingStaff instance from JSON configuration"""
@@ -488,19 +471,44 @@ class GameLoopController:
         }
         self.stats_aggregator.finalize_game(final_score_dict)
         
-        # Generate comprehensive statistics
+        # Generate comprehensive statistics for export/serialization
         comprehensive_stats = self.stats_aggregator.get_all_statistics()
-        
+
+        # Get actual objects directly from aggregator - NO fallbacks, let errors surface
+        player_stats = self.stats_aggregator.get_player_statistics()                    # Must return List[PlayerStats]
+
+        # FIX: Assign correct team_id to PlayerStats objects based on player names
+        self._fix_player_team_assignments(player_stats)
+
+        home_team_stats = self.stats_aggregator.get_team_statistics(self.home_team.team_id)  # Must return TeamStats
+        away_team_stats = self.stats_aggregator.get_team_statistics(self.away_team.team_id)  # Must return TeamStats
+
+        # Validation assertions to catch issues immediately
+        assert isinstance(player_stats, list), f"Expected list, got {type(player_stats)}"
+        assert len(player_stats) > 0, f"No player statistics generated - this indicates a fundamental issue. Total plays: {self.total_plays}"
+        assert home_team_stats is not None, f"No home team stats for team {self.home_team.team_id}"
+        assert away_team_stats is not None, f"No away team stats for team {self.away_team.team_id}"
+
+        # Validate first player object structure
+        first_player = player_stats[0]
+        assert hasattr(first_player, 'player_name'), f"Player object missing player_name: {type(first_player)}, available attributes: {dir(first_player)}"
+        assert hasattr(first_player, 'passing_yards'), f"Player object missing stats: {type(first_player)}, available attributes: {dir(first_player)}"
+
         return GameResult(
             home_team=self.home_team,
             away_team=self.away_team,
             final_score=final_score_dict,
-            winner=winner,
+            quarter_scores=[],  # TODO: Implement quarter scoring
+            drives=self.drive_results,
             total_plays=self.total_plays,
-            total_drives=len(self.drive_results),
             game_duration_minutes=240,  # TODO: Calculate actual duration
-            drive_results=self.drive_results,
-            final_statistics=comprehensive_stats
+            overtime_played=False,  # TODO: Implement overtime detection
+            date=self.game_date,
+            # ✅ FIXED: Direct object access - guaranteed objects with attributes
+            player_stats=player_stats,              # List[PlayerStats] - guaranteed objects
+            home_team_stats=home_team_stats,        # TeamStats - guaranteed object
+            away_team_stats=away_team_stats,        # TeamStats - guaranteed object
+            final_statistics=comprehensive_stats    # Dict for serialization
         )
     
     def get_current_game_state(self) -> Dict[str, Any]:
@@ -564,3 +572,57 @@ class GameLoopController:
     def is_statistics_complete(self) -> bool:
         """Check if any statistics have been recorded."""
         return self.stats_aggregator.is_statistics_complete()
+
+    def _fix_player_team_assignments(self, player_stats: List[Any]) -> None:
+        """
+        Fix team_id assignments for PlayerStats objects based on player names.
+
+        The PlayerStatsAccumulator doesn't properly assign team_id, so we fix it here
+        by looking up real player names in the players.json database.
+        """
+        try:
+            # Load players.json database for team lookups
+            import json
+            import os
+
+            players_file = os.path.join(os.path.dirname(__file__), '../data/players.json')
+            if not os.path.exists(players_file):
+                print(f"⚠️ Players database not found: {players_file}")
+                return
+
+            with open(players_file, 'r') as f:
+                players_data = json.load(f)
+
+            # Create lookup dict: player_name -> team_id
+            player_team_lookup = {}
+            players_dict = players_data.get('players', {})
+            for player_id, player in players_dict.items():
+                first_name = player.get('first_name', '')
+                last_name = player.get('last_name', '')
+                full_name = f"{first_name} {last_name}".strip()
+                team_id = player.get('team_id')
+                if full_name and team_id:
+                    player_team_lookup[full_name] = team_id
+
+            # Fix team_id for each PlayerStats object
+            fixed_count = 0
+            for player_stat in player_stats:
+                if hasattr(player_stat, 'player_name') and hasattr(player_stat, 'team_id'):
+                    player_name = player_stat.player_name
+                    lookup_team_id = player_team_lookup.get(player_name)
+
+                    if lookup_team_id and lookup_team_id in [self.home_team.team_id, self.away_team.team_id]:
+                        # Only update if player belongs to one of the teams in this game
+                        original_team_id = player_stat.team_id
+                        player_stat.team_id = lookup_team_id
+                        print(f"🔧 Fixed {player_name}: Team {original_team_id} → Team {lookup_team_id}")
+                        fixed_count += 1
+                    elif lookup_team_id:
+                        print(f"⚠️ Player {player_name} belongs to Team {lookup_team_id}, not in this game ({self.home_team.team_id} vs {self.away_team.team_id})")
+
+            print(f"✅ Fixed team assignments for {fixed_count}/{len(player_stats)} players")
+
+        except Exception as e:
+            print(f"❌ Error fixing player team assignments: {e}")
+            import traceback
+            traceback.print_exc()

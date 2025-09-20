@@ -1,0 +1,83 @@
+{
+  "name": "Balanced Offensive Coordinator",
+  "description": "Well-rounded offensive coordinator who adapts play calling to game situations. Emphasizes equal focus on run and pass with moderate risk-taking.",
+  "coach_type": "offensive_coordinator",
+  "aggression": 0.5,
+  "risk_tolerance": 0.5,
+  "adaptability": 0.7,
+  "conservatism": 0.5,
+  "run_preference": 0.5,
+  "fourth_down_aggression": 0.4,
+  "red_zone_aggression": 0.5,
+  "game_script_adherence": 0.7,
+  "momentum_responsiveness": 0.6,
+  "pressure_handling": 0.7,
+  "situational": {
+    "first_down_aggression": 0.5,
+    "second_down_creativity": 0.6,
+    "third_down_aggression": 0.6,
+    "fourth_down_aggression": 0.4,
+    "red_zone_aggression": 0.5,
+    "goal_line_creativity": 0.6,
+    "midfield_risk_tolerance": 0.5,
+    "two_minute_aggression": 0.6,
+    "clock_management_conservatism": 0.5
+  },
+  "formations": {
+    "i_formation_preference": 0.5,
+    "shotgun_preference": 0.6,
+    "pistol_preference": 0.5,
+    "wildcat_preference": 0.1,
+    "four_wide_preference": 0.5,
+    "heavy_personnel_preference": 0.5,
+    "spread_personnel_preference": 0.5,
+    "balanced_personnel_preference": 0.8
+  },
+  "play_types": {
+    "run_preference": 0.5,
+    "play_action_frequency": 0.5,
+    "screen_frequency": 0.4,
+    "draw_frequency": 0.3,
+    "short_pass_preference": 0.6,
+    "intermediate_pass_preference": 0.6,
+    "deep_pass_preference": 0.4,
+    "trick_play_frequency": 0.1,
+    "fake_punt_aggression": 0.1,
+    "fake_field_goal_aggression": 0.05
+  },
+  "philosophy": {
+    "west_coast_preference": 0.6,
+    "air_raid_preference": 0.4,
+    "ground_and_pound_preference": 0.5,
+    "rpo_usage": 0.6,
+    "motion_usage": 0.6,
+    "formation_creativity": 0.6,
+    "play_action_mastery": 0.6,
+    "gadget_play_frequency": 0.1,
+    "no_huddle_usage": 0.4,
+    "hurry_up_comfort": 0.6,
+    "scripted_opening_reliance": 0.6
+  },
+  "personnel": {
+    "eleven_personnel_usage": 0.6,
+    "twelve_personnel_usage": 0.6,
+    "twenty_one_personnel_usage": 0.5,
+    "ten_personnel_usage": 0.4,
+    "feature_back_reliance": 0.6,
+    "tight_end_involvement": 0.6,
+    "slot_receiver_emphasis": 0.6,
+    "deep_threat_prioritization": 0.5
+  },
+  "situational_calling": {
+    "first_down_pass_rate": 0.5,
+    "second_and_long_creativity": 0.6,
+    "third_down_conversion_aggression": 0.6,
+    "red_zone_fade_preference": 0.4,
+    "red_zone_run_commitment": 0.5,
+    "goal_line_innovation": 0.6,
+    "comeback_route_mastery": 0.6,
+    "clock_killing_run_game": 0.6,
+    "two_minute_drill_efficiency": 0.6
+  },
+  "preferred_playbooks": ["balanced", "west_coast", "modern_offense"]
+}
