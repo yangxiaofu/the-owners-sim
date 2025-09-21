@@ -9,7 +9,7 @@ Create detailed roster documentation for all 32 NFL teams in the simulation, pro
 
 ### Scope
 - **Documentation**: Detailed markdown files for each team's 53-man roster
-- **Data Integration**: Player entries in the central `players.json` database
+- **Data Integration**: Individual JSON files per team for modular player data management
 - **Standardization**: Consistent format and attribute systems across all teams
 - **Maintenance**: Guidelines for keeping rosters current with real NFL changes
 
@@ -121,19 +121,79 @@ Each position group should include:
 
 ## Data Integration Process
 
-### Player Database Structure (`src/data/players.json`)
+### Modular Team-Based JSON Structure (`src/data/teams/`)
 
-#### Player Entry Format
+#### New Architecture Overview
+Each NFL team has its own dedicated JSON file for improved modularity, maintainability, and performance:
+
+```
+src/data/teams/
+├── team_01_buffalo_bills.json
+├── team_02_miami_dolphins.json
+├── team_03_new_england_patriots.json
+├── team_04_new_york_jets.json
+├── team_05_baltimore_ravens.json
+├── team_06_cincinnati_bengals.json
+├── team_07_cleveland_browns.json
+├── team_08_pittsburgh_steelers.json
+├── team_09_houston_texans.json
+├── team_10_indianapolis_colts.json
+├── team_11_jacksonville_jaguars.json
+├── team_12_tennessee_titans.json
+├── team_13_denver_broncos.json
+├── team_14_kansas_city_chiefs.json
+├── team_15_las_vegas_raiders.json
+├── team_16_los_angeles_chargers.json
+├── team_17_dallas_cowboys.json
+├── team_18_new_york_giants.json
+├── team_19_philadelphia_eagles.json
+├── team_20_washington_commanders.json
+├── team_21_chicago_bears.json
+├── team_22_detroit_lions.json
+├── team_23_green_bay_packers.json
+├── team_24_minnesota_vikings.json
+├── team_25_atlanta_falcons.json
+├── team_26_carolina_panthers.json
+├── team_27_new_orleans_saints.json
+├── team_28_tampa_bay_buccaneers.json
+├── team_29_arizona_cardinals.json
+├── team_30_los_angeles_rams.json
+├── team_31_san_francisco_49ers.json
+└── team_32_seattle_seahawks.json
+```
+
+#### Team File Structure Template
 ```json
-"[player_id]": {
-  "player_id": [numeric_id],
-  "first_name": "[First Name]",
-  "last_name": "[Last Name]",
-  "number": [jersey_number],
-  "positions": ["[position_name]"],
-  "team_id": [team_numeric_id],
-  "attributes": {
-    // Position-specific and universal attributes
+{
+  "team_info": {
+    "team_id": [numeric_id],
+    "team_name": "[Full Team Name]",
+    "city": "[City]",
+    "abbreviation": "[3-letter code]",
+    "conference": "[AFC/NFC]",
+    "division": "[East/North/South/West]",
+    "head_coach": "[Coach Name]",
+    "last_updated": "[YYYY-MM-DD]"
+  },
+  "players": {
+    "[player_id]": {
+      "player_id": [numeric_id],
+      "first_name": "[First Name]",
+      "last_name": "[Last Name]",
+      "number": [jersey_number],
+      "positions": ["[position_name]"],
+      "team_id": [team_numeric_id],
+      "attributes": {
+        // Position-specific and universal attributes
+      }
+    }
+    // ... additional players
+  },
+  "metadata": {
+    "total_players": [count],
+    "version": "1.0",
+    "roster_type": "53_man_active",
+    "season": "2025"
   }
 }
 ```
@@ -149,11 +209,16 @@ Reference `src/constants/team_ids.py` for official team ID mappings:
 - NFC South: Falcons (25), Panthers (26), Saints (27), Buccaneers (28)
 - NFC West: Cardinals (29), Rams (30), 49ers (31), Seahawks (32)
 
-#### Player ID Allocation
-- **Sequential Assignment**: Use next available player_id starting from highest existing ID
-- **Miami Dolphins Range**: 35013-35062 (50 players)
-- **Next Team Range**: Start at 35063
-- **Metadata Update**: Update `total_players` count in metadata section
+#### Player ID Allocation Strategy
+- **Team-Based Ranges**: Each team gets a dedicated 100-player ID range for future expansion
+- **Team 1 (Bills)**: 100-199
+- **Team 2 (Dolphins)**: 200-299
+- **Team 3 (Patriots)**: 300-399
+- **Team 15 (Raiders)**: 1500-1599
+- **Team 32 (Seahawks)**: 3200-3299
+- **Formula**: `team_id * 100` to `(team_id * 100) + 99`
+- **Active Roster**: Use first 53 IDs in team range (e.g., Raiders: 1500-1552)
+- **Future Expansion**: Remaining 47 IDs reserved for practice squad, IR, future additions
 
 ---
 
@@ -242,12 +307,14 @@ Reference `src/constants/team_ids.py` for official team ID mappings:
 4. **Create Roster Documentation** following template structure
 5. **Review and Validate** completeness and accuracy
 
-#### Phase 2: Player Database Integration
-1. **Determine Next Player ID** from current highest ID
-2. **Create Player Entries** for all 53 players
-3. **Assign Appropriate Attributes** based on performance and position
-4. **Validate JSON Structure** and syntax
-5. **Update Metadata** (total_players count, team inclusion)
+#### Phase 2: Team JSON File Creation
+1. **Create Team Directory Structure** if not exists (`src/data/teams/`)
+2. **Generate Team-Specific JSON File** following naming convention (`team_[id]_[name].json`)
+3. **Calculate Player ID Range** using team-based allocation (team_id * 100)
+4. **Create Player Entries** for all 53 players within team range
+5. **Assign Appropriate Attributes** based on performance and position
+6. **Validate JSON Structure** and syntax
+7. **Update Team Metadata** (total_players count, team info, version)
 
 #### Phase 3: Quality Assurance
 1. **Test Player Loading** in simulation system
@@ -338,23 +405,40 @@ Reference `src/constants/team_ids.py` for official team ID mappings:
 
 ## Technical Considerations
 
-### JSON File Management
-- **File Size Monitoring**: Track `players.json` size as it grows
-- **Performance Impact**: Consider loading optimization for large datasets
-- **Memory Usage**: Monitor simulation performance with full roster data
-- **Backup Strategy**: Regular backups before major roster updates
+### New Modular Architecture Advantages
+- **Reduced File Size**: Individual team files (~53 players) vs. single massive file (~1,700 players)
+- **Faster Loading**: Load only required teams for simulation rather than entire league
+- **Parallel Processing**: Multiple teams can be updated simultaneously without conflicts
+- **Easier Maintenance**: Team-specific updates don't affect other teams' data
+- **Version Control**: Git-friendly smaller files with cleaner diffs and merge conflicts
+- **Scalability**: Easy addition of practice squads, IR lists, and historical rosters per team
+
+### Modular File Management
+- **Directory Structure**: Organized `/teams/` directory with consistent naming
+- **Individual Validation**: Each team file can be validated independently
+- **Incremental Updates**: Update only changed teams during roster moves
+- **Backup Strategy**: Team-specific backups and rollback capabilities
+- **Performance Monitoring**: Track individual file sizes and loading times
 
 ### Integration Points
-- **Team Roster Generator**: Ensure compatibility with existing player loading
-- **Simulation Engine**: Validate all attributes are utilized properly
-- **Database API**: Confirm player retrieval works with new team data
-- **Statistics System**: Verify player stats attribution functions correctly
+- **Team Roster Loader**: Update to dynamically load from team-specific files
+- **Simulation Engine**: Validate all attributes are utilized properly across modular structure
+- **Database API**: Enhance to retrieve players from appropriate team files
+- **Statistics System**: Verify player stats attribution works with distributed data
+- **Caching Strategy**: Implement team-based caching for frequently accessed rosters
 
 ### Error Handling
-- **Duplicate Detection**: Prevent duplicate player entries
-- **Invalid Team IDs**: Validate all team ID references
-- **Missing Attributes**: Ensure all required attributes are present
-- **JSON Validation**: Syntax checking before file updates
+- **File-Level Validation**: Validate each team file independently
+- **Cross-Team Consistency**: Ensure player IDs don't conflict across teams
+- **Missing Team Files**: Graceful handling of missing team data
+- **JSON Schema Validation**: Consistent structure validation across all team files
+- **Data Integrity Checks**: Verify team metadata matches player team_id assignments
+
+### Migration Strategy
+- **Legacy Support**: Maintain backward compatibility during transition
+- **Data Conversion**: Scripts to migrate from consolidated to modular format
+- **Testing Framework**: Validate data integrity across old and new formats
+- **Rollback Plan**: Ability to revert to consolidated format if issues arise
 
 ---
 

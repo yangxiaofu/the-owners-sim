@@ -58,6 +58,18 @@ class PlayerStats:
     pass_blocks: int = 0
     pressures_allowed: int = 0
     sacks_allowed: int = 0
+
+    # Advanced offensive line stats
+    pancakes: int = 0                      # Dominant blocks where lineman completely controls defender
+    hurries_allowed: int = 0               # QB rushed into quick throw but not sacked
+    run_blocking_grade: float = 0.0        # 0-100 grade for run blocking effectiveness
+    pass_blocking_efficiency: float = 0.0  # 0-100 grade for pass protection effectiveness
+    missed_assignments: int = 0            # Mental errors/blown assignments
+    holding_penalties: int = 0             # Holding penalties committed
+    false_start_penalties: int = 0         # False start penalties committed
+    downfield_blocks: int = 0              # Blocks made downfield (screens, draws, etc.)
+    double_team_blocks: int = 0            # Successful double-team blocks
+    chip_blocks: int = 0                   # Quick chip blocks before releasing
     
     # Defensive stats  
     tackles: int = 0
@@ -85,6 +97,11 @@ class PlayerStats:
     long_snaps: int = 0
     special_teams_snaps: int = 0
     blocks_allowed: int = 0
+
+    # Snap tracking (playing time)
+    offensive_snaps: int = 0  # Snaps played on offense
+    defensive_snaps: int = 0  # Snaps played on defense
+    total_snaps: int = 0      # Total snaps across all phases
 
     # Extra point stats
     extra_points_made: int = 0
@@ -116,12 +133,93 @@ class PlayerStats:
             self.blocks_made += 1
         else:
             self.blocks_missed += 1
+
+    # Advanced offensive line helper methods
+    def add_pancake(self):
+        """Add a pancake block (dominant block where lineman completely controls defender)"""
+        self.pancakes += 1
+        self.blocks_made += 1  # Pancakes count as successful blocks
+
+    def add_sack_allowed(self):
+        """Add a sack allowed by this lineman"""
+        self.sacks_allowed += 1
+
+    def add_pressure_allowed(self):
+        """Add a pressure allowed by this lineman"""
+        self.pressures_allowed += 1
+
+    def add_hurry_allowed(self):
+        """Add a hurry allowed (QB rushed into quick throw)"""
+        self.hurries_allowed += 1
+
+    def add_missed_assignment(self):
+        """Add a missed assignment/mental error"""
+        self.missed_assignments += 1
+        self.blocks_missed += 1  # Missed assignments count as missed blocks
+
+    def add_holding_penalty(self):
+        """Add a holding penalty"""
+        self.holding_penalties += 1
+
+    def add_false_start_penalty(self):
+        """Add a false start penalty"""
+        self.false_start_penalties += 1
+
+    def add_downfield_block(self):
+        """Add a downfield block (screens, draws, etc.)"""
+        self.downfield_blocks += 1
+        self.blocks_made += 1
+
+    def add_double_team_block(self):
+        """Add a successful double-team block"""
+        self.double_team_blocks += 1
+        self.blocks_made += 1
+
+    def add_chip_block(self):
+        """Add a chip block before releasing"""
+        self.chip_blocks += 1
+        self.blocks_made += 1
+
+    def set_run_blocking_grade(self, grade: float):
+        """Set run blocking grade (0-100)"""
+        self.run_blocking_grade = max(0.0, min(100.0, grade))
+
+    def set_pass_blocking_efficiency(self, efficiency: float):
+        """Set pass blocking efficiency (0-100)"""
+        self.pass_blocking_efficiency = max(0.0, min(100.0, efficiency))
     
     def add_penalty(self, yards: int):
         """Add penalty and yardage"""
         self.penalties += 1
         self.penalty_yards += yards
-    
+
+    def add_rushing_touchdown(self):
+        """Add rushing touchdown"""
+        self.rushing_tds += 1
+
+    def add_passing_touchdown(self):
+        """Add passing touchdown"""
+        self.passing_tds += 1
+
+    def add_receiving_touchdown(self):
+        """Add receiving touchdown"""
+        self.receiving_tds += 1
+
+    def add_offensive_snap(self):
+        """Record an offensive snap"""
+        self.offensive_snaps += 1
+        self.total_snaps += 1
+
+    def add_defensive_snap(self):
+        """Record a defensive snap"""
+        self.defensive_snaps += 1
+        self.total_snaps += 1
+
+    def add_special_teams_snap(self):
+        """Record a special teams snap"""
+        self.special_teams_snaps += 1
+        self.total_snaps += 1
+
     def get_total_stats(self) -> Dict[str, int]:
         """Get all non-zero stats as dictionary"""
         # Use canonical stat fields from enum

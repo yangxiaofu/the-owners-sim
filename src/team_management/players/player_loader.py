@@ -60,66 +60,129 @@ class RealPlayer:
 
 class PlayerDataLoader:
     """Loads and manages real NFL player data from JSON configuration"""
-    
-    def __init__(self, players_file_path: Optional[str] = None):
+
+    def __init__(self, players_file_path: Optional[str] = None, use_team_files: bool = True):
         """
         Initialize player data loader
-        
+
         Args:
-            players_file_path: Path to players.json file. If None, uses default location.
+            players_file_path: Path to players.json file or players/ directory. If None, uses default location.
+            use_team_files: If True, try to load from team-based files first, fallback to single file.
         """
         if players_file_path is None:
-            # Default to players.json in the data directory (go up to src level)
+            # Default to data directory (go up to src level)
             current_dir = os.path.dirname(os.path.abspath(__file__))
             src_dir = os.path.dirname(os.path.dirname(current_dir))  # Go up from players/ to team_management/ to src/
-            players_file_path = os.path.join(src_dir, 'data', 'players.json')
-        
+            data_dir = os.path.join(src_dir, 'data')
+
+            if use_team_files:
+                # Try team-based files first
+                team_files_dir = os.path.join(data_dir, 'players')
+                if os.path.exists(team_files_dir) and os.path.isdir(team_files_dir):
+                    players_file_path = team_files_dir
+                else:
+                    # Fallback to single file
+                    players_file_path = os.path.join(data_dir, 'players.json')
+            else:
+                players_file_path = os.path.join(data_dir, 'players.json')
+
         self.players_file_path = players_file_path
+        self.use_team_files = use_team_files
         self._players_data = None
         self._players_by_id = {}
         self._players_by_team = {}
         self._players_by_position = {}
+        self._is_team_based = os.path.isdir(players_file_path) if os.path.exists(players_file_path) else False
         self._load_players_data()
     
     def _load_players_data(self):
-        """Load players data from JSON file"""
+        """Load players data from JSON file(s)"""
         try:
-            with open(self.players_file_path, 'r') as f:
-                self._players_data = json.load(f)
-            
-            # Create RealPlayer objects and index them
-            players_dict = self._players_data.get('players', {})
-            for player_id_str, player_data in players_dict.items():
-                player = RealPlayer(
-                    player_id=player_data['player_id'],
-                    first_name=player_data['first_name'],
-                    last_name=player_data['last_name'],
-                    number=player_data['number'],
-                    positions=player_data['positions'],
-                    team_id=player_data['team_id'],
-                    attributes=player_data['attributes']
-                )
-                
-                # Index by ID
-                self._players_by_id[player.player_id] = player
-                
-                # Index by team
-                if player.team_id not in self._players_by_team:
-                    self._players_by_team[player.team_id] = []
-                self._players_by_team[player.team_id].append(player)
-                
-                # Index by position
-                for position in player.positions:
-                    if position not in self._players_by_position:
-                        self._players_by_position[position] = []
-                    self._players_by_position[position].append(player)
-                    
+            if self._is_team_based:
+                self._load_team_based_data()
+            else:
+                self._load_single_file_data()
         except FileNotFoundError:
-            raise FileNotFoundError(f"Players data file not found: {self.players_file_path}")
+            raise FileNotFoundError(f"Players data not found: {self.players_file_path}")
         except json.JSONDecodeError as e:
-            raise ValueError(f"Invalid JSON in players data file: {e}")
+            raise ValueError(f"Invalid JSON in players data: {e}")
         except KeyError as e:
             raise ValueError(f"Missing required field in players data: {e}")
+
+    def _load_single_file_data(self):
+        """Load players data from single JSON file (legacy format)"""
+        with open(self.players_file_path, 'r') as f:
+            self._players_data = json.load(f)
+
+        # Create RealPlayer objects and index them
+        players_dict = self._players_data.get('players', {})
+        for player_id_str, player_data in players_dict.items():
+            self._create_and_index_player(player_id_str, player_data)
+
+    def _load_team_based_data(self):
+        """Load players data from team-based JSON files"""
+        self._players_data = {"players": {}}
+
+        # Find all team files in the directory
+        team_files = []
+        for filename in os.listdir(self.players_file_path):
+            if filename.startswith('team_') and filename.endswith('.json'):
+                team_files.append(filename)
+
+        if not team_files:
+            raise FileNotFoundError(f"No team files found in {self.players_file_path}")
+
+        print(f"Loading players from {len(team_files)} team files...")
+
+        # Load each team file
+        for filename in sorted(team_files):
+            filepath = os.path.join(self.players_file_path, filename)
+            try:
+                with open(filepath, 'r') as f:
+                    team_data = json.load(f)
+
+                team_players = team_data.get('players', {})
+                team_id = team_data.get('team_id')
+                team_name = team_data.get('team_name', f'Team {team_id}')
+
+                print(f"  Loading {team_name}: {len(team_players)} players")
+
+                # Add players to our main data structure
+                for player_id_str, player_data in team_players.items():
+                    self._players_data['players'][player_id_str] = player_data
+                    self._create_and_index_player(player_id_str, player_data)
+
+            except Exception as e:
+                print(f"Warning: Could not load {filename}: {e}")
+                continue
+
+        print(f"Loaded total of {len(self._players_by_id)} players from team files")
+
+    def _create_and_index_player(self, player_id_str: str, player_data: Dict[str, Any]):
+        """Create a RealPlayer object and index it"""
+        player = RealPlayer(
+            player_id=player_data['player_id'],
+            first_name=player_data['first_name'],
+            last_name=player_data['last_name'],
+            number=player_data['number'],
+            positions=player_data['positions'],
+            team_id=player_data['team_id'],
+            attributes=player_data['attributes']
+        )
+
+        # Index by ID
+        self._players_by_id[player.player_id] = player
+
+        # Index by team
+        if player.team_id not in self._players_by_team:
+            self._players_by_team[player.team_id] = []
+        self._players_by_team[player.team_id].append(player)
+
+        # Index by position
+        for position in player.positions:
+            if position not in self._players_by_position:
+                self._players_by_position[position] = []
+            self._players_by_position[position].append(player)
     
     def get_player_by_id(self, player_id: int) -> Optional[RealPlayer]:
         """
@@ -322,7 +385,8 @@ class PlayerDataLoader:
         return len(self._players_by_id)
     
     def __str__(self):
-        return f"PlayerDataLoader with {len(self._players_by_id)} real players"
+        source_type = "team-based files" if self._is_team_based else "single file"
+        return f"PlayerDataLoader with {len(self._players_by_id)} real players from {source_type}"
 
 
 # Global instance for easy access throughout the codebase

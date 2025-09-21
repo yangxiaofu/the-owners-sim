@@ -81,7 +81,10 @@ class RunPlaySimulator:
         
         # Phase 2B: Attribute player stats based on final outcome
         player_stats = self._attribute_player_stats(final_yards, penalty_result)
-        
+
+        # Phase 2C: Track snaps for ALL players on the field (offensive and defensive)
+        player_stats = self._track_snaps_for_all_players(player_stats)
+
         # Create play summary with penalty information
         summary = PlayStatsSummary(
             play_type=PlayType.RUN,
@@ -98,8 +101,28 @@ class RunPlaySimulator:
         
         for stats in player_stats:
             summary.add_player_stats(stats)
-        
+
+        # Add touchdown attribution if points were scored
+        self._add_touchdown_attribution(summary)
+
         return summary
+
+    def _add_touchdown_attribution(self, summary: PlayStatsSummary):
+        """Add touchdown attribution to player stats if points were scored"""
+        # DEBUG: Check what points_scored actually is
+        points = getattr(summary, 'points_scored', 0)
+        if summary.yards_gained > 15:  # Debug big gains
+            print(f"DEBUG RUN ATTRIBUTION: yards={summary.yards_gained}, points_scored={points}")
+
+        if points == 6:
+            print(f"🏈 TOUCHDOWN DETECTED in run play! Adding rushing TD to player stats")
+            # This is a touchdown - add touchdown stats to appropriate players
+            for player_stat in summary.player_stats:
+                if player_stat.rushing_attempts > 0:
+                    # Player had rushing attempts, credit them with rushing TD
+                    player_stat.add_rushing_touchdown()
+                    print(f"✅ Added rushing TD to {player_stat.player_name}")
+                    break  # Only one player should get the rushing TD
     
     def _determine_play_outcome(self) -> Tuple[int, float]:
         """
@@ -210,11 +233,11 @@ class RunPlaySimulator:
     def _attribute_player_stats(self, yards_gained: int, penalty_result: Optional[PenaltyResult] = None) -> List[PlayerStats]:
         """
         Phase 2B: Attribute statistics to individual players based on final play outcome
-        
+
         Args:
             yards_gained: Final yards gained on the play (after penalty effects)
             penalty_result: Penalty result if a penalty occurred
-            
+
         Returns:
             List of PlayerStats objects for players who recorded stats
         """
@@ -223,8 +246,17 @@ class RunPlaySimulator:
         # Find key players by position
         running_back = self._find_player_by_position(Position.RB)
         offensive_line = self._find_players_by_positions([Position.LT, Position.LG, Position.C, Position.RG, Position.RT])
-        linebackers = self._find_defensive_players_by_positions([Position.MIKE, Position.SAM, Position.WILL])
-        safeties = self._find_defensive_players_by_positions([Position.FS, Position.SS])
+
+        # Include all linebacker variations (specific and generic)
+        linebackers = self._find_defensive_players_by_positions([
+            Position.MIKE, Position.SAM, Position.WILL, Position.ILB, Position.OLB, "linebacker"
+        ])
+        safeties = self._find_defensive_players_by_positions([Position.FS, Position.SS, "safety"])
+
+        # Include defensive line for potential tackles behind the line
+        defensive_line = self._find_defensive_players_by_positions([
+            Position.DE, Position.DT, Position.NT, "defensive_end", "defensive_tackle", "nose_tackle"
+        ])
         
         # Attribute RB stats
         if running_back:
@@ -232,36 +264,205 @@ class RunPlaySimulator:
             rb_stats.add_carry(yards_gained)
             player_stats.append(rb_stats)
         
-        # Attribute offensive line blocking stats - use configured parameters
+        # Attribute comprehensive offensive line stats
         if offensive_line:
-            stats_config = config.get_statistical_attribution_config('run_play')
-            blocking_config = stats_config.get('blocking', {})
-            
-            min_blockers = blocking_config.get('min_blockers', 2)
-            max_blockers = blocking_config.get('max_blockers', 3)
-            base_success_rate = blocking_config.get('base_success_rate', 0.7)
-            yards_bonus_multiplier = blocking_config.get('yards_bonus_multiplier', 0.05)
-            
-            num_blockers = min(len(offensive_line), random.randint(min_blockers, max_blockers))
-            selected_blockers = random.sample(offensive_line, num_blockers)
-            
-            for blocker in selected_blockers:
-                blocker_stats = create_player_stats_from_player(blocker, team_id=self.offensive_team_id)
-                # Higher success rate for longer runs
-                success_rate = base_success_rate + (yards_gained * yards_bonus_multiplier)
-                blocker_stats.add_block(random.random() < success_rate)
-                player_stats.append(blocker_stats)
+            oline_stats = self._attribute_advanced_oline_stats(yards_gained, offensive_line)
+            player_stats.extend(oline_stats)
         
         # Attribute defensive stats (tackles)
-        tacklers = self._select_tacklers(yards_gained, linebackers + safeties)
+        # All potential tacklers: linebackers, safeties, defensive line
+        potential_tacklers = linebackers + safeties + defensive_line
+        tacklers = self._select_tacklers(yards_gained, potential_tacklers)
+
         for tackler_info in tacklers:
             player, is_assisted = tackler_info
             tackler_stats = create_player_stats_from_player(player, team_id=self.defensive_team_id)
             tackler_stats.add_tackle(assisted=is_assisted)
+
+            # Add TFL for negative yardage plays
+            if yards_gained < 0:
+                tackler_stats.tackles_for_loss = 1
+
             player_stats.append(tackler_stats)
+
+        # Add sacks for significant negative yardage plays (TFL of 5+ yards likely indicates sack)
+        if yards_gained <= -5:
+            # Defensive line players more likely to get sacks
+            potential_sackers = defensive_line + [p for p in linebackers if "outside" in p.primary_position.lower()]
+            if potential_sackers:
+                sacker = random.choice(potential_sackers)
+
+                # Check if sacker already has stats object
+                existing_stat = None
+                for stat in player_stats:
+                    if stat.player_name == sacker.name:
+                        existing_stat = stat
+                        break
+
+                if existing_stat:
+                    existing_stat.sacks += 1.0
+                else:
+                    sacker_stats = create_player_stats_from_player(sacker, team_id=self.defensive_team_id)
+                    sacker_stats.sacks = 1.0
+                    player_stats.append(sacker_stats)
         
         return [stats for stats in player_stats if stats.get_total_stats()]
-    
+
+    def _attribute_advanced_oline_stats(self, yards_gained: int, offensive_line: List) -> List[PlayerStats]:
+        """
+        Attribute comprehensive offensive line statistics for run plays
+
+        Args:
+            yards_gained: Yards gained on the run play
+            offensive_line: List of offensive line players
+
+        Returns:
+            List of PlayerStats objects for offensive linemen with comprehensive stats
+        """
+        oline_stats = []
+
+        # Get configuration for O-line attribution
+        stats_config = config.get_statistical_attribution_config('run_play')
+        blocking_config = stats_config.get('blocking', {})
+
+        # Base configuration values
+        min_blockers = blocking_config.get('min_blockers', 3)
+        max_blockers = blocking_config.get('max_blockers', 5)
+        base_success_rate = blocking_config.get('base_success_rate', 0.75)
+
+        # Advanced O-line thresholds
+        pancake_threshold = 8    # 8+ yard runs can generate pancakes
+        big_run_threshold = 15   # 15+ yard runs are "big runs"
+        tfl_threshold = -2       # -2 yards or worse is potential missed assignment
+
+        # Select participating blockers (more for longer runs)
+        if yards_gained >= big_run_threshold:
+            num_blockers = min(len(offensive_line), max_blockers)  # All hands on deck for big runs
+        elif yards_gained >= pancake_threshold:
+            num_blockers = min(len(offensive_line), random.randint(max_blockers-1, max_blockers))
+        else:
+            num_blockers = min(len(offensive_line), random.randint(min_blockers, max_blockers))
+
+        selected_blockers = random.sample(offensive_line, num_blockers)
+
+        for i, blocker in enumerate(selected_blockers):
+            blocker_stats = create_player_stats_from_player(blocker, team_id=self.offensive_team_id)
+
+            # Calculate run blocking grade based on play outcome
+            run_blocking_grade = self._calculate_run_blocking_grade(yards_gained, i == 0)  # Lead blocker gets extra credit
+            blocker_stats.set_run_blocking_grade(run_blocking_grade)
+
+            # Determine block outcome and advanced stats
+            success_rate = base_success_rate + (yards_gained * 0.04)  # Better success rate for longer runs
+            is_successful_block = random.random() < success_rate
+
+            if is_successful_block:
+                blocker_stats.add_block(successful=True)
+
+                # Pancake opportunities on long runs
+                if yards_gained >= pancake_threshold:
+                    pancake_chance = self._calculate_pancake_chance(yards_gained, blocker)
+                    if random.random() < pancake_chance:
+                        blocker_stats.add_pancake()
+
+                # Double team blocks on power runs (short yardage, goal line)
+                if 1 <= yards_gained <= 4 and len(selected_blockers) >= 4:
+                    if random.random() < 0.15:  # 15% chance of double team credit
+                        blocker_stats.add_double_team_block()
+
+                # Downfield blocks on big runs
+                if yards_gained >= big_run_threshold and i < 2:  # Lead blockers
+                    if random.random() < 0.3:  # 30% chance
+                        blocker_stats.add_downfield_block()
+
+            else:
+                blocker_stats.add_block(successful=False)
+
+                # Missed assignments on negative plays
+                if yards_gained <= tfl_threshold:
+                    if random.random() < 0.25:  # 25% chance of missed assignment on TFL
+                        blocker_stats.add_missed_assignment()
+
+            oline_stats.append(blocker_stats)
+
+        return oline_stats
+
+    def _calculate_run_blocking_grade(self, yards_gained: int, is_lead_blocker: bool = False) -> float:
+        """
+        Calculate run blocking grade based on play outcome
+
+        Args:
+            yards_gained: Yards gained on the play
+            is_lead_blocker: Whether this is the lead/key blocker
+
+        Returns:
+            Grade from 0-100
+        """
+        base_grade = 50.0  # Average grade
+
+        # Adjust based on yards gained
+        if yards_gained >= 15:
+            base_grade = 85.0  # Excellent
+        elif yards_gained >= 8:
+            base_grade = 75.0  # Good
+        elif yards_gained >= 4:
+            base_grade = 65.0  # Above average
+        elif yards_gained >= 1:
+            base_grade = 55.0  # Slightly above average
+        elif yards_gained == 0:
+            base_grade = 45.0  # Below average
+        elif yards_gained >= -2:
+            base_grade = 35.0  # Poor
+        else:
+            base_grade = 25.0  # Very poor
+
+        # Lead blocker bonus
+        if is_lead_blocker:
+            base_grade += 5.0
+
+        # Add some randomness
+        grade = base_grade + random.uniform(-5.0, 5.0)
+
+        return max(0.0, min(100.0, grade))
+
+    def _calculate_pancake_chance(self, yards_gained: int, blocker) -> float:
+        """
+        Calculate chance of pancake block based on play outcome and player attributes
+
+        Args:
+            yards_gained: Yards gained on the play
+            blocker: The blocking player
+
+        Returns:
+            Probability of pancake (0.0 to 1.0)
+        """
+        base_chance = 0.0
+
+        # Base chance increases with yards gained
+        if yards_gained >= 20:
+            base_chance = 0.25  # 25% chance on huge runs
+        elif yards_gained >= 15:
+            base_chance = 0.15  # 15% chance on big runs
+        elif yards_gained >= 10:
+            base_chance = 0.08  # 8% chance on good runs
+        elif yards_gained >= 8:
+            base_chance = 0.04  # 4% chance on decent runs
+
+        # Adjust based on player attributes if available
+        if hasattr(blocker, 'ratings'):
+            strength = blocker.get_rating('strength') if hasattr(blocker, 'get_rating') else 70
+            physicality = blocker.get_rating('physicality') if hasattr(blocker, 'get_rating') else 70
+
+            # Elite strength players get pancake bonus
+            if strength >= 90:
+                base_chance *= 1.5
+            elif strength >= 80:
+                base_chance *= 1.2
+            elif strength <= 60:
+                base_chance *= 0.5
+
+        return min(0.3, base_chance)  # Cap at 30% max chance
+
     def _find_player_by_position(self, position: str):
         """Find first player with specified position"""
         for player in self.offensive_players:
@@ -325,3 +526,44 @@ class RunPlaySimulator:
             tacklers.append((primary_tackler, False))
         
         return tacklers
+
+    def _track_snaps_for_all_players(self, player_stats: List[PlayerStats]) -> List[PlayerStats]:
+        """
+        Track snaps for ALL 22 players on the field during this run play
+
+        Args:
+            player_stats: List of PlayerStats objects (may be empty or contain only players with statistical attribution)
+
+        Returns:
+            Updated list of PlayerStats objects ensuring all 22 players have snap tracking
+        """
+        # Create a dictionary to track existing PlayerStats objects by player name
+        existing_stats = {stats.player_name: stats for stats in player_stats}
+
+        # Track offensive snaps for all 11 offensive players
+        for player in self.offensive_players:
+            player_name = player.name
+            if player_name in existing_stats:
+                # Player already has stats object, just add the snap
+                existing_stats[player_name].add_offensive_snap()
+            else:
+                # Create new PlayerStats object for this player
+                new_stats = create_player_stats_from_player(player, team_id=self.offensive_team_id)
+                new_stats.add_offensive_snap()
+                existing_stats[player_name] = new_stats
+                player_stats.append(new_stats)
+
+        # Track defensive snaps for all 11 defensive players
+        for player in self.defensive_players:
+            player_name = player.name
+            if player_name in existing_stats:
+                # Player already has stats object, just add the snap
+                existing_stats[player_name].add_defensive_snap()
+            else:
+                # Create new PlayerStats object for this player
+                new_stats = create_player_stats_from_player(player, team_id=self.defensive_team_id)
+                new_stats.add_defensive_snap()
+                existing_stats[player_name] = new_stats
+                player_stats.append(new_stats)
+
+        return player_stats

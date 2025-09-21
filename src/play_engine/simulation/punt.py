@@ -800,7 +800,12 @@ class PuntSimulator:
                     punter_stats.punts_inside_20 = 1  # Assume good placement
             
             result.player_stats[self.punter.name] = punter_stats
-        
+
+        # Punt Protection Statistics (Offensive Line)
+        protection_stats = self._attribute_punt_protection_stats(result)
+        for player_name, stats in protection_stats.items():
+            result.player_stats[player_name] = stats
+
         # Returner statistics
         if self.returner and result.outcome in [PuntOutcome.PUNT_RETURN, PuntOutcome.FAIR_CATCH, PuntOutcome.MUFFED]:
             returner_stats = create_player_stats_from_player(self.returner)
@@ -836,6 +841,132 @@ class PuntSimulator:
                     coverage_stats.solo_tackles = 1
             
             result.player_stats[player.name] = coverage_stats
+
+        # Track special teams snaps for ALL 22 players on the field
+        self._track_special_teams_snaps_for_all_players(result)
+
+    def _attribute_punt_protection_stats(self, result: 'PuntResult') -> Dict[str, PlayerStats]:
+        """
+        Attribute comprehensive punt protection statistics to offensive line players
+
+        Args:
+            result: PuntResult containing punt outcome information
+
+        Returns:
+            Dictionary mapping player names to PlayerStats objects with punt protection stats
+        """
+        protection_stats = {}
+
+        # Get offensive line players for punt protection
+        # In punt formation, typically 5-7 players are involved in protection
+        offensive_players = [p for p in self.punting_team if hasattr(p, 'primary_position')]
+        protection_positions = ['left_tackle', 'left_guard', 'center', 'right_guard', 'right_tackle',
+                              'tight_end', 'fullback', 'linebacker']  # LBs often help in punt protection
+
+        protection_players = []
+        for player in offensive_players:
+            if any(pos in player.primary_position.lower() for pos in protection_positions):
+                protection_players.append(player)
+
+        # Limit to realistic punt protection unit size
+        max_protectors = min(7, len(protection_players))
+        if protection_players:
+            selected_protectors = random.sample(protection_players, min(max_protectors, len(protection_players)))
+
+            for protector in selected_protectors:
+                protector_stats = create_player_stats_from_player(protector)
+
+                # Punt protection stats based on outcome
+                if result.blocked:
+                    # Blocked punt - someone missed assignment
+                    if random.random() < 0.3:  # 30% chance this protector allowed block
+                        protector_stats.blocks_allowed += 1
+                        protector_stats.add_missed_assignment()
+                    protector_stats.add_block(successful=False)
+                else:
+                    # Good protection - successful punt
+                    protector_stats.add_block(successful=True)
+
+                    # Calculate punt protection grade
+                    protection_grade = self._calculate_punt_protection_grade(result)
+                    protector_stats.set_pass_blocking_efficiency(protection_grade)  # Use pass blocking efficiency for punt protection
+
+                    # Pancake opportunities on excellent protection (coffin corner punts)
+                    if result.outcome in [PuntOutcome.COFFIN_CORNER, PuntOutcome.DOWNED]:
+                        if random.random() < 0.05:  # 5% chance of pancake on excellent punt
+                            protector_stats.add_pancake()
+
+                protection_stats[protector.name] = protector_stats
+
+        return protection_stats
+
+    def _calculate_punt_protection_grade(self, result: 'PuntResult') -> float:
+        """
+        Calculate punt protection grade based on punt outcome
+
+        Args:
+            result: PuntResult containing punt information
+
+        Returns:
+            Protection grade (0-100)
+        """
+        base_grade = 50.0
+
+        if result.blocked:
+            base_grade = 20.0  # Very poor - punt was blocked
+        elif result.outcome == PuntOutcome.MUFFED:
+            base_grade = 75.0  # Good protection - returner error
+        elif result.outcome in [PuntOutcome.COFFIN_CORNER, PuntOutcome.DOWNED]:
+            base_grade = 85.0  # Excellent - perfect punt execution
+        elif result.outcome == PuntOutcome.TOUCHBACK:
+            base_grade = 70.0  # Good - clean punt but maybe too much distance
+        elif result.outcome == PuntOutcome.PUNT_RETURN:
+            # Grade based on return yards allowed
+            if result.return_yards <= 5:
+                base_grade = 80.0  # Excellent coverage
+            elif result.return_yards <= 10:
+                base_grade = 70.0  # Good coverage
+            elif result.return_yards <= 15:
+                base_grade = 60.0  # Average coverage
+            else:
+                base_grade = 45.0  # Poor coverage
+        else:
+            base_grade = 65.0  # Fair catch or other neutral outcome
+
+        # Add some randomness
+        grade = base_grade + random.uniform(-5.0, 5.0)
+        return max(0.0, min(100.0, grade))
+
+    def _track_special_teams_snaps_for_all_players(self, result: 'PuntResult'):
+        """
+        Track special teams snaps for ALL 22 players on the field during this punt play
+
+        Args:
+            result: PuntResult object with player_stats dictionary
+        """
+        # Track special teams snaps for all 11 offensive players (punt unit)
+        for player in self.offensive_players:
+            player_name = player.name
+            if player_name in result.player_stats:
+                # Player already has stats object, just add the snap
+                result.player_stats[player_name].add_special_teams_snap()
+            else:
+                # Create new PlayerStats object for this player
+                new_stats = create_player_stats_from_player(player)
+                new_stats.add_special_teams_snap()
+                result.player_stats[player_name] = new_stats
+
+        # Track special teams snaps for all 11 defensive players (punt return unit)
+        for player in self.defensive_players:
+            player_name = player.name
+            if player_name in result.player_stats:
+                # Player already has stats object, just add the snap
+                result.player_stats[player_name].add_special_teams_snap()
+            else:
+                # Create new PlayerStats object for this player
+                new_stats = create_player_stats_from_player(player)
+                new_stats.add_special_teams_snap()
+                result.player_stats[player_name] = new_stats
 
 
 class PuntPhysics:

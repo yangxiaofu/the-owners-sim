@@ -13,6 +13,8 @@ from .game_manager import GameManager
 from .game_loop_controller import GameLoopController, GameResult, DriveResult
 from .drive_transition_manager import DriveTransitionManager
 from .overtime_manager import OvertimeType, create_overtime_manager
+from ..persistence.game_statistics import GameStatisticsService
+from ..database.connection import DatabaseConnection
 import json
 from pathlib import Path
 import time
@@ -27,14 +29,17 @@ class FullGameSimulator:
     added piece by piece for easy testing and development.
     """
     
-    def __init__(self, away_team_id: int, home_team_id: int, overtime_type: str = "regular_season"):
+    def __init__(self, away_team_id: int, home_team_id: int, overtime_type: str = "regular_season", enable_persistence: bool = True, database_path: Optional[str] = None, dynasty_id: Optional[str] = None):
         """
         Initialize game simulator with two teams
-        
+
         Args:
             away_team_id: Numerical team ID for away team (1-32)
             home_team_id: Numerical team ID for home team (1-32)
             overtime_type: Type of overtime rules ("regular_season" or "playoffs")
+            enable_persistence: Whether to enable statistics persistence (default: True)
+            database_path: Optional path to database file (default: "data/database/nfl_simulation.db")
+            dynasty_id: Optional dynasty identifier for statistics isolation (default: "default_dynasty")
         """
         # Load team data
         self.away_team = get_team_by_id(away_team_id)
@@ -54,7 +59,16 @@ class FullGameSimulator:
         
         # Store overtime type for game simulation
         self.overtime_type = OvertimeType.PLAYOFFS if overtime_type == "playoffs" else OvertimeType.REGULAR_SEASON
-        
+
+        # Store persistence settings
+        self._persistence_enabled = enable_persistence
+
+        # Store database configuration
+        self._database_path = database_path or "data/database/nfl_simulation.db"
+
+        # Store dynasty configuration
+        self._dynasty_id = dynasty_id or "default_dynasty"
+
         # Load team rosters
         self.away_roster = TeamRosterGenerator.load_team_roster(away_team_id)
         self.home_roster = TeamRosterGenerator.load_team_roster(home_team_id)
@@ -75,7 +89,19 @@ class FullGameSimulator:
         
         print(f"   Away Coaching Staff: {self.away_coaching_staff['head_coach']['name']}")
         print(f"   Home Coaching Staff: {self.home_coaching_staff['head_coach']['name']}")
-        
+
+        # Initialize game statistics service for immediate persistence (if enabled)
+        if self._persistence_enabled:
+            try:
+                self.statistics_service = self._create_statistics_service()
+                print(f"   Statistics Persistence: Enabled (database: {self._database_path}, dynasty: {self._dynasty_id})")
+            except Exception as e:
+                print(f"⚠️  Statistics service initialization failed: {e}")
+                self.statistics_service = None
+        else:
+            self.statistics_service = None
+            print(f"   Statistics Persistence: Disabled")
+
         # Start game (includes coin toss)
         self.game_manager.start_game()
         
@@ -86,7 +112,138 @@ class FullGameSimulator:
         print(f"   Receiving Team: {receiving_team}")
         print(f"   Game Status: {self.game_manager.get_game_state().phase.value}")
 
-    
+    def _create_statistics_service(self) -> GameStatisticsService:
+        """
+        Create a statistics service with the configured database path.
+
+        Returns:
+            Configured GameStatisticsService instance
+        """
+        # Create database connection with custom path
+        database_connection = DatabaseConnection(db_path=self._database_path)
+
+        # Create statistics service with custom database
+        return GameStatisticsService.create_default(database_connection=database_connection)
+
+    @property
+    def persistence(self) -> bool:
+        """
+        Get or set whether statistics persistence is enabled.
+
+        Returns:
+            bool: True if persistence is enabled, False otherwise
+        """
+        return self._persistence_enabled
+
+    @persistence.setter
+    def persistence(self, enabled: bool) -> None:
+        """
+        Enable or disable statistics persistence.
+
+        When enabling persistence, creates the statistics service if needed.
+        When disabling, sets the service to None to prevent persistence.
+
+        Args:
+            enabled: True to enable persistence, False to disable
+        """
+        if enabled == self._persistence_enabled:
+            return  # No change needed
+
+        self._persistence_enabled = enabled
+
+        if enabled:
+            # Enable persistence - create service if needed
+            if self.statistics_service is None:
+                try:
+                    self.statistics_service = self._create_statistics_service()
+                    print(f"✅ Statistics persistence enabled (database: {self._database_path}, dynasty: {self._dynasty_id})")
+                except Exception as e:
+                    print(f"⚠️  Failed to enable statistics persistence: {e}")
+                    self.statistics_service = None
+                    self._persistence_enabled = False
+        else:
+            # Disable persistence
+            self.statistics_service = None
+            print(f"🔄 Statistics persistence disabled")
+
+    @property
+    def database_path(self) -> str:
+        """
+        Get or set the database path for statistics persistence.
+
+        Returns:
+            str: Current database path
+        """
+        return self._database_path
+
+    @database_path.setter
+    def database_path(self, path: str) -> None:
+        """
+        Set the database path for statistics persistence.
+
+        When persistence is enabled, changing the database path will recreate
+        the statistics service with the new database connection.
+
+        Args:
+            path: Path to the database file
+        """
+        if path == self._database_path:
+            return  # No change needed
+
+        old_path = self._database_path
+        self._database_path = path
+
+        # If persistence is currently enabled, recreate the service with new database
+        if self._persistence_enabled and self.statistics_service is not None:
+            try:
+                self.statistics_service = self._create_statistics_service()
+                print(f"🔄 Database changed from {old_path} to {self._database_path}")
+            except Exception as e:
+                print(f"⚠️  Failed to recreate statistics service with new database: {e}")
+                # Revert to old path if creation failed
+                self._database_path = old_path
+                self.statistics_service = None
+                self._persistence_enabled = False
+
+    @property
+    def dynasty_id(self) -> str:
+        """
+        Get or set the dynasty ID for statistics isolation.
+
+        Returns:
+            str: Current dynasty ID
+        """
+        return self._dynasty_id
+
+    @dynasty_id.setter
+    def dynasty_id(self, dynasty_id: str) -> None:
+        """
+        Set the dynasty ID for statistics isolation.
+
+        When persistence is enabled, changing the dynasty ID will recreate
+        the statistics service with the new dynasty context.
+
+        Args:
+            dynasty_id: Dynasty identifier for statistics isolation
+        """
+        if dynasty_id == self._dynasty_id:
+            return  # No change needed
+
+        old_dynasty_id = self._dynasty_id
+        self._dynasty_id = dynasty_id
+
+        # If persistence is currently enabled, recreate the service with new dynasty context
+        if self._persistence_enabled and self.statistics_service is not None:
+            try:
+                self.statistics_service = self._create_statistics_service()
+                print(f"🔄 Dynasty changed from {old_dynasty_id} to {self._dynasty_id}")
+            except Exception as e:
+                print(f"⚠️  Failed to recreate statistics service with new dynasty: {e}")
+                # Revert to old dynasty if creation failed
+                self._dynasty_id = old_dynasty_id
+                self.statistics_service = None
+                self._persistence_enabled = False
+
     def simulate_game(self, date=None) -> GameResult:
         """
         Main game simulation method - Complete NFL game simulation
@@ -134,7 +291,41 @@ class FullGameSimulator:
             # Store results for API access
             self._game_result = game_result
             self._simulation_duration = simulation_duration
-            
+
+            # Persist comprehensive game statistics immediately (if enabled)
+            if self.statistics_service and self._persistence_enabled:
+                try:
+                    print(f"\n📊 Persisting comprehensive game statistics...")
+
+                    # Create game metadata for statistics persistence
+                    game_metadata = {
+                        'game_id': f"game_{self.away_team_id}_{self.home_team_id}_{date.strftime('%Y%m%d') if date else 'today'}",
+                        'dynasty_id': self._dynasty_id,
+                        'away_team_id': self.away_team_id,
+                        'home_team_id': self.home_team_id,
+                        'date': date if date else time.strftime('%Y-%m-%d'),
+                        'week': 1,  # TODO: Get from season context
+                        'season_type': 'regular_season'  # TODO: Get from game context
+                    }
+
+                    # Persist statistics
+                    persistence_result = self.statistics_service.persist_game_statistics(
+                        game_result=game_result,
+                        game_metadata=game_metadata
+                    )
+
+                    if persistence_result.success:
+                        print(f"✅ Statistics persisted: {persistence_result.records_persisted} records "
+                             f"({persistence_result.processing_time_ms:.1f}ms)")
+                    else:
+                        print(f"⚠️  Statistics persistence failed: {persistence_result.errors}")
+
+                except Exception as e:
+                    print(f"❌ Statistics persistence error: {e}")
+                    # Don't let statistics failures break the game simulation
+            elif not self._persistence_enabled:
+                print(f"\n📊 Statistics persistence disabled - game data not saved")
+
             # Display final results
             print(f"\n🏁 GAME COMPLETE!")
             print(f"⏱️  Simulation Time: {simulation_duration:.2f} seconds")

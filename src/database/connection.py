@@ -166,7 +166,26 @@ class DatabaseConnection:
                 extra_points_attempted INTEGER DEFAULT 0,
                 punts INTEGER DEFAULT 0,
                 punt_yards INTEGER DEFAULT 0,
-                
+
+                -- Comprehensive Offensive Line stats
+                pancakes INTEGER DEFAULT 0,
+                sacks_allowed INTEGER DEFAULT 0,
+                hurries_allowed INTEGER DEFAULT 0,
+                pressures_allowed INTEGER DEFAULT 0,
+                run_blocking_grade REAL DEFAULT 0.0,
+                pass_blocking_efficiency REAL DEFAULT 0.0,
+                missed_assignments INTEGER DEFAULT 0,
+                holding_penalties INTEGER DEFAULT 0,
+                false_start_penalties INTEGER DEFAULT 0,
+                downfield_blocks INTEGER DEFAULT 0,
+                double_team_blocks INTEGER DEFAULT 0,
+                chip_blocks INTEGER DEFAULT 0,
+
+                -- Performance metrics
+                snap_counts_offense INTEGER DEFAULT 0,
+                snap_counts_defense INTEGER DEFAULT 0,
+                snap_counts_special_teams INTEGER DEFAULT 0,
+
                 fantasy_points REAL DEFAULT 0,
                 
                 FOREIGN KEY (game_id) REFERENCES games(game_id),

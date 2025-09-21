@@ -63,12 +63,13 @@ class Position:
 class Player:
     """Represents a football player with position and ratings"""
     
-    def __init__(self, name, number, primary_position, ratings=None):
+    def __init__(self, name, number, primary_position, ratings=None, team_id=None):
         self.name = name
         self.number = number
         self.primary_position = primary_position
         self.ratings = ratings or {}
-        
+        self.team_id = team_id  # Store team_id for proper team assignment
+
         # Set default ratings based on position
         self._set_default_ratings()
     

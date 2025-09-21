@@ -53,7 +53,14 @@ def simulate(play_engine_params):
             play_summary = simulator.simulate_run_play()
             
             # Convert to backward-compatible PlayResult with player stats
-            return PlayResult(outcome=OffensivePlayType.RUN, yards=play_summary.yards_gained, time_elapsed=play_summary.time_elapsed, player_stats_summary=play_summary)
+            return PlayResult(
+                outcome=OffensivePlayType.RUN,
+                yards=play_summary.yards_gained,
+                time_elapsed=play_summary.time_elapsed,
+                player_stats_summary=play_summary,
+                points=play_summary.points_scored,
+                is_scoring_play=(play_summary.points_scored > 0)
+            )
 
         case OffensivePlayType.PASS:
             # Use comprehensive PassPlaySimulator for realistic pass play simulation
@@ -74,7 +81,14 @@ def simulate(play_engine_params):
             play_summary = simulator.simulate_pass_play()
             
             # Convert to backward-compatible PlayResult with player stats
-            return PlayResult(outcome=OffensivePlayType.PASS, yards=play_summary.yards_gained, time_elapsed=play_summary.time_elapsed, player_stats_summary=play_summary)
+            return PlayResult(
+                outcome=OffensivePlayType.PASS,
+                yards=play_summary.yards_gained,
+                time_elapsed=play_summary.time_elapsed,
+                player_stats_summary=play_summary,
+                points=play_summary.points_scored,
+                is_scoring_play=(play_summary.points_scored > 0)
+            )
         
         case OffensivePlayType.FIELD_GOAL:
             # Use comprehensive FieldGoalSimulator for realistic field goal and fake attempts

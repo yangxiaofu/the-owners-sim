@@ -607,7 +607,41 @@ class KickoffSimulator:
             blocker_stats = create_player_stats_from_player(player, self.defensive_team_id)
             blocker_stats.special_teams_snaps = 1
             result.player_stats[player.name] = blocker_stats
-    
+
+        # Track special teams snaps for ALL 22 players on the field
+        self._track_special_teams_snaps_for_all_players(result)
+
+    def _track_special_teams_snaps_for_all_players(self, result):
+        """
+        Track special teams snaps for ALL 22 players on the field during this kickoff play
+
+        Args:
+            result: KickoffResult object with player_stats dictionary
+        """
+        # Track special teams snaps for all 11 offensive players (kickoff unit)
+        for player in self.offensive_players:
+            player_name = player.name
+            if player_name in result.player_stats:
+                # Player already has stats object, just add the snap
+                result.player_stats[player_name].add_special_teams_snap()
+            else:
+                # Create new PlayerStats object for this player
+                new_stats = create_player_stats_from_player(player, self.offensive_team_id)
+                new_stats.add_special_teams_snap()
+                result.player_stats[player_name] = new_stats
+
+        # Track special teams snaps for all 11 defensive players (kickoff return unit)
+        for player in self.defensive_players:
+            player_name = player.name
+            if player_name in result.player_stats:
+                # Player already has stats object, just add the snap
+                result.player_stats[player_name].add_special_teams_snap()
+            else:
+                # Create new PlayerStats object for this player
+                new_stats = create_player_stats_from_player(player, self.defensive_team_id)
+                new_stats.add_special_teams_snap()
+                result.player_stats[player_name] = new_stats
+
     # Helper methods
     def _get_kicker_tier(self) -> str:
         """Determine kicker tier based on attributes"""

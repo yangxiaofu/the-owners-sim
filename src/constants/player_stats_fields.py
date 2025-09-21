@@ -72,6 +72,18 @@ class PlayerStatField(Enum):
     PRESSURES_ALLOWED = "pressures_allowed"
     SACKS_ALLOWED = "sacks_allowed"
 
+    # Advanced offensive line stats
+    PANCAKES = "pancakes"
+    HURRIES_ALLOWED = "hurries_allowed"
+    RUN_BLOCKING_GRADE = "run_blocking_grade"
+    PASS_BLOCKING_EFFICIENCY = "pass_blocking_efficiency"
+    MISSED_ASSIGNMENTS = "missed_assignments"
+    HOLDING_PENALTIES = "holding_penalties"
+    FALSE_START_PENALTIES = "false_start_penalties"
+    DOWNFIELD_BLOCKS = "downfield_blocks"
+    DOUBLE_TEAM_BLOCKS = "double_team_blocks"
+    CHIP_BLOCKS = "chip_blocks"
+
     # Defensive stats
     TACKLES = "tackles"
     ASSISTED_TACKLES = "assisted_tackles"
@@ -98,6 +110,11 @@ class PlayerStatField(Enum):
     LONG_SNAPS = "long_snaps"
     SPECIAL_TEAMS_SNAPS = "special_teams_snaps"
     BLOCKS_ALLOWED = "blocks_allowed"
+
+    # Snap tracking (playing time)
+    OFFENSIVE_SNAPS = "offensive_snaps"
+    DEFENSIVE_SNAPS = "defensive_snaps"
+    TOTAL_SNAPS = "total_snaps"
 
     # Extra point stats
     EXTRA_POINTS_MADE = "extra_points_made"

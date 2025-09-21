@@ -1,0 +1,217 @@
+{
+  "version": "1.0",
+  "description": "Field mapping configuration for player statistics to database format",
+  "player_stats_mappings": {
+    "passing_yards": {
+      "db_field": "passing_yards",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": -50, "max": 1000}
+    },
+    "passing_tds": {
+      "db_field": "passing_tds",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 15}
+    },
+    "passing_attempts": {
+      "db_field": "passing_attempts",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 100}
+    },
+    "passing_completions": {
+      "db_field": "passing_completions",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 100}
+    },
+    "passing_interceptions": {
+      "db_field": "passing_interceptions",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 10}
+    },
+    "rushing_yards": {
+      "db_field": "rushing_yards",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": -50, "max": 500}
+    },
+    "rushing_tds": {
+      "db_field": "rushing_tds",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 10}
+    },
+    "rushing_attempts": {
+      "db_field": "rushing_attempts",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 50}
+    },
+    "receiving_yards": {
+      "db_field": "receiving_yards",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": -50, "max": 400}
+    },
+    "receiving_tds": {
+      "db_field": "receiving_tds",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 10}
+    },
+    "receptions": {
+      "db_field": "receptions",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 30}
+    },
+    "targets": {
+      "db_field": "targets",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 40}
+    },
+    "tackles": {
+      "db_field": "tackles_total",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 30}
+    },
+    "sacks": {
+      "db_field": "sacks",
+      "type": "decimal",
+      "precision": 1,
+      "default": 0.0,
+      "validation": {"min": 0.0, "max": 10.0}
+    },
+    "interceptions": {
+      "db_field": "interceptions",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 5}
+    },
+    "field_goals_made": {
+      "db_field": "field_goals_made",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 10}
+    },
+    "field_goals_attempted": {
+      "db_field": "field_goals_attempted",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 15}
+    },
+    "pancakes": {
+      "db_field": "pancakes",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 20},
+      "description": "Dominant blocks where lineman completely controls defender"
+    },
+    "sacks_allowed": {
+      "db_field": "sacks_allowed",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 10},
+      "description": "Number of sacks allowed by this offensive lineman"
+    },
+    "hurries_allowed": {
+      "db_field": "hurries_allowed",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 20},
+      "description": "QB rushed into quick throw but not sacked"
+    },
+    "pressures_allowed": {
+      "db_field": "pressures_allowed",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 25},
+      "description": "Total pressures allowed (sacks + hurries + hits)"
+    },
+    "run_blocking_grade": {
+      "db_field": "run_blocking_grade",
+      "type": "decimal",
+      "precision": 2,
+      "default": 0.0,
+      "validation": {"min": 0.0, "max": 100.0},
+      "description": "0-100 grade for run blocking effectiveness"
+    },
+    "pass_blocking_efficiency": {
+      "db_field": "pass_blocking_efficiency",
+      "type": "decimal",
+      "precision": 2,
+      "default": 0.0,
+      "validation": {"min": 0.0, "max": 100.0},
+      "description": "0-100 grade for pass protection effectiveness"
+    },
+    "missed_assignments": {
+      "db_field": "missed_assignments",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 10},
+      "description": "Mental errors and blown assignments"
+    },
+    "holding_penalties": {
+      "db_field": "holding_penalties",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 5},
+      "description": "Holding penalties committed"
+    },
+    "false_start_penalties": {
+      "db_field": "false_start_penalties",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 5},
+      "description": "False start penalties committed"
+    },
+    "downfield_blocks": {
+      "db_field": "downfield_blocks",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 15},
+      "description": "Blocks made downfield beyond line of scrimmage"
+    },
+    "double_team_blocks": {
+      "db_field": "double_team_blocks",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 20},
+      "description": "Blocks where player participated in double team"
+    },
+    "chip_blocks": {
+      "db_field": "chip_blocks",
+      "type": "integer",
+      "default": 0,
+      "validation": {"min": 0, "max": 10},
+      "description": "Quick chip blocks before releasing to route"
+    }
+  },
+  "position_specific_mappings": {
+    "offensive_line": {
+      "positions": ["left_tackle", "left_guard", "center", "right_guard", "right_tackle"],
+      "required_fields": ["pancakes", "sacks_allowed", "run_blocking_grade", "pass_blocking_efficiency"],
+      "priority_fields": ["hurries_allowed", "pressures_allowed", "missed_assignments"]
+    },
+    "skill_positions": {
+      "positions": ["quarterback", "running_back", "wide_receiver", "tight_end"],
+      "required_fields": ["passing_yards", "rushing_yards", "receiving_yards"],
+      "optional_o_line_fields": ["pancakes", "downfield_blocks"]
+    },
+    "defensive": {
+      "positions": ["defensive_end", "defensive_tackle", "linebacker", "cornerback", "safety"],
+      "required_fields": ["tackles", "sacks", "interceptions"],
+      "priority_fields": ["forced_fumbles", "passes_defended"]
+    },
+    "special_teams": {
+      "positions": ["kicker", "punter", "long_snapper"],
+      "required_fields": ["field_goals_made", "field_goals_attempted"],
+      "priority_fields": ["punts", "punt_yards"]
+    }
+  }
+}

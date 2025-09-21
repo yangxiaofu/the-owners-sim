@@ -496,10 +496,15 @@ class GameLoopController:
         assert home_team_stats is not None, f"No home team stats for team {self.home_team.team_id}"
         assert away_team_stats is not None, f"No away team stats for team {self.away_team.team_id}"
 
-        # Validate first PlayerGameStats object structure
+        # Validate first player statistics structure (dictionary format)
         first_player = player_stats[0]
-        assert hasattr(first_player, 'player_name'), f"PlayerGameStats object missing player_name: {type(first_player)}, available attributes: {dir(first_player)}"
-        assert hasattr(first_player, 'passing_yards'), f"PlayerGameStats object missing stats: {type(first_player)}, available attributes: {dir(first_player)}"
+        if isinstance(first_player, dict):
+            assert 'player_name' in first_player, f"Player stats dictionary missing player_name: {type(first_player)}, available keys: {list(first_player.keys())}"
+            assert 'passing_yards' in first_player, f"Player stats dictionary missing stats: {type(first_player)}, available keys: {list(first_player.keys())}"
+        else:
+            # Fallback for object format
+            assert hasattr(first_player, 'player_name'), f"PlayerGameStats object missing player_name: {type(first_player)}, available attributes: {dir(first_player)}"
+            assert hasattr(first_player, 'passing_yards'), f"PlayerGameStats object missing stats: {type(first_player)}, available attributes: {dir(first_player)}"
 
         return GameResult(
             home_team=self.home_team,
@@ -585,29 +590,19 @@ class GameLoopController:
         Fix team_id assignments for PlayerStats objects based on player names.
 
         The PlayerStatsAccumulator doesn't properly assign team_id, so we fix it here
-        by looking up real player names in the players.json database.
+        by looking up real player names using the PlayerDataLoader.
         """
         try:
-            # Load players.json database for team lookups
-            import json
-            import os
+            # Use PlayerDataLoader for team lookups (supports both team-based and single file formats)
+            from ..team_management.players.player_loader import get_player_loader
 
-            players_file = os.path.join(os.path.dirname(__file__), '../data/players.json')
-            if not os.path.exists(players_file):
-                print(f"⚠️ Players database not found: {players_file}")
-                return
-
-            with open(players_file, 'r') as f:
-                players_data = json.load(f)
+            player_loader = get_player_loader()
 
             # Create lookup dict: player_name -> team_id
             player_team_lookup = {}
-            players_dict = players_data.get('players', {})
-            for player_id, player in players_dict.items():
-                first_name = player.get('first_name', '')
-                last_name = player.get('last_name', '')
-                full_name = f"{first_name} {last_name}".strip()
-                team_id = player.get('team_id')
+            for player in player_loader._players_by_id.values():
+                full_name = player.full_name
+                team_id = player.team_id
                 if full_name and team_id:
                     player_team_lookup[full_name] = team_id
 

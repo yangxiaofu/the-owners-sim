@@ -1,0 +1,1085 @@
+{
+  "team_info": {
+    "team_id": 32,
+    "team_name": "Seattle Seahawks",
+    "city": "Seattle",
+    "abbreviation": "SEA",
+    "conference": "NFC",
+    "division": "West",
+    "head_coach": "Mike Macdonald",
+    "last_updated": "2025-09-21"
+  },
+  "players": {
+    "3200": {
+      "player_id": 3200,
+      "first_name": "Sam",
+      "last_name": "Darnold",
+      "number": 14,
+      "positions": ["quarterback"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 82,
+        "speed": 75,
+        "acceleration": 76,
+        "accuracy": 81,
+        "arm_strength": 87,
+        "discipline": 84,
+        "composure": 81,
+        "experience": 84,
+        "penalty_technique": 83,
+        "awareness": 83,
+        "leadership": 82
+      }
+    },
+    "3201": {
+      "player_id": 3201,
+      "first_name": "Drew",
+      "last_name": "Lock",
+      "number": 2,
+      "positions": ["quarterback"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 76,
+        "speed": 74,
+        "acceleration": 75,
+        "accuracy": 76,
+        "arm_strength": 89,
+        "discipline": 81,
+        "composure": 78,
+        "experience": 81,
+        "penalty_technique": 80,
+        "awareness": 79,
+        "leadership": 78
+      }
+    },
+    "3202": {
+      "player_id": 3202,
+      "first_name": "Kenneth",
+      "last_name": "Walker III",
+      "number": 9,
+      "positions": ["running_back"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 87,
+        "speed": 91,
+        "acceleration": 93,
+        "elusiveness": 89,
+        "power": 84,
+        "hands": 80,
+        "discipline": 84,
+        "composure": 82,
+        "experience": 79,
+        "penalty_technique": 83,
+        "awareness": 84
+      }
+    },
+    "3203": {
+      "player_id": 3203,
+      "first_name": "Zach",
+      "last_name": "Charbonnet",
+      "number": 26,
+      "positions": ["running_back"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 81,
+        "speed": 84,
+        "acceleration": 85,
+        "elusiveness": 82,
+        "power": 85,
+        "hands": 79,
+        "discipline": 82,
+        "composure": 80,
+        "experience": 77,
+        "penalty_technique": 81,
+        "awareness": 81
+      }
+    },
+    "3204": {
+      "player_id": 3204,
+      "first_name": "George",
+      "last_name": "Holani",
+      "number": 36,
+      "positions": ["running_back"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 74,
+        "speed": 82,
+        "acceleration": 83,
+        "elusiveness": 79,
+        "power": 78,
+        "hands": 76,
+        "discipline": 80,
+        "composure": 78,
+        "experience": 75,
+        "penalty_technique": 79,
+        "awareness": 77
+      }
+    },
+    "3205": {
+      "player_id": 3205,
+      "first_name": "Jaxon",
+      "last_name": "Smith-Njigba",
+      "number": 11,
+      "positions": ["wide_receiver"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 85,
+        "speed": 87,
+        "acceleration": 88,
+        "hands": 86,
+        "route_running": 87,
+        "discipline": 84,
+        "composure": 82,
+        "experience": 77,
+        "penalty_technique": 83,
+        "awareness": 84
+      }
+    },
+    "3206": {
+      "player_id": 3206,
+      "first_name": "Jake",
+      "last_name": "Bobo",
+      "number": 19,
+      "positions": ["wide_receiver"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 79,
+        "speed": 81,
+        "acceleration": 82,
+        "hands": 81,
+        "route_running": 80,
+        "discipline": 83,
+        "composure": 81,
+        "experience": 76,
+        "penalty_technique": 82,
+        "awareness": 80
+      }
+    },
+    "3207": {
+      "player_id": 3207,
+      "first_name": "Tory",
+      "last_name": "Horton",
+      "number": 15,
+      "positions": ["wide_receiver"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 76,
+        "speed": 84,
+        "acceleration": 85,
+        "hands": 78,
+        "route_running": 77,
+        "discipline": 82,
+        "composure": 79,
+        "experience": 74,
+        "penalty_technique": 81,
+        "awareness": 78
+      }
+    },
+    "3208": {
+      "player_id": 3208,
+      "first_name": "Dareke",
+      "last_name": "Young",
+      "number": 83,
+      "positions": ["wide_receiver"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 74,
+        "speed": 82,
+        "acceleration": 83,
+        "hands": 76,
+        "route_running": 75,
+        "discipline": 81,
+        "composure": 78,
+        "experience": 75,
+        "penalty_technique": 80,
+        "awareness": 77
+      }
+    },
+    "3209": {
+      "player_id": 3209,
+      "first_name": "Tyrone",
+      "last_name": "Broden",
+      "number": 85,
+      "positions": ["wide_receiver"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 72,
+        "speed": 80,
+        "acceleration": 81,
+        "hands": 74,
+        "route_running": 73,
+        "discipline": 80,
+        "composure": 77,
+        "experience": 73,
+        "penalty_technique": 79,
+        "awareness": 75
+      }
+    },
+    "3210": {
+      "player_id": 3210,
+      "first_name": "Cody",
+      "last_name": "White",
+      "number": 86,
+      "positions": ["wide_receiver"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 71,
+        "speed": 79,
+        "acceleration": 80,
+        "hands": 73,
+        "route_running": 72,
+        "discipline": 79,
+        "composure": 76,
+        "experience": 72,
+        "penalty_technique": 78,
+        "awareness": 74
+      }
+    },
+    "3211": {
+      "player_id": 3211,
+      "first_name": "Noah",
+      "last_name": "Fant",
+      "number": 87,
+      "positions": ["tight_end"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 83,
+        "speed": 83,
+        "acceleration": 84,
+        "hands": 85,
+        "route_running": 82,
+        "blocking": 80,
+        "discipline": 84,
+        "composure": 82,
+        "experience": 84,
+        "penalty_technique": 84,
+        "awareness": 83
+      }
+    },
+    "3212": {
+      "player_id": 3212,
+      "first_name": "AJ",
+      "last_name": "Barner",
+      "number": 88,
+      "positions": ["tight_end"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 76,
+        "speed": 79,
+        "acceleration": 80,
+        "hands": 78,
+        "route_running": 77,
+        "blocking": 78,
+        "discipline": 81,
+        "composure": 79,
+        "experience": 75,
+        "penalty_technique": 80,
+        "awareness": 78
+      }
+    },
+    "3213": {
+      "player_id": 3213,
+      "first_name": "Brady",
+      "last_name": "Russell",
+      "number": 81,
+      "positions": ["tight_end"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 74,
+        "speed": 77,
+        "acceleration": 78,
+        "hands": 76,
+        "route_running": 75,
+        "blocking": 76,
+        "discipline": 80,
+        "composure": 78,
+        "experience": 74,
+        "penalty_technique": 79,
+        "awareness": 76
+      }
+    },
+    "3214": {
+      "player_id": 3214,
+      "first_name": "Charles",
+      "last_name": "Cross",
+      "number": 67,
+      "positions": ["offensive_tackle"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 84,
+        "speed": 78,
+        "acceleration": 79,
+        "pass_blocking": 85,
+        "run_blocking": 82,
+        "discipline": 83,
+        "composure": 81,
+        "experience": 78,
+        "penalty_technique": 82,
+        "awareness": 83
+      }
+    },
+    "3215": {
+      "player_id": 3215,
+      "first_name": "Abraham",
+      "last_name": "Lucas",
+      "number": 72,
+      "positions": ["offensive_tackle"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 82,
+        "speed": 76,
+        "acceleration": 77,
+        "pass_blocking": 83,
+        "run_blocking": 84,
+        "discipline": 82,
+        "composure": 80,
+        "experience": 77,
+        "penalty_technique": 81,
+        "awareness": 82
+      }
+    },
+    "3216": {
+      "player_id": 3216,
+      "first_name": "Stone",
+      "last_name": "Forsythe",
+      "number": 70,
+      "positions": ["offensive_tackle"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 75,
+        "speed": 74,
+        "acceleration": 75,
+        "pass_blocking": 76,
+        "run_blocking": 77,
+        "discipline": 80,
+        "composure": 78,
+        "experience": 76,
+        "penalty_technique": 79,
+        "awareness": 77
+      }
+    },
+    "3217": {
+      "player_id": 3217,
+      "first_name": "Damien",
+      "last_name": "Lewis",
+      "number": 68,
+      "positions": ["guard"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 80,
+        "speed": 75,
+        "acceleration": 76,
+        "pass_blocking": 81,
+        "run_blocking": 82,
+        "discipline": 81,
+        "composure": 79,
+        "experience": 79,
+        "penalty_technique": 80,
+        "awareness": 80
+      }
+    },
+    "3218": {
+      "player_id": 3218,
+      "first_name": "Anthony",
+      "last_name": "Bradford",
+      "number": 75,
+      "positions": ["guard"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 77,
+        "speed": 74,
+        "acceleration": 75,
+        "pass_blocking": 78,
+        "run_blocking": 79,
+        "discipline": 80,
+        "composure": 78,
+        "experience": 76,
+        "penalty_technique": 79,
+        "awareness": 78
+      }
+    },
+    "3219": {
+      "player_id": 3219,
+      "first_name": "Christian",
+      "last_name": "Haynes",
+      "number": 64,
+      "positions": ["guard"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 74,
+        "speed": 73,
+        "acceleration": 74,
+        "pass_blocking": 75,
+        "run_blocking": 76,
+        "discipline": 79,
+        "composure": 77,
+        "experience": 74,
+        "penalty_technique": 78,
+        "awareness": 76
+      }
+    },
+    "3220": {
+      "player_id": 3220,
+      "first_name": "Connor",
+      "last_name": "Williams",
+      "number": 55,
+      "positions": ["center"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 81,
+        "speed": 76,
+        "acceleration": 77,
+        "pass_blocking": 82,
+        "run_blocking": 83,
+        "discipline": 82,
+        "composure": 80,
+        "experience": 83,
+        "penalty_technique": 81,
+        "awareness": 82
+      }
+    },
+    "3221": {
+      "player_id": 3221,
+      "first_name": "Olu",
+      "last_name": "Oluwatimi",
+      "number": 53,
+      "positions": ["center"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 76,
+        "speed": 74,
+        "acceleration": 75,
+        "pass_blocking": 77,
+        "run_blocking": 78,
+        "discipline": 80,
+        "composure": 78,
+        "experience": 75,
+        "penalty_technique": 79,
+        "awareness": 77
+      }
+    },
+    "3222": {
+      "player_id": 3222,
+      "first_name": "Leonard",
+      "last_name": "Williams",
+      "number": 99,
+      "positions": ["defensive_tackle"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 88,
+        "speed": 76,
+        "acceleration": 77,
+        "pass_rush": 87,
+        "run_defense": 90,
+        "discipline": 88,
+        "composure": 87,
+        "experience": 92,
+        "penalty_technique": 89,
+        "awareness": 89
+      }
+    },
+    "3223": {
+      "player_id": 3223,
+      "first_name": "Jarran",
+      "last_name": "Reed",
+      "number": 90,
+      "positions": ["defensive_tackle"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 84,
+        "speed": 74,
+        "acceleration": 75,
+        "pass_rush": 83,
+        "run_defense": 87,
+        "discipline": 85,
+        "composure": 84,
+        "experience": 88,
+        "penalty_technique": 86,
+        "awareness": 86
+      }
+    },
+    "3224": {
+      "player_id": 3224,
+      "first_name": "Byron",
+      "last_name": "Murphy II",
+      "number": 91,
+      "positions": ["defensive_tackle"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 79,
+        "speed": 76,
+        "acceleration": 77,
+        "pass_rush": 78,
+        "run_defense": 81,
+        "discipline": 81,
+        "composure": 79,
+        "experience": 75,
+        "penalty_technique": 80,
+        "awareness": 80
+      }
+    },
+    "3225": {
+      "player_id": 3225,
+      "first_name": "Johnathan",
+      "last_name": "Hankins",
+      "number": 95,
+      "positions": ["defensive_tackle"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 82,
+        "speed": 71,
+        "acceleration": 72,
+        "pass_rush": 78,
+        "run_defense": 88,
+        "discipline": 84,
+        "composure": 83,
+        "experience": 90,
+        "penalty_technique": 85,
+        "awareness": 85
+      }
+    },
+    "3226": {
+      "player_id": 3226,
+      "first_name": "Uchenna",
+      "last_name": "Nwosu",
+      "number": 7,
+      "positions": ["linebacker"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 85,
+        "speed": 84,
+        "acceleration": 85,
+        "pass_rush": 86,
+        "run_defense": 83,
+        "coverage": 80,
+        "discipline": 84,
+        "composure": 83,
+        "experience": 82,
+        "penalty_technique": 84,
+        "awareness": 85
+      }
+    },
+    "3227": {
+      "player_id": 3227,
+      "first_name": "Derick",
+      "last_name": "Hall",
+      "number": 58,
+      "positions": ["linebacker"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 80,
+        "speed": 82,
+        "acceleration": 83,
+        "pass_rush": 82,
+        "run_defense": 79,
+        "coverage": 76,
+        "discipline": 82,
+        "composure": 80,
+        "experience": 77,
+        "penalty_technique": 81,
+        "awareness": 81
+      }
+    },
+    "3228": {
+      "player_id": 3228,
+      "first_name": "Boye",
+      "last_name": "Mafe",
+      "number": 53,
+      "positions": ["linebacker"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 82,
+        "speed": 83,
+        "acceleration": 84,
+        "pass_rush": 84,
+        "run_defense": 81,
+        "coverage": 78,
+        "discipline": 83,
+        "composure": 81,
+        "experience": 78,
+        "penalty_technique": 82,
+        "awareness": 82
+      }
+    },
+    "3229": {
+      "player_id": 3229,
+      "first_name": "Ernest",
+      "last_name": "Jones IV",
+      "number": 13,
+      "positions": ["linebacker"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 83,
+        "speed": 79,
+        "acceleration": 80,
+        "pass_rush": 76,
+        "run_defense": 86,
+        "coverage": 82,
+        "discipline": 85,
+        "composure": 83,
+        "experience": 79,
+        "penalty_technique": 84,
+        "awareness": 84
+      }
+    },
+    "3230": {
+      "player_id": 3230,
+      "first_name": "Tyrice",
+      "last_name": "Knight",
+      "number": 48,
+      "positions": ["linebacker"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 76,
+        "speed": 81,
+        "acceleration": 82,
+        "pass_rush": 74,
+        "run_defense": 79,
+        "coverage": 78,
+        "discipline": 81,
+        "composure": 79,
+        "experience": 75,
+        "penalty_technique": 80,
+        "awareness": 78
+      }
+    },
+    "3231": {
+      "player_id": 3231,
+      "first_name": "Drake",
+      "last_name": "Thomas",
+      "number": 42,
+      "positions": ["linebacker"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 74,
+        "speed": 80,
+        "acceleration": 81,
+        "pass_rush": 72,
+        "run_defense": 77,
+        "coverage": 76,
+        "discipline": 80,
+        "composure": 78,
+        "experience": 74,
+        "penalty_technique": 79,
+        "awareness": 76
+      }
+    },
+    "3232": {
+      "player_id": 3232,
+      "first_name": "Devon",
+      "last_name": "Witherspoon",
+      "number": 21,
+      "positions": ["cornerback"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 86,
+        "speed": 89,
+        "acceleration": 90,
+        "coverage": 87,
+        "press": 84,
+        "discipline": 84,
+        "composure": 83,
+        "experience": 76,
+        "penalty_technique": 83,
+        "awareness": 85
+      }
+    },
+    "3233": {
+      "player_id": 3233,
+      "first_name": "Riq",
+      "last_name": "Woolen",
+      "number": 27,
+      "positions": ["cornerback"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 84,
+        "speed": 91,
+        "acceleration": 92,
+        "coverage": 83,
+        "press": 85,
+        "discipline": 82,
+        "composure": 81,
+        "experience": 78,
+        "penalty_technique": 81,
+        "awareness": 83
+      }
+    },
+    "3234": {
+      "player_id": 3234,
+      "first_name": "Julian",
+      "last_name": "Love",
+      "number": 20,
+      "positions": ["safety"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 82,
+        "speed": 85,
+        "acceleration": 86,
+        "coverage": 83,
+        "tackling": 84,
+        "discipline": 85,
+        "composure": 83,
+        "experience": 81,
+        "penalty_technique": 84,
+        "awareness": 85
+      }
+    },
+    "3235": {
+      "player_id": 3235,
+      "first_name": "Coby",
+      "last_name": "Bryant",
+      "number": 8,
+      "positions": ["cornerback"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 79,
+        "speed": 84,
+        "acceleration": 85,
+        "coverage": 80,
+        "press": 78,
+        "discipline": 82,
+        "composure": 80,
+        "experience": 77,
+        "penalty_technique": 81,
+        "awareness": 81
+      }
+    },
+    "3236": {
+      "player_id": 3236,
+      "first_name": "Josh",
+      "last_name": "Jobe",
+      "number": 29,
+      "positions": ["cornerback"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 77,
+        "speed": 82,
+        "acceleration": 83,
+        "coverage": 78,
+        "press": 76,
+        "discipline": 81,
+        "composure": 79,
+        "experience": 76,
+        "penalty_technique": 80,
+        "awareness": 79
+      }
+    },
+    "3237": {
+      "player_id": 3237,
+      "first_name": "Rayshawn",
+      "last_name": "Jenkins",
+      "number": 23,
+      "positions": ["safety"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 80,
+        "speed": 82,
+        "acceleration": 83,
+        "coverage": 81,
+        "tackling": 82,
+        "discipline": 83,
+        "composure": 82,
+        "experience": 85,
+        "penalty_technique": 83,
+        "awareness": 84
+      }
+    },
+    "3238": {
+      "player_id": 3238,
+      "first_name": "K'Von",
+      "last_name": "Wallace",
+      "number": 36,
+      "positions": ["safety"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 76,
+        "speed": 83,
+        "acceleration": 84,
+        "coverage": 77,
+        "tackling": 78,
+        "discipline": 81,
+        "composure": 79,
+        "experience": 78,
+        "penalty_technique": 80,
+        "awareness": 80
+      }
+    },
+    "3239": {
+      "player_id": 3239,
+      "first_name": "Artie",
+      "last_name": "Burns",
+      "number": 25,
+      "positions": ["cornerback"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 75,
+        "speed": 85,
+        "acceleration": 86,
+        "coverage": 76,
+        "press": 74,
+        "discipline": 80,
+        "composure": 78,
+        "experience": 82,
+        "penalty_technique": 79,
+        "awareness": 78
+      }
+    },
+    "3240": {
+      "player_id": 3240,
+      "first_name": "Jason",
+      "last_name": "Myers",
+      "number": 5,
+      "positions": ["kicker"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 85,
+        "kick_power": 88,
+        "kick_accuracy": 87,
+        "discipline": 89,
+        "composure": 88,
+        "experience": 86,
+        "penalty_technique": 90,
+        "awareness": 87
+      }
+    },
+    "3241": {
+      "player_id": 3241,
+      "first_name": "Michael",
+      "last_name": "Dickson",
+      "number": 4,
+      "positions": ["punter"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 87,
+        "punt_power": 90,
+        "punt_accuracy": 88,
+        "discipline": 88,
+        "composure": 87,
+        "experience": 83,
+        "penalty_technique": 89,
+        "awareness": 86
+      }
+    },
+    "3242": {
+      "player_id": 3242,
+      "first_name": "Chris",
+      "last_name": "Stoll",
+      "number": 57,
+      "positions": ["long_snapper"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 78,
+        "snap_accuracy": 85,
+        "blocking": 75,
+        "discipline": 87,
+        "composure": 84,
+        "experience": 82,
+        "penalty_technique": 86,
+        "awareness": 83
+      }
+    },
+    "3243": {
+      "player_id": 3243,
+      "first_name": "Kenny",
+      "last_name": "McIntosh",
+      "number": 25,
+      "positions": ["running_back"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 73,
+        "speed": 81,
+        "acceleration": 82,
+        "elusiveness": 78,
+        "power": 76,
+        "hands": 75,
+        "discipline": 80,
+        "composure": 78,
+        "experience": 74,
+        "penalty_technique": 79,
+        "awareness": 77
+      }
+    },
+    "3244": {
+      "player_id": 3244,
+      "first_name": "Josh",
+      "last_name": "Jones",
+      "number": 74,
+      "positions": ["guard"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 75,
+        "speed": 73,
+        "acceleration": 74,
+        "pass_blocking": 76,
+        "run_blocking": 77,
+        "discipline": 79,
+        "composure": 77,
+        "experience": 75,
+        "penalty_technique": 78,
+        "awareness": 77
+      }
+    },
+    "3245": {
+      "player_id": 3245,
+      "first_name": "Laken",
+      "last_name": "Tomlinson",
+      "number": 78,
+      "positions": ["guard"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 78,
+        "speed": 74,
+        "acceleration": 75,
+        "pass_blocking": 79,
+        "run_blocking": 80,
+        "discipline": 81,
+        "composure": 79,
+        "experience": 84,
+        "penalty_technique": 80,
+        "awareness": 81
+      }
+    },
+    "3246": {
+      "player_id": 3246,
+      "first_name": "Mike",
+      "last_name": "Morris",
+      "number": 94,
+      "positions": ["defensive_end"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 76,
+        "speed": 79,
+        "acceleration": 80,
+        "pass_rush": 78,
+        "run_defense": 77,
+        "discipline": 80,
+        "composure": 78,
+        "experience": 75,
+        "penalty_technique": 79,
+        "awareness": 78
+      }
+    },
+    "3247": {
+      "player_id": 3247,
+      "first_name": "Brandon",
+      "last_name": "Pili",
+      "number": 92,
+      "positions": ["defensive_tackle"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 74,
+        "speed": 71,
+        "acceleration": 72,
+        "pass_rush": 73,
+        "run_defense": 78,
+        "discipline": 79,
+        "composure": 77,
+        "experience": 74,
+        "penalty_technique": 78,
+        "awareness": 76
+      }
+    },
+    "3248": {
+      "player_id": 3248,
+      "first_name": "Jamie",
+      "last_name": "Sheriff",
+      "number": 44,
+      "positions": ["linebacker"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 72,
+        "speed": 78,
+        "acceleration": 79,
+        "pass_rush": 70,
+        "run_defense": 75,
+        "coverage": 74,
+        "discipline": 79,
+        "composure": 77,
+        "experience": 73,
+        "penalty_technique": 78,
+        "awareness": 75
+      }
+    },
+    "3249": {
+      "player_id": 3249,
+      "first_name": "Nehemiah",
+      "last_name": "Pritchett",
+      "number": 35,
+      "positions": ["cornerback"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 73,
+        "speed": 86,
+        "acceleration": 87,
+        "coverage": 74,
+        "press": 72,
+        "discipline": 79,
+        "composure": 77,
+        "experience": 73,
+        "penalty_technique": 78,
+        "awareness": 76
+      }
+    },
+    "3250": {
+      "player_id": 3250,
+      "first_name": "Ty",
+      "last_name": "Okada",
+      "number": 39,
+      "positions": ["safety"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 71,
+        "speed": 81,
+        "acceleration": 82,
+        "coverage": 72,
+        "tackling": 74,
+        "discipline": 78,
+        "composure": 76,
+        "experience": 72,
+        "penalty_technique": 77,
+        "awareness": 74
+      }
+    },
+    "3251": {
+      "player_id": 3251,
+      "first_name": "AJ",
+      "last_name": "Finley",
+      "number": 38,
+      "positions": ["safety"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 70,
+        "speed": 80,
+        "acceleration": 81,
+        "coverage": 71,
+        "tackling": 73,
+        "discipline": 77,
+        "composure": 75,
+        "experience": 71,
+        "penalty_technique": 76,
+        "awareness": 73
+      }
+    },
+    "3252": {
+      "player_id": 3252,
+      "first_name": "Jalen",
+      "last_name": "Milroe",
+      "number": 6,
+      "positions": ["quarterback"],
+      "team_id": 32,
+      "attributes": {
+        "overall": 72,
+        "speed": 86,
+        "acceleration": 87,
+        "accuracy": 70,
+        "arm_strength": 84,
+        "discipline": 78,
+        "composure": 75,
+        "experience": 70,
+        "penalty_technique": 77,
+        "awareness": 74,
+        "leadership": 76
+      }
+    }
+  }
+}

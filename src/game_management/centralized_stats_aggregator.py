@@ -320,15 +320,15 @@ class CentralizedStatsAggregator:
         
         return all_players
 
-    def get_player_game_statistics(self) -> List[PlayerGameStats]:
+    def get_player_game_statistics(self) -> List[Dict]:
         """
-        Convert accumulated PlayerStats to PlayerGameStats objects for persistence.
+        Convert accumulated PlayerStats to dictionary objects for persistence.
 
         This is the critical conversion method that bridges the gap between
-        simulation PlayerStats and persistence-ready PlayerGameStats.
+        simulation PlayerStats and persistence-ready data.
 
         Returns:
-            List of PlayerGameStats objects ready for database persistence
+            List of dictionary objects ready for database persistence
         """
         all_players = self.player_stats.get_all_players_with_stats()
         game_stats_list = []
@@ -338,38 +338,38 @@ class CentralizedStatsAggregator:
             if player_stats.team_id is None:
                 raise ValueError(f"Player {player_stats.player_name} ({player_stats.position}) has no team_id - team assignment is broken")
 
-            # Convert PlayerStats to PlayerGameStats with proper field mapping
-            game_stats = PlayerGameStats(
-                player_name=player_stats.player_name,
-                position=player_stats.position,
-                team_id=player_stats.team_id,  # No fallback - fail fast if None
+            # Convert PlayerStats to dictionary with proper field mapping
+            game_stats = {
+                "player_name": player_stats.player_name,
+                "position": player_stats.position,
+                "team_id": player_stats.team_id,  # No fallback - fail fast if None
 
                 # Offensive stats
-                passing_yards=player_stats.passing_yards,
-                passing_tds=player_stats.passing_tds,
-                passing_interceptions=player_stats.interceptions_thrown,
-                rushing_yards=player_stats.rushing_yards,
-                rushing_tds=player_stats.rushing_tds,
-                receiving_yards=player_stats.receiving_yards,
-                receiving_tds=player_stats.receiving_tds,
-                receptions=player_stats.receptions,
+                "passing_yards": player_stats.passing_yards,
+                "passing_tds": player_stats.passing_tds,
+                "passing_interceptions": player_stats.interceptions_thrown,
+                "rushing_yards": player_stats.rushing_yards,
+                "rushing_tds": player_stats.rushing_tds,
+                "receiving_yards": player_stats.receiving_yards,
+                "receiving_tds": player_stats.receiving_tds,
+                "receptions": player_stats.receptions,
 
                 # Defensive stats
-                tackles=player_stats.tackles,
-                sacks=player_stats.sacks,
-                interceptions=player_stats.interceptions,
-                pass_deflections=player_stats.passes_defended,
+                "tackles": player_stats.tackles,
+                "sacks": player_stats.sacks,
+                "interceptions": player_stats.interceptions,
+                "pass_deflections": player_stats.passes_defended,
 
                 # Special teams
-                field_goals_made=player_stats.field_goals_made,
-                field_goals_attempted=player_stats.field_goal_attempts,
-                extra_points_made=player_stats.extra_points_made,
-                extra_points_attempted=player_stats.extra_points_attempted,
+                "field_goals_made": player_stats.field_goals_made,
+                "field_goals_attempted": player_stats.field_goal_attempts,
+                "extra_points_made": player_stats.extra_points_made,
+                "extra_points_attempted": player_stats.extra_points_attempted,
 
                 # Performance metrics (basic defaults)
-                performance_rating=0.0,  # Could be calculated based on stats
-                snap_count=0  # Not tracked in PlayerStats currently
-            )
+                "performance_rating": 0.0,  # Could be calculated based on stats
+                "snap_count": 0  # Not tracked in PlayerStats currently
+            }
 
             game_stats_list.append(game_stats)
 

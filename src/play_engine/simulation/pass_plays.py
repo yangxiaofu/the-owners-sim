@@ -10,7 +10,7 @@ Implements enhanced multi-phase simulation with comprehensive NFL statistics:
 """
 
 import random
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional, Any
 from .stats import PlayerStats, PlayStatsSummary, create_player_stats_from_player
 from ..mechanics.formations import OffensiveFormation, DefensiveFormation
 from ..play_types.base_types import PlayType
@@ -81,10 +81,13 @@ class PassPlaySimulator:
         # Determine final play result
         final_yards = penalty_result.modified_yards if penalty_result.penalty_occurred else original_yards
         play_negated = penalty_result.play_negated if penalty_result.penalty_occurred else False
-        
+
         # Phase 3: Attribute comprehensive player statistics
         player_stats = self._attribute_player_stats(pass_outcome, penalty_result)
-        
+
+        # Phase 3B: Track snaps for ALL players on the field (offensive and defensive)
+        player_stats = self._track_snaps_for_all_players(player_stats)
+
         # Create comprehensive play summary
         summary = PlayStatsSummary(
             play_type=PlayType.PASS,
@@ -101,8 +104,31 @@ class PassPlaySimulator:
         
         for stats in player_stats:
             summary.add_player_stats(stats)
-        
+
+        # Add touchdown attribution if points were scored
+        self._add_touchdown_attribution(summary)
+
         return summary
+
+    def _add_touchdown_attribution(self, summary: PlayStatsSummary):
+        """Add touchdown attribution to player stats if points were scored"""
+        # DEBUG: Check what points_scored actually is
+        points = getattr(summary, 'points_scored', 0)
+        if summary.yards_gained > 15:  # Debug big gains
+            print(f"DEBUG PASS ATTRIBUTION: yards={summary.yards_gained}, points_scored={points}")
+
+        if points == 6:
+            print(f"🏈 TOUCHDOWN DETECTED in pass play! Adding passing/receiving TDs to player stats")
+            # This is a touchdown - add touchdown stats to appropriate players
+            for player_stat in summary.player_stats:
+                if player_stat.passing_attempts > 0:
+                    # QB threw the touchdown pass
+                    player_stat.add_passing_touchdown()
+                    print(f"✅ Added passing TD to {player_stat.player_name}")
+                elif player_stat.receptions > 0:
+                    # Receiver caught the touchdown pass
+                    player_stat.add_receiving_touchdown()
+                    print(f"✅ Added receiving TD to {player_stat.player_name}")
     
     def _simulate_pass_outcome(self) -> Dict:
         """
@@ -307,36 +333,91 @@ class PassPlaySimulator:
     
     def _select_target_receiver(self) -> Optional:
         """
-        Select which receiver is targeted based on formation and routes
-        
+        Select which receiver is targeted using realistic NFL target distribution
+
         Returns:
             Target receiver Player object or None
         """
-        # Find available receivers
-        receivers = self._find_players_by_positions([Position.WR, Position.TE])
-        
-        if not receivers:
+        # Find all available pass catchers
+        wr_players = self._find_players_by_positions([Position.WR])
+        te_players = self._find_players_by_positions([Position.TE])
+        rb_players = self._find_receiving_backs()
+
+        # Create weighted target pool
+        target_candidates = []
+
+        # Add WRs with base weight
+        for wr in wr_players:
+            weight = self._calculate_receiver_weight(wr, base_weight=1.0)
+            target_candidates.append((wr, weight))
+
+        # Add TEs with moderate weight
+        for te in te_players:
+            weight = self._calculate_receiver_weight(te, base_weight=0.6)
+            target_candidates.append((te, weight))
+
+        # Add receiving RBs with lower weight (check-downs, screens)
+        for rb in rb_players:
+            weight = self._calculate_receiver_weight(rb, base_weight=0.4)
+            target_candidates.append((rb, weight))
+
+        if not target_candidates:
             return None
-        
-        # Simple targeting based on position priority (can be enhanced later)
-        # WRs get targeted more frequently than TEs in most formations
-        wr_players = [p for p in receivers if p.primary_position == Position.WR]
-        te_players = [p for p in receivers if p.primary_position == Position.TE]
-        
-        # Use configured target selection probability
-        mechanics_config = config.get_play_mechanics_config('pass_play')
-        target_selection = mechanics_config.get('target_selection', {})
-        wr_target_probability = target_selection.get('primary_target_probability', 0.75)
-        
-        if wr_players and random.random() < wr_target_probability:
-            return random.choice(wr_players)
-        elif te_players:
-            return random.choice(te_players)
-        elif wr_players:
-            return random.choice(wr_players)
-        
-        return None
-    
+
+        # Use weighted random selection
+        return self._weighted_random_selection(target_candidates)
+
+    def _find_receiving_backs(self) -> List:
+        """Find running backs who can catch passes"""
+        rb_players = self._find_players_by_positions([Position.RB])
+        receiving_backs = []
+
+        for rb in rb_players:
+            # Check if RB has decent hands for receiving (threshold: 65+)
+            if hasattr(rb, 'ratings') and rb.get_rating('hands') >= 65:
+                receiving_backs.append(rb)
+            elif hasattr(rb, 'ratings'):  # Include all RBs if hands rating exists
+                receiving_backs.append(rb)
+
+        return receiving_backs
+
+    def _calculate_receiver_weight(self, player, base_weight: float = 1.0) -> float:
+        """Calculate target weight based on player ratings and position"""
+        weight = base_weight
+
+        if hasattr(player, 'ratings'):
+            # Use hands, route running, or overall rating to adjust weight
+            hands_rating = player.get_rating('hands')
+            overall_rating = player.get_rating('overall')
+
+            # Convert rating to weight multiplier (65-95 rating -> 0.8-1.3 multiplier)
+            primary_rating = hands_rating if hands_rating > 50 else overall_rating
+            rating_multiplier = 0.5 + (primary_rating / 100.0)
+            weight *= rating_multiplier
+
+        return max(weight, 0.1)  # Minimum weight to ensure all players can be targeted
+
+    def _weighted_random_selection(self, candidates: List[Tuple]) -> Optional:
+        """Select receiver using weighted random selection"""
+        if not candidates:
+            return None
+
+        total_weight = sum(weight for _, weight in candidates)
+        if total_weight <= 0:
+            return random.choice(candidates)[0]  # Fallback to equal probability
+
+        # Weighted random selection
+        random_value = random.random() * total_weight
+        current_weight = 0
+
+        for player, weight in candidates:
+            current_weight += weight
+            if random_value <= current_weight:
+                return player
+
+        # Fallback (should rarely happen)
+        return candidates[-1][0]
+
     def _determine_pass_completion(self, params: Dict, target_receiver, pressure_outcome: Dict) -> Dict:
         """
         Determine if pass is completed and calculate yards
@@ -432,11 +513,11 @@ class PassPlaySimulator:
     def _attribute_player_stats(self, pass_outcome: Dict, penalty_result: Optional[PenaltyResult] = None) -> List[PlayerStats]:
         """
         Attribute comprehensive NFL statistics to individual players
-        
+
         Args:
             pass_outcome: Pass play outcome details
             penalty_result: Penalty result if penalty occurred
-            
+
         Returns:
             List of PlayerStats objects for players who recorded stats
         """
@@ -445,9 +526,17 @@ class PassPlaySimulator:
         # Find key players
         quarterback = self._find_player_by_position(Position.QB)
         offensive_line = self._find_players_by_positions([Position.LT, Position.LG, Position.C, Position.RG, Position.RT])
-        pass_rushers = self._find_defensive_players_by_positions([Position.DE, Position.DT, Position.OLB])
-        linebackers = self._find_defensive_players_by_positions([Position.MIKE, Position.SAM, Position.WILL, Position.ILB])
-        defensive_backs = self._find_defensive_players_by_positions([Position.CB, Position.FS, Position.SS, Position.NCB])
+
+        # Include all position variations (specific and generic)
+        pass_rushers = self._find_defensive_players_by_positions([
+            Position.DE, Position.DT, Position.OLB, "defensive_end", "defensive_tackle", "nose_tackle"
+        ])
+        linebackers = self._find_defensive_players_by_positions([
+            Position.MIKE, Position.SAM, Position.WILL, Position.ILB, Position.OLB, "linebacker"
+        ])
+        defensive_backs = self._find_defensive_players_by_positions([
+            Position.CB, Position.FS, Position.SS, Position.NCB, "cornerback", "safety"
+        ])
         
         # QB Statistics
         if quarterback:
@@ -483,27 +572,10 @@ class PassPlaySimulator:
             
             player_stats.append(receiver_stats)
         
-        # Offensive Line Statistics (pass protection)
-        if offensive_line and not pass_outcome.get('qb_sacked'):
-            # Use configured blocking parameters
-            mechanics_config = config.get_play_mechanics_config('pass_play')
-            blocking_config = mechanics_config.get('blocking', {})
-            ol_modifiers = config.get_player_attribute_config('pass_play').get('offensive_line_modifiers', {})
-            
-            min_blockers = blocking_config.get('min_blockers', 2)
-            max_blockers = blocking_config.get('max_blockers', 3)
-            pressure_allowance = ol_modifiers.get('pressure_allowance_base', 0.3)
-            
-            num_blockers = min(len(offensive_line), random.randint(min_blockers, max_blockers))
-            selected_blockers = random.sample(offensive_line, num_blockers)
-            
-            for blocker in selected_blockers:
-                blocker_stats = create_player_stats_from_player(blocker, team_id=self.offensive_team_id)
-                blocker_stats.pass_blocks = 1
-                if pass_outcome.get('pressure_applied'):
-                    if random.random() < pressure_allowance:  # Configured chance blocker allowed pressure
-                        blocker_stats.pressures_allowed = 1
-                player_stats.append(blocker_stats)
+        # Comprehensive Offensive Line Pass Protection Statistics
+        if offensive_line and pass_outcome:
+            oline_stats = self._attribute_advanced_pass_protection_stats(pass_outcome, offensive_line)
+            player_stats.extend(oline_stats)
         
         # Pass Rush Statistics
         if pass_rushers:
@@ -519,6 +591,7 @@ class PassPlaySimulator:
                     rusher_stats = create_player_stats_from_player(rusher, team_id=self.defensive_team_id)
                     rusher_stats.sacks = 1 if len(sack_participants) == 1 else 0.5  # Split sack
                     rusher_stats.tackles_for_loss = 1
+                    rusher_stats.add_tackle()  # Sacks are tackles
                     player_stats.append(rusher_stats)
             elif pass_outcome.get('pressure_applied'):
                 # Select 1 player who applied pressure
@@ -552,7 +625,8 @@ class PassPlaySimulator:
                 player_stats.append(deflection_stats)
             elif pass_outcome.get('completed'):
                 # Select tackling players
-                tacklers = self._select_tacklers_after_catch(pass_outcome.get('yac', 0), defensive_backs + linebackers)
+                yac_yards = pass_outcome.get('yac', 0)
+                tacklers = self._select_tacklers_after_catch(yac_yards, defensive_backs + linebackers)
                 for tackler_info in tacklers:
                     player, is_assisted = tackler_info
                     tackler_stats = create_player_stats_from_player(player, team_id=self.defensive_team_id)
@@ -560,7 +634,186 @@ class PassPlaySimulator:
                     player_stats.append(tackler_stats)
         
         return [stats for stats in player_stats if self._has_meaningful_stats(stats)]
-    
+
+    def _attribute_advanced_pass_protection_stats(self, pass_outcome: Dict[str, Any], offensive_line: List) -> List[PlayerStats]:
+        """
+        Attribute comprehensive offensive line pass protection statistics
+
+        Args:
+            pass_outcome: Dictionary containing pass play results
+            offensive_line: List of offensive line players
+
+        Returns:
+            List of PlayerStats objects for offensive linemen with comprehensive pass protection stats
+        """
+        oline_stats = []
+
+        # Get configuration for pass protection
+        mechanics_config = config.get_play_mechanics_config('pass_play')
+        blocking_config = mechanics_config.get('blocking', {})
+
+        # Extract pass outcome information
+        qb_sacked = pass_outcome.get('qb_sacked', False)
+        pressure_applied = pass_outcome.get('pressure_applied', False)
+        yards_gained = pass_outcome.get('yards_gained', 0)
+        time_in_pocket = pass_outcome.get('time_in_pocket', 2.5)  # Default average pocket time
+
+        # Pass protection thresholds
+        clean_pocket_threshold = 3.0    # 3+ seconds is clean pocket
+        quick_pressure_threshold = 2.0  # Pressure in < 2 seconds is immediate
+        pancake_threshold = 4.0         # 4+ second pockets can generate pancakes
+
+        # Select participating pass protectors (all 5 O-line usually involved)
+        num_protectors = min(len(offensive_line), 5)  # Standard 5-man protection
+        selected_protectors = random.sample(offensive_line, num_protectors)
+
+        for i, protector in enumerate(selected_protectors):
+            protector_stats = create_player_stats_from_player(protector, team_id=self.offensive_team_id)
+            protector_stats.pass_blocks = 1  # All protectors get pass block attempt
+
+            # Calculate pass blocking efficiency based on outcome
+            pass_blocking_efficiency = self._calculate_pass_blocking_efficiency(
+                qb_sacked, pressure_applied, time_in_pocket, i == 0  # LT gets extra responsibility
+            )
+            protector_stats.set_pass_blocking_efficiency(pass_blocking_efficiency)
+
+            # Handle specific outcomes
+            if qb_sacked:
+                # Sack attribution logic
+                if time_in_pocket < quick_pressure_threshold:
+                    # Immediate pressure - blame specific rusher's assigned blocker
+                    if random.random() < 0.4:  # 40% chance this protector allowed sack
+                        protector_stats.add_sack_allowed()
+                elif time_in_pocket < 3.0:
+                    # Normal pocket time - someone missed assignment or got beat
+                    if random.random() < 0.3:  # 30% chance this protector allowed sack
+                        protector_stats.add_sack_allowed()
+                else:
+                    # Coverage sack - good protection, no blame
+                    pass
+
+            elif pressure_applied:
+                # Pressure attribution
+                if time_in_pocket < quick_pressure_threshold:
+                    # Quick pressure
+                    if random.random() < 0.35:  # 35% chance this protector allowed pressure
+                        protector_stats.add_pressure_allowed()
+                elif time_in_pocket < 2.5:
+                    # Hurry - QB rushed into quick throw
+                    if random.random() < 0.25:  # 25% chance this protector allowed hurry
+                        protector_stats.add_hurry_allowed()
+
+            else:
+                # Clean pocket - potential for pancakes and good grades
+                if time_in_pocket >= clean_pocket_threshold:
+                    protector_stats.add_block(successful=True)
+
+                    # Pancake opportunities on very clean pockets
+                    if time_in_pocket >= pancake_threshold:
+                        pancake_chance = self._calculate_pass_pancake_chance(time_in_pocket, protector)
+                        if random.random() < pancake_chance:
+                            protector_stats.add_pancake()
+
+                    # Chip blocks for RBs/TEs before releasing to routes
+                    if yards_gained > 10 and random.random() < 0.15:  # 15% chance on good plays
+                        protector_stats.add_chip_block()
+
+                else:
+                    # Adequate protection
+                    protector_stats.add_block(successful=True)
+
+            oline_stats.append(protector_stats)
+
+        return oline_stats
+
+    def _calculate_pass_blocking_efficiency(self, qb_sacked: bool, pressure_applied: bool,
+                                          time_in_pocket: float, is_lt: bool = False) -> float:
+        """
+        Calculate pass blocking efficiency grade
+
+        Args:
+            qb_sacked: Whether QB was sacked
+            pressure_applied: Whether pressure was applied
+            time_in_pocket: Time QB had in pocket
+            is_lt: Whether this is the left tackle (higher responsibility)
+
+        Returns:
+            Pass blocking efficiency grade (0-100)
+        """
+        base_grade = 50.0
+
+        if qb_sacked:
+            if time_in_pocket < 2.0:
+                base_grade = 25.0  # Very poor - immediate pressure sack
+            elif time_in_pocket < 2.5:
+                base_grade = 35.0  # Poor - quick pressure sack
+            else:
+                base_grade = 60.0  # Coverage sack - not blocker's fault
+        elif pressure_applied:
+            if time_in_pocket < 2.0:
+                base_grade = 40.0  # Poor - immediate pressure
+            elif time_in_pocket < 2.5:
+                base_grade = 50.0  # Below average - quick pressure
+            else:
+                base_grade = 65.0  # Average - late pressure
+        else:
+            # Clean pocket grades based on time given
+            if time_in_pocket >= 4.0:
+                base_grade = 90.0  # Excellent
+            elif time_in_pocket >= 3.5:
+                base_grade = 80.0  # Very good
+            elif time_in_pocket >= 3.0:
+                base_grade = 70.0  # Good
+            else:
+                base_grade = 60.0  # Adequate
+
+        # Left tackle premium (higher responsibility)
+        if is_lt:
+            if qb_sacked or pressure_applied:
+                base_grade -= 5.0  # More blame for LT
+            else:
+                base_grade += 2.0  # Slight credit for LT
+
+        # Add randomness
+        grade = base_grade + random.uniform(-3.0, 3.0)
+
+        return max(0.0, min(100.0, grade))
+
+    def _calculate_pass_pancake_chance(self, time_in_pocket: float, protector) -> float:
+        """
+        Calculate chance of pancake block on pass protection
+
+        Args:
+            time_in_pocket: Time QB had in pocket
+            protector: The protecting player
+
+        Returns:
+            Probability of pancake (0.0 to 1.0)
+        """
+        base_chance = 0.0
+
+        # Pancakes more likely on very clean pockets
+        if time_in_pocket >= 5.0:
+            base_chance = 0.15  # 15% chance on huge pocket
+        elif time_in_pocket >= 4.0:
+            base_chance = 0.08  # 8% chance on excellent pocket
+        elif time_in_pocket >= 3.5:
+            base_chance = 0.04  # 4% chance on very good pocket
+
+        # Adjust based on player attributes
+        if hasattr(protector, 'ratings'):
+            strength = protector.get_rating('strength') if hasattr(protector, 'get_rating') else 70
+            pass_block = protector.get_rating('pass_block') if hasattr(protector, 'get_rating') else 70
+
+            if strength >= 90 and pass_block >= 85:
+                base_chance *= 1.8  # Elite combo
+            elif strength >= 85 or pass_block >= 85:
+                base_chance *= 1.3  # One elite attribute
+            elif strength <= 60 and pass_block <= 60:
+                base_chance *= 0.3  # Poor combo
+
+        return min(0.2, base_chance)  # Cap at 20% max
+
     def _select_tacklers_after_catch(self, yac_yards: int, potential_tacklers: List) -> List[Tuple]:
         """
         Select which defenders made tackles after the catch
@@ -572,7 +825,7 @@ class PassPlaySimulator:
         Returns:
             List of (player, is_assisted) tuples
         """
-        if not potential_tacklers or yac_yards <= 0:
+        if not potential_tacklers:
             return []
         
         tacklers = []
@@ -638,3 +891,44 @@ class PassPlaySimulator:
             if player.primary_position in positions:
                 found_players.append(player)
         return found_players
+
+    def _track_snaps_for_all_players(self, player_stats: List[PlayerStats]) -> List[PlayerStats]:
+        """
+        Track snaps for ALL 22 players on the field during this pass play
+
+        Args:
+            player_stats: List of PlayerStats objects (may be empty or contain only players with statistical attribution)
+
+        Returns:
+            Updated list of PlayerStats objects ensuring all 22 players have snap tracking
+        """
+        # Create a dictionary to track existing PlayerStats objects by player name
+        existing_stats = {stats.player_name: stats for stats in player_stats}
+
+        # Track offensive snaps for all 11 offensive players
+        for player in self.offensive_players:
+            player_name = player.name
+            if player_name in existing_stats:
+                # Player already has stats object, just add the snap
+                existing_stats[player_name].add_offensive_snap()
+            else:
+                # Create new PlayerStats object for this player
+                new_stats = create_player_stats_from_player(player, team_id=self.offensive_team_id)
+                new_stats.add_offensive_snap()
+                existing_stats[player_name] = new_stats
+                player_stats.append(new_stats)
+
+        # Track defensive snaps for all 11 defensive players
+        for player in self.defensive_players:
+            player_name = player.name
+            if player_name in existing_stats:
+                # Player already has stats object, just add the snap
+                existing_stats[player_name].add_defensive_snap()
+            else:
+                # Create new PlayerStats object for this player
+                new_stats = create_player_stats_from_player(player, team_id=self.defensive_team_id)
+                new_stats.add_defensive_snap()
+                existing_stats[player_name] = new_stats
+                player_stats.append(new_stats)
+
+        return player_stats

@@ -35,6 +35,14 @@ python -m pytest tests/test_game_loop_controller.py::TestGameLoopController::tes
 # Schedule generator tests (Phase 0-3 available)
 python -m pytest tests/test_scheduling/
 
+# Playoff system tests
+python -m pytest tests/playoff_system/ -v
+
+# Calendar system tests
+PYTHONPATH=src python tests/test_calendar_system.py
+PYTHONPATH=src python tests/test_event_manager.py
+PYTHONPATH=src python tests/test_calendar_database_api.py
+
 # Key test files for core functionality
 PYTHONPATH=src python tests/test_penalty_system.py
 PYTHONPATH=src python tests/test_game_state_manager.py
@@ -53,22 +61,34 @@ python tests/simple_penalty_validation.py
 PYTHONPATH=src python team_corruption_tracker.py
 PYTHONPATH=src python simple_stats_check.py
 PYTHONPATH=src python verify_player_stats_persistence.py
+PYTHONPATH=src python debug_touchdown_detection.py  # Debug touchdown scoring issues
 ```
 
 ### Running Demos
 ```bash
-# Demo files are now located in src/demo/ directory
-# Pass play simulation demonstration
-PYTHONPATH=src python demo/pass_play_demo.py
+# Primary demo - comprehensive game simulation with full analysis
+PYTHONPATH=src python cleveland_browns_vs_houston_texans_demo.py  # Complete Browns vs Texans game demo
 
-# Play engine core demonstration
-PYTHONPATH=src python demo/play_engine_demo.py
+# Interactive interface for comprehensive team and season management
+PYTHONPATH=src python src/demo/interactive_interface.py
 
-# Run play simulation demonstration
-PYTHONPATH=src python demo/run_play_demo.py
+# Legacy demo files (if still available in demo/ directory)
+PYTHONPATH=src python demo/pass_play_demo.py  # Pass play simulation demonstration
+PYTHONPATH=src python demo/play_engine_demo.py  # Play engine core demonstration
+PYTHONPATH=src python demo/run_play_demo.py  # Run play simulation demonstration
 
-# Interactive interface for team management
-PYTHONPATH=src python src/demo/interactive_interface.py  # Basic team management interface
+# Persistence control example
+PYTHONPATH=src python persistence_control_example.py  # Demonstrates optional persistence control
+
+# Database flexibility example
+PYTHONPATH=src python database_flexibility_demo.py  # Demonstrates flexible database configuration
+
+# Dynasty context example
+PYTHONPATH=src python dynasty_context_demo.py  # Demonstrates dynasty isolation and management
+
+# Calendar system demos
+PYTHONPATH=src python dynasty_calendar_demo.py  # Dynasty calendar and event management demo
+PYTHONPATH=src python test_dynasty_calendar.py  # Calendar system validation and testing
 ```
 
 ### Diagnostic Scripts
@@ -80,6 +100,9 @@ PYTHONPATH=src python final_persistence_verification.py
 PYTHONPATH=src python track_transaction_failures.py
 PYTHONPATH=src python test_index_mismatch_issue.py
 PYTHONPATH=src python simulate_interactive_demo_issue.py
+
+# Player data migration (one-time)
+PYTHONPATH=src python scripts/migrate_players_to_teams.py
 
 # Check detailed_transaction_tracking.log for persistence debugging
 tail -f detailed_transaction_tracking.log
@@ -215,6 +238,28 @@ The simulation follows a layered architecture with clear separation of concerns:
 - `generator/`: Schedule generation algorithms (future phases)
 - `converters/`: Schedule to event conversion utilities
 
+**13. Playoff System (`src/playoff_system/`)**
+- `seeding/`: Complete NFL playoff seeding system with tiebreaker resolution
+- `management/`: Playoff tournament management and bracket generation
+- `constants/`: Playoff configuration and team structure definitions
+- `persistence/`: Playoff data storage and retrieval
+- `validation/`: Playoff bracket validation and integrity checks
+- `utils/`: Playoff calculation utilities and helper functions
+
+**14. Calendar System (`src/calendar/`)**
+- `calendar_manager.py`: Database-backed calendar system for event scheduling
+- `event_manager.py`: Event creation, modification, and lifecycle management
+- `calendar_database_api.py`: Calendar-specific database operations and queries
+- `event.py`: Event data structures and models
+- `event_store.py`: In-memory event storage for fast access
+- `event_factory.py`: Factory methods for creating different event types
+- `simulation_executor.py`: Executes game simulations from calendar events
+- `migration_helper.py`: Database migration utilities for calendar system
+
+**15. User Team Management (`src/user_team/`)**
+- `user_team_manager.py`: User team selection, preferences, and management
+- Dynasty mode user interaction and team ownership simulation
+
 ### Key Design Patterns
 
 **Match/Case Play Selection**: The main play engine uses Python's match/case for clean play type routing:
@@ -275,10 +320,13 @@ class UnifiedDefensiveFormation(Enum):
 - Rich metadata including colors, divisions, conferences
 - Division rivals and random matchup generation
 
-### Player System  
+### Player System
 - Players have penalty-related attributes: `discipline`, `composure`, `experience`, `penalty_technique`
 - Team-aware player names (e.g., "Detroit Starting QB")
 - Position-based roster generation
+- **Team-Based Files**: Player data now stored in individual team files (`src/data/players/team_XX_team_name.json`)
+- **Backward Compatibility**: `PlayerDataLoader` supports both team-based and legacy single-file formats
+- **Migration Support**: Use `scripts/migrate_players_to_teams.py` for data migration between formats
 
 ### Configuration Files
 - `src/config/penalties/penalty_rates.json`: Base penalty rates
@@ -358,6 +406,94 @@ Comprehensive documentation is available in `docs/`:
 - Graceful handling of invalid play types with descriptive errors
 - Clear migration paths for breaking changes
 
+### Persistence Control
+- **Optional Statistics Persistence**: Control whether game statistics are saved to database
+- **Constructor Parameter**: `enable_persistence=False` to disable persistence at creation
+- **Runtime Property**: `simulator.persistence = False` to toggle persistence on/off
+- **Performance Benefits**: No database I/O overhead when persistence is disabled
+- **Use Cases**: Quick demos, testing, performance benchmarks, standalone simulations
+- **Default Behavior**: Persistence enabled by default for backward compatibility
+- **Clear Feedback**: System provides clear messages when persistence is disabled/enabled
+
+```python
+# Disable persistence at creation
+simulator = FullGameSimulator(away_team_id=7, home_team_id=9, enable_persistence=False)
+
+# Toggle persistence via property
+simulator.persistence = False  # Disable database saves
+simulator.persistence = True   # Re-enable database saves
+
+# Check persistence status
+if simulator.persistence:
+    print("Statistics will be saved to database")
+else:
+    print("Statistics will not be saved (demo mode)")
+```
+
+### Database Flexibility
+- **Flexible Database Configuration**: Choose which database to persist statistics to
+- **Constructor Parameter**: `database_path="custom.db"` to set database at creation
+- **Runtime Property**: `simulator.database_path = "new.db"` to change database path
+- **Automatic Service Recreation**: Statistics service recreated when database path changes
+- **Multiple Use Cases**: Dynasty management, season isolation, testing with in-memory databases
+- **Default Behavior**: Uses `"data/database/nfl_simulation.db"` if not specified
+- **Error Handling**: Graceful fallback if database path change fails
+
+```python
+# Set custom database at creation
+simulator = FullGameSimulator(away_team_id=7, home_team_id=9, database_path="my_dynasty.db")
+
+# User's preferred pattern: set database, then enable persistence
+simulator = FullGameSimulator(away_team_id=7, home_team_id=9, enable_persistence=False)
+simulator.database_path = "season_2024.db"
+simulator.persistence = True
+
+# Runtime database switching
+simulator.database_path = "playoff_games.db"  # Auto-recreates service if persistence enabled
+
+# Testing with in-memory database
+simulator = FullGameSimulator(..., database_path=":memory:")
+
+# Dynasty management example
+simulator.database_path = f"dynasty_{user_team_name}.db"
+simulator.persistence = True
+```
+
+### Dynasty Context
+- **Dynasty Isolation**: Complete statistical separation between different dynasties
+- **Constructor Parameter**: `dynasty_id="my_dynasty"` to set dynasty context at creation
+- **Runtime Property**: `simulator.dynasty_id = "new_dynasty"` to change dynasty context
+- **Automatic Service Recreation**: Statistics service recreated when dynasty context changes
+- **Combined Flexibility**: Works seamlessly with database path configuration
+- **Default Behavior**: Uses `"default_dynasty"` if not specified
+- **Multiple Dynasties**: Can run multiple dynasties in same database or separate databases
+
+```python
+# Set custom dynasty at creation
+simulator = FullGameSimulator(away_team_id=7, home_team_id=9, dynasty_id="eagles_rebuild")
+
+# User's preferred pattern: set dynasty, then enable persistence
+simulator = FullGameSimulator(away_team_id=7, home_team_id=9, enable_persistence=False)
+simulator.dynasty_id = "chiefs_championship_run"
+simulator.persistence = True
+
+# Combined database and dynasty flexibility
+simulator.database_path = "dynasties/eagles.db"
+simulator.dynasty_id = "eagles_superbowl_quest"
+simulator.persistence = True
+
+# Runtime dynasty switching
+simulator.dynasty_id = "eagles_rebuild_2024"  # Auto-recreates service if persistence enabled
+
+# Multiple dynasty management
+eagles_sim = FullGameSimulator(..., dynasty_id="eagles_legacy", database_path="dynasties/eagles.db")
+chiefs_sim = FullGameSimulator(..., dynasty_id="chiefs_dynasty", database_path="dynasties/chiefs.db")
+
+# Same database, different dynasties
+sim1 = FullGameSimulator(..., dynasty_id="user1_dynasty", database_path="shared.db")
+sim2 = FullGameSimulator(..., dynasty_id="user2_dynasty", database_path="shared.db")
+```
+
 ### Interactive Season Simulation
 - Season simulation available through `src/demo/` components
 - **Daily Mode**: Day-by-day simulation with detailed control via `daily_simulation_controller.py`
@@ -381,7 +517,13 @@ Recent major changes to be aware of:
 8. **Schedule Generator**: NFL schedule generation system for creating game schedules
 9. **Database Architecture**: SQLite-based persistence with `DatabaseAPI` for retrieval and `DailyDataPersister` for persistence
 10. **Game Integration**: `GameSimulationEvent` moved to `src/game_management/` as standalone wrapper
-11. **Calendar System Removal**: Removed calendar manager, season progression, and event processing systems
-12. **Demo Simplification**: Removed season simulation demos, kept basic interactive interface and play demos
+11. **Calendar System Addition**: New database-backed calendar system for event scheduling and management
+12. **Playoff System Addition**: Complete NFL playoff system with seeding, tiebreakers, and tournament management
+13. **User Team Management**: New user team selection and dynasty management system
+14. **Demo Consolidation**: Consolidated demos into `src/demo/` with comprehensive interactive interface
+15. **Player Data Migration**: Player data migrated from single `players.json` to team-based files in `src/data/players/` for better organization and performance
+16. **Optional Persistence Control**: New `enable_persistence` parameter and `persistence` property for FullGameSimulator to control statistics database saves
+17. **Flexible Database Configuration**: New `database_path` parameter and property for FullGameSimulator to specify custom database locations
+18. **Dynasty Context**: New `dynasty_id` parameter and property for FullGameSimulator to provide complete dynasty isolation for statistics
 
 When working with legacy code, check for hardcoded team names and convert to numerical IDs using the constants in `src/constants/team_ids.py`.

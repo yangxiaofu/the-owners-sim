@@ -636,7 +636,41 @@ class FieldGoalSimulator:
                 if random.random() < 0.15:  # 15% chance any blocker gets blamed
                     blocker_stats.blocks_allowed = 1
             result.player_stats[blocker.name] = blocker_stats
-    
+
+        # Track special teams snaps for ALL 22 players on the field
+        self._track_special_teams_snaps_for_all_players(result)
+
+    def _track_special_teams_snaps_for_all_players(self, result):
+        """
+        Track special teams snaps for ALL 22 players on the field during this field goal play
+
+        Args:
+            result: FieldGoalAttemptResult object with player_stats dictionary
+        """
+        # Track special teams snaps for all 11 offensive players (field goal unit)
+        for player in self.offensive_players:
+            player_name = player.name
+            if player_name in result.player_stats:
+                # Player already has stats object, just add the snap
+                result.player_stats[player_name].add_special_teams_snap()
+            else:
+                # Create new PlayerStats object for this player
+                new_stats = create_player_stats_from_player(player)
+                new_stats.add_special_teams_snap()
+                result.player_stats[player_name] = new_stats
+
+        # Track special teams snaps for all 11 defensive players (field goal defense)
+        for player in self.defensive_players:
+            player_name = player.name
+            if player_name in result.player_stats:
+                # Player already has stats object, just add the snap
+                result.player_stats[player_name].add_special_teams_snap()
+            else:
+                # Create new PlayerStats object for this player
+                new_stats = create_player_stats_from_player(player)
+                new_stats.add_special_teams_snap()
+                result.player_stats[player_name] = new_stats
+
     def _attribute_player_statistics_list(self, result: FieldGoalAttemptResult, context: PlayContext) -> List[PlayerStats]:
         """Attribute individual player statistics and return as list of PlayerStats objects"""
         player_stats = []
@@ -688,18 +722,86 @@ class FieldGoalSimulator:
             ls_stats.long_snaps = 1
             player_stats.append(ls_stats)
         
-        # Protection unit statistics
-        for blocker in self.protection_unit:
-            blocker_stats = create_player_stats_from_player(blocker)
-            blocker_stats.special_teams_snaps = 1
-            if result.outcome == "blocked":
-                # Randomly assign block responsibility
-                if random.random() < 0.15:  # 15% chance any blocker gets blamed
-                    blocker_stats.blocks_allowed = 1
-            player_stats.append(blocker_stats)
+        # Comprehensive Field Goal Protection Statistics
+        fg_protection_stats = self._attribute_field_goal_protection_stats(result)
+        player_stats.extend(fg_protection_stats)
         
         # Return only players who recorded stats
         return [stats for stats in player_stats if stats.get_total_stats()]
+
+    def _attribute_field_goal_protection_stats(self, result) -> List[PlayerStats]:
+        """
+        Attribute comprehensive field goal protection statistics
+
+        Args:
+            result: FieldGoalAttemptResult containing outcome information
+
+        Returns:
+            List of PlayerStats objects for field goal protection unit
+        """
+        protection_stats = []
+
+        for protector in self.protection_unit:
+            protector_stats = create_player_stats_from_player(protector)
+
+            # Field goal protection stats based on outcome
+            if result.outcome == "blocked":
+                # Blocked field goal - protection failure
+                if random.random() < 0.2:  # 20% chance this protector allowed block
+                    protector_stats.blocks_allowed += 1
+                    protector_stats.add_missed_assignment()
+                protector_stats.add_block(successful=False)
+
+                # Poor protection grade for blocked kicks
+                protector_stats.set_pass_blocking_efficiency(25.0)
+
+            else:
+                # Successful protection
+                protector_stats.add_block(successful=True)
+
+                # Calculate field goal protection grade based on outcome
+                protection_grade = self._calculate_fg_protection_grade(result)
+                protector_stats.set_pass_blocking_efficiency(protection_grade)
+
+                # Pancake opportunities on perfect protection (very long makes)
+                if result.outcome == "good" and result.distance >= 50:
+                    if random.random() < 0.03:  # 3% chance of pancake on long FG
+                        protector_stats.add_pancake()
+
+            protection_stats.append(protector_stats)
+
+        return protection_stats
+
+    def _calculate_fg_protection_grade(self, result) -> float:
+        """
+        Calculate field goal protection grade based on kick outcome
+
+        Args:
+            result: FieldGoalAttemptResult
+
+        Returns:
+            Protection grade (0-100)
+        """
+        base_grade = 50.0
+
+        if result.outcome == "blocked":
+            base_grade = 20.0  # Very poor - kick was blocked
+        elif result.outcome == "good":
+            # Successful kicks get good grades
+            if result.distance >= 50:
+                base_grade = 85.0  # Excellent - long kick protection
+            elif result.distance >= 40:
+                base_grade = 75.0  # Good - medium kick protection
+            else:
+                base_grade = 70.0  # Good - short kick protection
+        elif result.outcome in ["wide_left", "wide_right", "short"]:
+            base_grade = 65.0  # Adequate - protection was fine, kicker missed
+        else:
+            base_grade = 60.0  # Average for other outcomes
+
+        # Add randomness
+        grade = base_grade + random.uniform(-3.0, 3.0)
+        return max(0.0, min(100.0, grade))
 
 
 def get_field_goal_formation_matchup(offensive_formation: str, defensive_formation: Union[str, UnifiedDefensiveFormation]) -> Dict:
