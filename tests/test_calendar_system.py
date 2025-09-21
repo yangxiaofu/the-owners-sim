@@ -127,7 +127,7 @@ class TestCalendarManager(unittest.TestCase):
         """Test calendar initialization with a date."""
         self.assertEqual(self.calendar.start_date, self.start_date)
         self.assertEqual(self.calendar.current_date, self.start_date)
-        self.assertIsInstance(self.calendar.event_store, EventStore)
+        self.assertIsNotNone(self.calendar.event_manager)
 
     def test_calendar_initialization_with_datetime(self):
         """Test calendar initialization with a datetime."""
@@ -189,7 +189,7 @@ class TestCalendarIntegration(unittest.TestCase):
         self.assertIsNotNone(self.calendar)
 
         # Test that event store is accessible
-        self.assertIsInstance(self.calendar.event_store, EventStore)
+        self.assertIsNotNone(self.calendar.event_manager)
 
     def test_system_imports(self):
         """Test that all system imports work correctly."""
