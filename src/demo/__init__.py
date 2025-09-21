@@ -4,13 +4,14 @@ Demo Package
 Interactive terminal demo components for the NFL season simulation system.
 """
 
-from .weekly_simulation_controller import WeeklySimulationController, WeekResults
+# Simulation controllers removed with calendar system
+# from .weekly_simulation_controller import WeeklySimulationController, WeekResults
 from .results_display_formatter import ResultsDisplayFormatter
 from .interactive_interface import InteractiveInterface
 
 __all__ = [
-    'WeeklySimulationController',
-    'WeekResults', 
+    # 'WeeklySimulationController',  # Removed with calendar system
+    # 'WeekResults',  # Removed with calendar system
     'ResultsDisplayFormatter',
     'InteractiveInterface'
 ]

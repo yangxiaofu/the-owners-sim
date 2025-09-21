@@ -86,7 +86,7 @@ class ScheduleToEventConverter:
         
         # Try to import GameSimulationEvent - handle if not available
         try:
-            from simulation.events.game_simulation_event import GameSimulationEvent
+            from game_management.game_simulation_event import GameSimulationEvent
         except ImportError:
             # If GameSimulationEvent not available, return a dict representation
             self.logger.warning("GameSimulationEvent not available, using dict")

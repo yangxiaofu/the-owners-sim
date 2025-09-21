@@ -40,10 +40,14 @@ class DailyDataPersister:
     def persist_day(self, day_result) -> bool:
         """
         Persist a day's simulation results to the database.
-        
+
+        DEPRECATED for game events: Game events are now persisted immediately
+        by EventLevelPersister for real-time standings updates during bulk simulation.
+        This method now only handles non-game administrative events.
+
         Args:
             day_result: DaySimulationResult containing the day's events
-            
+
         Returns:
             bool: True if persistence was successful, False otherwise
         """
@@ -51,18 +55,37 @@ class DailyDataPersister:
         if day_result.events_executed == 0:
             self.logger.debug(f"No events on {day_result.date}, skipping persistence")
             return True  # Not a failure, just nothing to persist
-        
+
         try:
+            # Check if EventLevelPersister is handling game events
+            has_game_events = any(
+                hasattr(result, 'event_type') and result.event_type.name == 'GAME'
+                for result in getattr(day_result, 'event_results', [])
+            )
+
+            if has_game_events:
+                # Game events are now handled by EventLevelPersister for immediate persistence
+                self.logger.info(f"Skipping day-level persistence for {day_result.date} - "
+                               "game events handled by EventLevelPersister for real-time updates")
+
+                # Only persist non-game administrative data if any
+                admin_data = self._get_non_game_data_for_date(day_result.date)
+                if admin_data:
+                    return self._persist_administrative_data(day_result.date, admin_data)
+
+                return True  # Success - games handled by EventLevelPersister
+
+            # Legacy path for non-game events (if any)
             # Extract data from stores
             games = self._get_games_for_date(day_result.date)
             player_stats = self._get_player_stats_for_games(games)
             standings = self._get_current_standings()
-            
+
             # Only persist if there's data to save
             if not games and not standings:
                 self.logger.debug(f"No game data for {day_result.date}, skipping persistence")
                 return True
-            
+
             # Save to database in a single transaction
             success = self._save_to_database(
                 day_result.date,
@@ -70,7 +93,7 @@ class DailyDataPersister:
                 player_stats,
                 standings
             )
-            
+
             # Clear stores only if persistence was successful
             if success:
                 self._clear_stores_for_date(day_result.date)
@@ -78,9 +101,9 @@ class DailyDataPersister:
                 self.logger.info(f"Successfully persisted {day_result.date} to database")
             else:
                 self.logger.error(f"Failed to persist {day_result.date}, keeping data in stores")
-            
+
             return success
-            
+
         except Exception as e:
             self.logger.error(f"Error during persistence for {day_result.date}: {e}", exc_info=True)
             return False
@@ -355,7 +378,55 @@ class DailyDataPersister:
         # Note: We don't clear standings as they represent current state
         
         self.logger.debug(f"Cleared {len(games_to_remove)} games from stores")
-    
+
+    def _get_non_game_data_for_date(self, target_date: date) -> Dict[str, Any]:
+        """
+        Extract non-game administrative data for the specified date.
+
+        Args:
+            target_date: Date to get data for
+
+        Returns:
+            Dictionary of non-game administrative data
+        """
+        # This would extract administrative events, playoff seeding results, etc.
+        # For now, return empty dict as games are handled by EventLevelPersister
+        return {}
+
+    def _persist_administrative_data(self, target_date: date, admin_data: Dict[str, Any]) -> bool:
+        """
+        Persist administrative (non-game) data to database.
+
+        Args:
+            target_date: Date of the administrative data
+            admin_data: Administrative data to persist
+
+        Returns:
+            bool: True if persistence was successful
+        """
+        if not admin_data:
+            return True
+
+        conn = self.db.get_connection()
+
+        try:
+            conn.execute("BEGIN TRANSACTION")
+
+            # Persist administrative data (playoff seeding, etc.)
+            # Implementation would depend on specific admin data structure
+            self.logger.info(f"Persisted administrative data for {target_date}")
+
+            conn.execute("COMMIT")
+            return True
+
+        except Exception as e:
+            conn.execute("ROLLBACK")
+            self.logger.error(f"Administrative data persistence failed: {e}")
+            return False
+
+        finally:
+            conn.close()
+
     def get_statistics(self) -> Dict[str, Any]:
         """
         Get persistence statistics.

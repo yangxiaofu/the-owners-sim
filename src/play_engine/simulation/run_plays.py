@@ -22,21 +22,26 @@ from ..config.timing_config import NFLTimingConfig
 class RunPlaySimulator:
     """Simulates run plays with individual player stat attribution"""
     
-    def __init__(self, offensive_players: List, defensive_players: List, 
-                 offensive_formation: str, defensive_formation: str):
+    def __init__(self, offensive_players: List, defensive_players: List,
+                 offensive_formation: str, defensive_formation: str,
+                 offensive_team_id: int = None, defensive_team_id: int = None):
         """
         Initialize run play simulator
-        
+
         Args:
             offensive_players: List of 11 offensive Player objects
-            defensive_players: List of 11 defensive Player objects  
+            defensive_players: List of 11 defensive Player objects
             offensive_formation: Offensive formation string
             defensive_formation: Defensive formation string
+            offensive_team_id: Team ID of the offensive team (1-32)
+            defensive_team_id: Team ID of the defensive team (1-32)
         """
         self.offensive_players = offensive_players
         self.defensive_players = defensive_players
         self.offensive_formation = offensive_formation
         self.defensive_formation = defensive_formation
+        self.offensive_team_id = offensive_team_id
+        self.defensive_team_id = defensive_team_id
         
         # Initialize penalty engine
         self.penalty_engine = PenaltyEngine()
@@ -223,7 +228,7 @@ class RunPlaySimulator:
         
         # Attribute RB stats
         if running_back:
-            rb_stats = create_player_stats_from_player(running_back)
+            rb_stats = create_player_stats_from_player(running_back, team_id=self.offensive_team_id)
             rb_stats.add_carry(yards_gained)
             player_stats.append(rb_stats)
         
@@ -241,7 +246,7 @@ class RunPlaySimulator:
             selected_blockers = random.sample(offensive_line, num_blockers)
             
             for blocker in selected_blockers:
-                blocker_stats = create_player_stats_from_player(blocker)
+                blocker_stats = create_player_stats_from_player(blocker, team_id=self.offensive_team_id)
                 # Higher success rate for longer runs
                 success_rate = base_success_rate + (yards_gained * yards_bonus_multiplier)
                 blocker_stats.add_block(random.random() < success_rate)
@@ -251,7 +256,7 @@ class RunPlaySimulator:
         tacklers = self._select_tacklers(yards_gained, linebackers + safeties)
         for tackler_info in tacklers:
             player, is_assisted = tackler_info
-            tackler_stats = create_player_stats_from_player(player)
+            tackler_stats = create_player_stats_from_player(player, team_id=self.defensive_team_id)
             tackler_stats.add_tackle(assisted=is_assisted)
             player_stats.append(tackler_stats)
         

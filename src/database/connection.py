@@ -348,7 +348,75 @@ class DatabaseConnection:
                 UNIQUE(game_id, team_id)
             )
         ''')
-        
+
+        # Playoff seedings table - results of playoff seeding calculations
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS playoff_seedings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dynasty_id TEXT NOT NULL,
+                season INTEGER NOT NULL,
+                conference TEXT NOT NULL,  -- 'AFC' or 'NFC'
+                seed_number INTEGER NOT NULL,  -- 1-7
+                team_id INTEGER NOT NULL,
+                wins INTEGER NOT NULL,
+                losses INTEGER NOT NULL,
+                ties INTEGER DEFAULT 0,
+                division_winner BOOLEAN NOT NULL,
+                tiebreaker_applied TEXT,  -- Description of tiebreaker used
+                eliminated_teams TEXT,    -- JSON array of team IDs eliminated
+                points_for INTEGER DEFAULT 0,
+                points_against INTEGER DEFAULT 0,
+                strength_of_victory REAL DEFAULT 0.0,
+                strength_of_schedule REAL DEFAULT 0.0,
+                seeding_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id),
+                UNIQUE(dynasty_id, season, conference, seed_number)
+            )
+        ''')
+
+        # Tiebreaker applications table - detailed tracking of tiebreaker usage
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS tiebreaker_applications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dynasty_id TEXT NOT NULL,
+                season INTEGER NOT NULL,
+                tiebreaker_type TEXT NOT NULL,  -- 'division', 'wildcard'
+                rule_applied TEXT NOT NULL,     -- 'head_to_head', 'strength_of_victory', etc.
+                teams_involved TEXT NOT NULL,   -- JSON array of team IDs
+                winner_team_id INTEGER NOT NULL,
+                calculation_details TEXT,       -- JSON with calculation breakdown
+                application_order INTEGER,      -- Order tiebreaker was applied
+                description TEXT,               -- Human-readable description
+
+                FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id)
+            )
+        ''')
+
+        # Playoff brackets table - for managing playoff tournament progression
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS playoff_brackets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dynasty_id TEXT NOT NULL,
+                season INTEGER NOT NULL,
+                round_name TEXT NOT NULL,       -- 'wild_card', 'divisional', 'conference', 'super_bowl'
+                game_number INTEGER NOT NULL,   -- Game within round
+                conference TEXT,                -- 'AFC', 'NFC', or NULL for Super Bowl
+                home_seed INTEGER NOT NULL,
+                away_seed INTEGER NOT NULL,
+                home_team_id INTEGER NOT NULL,
+                away_team_id INTEGER NOT NULL,
+                game_date DATE,
+                scheduled_time TIME,
+                winner_team_id INTEGER,         -- NULL until game completed
+                winner_score INTEGER,
+                loser_score INTEGER,
+                overtime_periods INTEGER DEFAULT 0,
+
+                FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id)
+            )
+        ''')
+
         # Create indexes for performance
         conn.execute("CREATE INDEX IF NOT EXISTS idx_games_dynasty_season ON games(dynasty_id, season, week)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_games_teams ON games(home_team_id, away_team_id)")
@@ -360,7 +428,13 @@ class DatabaseConnection:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_schedules_teams ON schedules(home_team_id, away_team_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_dynasty_seasons ON dynasty_seasons(dynasty_id, season)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_box_scores ON box_scores(dynasty_id, game_id)")
-        
+
+        # Playoff system indexes
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_playoff_seedings_dynasty ON playoff_seedings(dynasty_id, season)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_playoff_seedings_conference ON playoff_seedings(dynasty_id, season, conference)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_tiebreaker_apps ON tiebreaker_applications(dynasty_id, season)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_playoff_brackets ON playoff_brackets(dynasty_id, season, round_name)")
+
         self.logger.info("All tables and indexes created successfully")
     
     def create_new_dynasty(self, dynasty_name: str, owner_name: str, team_id: int) -> str:

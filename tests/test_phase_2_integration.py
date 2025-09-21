@@ -122,7 +122,9 @@ print("Test 4: SeasonInitializer Integration")
 print("-" * 40)
 initializer = None  # Initialize for later tests
 try:
-    from simulation.season_initializer import SeasonInitializer
+    # SeasonInitializer removed with calendar system
+    # from simulation.season_initializer import SeasonInitializer
+    print("✗ SeasonInitializer removed with calendar system")
     
     initializer = SeasonInitializer()
     

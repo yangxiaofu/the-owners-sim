@@ -10,7 +10,8 @@ from collections import defaultdict
 from datetime import datetime
 
 from .base_store import BaseStore
-from simulation.results.game_result import PlayerGameStats
+# PlayerGameStats removed with simulation system - will need to be recreated if needed
+# from simulation.results.game_result import PlayerGameStats
 
 
 @dataclass

@@ -10,7 +10,8 @@ from collections import defaultdict
 
 from .base_store import BaseStore
 from shared.game_result import GameResult
-from simulation.results.game_result import PlayerGameStats, TeamGameStats
+# Game result types removed with simulation system - will need to be recreated if needed
+# from simulation.results.game_result import PlayerGameStats, TeamGameStats
 
 try:
     from database.connection import DatabaseConnection

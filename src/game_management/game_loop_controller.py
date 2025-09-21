@@ -287,12 +287,20 @@ class GameLoopController:
         defensive_players = (self.away_roster if possessing_team_id == self.home_team.team_id 
                            else self.home_roster)
         
+        # Determine team IDs for proper player stats attribution
+        offensive_team_id = (self.home_team.team_id if possessing_team_id == self.home_team.team_id
+                             else self.away_team.team_id)
+        defensive_team_id = (self.away_team.team_id if possessing_team_id == self.home_team.team_id
+                             else self.home_team.team_id)
+
         # Create PlayEngineParams
         play_params = PlayEngineParams(
             offensive_play_call=offensive_play_call,
             defensive_play_call=defensive_play_call,
             offensive_players=offensive_players,
-            defensive_players=defensive_players
+            defensive_players=defensive_players,
+            offensive_team_id=offensive_team_id,
+            defensive_team_id=defensive_team_id
         )
         
         # Execute play
@@ -474,11 +482,10 @@ class GameLoopController:
         # Generate comprehensive statistics for export/serialization
         comprehensive_stats = self.stats_aggregator.get_all_statistics()
 
-        # Get actual objects directly from aggregator - NO fallbacks, let errors surface
-        player_stats = self.stats_aggregator.get_player_statistics()                    # Must return List[PlayerStats]
+        # Get PlayerGameStats objects ready for persistence - using new conversion method
+        player_stats = self.stats_aggregator.get_player_game_statistics()              # Returns List[PlayerGameStats]
 
-        # FIX: Assign correct team_id to PlayerStats objects based on player names
-        self._fix_player_team_assignments(player_stats)
+        # Note: PlayerGameStats already have correct team_id, no fixing needed
 
         home_team_stats = self.stats_aggregator.get_team_statistics(self.home_team.team_id)  # Must return TeamStats
         away_team_stats = self.stats_aggregator.get_team_statistics(self.away_team.team_id)  # Must return TeamStats
@@ -489,10 +496,10 @@ class GameLoopController:
         assert home_team_stats is not None, f"No home team stats for team {self.home_team.team_id}"
         assert away_team_stats is not None, f"No away team stats for team {self.away_team.team_id}"
 
-        # Validate first player object structure
+        # Validate first PlayerGameStats object structure
         first_player = player_stats[0]
-        assert hasattr(first_player, 'player_name'), f"Player object missing player_name: {type(first_player)}, available attributes: {dir(first_player)}"
-        assert hasattr(first_player, 'passing_yards'), f"Player object missing stats: {type(first_player)}, available attributes: {dir(first_player)}"
+        assert hasattr(first_player, 'player_name'), f"PlayerGameStats object missing player_name: {type(first_player)}, available attributes: {dir(first_player)}"
+        assert hasattr(first_player, 'passing_yards'), f"PlayerGameStats object missing stats: {type(first_player)}, available attributes: {dir(first_player)}"
 
         return GameResult(
             home_team=self.home_team,

@@ -8,7 +8,8 @@ Integrates with existing DynastyContext and TeamDataLoader components.
 from typing import Optional
 import logging
 
-from simulation.dynasty_context import DynastyContext, get_dynasty_context
+# Dynasty context removed with calendar system
+# from simulation.dynasty_context import DynastyContext, get_dynasty_context
 from team_management.teams.team_loader import TeamDataLoader, Team
 
 

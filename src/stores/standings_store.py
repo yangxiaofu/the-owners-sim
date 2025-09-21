@@ -9,12 +9,21 @@ from dataclasses import dataclass, field
 from collections import defaultdict
 
 from .base_store import BaseStore
-from simulation.results.game_result import GameResult
+# GameResult from simulation removed - using shared.game_result instead
+# from simulation.results.game_result import GameResult
 
 try:
     from database.connection import DatabaseConnection
 except ImportError:
     DatabaseConnection = None
+
+# Import shared NFL structure constants
+try:
+    from playoff_system.constants import NFL_DIVISIONS, NFL_CONFERENCES
+    SHARED_CONSTANTS_AVAILABLE = True
+except ImportError:
+    # Fallback to local definitions if shared constants not available
+    SHARED_CONSTANTS_AVAILABLE = False
 
 
 @dataclass
@@ -46,22 +55,36 @@ class TeamStanding:
         return f"{self.wins}-{self.losses}"
 
 
-# NFL Division structure
-NFL_DIVISIONS = {
-    'AFC East': [1, 2, 3, 4],
-    'AFC North': [5, 6, 7, 8],
-    'AFC South': [9, 10, 11, 12],
-    'AFC West': [13, 14, 15, 16],
-    'NFC East': [17, 18, 19, 20],
-    'NFC North': [21, 22, 23, 24],
-    'NFC South': [25, 26, 27, 28],
-    'NFC West': [29, 30, 31, 32]
-}
+# NFL Division structure - use shared constants when available, fallback to local
+if SHARED_CONSTANTS_AVAILABLE:
+    # Use shared constants from playoff_system.constants
+    # Convert division names from underscore to space format for compatibility
+    _SHARED_DIVISIONS = NFL_DIVISIONS
+    _SHARED_CONFERENCES = NFL_CONFERENCES
 
-NFL_CONFERENCES = {
-    'AFC': list(range(1, 17)),
-    'NFC': list(range(17, 33))
-}
+    # Convert to local format (spaces instead of underscores)
+    NFL_DIVISIONS = {
+        division_name.replace('_', ' '): team_ids
+        for division_name, team_ids in _SHARED_DIVISIONS.items()
+    }
+    NFL_CONFERENCES = _SHARED_CONFERENCES
+else:
+    # Fallback local definitions for backwards compatibility
+    NFL_DIVISIONS = {
+        'AFC East': [1, 2, 3, 4],
+        'AFC North': [5, 6, 7, 8],
+        'AFC South': [9, 10, 11, 12],
+        'AFC West': [13, 14, 15, 16],
+        'NFC East': [17, 18, 19, 20],
+        'NFC North': [21, 22, 23, 24],
+        'NFC South': [25, 26, 27, 28],
+        'NFC West': [29, 30, 31, 32]
+    }
+
+    NFL_CONFERENCES = {
+        'AFC': list(range(1, 17)),
+        'NFC': list(range(17, 33))
+    }
 
 
 @dataclass

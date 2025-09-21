@@ -17,7 +17,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from persistence.daily_persister import DailyDataPersister
 from stores.store_manager import StoreManager
-from simulation.calendar_manager import DaySimulationResult
+# DaySimulationResult removed with calendar system
+# from simulation.calendar_manager import DaySimulationResult
 
 # Import the mock from the proper location
 sys.path.insert(0, str(Path(__file__).parent))

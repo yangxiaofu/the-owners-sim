@@ -44,7 +44,9 @@ def simulate(play_engine_params):
                 offensive_players=offensive_players,
                 defensive_players=defensive_players,
                 offensive_formation=offensive_formation,
-                defensive_formation=defensive_formation
+                defensive_formation=defensive_formation,
+                offensive_team_id=play_engine_params.get_offensive_team_id(),
+                defensive_team_id=play_engine_params.get_defensive_team_id()
             )
             
             # Get comprehensive simulation results
@@ -63,7 +65,9 @@ def simulate(play_engine_params):
                 offensive_players=offensive_players,
                 defensive_players=defensive_players,
                 offensive_formation=offensive_formation,
-                defensive_formation=defensive_formation
+                defensive_formation=defensive_formation,
+                offensive_team_id=play_engine_params.get_offensive_team_id(),
+                defensive_team_id=play_engine_params.get_defensive_team_id()
             )
             
             # Get comprehensive simulation results
@@ -212,7 +216,9 @@ def simulate(play_engine_params):
                     offensive_players=offensive_players,
                     defensive_players=defensive_players,
                     offensive_formation=offensive_formation,
-                    defensive_formation=defensive_formation
+                    defensive_formation=defensive_formation,
+                    offensive_team_id=play_engine_params.get_offensive_team_id(),
+                    defensive_team_id=play_engine_params.get_defensive_team_id()
                 )
                 
                 # Get comprehensive simulation results using validated enum params

@@ -17,7 +17,8 @@ from .standings_store import StandingsStore
 from .base_store import BaseStore
 
 from shared.game_result import GameResult
-from simulation.results.game_result import PlayerGameStats
+# PlayerGameStats removed with simulation system - will need to be recreated if needed
+# from simulation.results.game_result import PlayerGameStats
 from game_management.box_score_generator import TeamBoxScore
 
 

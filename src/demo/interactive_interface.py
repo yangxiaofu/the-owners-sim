@@ -11,8 +11,9 @@ import time
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-from demo.weekly_simulation_controller import WeeklySimulationController
-from demo.daily_simulation_controller import DailySimulationController
+# Simulation controllers removed with calendar system
+# from demo.weekly_simulation_controller import WeeklySimulationController
+# from demo.daily_simulation_controller import DailySimulationController
 from demo.results_display_formatter import ResultsDisplayFormatter
 from user_team.user_team_manager import UserTeamManager
 from team_management.teams.team_loader import TeamDataLoader
@@ -187,6 +188,10 @@ class InteractiveInterface:
         # Season status
         status = self.controller.get_season_status()
         print(self.formatter.format_season_status(status))
+
+        # Playoff status (if playoffs active)
+        if status.get('regular_season_complete', False) or status.get('playoffs_initialized', False):
+            self._display_playoff_status(status)
         
         # Display mode indicator
         mode_icon = "📅" if self.simulation_mode == "daily" else "📆"
@@ -215,17 +220,34 @@ class InteractiveInterface:
             if not status.get('season_complete', False):
                 options.extend([
                     "Simulate Next Day",
-                    "Simulate Next Game Day", 
-                    "Simulate Next 7 Days",
-                    "Switch to Weekly Mode"
+                    "Simulate Next Game Day",
+                    "Simulate Next 7 Days"
                 ])
+
+                # Add bulk simulation option if regular season not complete
+                if not status.get('regular_season_complete', False):
+                    options.append("Simulate to End of Regular Season")
+
+                options.append("Switch to Weekly Mode")
         else:
-            # Weekly simulation options  
+            # Weekly simulation options
             if not status.get('season_complete', False):
                 options.extend([
-                    "Simulate Next Week",
-                    "Switch to Daily Mode"
+                    "Simulate Next Week"
                 ])
+
+                # Add bulk simulation option if regular season not complete
+                if not status.get('regular_season_complete', False):
+                    options.append("Simulate to End of Regular Season")
+
+                options.append("Switch to Daily Mode")
+
+        # Add playoff-specific options if playoffs are active
+        if status.get('playoffs_initialized', False):
+            if self.simulation_mode == 'daily':
+                options.insert(-1, "Simulate Playoff Games")  # Insert before "Switch to Weekly Mode"
+            else:
+                options.insert(-1, "Simulate Playoff Round")  # Insert before "Switch to Daily Mode"
         
         # Common options for both modes
         options.extend([
@@ -268,22 +290,70 @@ class InteractiveInterface:
             elif choice in ['3', '7', 'week', '7days']:
                 self._simulate_next_7_days()
                 return
-            elif choice in ['4', 'switch', 'weekly']:
+            elif choice in ['4', 'season', 'end', 'bulk'] and not status.get('regular_season_complete', False):
+                self._simulate_to_end_of_regular_season()
+                return
+            elif choice in ['5', 'playoff', 'playoffs'] and status.get('playoffs_initialized', False):
+                self._simulate_playoff_games()
+                return
+            elif choice in ['4', 'playoff', 'playoffs'] and status.get('playoffs_initialized', False) and status.get('regular_season_complete', False):
+                self._simulate_playoff_games()
+                return
+            elif choice in ['6', 'switch', 'weekly'] and status.get('playoffs_initialized', False):
                 self._switch_to_weekly_mode()
                 return
-                
+            elif choice in ['5', 'switch', 'weekly'] and not status.get('playoffs_initialized', False) and status.get('regular_season_complete', False):
+                self._switch_to_weekly_mode()
+                return
+            elif choice in ['4', 'switch', 'weekly'] and not status.get('playoffs_initialized', False) and not status.get('regular_season_complete', False):
+                self._switch_to_weekly_mode()
+                return
+
         elif self.simulation_mode == 'weekly' and not status.get('season_complete', False):
             if choice in ['1', 'simulate', 'sim', 'next', 'week']:
                 self._simulate_next_week()
                 return
-            elif choice in ['2', 'switch', 'daily']:
+            elif choice in ['2', 'season', 'end', 'bulk'] and not status.get('regular_season_complete', False):
+                self._simulate_to_end_of_regular_season()
+                return
+            elif choice in ['3', 'playoff', 'playoffs'] and status.get('playoffs_initialized', False):
+                self._simulate_playoff_round()
+                return
+            elif choice in ['2', 'playoff', 'playoffs'] and status.get('playoffs_initialized', False) and status.get('regular_season_complete', False):
+                self._simulate_playoff_round()
+                return
+            elif choice in ['4', 'switch', 'daily'] and status.get('playoffs_initialized', False):
+                self._switch_to_daily_mode()
+                return
+            elif choice in ['3', 'switch', 'daily'] and not status.get('playoffs_initialized', False) and status.get('regular_season_complete', False):
+                self._switch_to_daily_mode()
+                return
+            elif choice in ['2', 'switch', 'daily'] and not status.get('playoffs_initialized', False) and not status.get('regular_season_complete', False):
                 self._switch_to_daily_mode()
                 return
         
         # Handle common choices (adjust numbers based on mode and season status)
-        common_offset = 4 if self.simulation_mode == 'daily' else 2
+        # Calculate offset based on mode and season status
+        if self.simulation_mode == 'daily':
+            # Daily mode: 3 base options + bulk option (if regular season not complete) + playoff option (if playoffs active) + switch option
+            base_offset = 3  # Next Day, Next Game Day, Next 7 Days
+            if not status.get('regular_season_complete', False):
+                base_offset += 1  # Add bulk simulation option
+            if status.get('playoffs_initialized', False):
+                base_offset += 1  # Add playoff option
+            base_offset += 1  # Switch to Weekly Mode
+        else:
+            # Weekly mode: 1 base option + bulk option (if regular season not complete) + playoff option (if playoffs active) + switch option
+            base_offset = 1  # Next Week
+            if not status.get('regular_season_complete', False):
+                base_offset += 1  # Add bulk simulation option
+            if status.get('playoffs_initialized', False):
+                base_offset += 1  # Add playoff option
+            base_offset += 1  # Switch to Daily Mode
+
+        common_offset = base_offset
         if status.get('season_complete', False):
-            common_offset -= 1  # Adjust for missing simulation options when complete
+            common_offset = 0  # Reset if season is completely done
             
         # Map common choices
         standings_choice = str(common_offset + 1) if not status.get('season_complete', False) else '1'
@@ -476,7 +546,101 @@ class InteractiveInterface:
             print()
             print(self.formatter.format_error(f"7-day simulation failed: {str(e)}"))
             input("Press Enter to continue...")
-    
+
+    def _simulate_to_end_of_regular_season(self):
+        """Simulate all remaining games until the regular season is complete."""
+        print(self.formatter.clear_screen())
+        print(self.formatter.format_header("SIMULATING TO END OF REGULAR SEASON"))
+        print()
+
+        # Check if regular season is already complete
+        status = self.controller.get_season_status()
+        if status.get('regular_season_complete', False):
+            print(self.formatter.format_info("Regular season is already complete!"))
+            print()
+            input("Press Enter to continue...")
+            return
+
+        # Show current progress
+        current_week = status.get('current_week', 0)
+        print(f"📅 Current Status: Week {current_week} of 18")
+        print(f"🎯 Target: Simulate through Week 18 to reach playoffs")
+        print()
+
+        # Confirm with user
+        print("This will simulate all remaining regular season games.")
+        print("This may take several moments depending on how many weeks remain.")
+        print()
+        confirm = input("Continue? (Y/n): ").strip().lower()
+
+        if confirm not in ['', 'y', 'yes']:
+            print()
+            print(self.formatter.format_info("Simulation cancelled."))
+            input("Press Enter to continue...")
+            return
+
+        print()
+        print(self.formatter.format_info("Starting bulk simulation to end of regular season..."))
+        print("⏳ This may take a moment...")
+        time.sleep(1)
+
+        try:
+            # Track progress
+            start_week = current_week
+
+            # Run the bulk simulation
+            multi_day_result = self.daily_controller.simulate_to_end_of_regular_season()
+
+            print()
+            print(self.formatter.format_success("🏆 Regular season simulation complete!"))
+            print(f"📅 Simulation Period: {multi_day_result.start_date} to {multi_day_result.end_date}")
+            print(f"📊 Days Simulated: {multi_day_result.days_simulated}")
+            print(f"🏈 Total Games: {multi_day_result.total_games}")
+            print(f"✅ Successful Games: {multi_day_result.total_successful}")
+
+            if multi_day_result.total_failed > 0:
+                print(f"❌ Failed Games: {multi_day_result.total_failed}")
+
+            if multi_day_result.errors:
+                print(f"⚠️ Errors: {len(multi_day_result.errors)}")
+
+            # Show final week reached
+            final_status = self.controller.get_season_status()
+            final_week = final_status.get('current_week', 0)
+            weeks_simulated = final_week - start_week
+            print(f"📈 Weeks Completed: {weeks_simulated} (from Week {start_week} to Week {final_week})")
+
+            print()
+
+            # Check if playoffs are now available
+            if final_status.get('regular_season_complete', False):
+                print(self.formatter.format_success("🎉 Regular season complete! Playoffs are now available."))
+                if final_status.get('playoffs_initialized', False):
+                    print(self.formatter.format_info("📋 Playoff bracket has been generated."))
+                    print("You can now view standings and simulate playoff games!")
+                else:
+                    print(self.formatter.format_info("⏳ Playoff seeding will be calculated tomorrow."))
+            else:
+                print(self.formatter.format_warning("⚠️ Regular season may not be fully complete yet."))
+
+            # Store summary for display
+            self.last_day_results = {
+                'date': f"{multi_day_result.start_date} to {multi_day_result.end_date}",
+                'events_executed': multi_day_result.total_games,
+                'successful_events': multi_day_result.total_successful,
+                'failed_events': multi_day_result.total_failed,
+                'errors': multi_day_result.errors
+            }
+
+            print()
+            input("Press Enter to continue...")
+
+        except Exception as e:
+            print()
+            print(self.formatter.format_error(f"Bulk simulation failed: {str(e)}"))
+            print("You may need to simulate manually or try again.")
+            input("Press Enter to continue...")
+
     def _switch_to_weekly_mode(self):
         """Switch from daily to weekly simulation mode."""
         print(self.formatter.clear_screen())
@@ -853,3 +1017,93 @@ class InteractiveInterface:
 
         except Exception as e:
             print(self.formatter.format_error(f"Error initializing user team manager: {e}"))
+
+    def _display_playoff_status(self, status: Dict[str, Any]) -> None:
+        """
+        Display playoff tournament status.
+
+        Args:
+            status: Season status dictionary
+        """
+        print()
+        print("🏆 PLAYOFF STATUS:")
+
+        if status.get('regular_season_complete', False):
+            print("  ✅ Regular season complete")
+        else:
+            print("  ⏳ Regular season in progress")
+
+        if status.get('playoffs_initialized', False):
+            print("  ✅ Playoffs initialized")
+
+            # Get tournament status if available
+            if hasattr(self.controller, 'playoff_tournament_manager') and self.controller.playoff_tournament_manager:
+                try:
+                    tournament_status = self.controller.playoff_tournament_manager.get_tournament_status()
+                    print(f"  📊 Current State: {tournament_status.get('current_state', 'Unknown')}")
+
+                    if tournament_status.get('current_round'):
+                        print(f"  🏈 Current Round: {tournament_status['current_round']}")
+
+                    if tournament_status.get('games_completed', 0) > 0:
+                        games_completed = tournament_status['games_completed']
+                        games_remaining = tournament_status['games_remaining']
+                        print(f"  📈 Progress: {games_completed} games complete, {games_remaining} remaining")
+
+                    # Show champions if available
+                    if tournament_status.get('afc_champion'):
+                        print(f"  🏆 AFC Champion: Team {tournament_status['afc_champion']}")
+                    if tournament_status.get('nfc_champion'):
+                        print(f"  🏆 NFC Champion: Team {tournament_status['nfc_champion']}")
+                    if tournament_status.get('super_bowl_winner'):
+                        print(f"  🏆 Super Bowl Champion: Team {tournament_status['super_bowl_winner']}")
+
+                except Exception as e:
+                    print(f"  ⚠️ Error retrieving tournament status: {e}")
+        else:
+            print("  ⏳ Playoffs not yet initialized")
+
+        print()
+
+    def _simulate_playoff_games(self) -> None:
+        """Simulate playoff games (daily mode)."""
+        print(self.formatter.clear_screen())
+        print(self.formatter.format_header("SIMULATING PLAYOFF GAMES"))
+        print()
+
+        try:
+            print(self.formatter.format_info("Simulating next playoff games..."))
+
+            # Use the existing daily simulation to advance through playoff games
+            self._simulate_next_day()
+
+            print()
+            print(self.formatter.format_success("Playoff day simulated!"))
+
+            time.sleep(0.5)
+
+        except Exception as e:
+            print()
+            print(self.formatter.format_error(f"Playoff simulation failed: {str(e)}"))
+            input("Press Enter to continue...")
+
+    def _simulate_playoff_round(self) -> None:
+        """Simulate a complete playoff round (weekly mode)."""
+        print(self.formatter.clear_screen())
+        print(self.formatter.format_header("SIMULATING PLAYOFF ROUND"))
+        print()
+
+        try:
+            print(self.formatter.format_info("Simulating next playoff round..."))
+
+            # For weekly mode, simulate multiple days to complete a round
+            # This would need integration with tournament manager to know round boundaries
+            print(self.formatter.format_warning("Playoff round simulation not yet fully implemented"))
+            print("For now, please switch to daily mode for playoff simulation.")
+
+            input("Press Enter to continue...")
+
+        except Exception as e:
+            print()
+            print(self.formatter.format_error(f"Playoff round simulation failed: {str(e)}"))
+            input("Press Enter to continue...")

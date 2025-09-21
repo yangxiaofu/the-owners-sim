@@ -25,20 +25,25 @@ class PassPlaySimulator:
     """Simulates pass plays with comprehensive NFL statistics and individual player attribution"""
     
     def __init__(self, offensive_players: List, defensive_players: List,
-                 offensive_formation: str, defensive_formation: str):
+                 offensive_formation: str, defensive_formation: str,
+                 offensive_team_id: int = None, defensive_team_id: int = None):
         """
         Initialize pass play simulator
-        
+
         Args:
             offensive_players: List of 11 offensive Player objects
             defensive_players: List of 11 defensive Player objects
-            offensive_formation: Offensive formation string  
+            offensive_formation: Offensive formation string
             defensive_formation: Defensive formation string
+            offensive_team_id: Team ID of the offensive team (1-32)
+            defensive_team_id: Team ID of the defensive team (1-32)
         """
         self.offensive_players = offensive_players
         self.defensive_players = defensive_players
         self.offensive_formation = offensive_formation
         self.defensive_formation = defensive_formation
+        self.offensive_team_id = offensive_team_id
+        self.defensive_team_id = defensive_team_id
         
         # Initialize penalty engine
         self.penalty_engine = PenaltyEngine()
@@ -446,7 +451,7 @@ class PassPlaySimulator:
         
         # QB Statistics
         if quarterback:
-            qb_stats = create_player_stats_from_player(quarterback)
+            qb_stats = create_player_stats_from_player(quarterback, team_id=self.offensive_team_id)
             qb_stats.pass_attempts = 1
             
             if pass_outcome.get('completed'):
@@ -468,7 +473,7 @@ class PassPlaySimulator:
         # Target Receiver Statistics
         target_receiver = pass_outcome.get('target_receiver')
         if target_receiver:
-            receiver_stats = create_player_stats_from_player(target_receiver)
+            receiver_stats = create_player_stats_from_player(target_receiver, team_id=self.offensive_team_id)
             receiver_stats.targets = 1
             
             if pass_outcome.get('completed'):
@@ -493,7 +498,7 @@ class PassPlaySimulator:
             selected_blockers = random.sample(offensive_line, num_blockers)
             
             for blocker in selected_blockers:
-                blocker_stats = create_player_stats_from_player(blocker)
+                blocker_stats = create_player_stats_from_player(blocker, team_id=self.offensive_team_id)
                 blocker_stats.pass_blocks = 1
                 if pass_outcome.get('pressure_applied'):
                     if random.random() < pressure_allowance:  # Configured chance blocker allowed pressure
@@ -511,14 +516,14 @@ class PassPlaySimulator:
                 
                 sack_participants = random.sample(pass_rushers, min(len(pass_rushers), random.randint(min_rushers, max_rushers)))
                 for rusher in sack_participants:
-                    rusher_stats = create_player_stats_from_player(rusher)
+                    rusher_stats = create_player_stats_from_player(rusher, team_id=self.defensive_team_id)
                     rusher_stats.sacks = 1 if len(sack_participants) == 1 else 0.5  # Split sack
                     rusher_stats.tackles_for_loss = 1
                     player_stats.append(rusher_stats)
             elif pass_outcome.get('pressure_applied'):
                 # Select 1 player who applied pressure
                 pressure_player = random.choice(pass_rushers)
-                pressure_stats = create_player_stats_from_player(pressure_player)
+                pressure_stats = create_player_stats_from_player(pressure_player, team_id=self.defensive_team_id)
                 pressure_stats.qb_pressures = 1
                 
                 # Use configured pressure-to-hit conversion rate
@@ -534,14 +539,14 @@ class PassPlaySimulator:
             if pass_outcome.get('intercepted'):
                 # Select DB who got the interception
                 int_player = random.choice(defensive_backs)
-                int_stats = create_player_stats_from_player(int_player)
+                int_stats = create_player_stats_from_player(int_player, team_id=self.defensive_team_id)
                 int_stats.interceptions = 1
                 int_stats.passes_defended = 1
                 player_stats.append(int_stats)
             elif pass_outcome.get('pass_deflected'):
                 # Select DB who deflected the pass
                 deflection_player = random.choice(defensive_backs)
-                deflection_stats = create_player_stats_from_player(deflection_player)
+                deflection_stats = create_player_stats_from_player(deflection_player, team_id=self.defensive_team_id)
                 deflection_stats.passes_deflected = 1
                 deflection_stats.passes_defended = 1
                 player_stats.append(deflection_stats)
@@ -550,7 +555,7 @@ class PassPlaySimulator:
                 tacklers = self._select_tacklers_after_catch(pass_outcome.get('yac', 0), defensive_backs + linebackers)
                 for tackler_info in tacklers:
                     player, is_assisted = tackler_info
-                    tackler_stats = create_player_stats_from_player(player)
+                    tackler_stats = create_player_stats_from_player(player, team_id=self.defensive_team_id)
                     tackler_stats.add_tackle(assisted=is_assisted)
                     player_stats.append(tackler_stats)
         

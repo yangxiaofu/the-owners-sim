@@ -108,23 +108,28 @@ class KickExecution:
 
 class KickoffSimulator:
     """Simulates NFL 2024 Dynamic Kickoff with comprehensive penalty integration and individual player attribution"""
-    
+
     def __init__(self, offensive_players: List, defensive_players: List,
-                 offensive_formation: str, defensive_formation: str):
+                 offensive_formation: str, defensive_formation: str,
+                 offensive_team_id: int = None, defensive_team_id: int = None):
         """
         Initialize kickoff simulator
-        
+
         Args:
             offensive_players: List of 11 kicking team Player objects
-            defensive_players: List of 11 receiving team Player objects  
+            defensive_players: List of 11 receiving team Player objects
             offensive_formation: Offensive formation (typically "KICKOFF")
             defensive_formation: Defensive formation ("KICKOFF_RETURN")
+            offensive_team_id: Team ID for the kicking team
+            defensive_team_id: Team ID for the receiving team
         """
         self.kicking_team = offensive_players
         self.receiving_team = defensive_players
         self.offensive_formation = offensive_formation
         self.defensive_formation = defensive_formation
-        
+        self.offensive_team_id = offensive_team_id
+        self.defensive_team_id = defensive_team_id
+
         # Initialize penalty engine
         self.penalty_engine = PenaltyEngine()
         
@@ -563,7 +568,7 @@ class KickoffSimulator:
         
         # Kicker statistics
         if self.kicker:
-            kicker_stats = create_player_stats_from_player(self.kicker)
+            kicker_stats = create_player_stats_from_player(self.kicker, self.offensive_team_id)
             kicker_stats.kickoff_attempts = 1
             
             if result.outcome in [KickoffOutcome.TOUCHBACK_END_ZONE, KickoffOutcome.TOUCHBACK_LANDING_ZONE]:
@@ -575,7 +580,7 @@ class KickoffSimulator:
         
         # Coverage team statistics
         for player in self.coverage_unit:
-            coverage_stats = create_player_stats_from_player(player)
+            coverage_stats = create_player_stats_from_player(player, self.offensive_team_id)
             coverage_stats.special_teams_snaps = 1
             
             if result.outcome == KickoffOutcome.REGULAR_RETURN:
@@ -588,7 +593,7 @@ class KickoffSimulator:
         # Returner statistics
         if result.outcome == KickoffOutcome.REGULAR_RETURN and self.returners:
             returner = self.returners[0]  # Primary returner
-            returner_stats = create_player_stats_from_player(returner)
+            returner_stats = create_player_stats_from_player(returner, self.defensive_team_id)
             returner_stats.kickoff_returns = 1
             returner_stats.kickoff_return_yards = result.yards_gained
             
@@ -599,7 +604,7 @@ class KickoffSimulator:
         
         # Return blocking unit statistics
         for player in self.return_blockers:
-            blocker_stats = create_player_stats_from_player(player)
+            blocker_stats = create_player_stats_from_player(player, self.defensive_team_id)
             blocker_stats.special_teams_snaps = 1
             result.player_stats[player.name] = blocker_stats
     
