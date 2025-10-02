@@ -61,6 +61,8 @@ from .calendar_exceptions import (
     handle_calendar_exception
 )
 
+from .simulation_executor import SimulationExecutor
+
 # Version information
 __version__ = "1.1.0"
 __author__ = "NFL Simulation Team"
@@ -72,6 +74,7 @@ __all__ = [
     "Date",
     "DateAdvanceResult",
     "CalendarComponent",
+    "SimulationExecutor",
 
     # Factory functions
     "create_calendar",
