@@ -109,7 +109,7 @@ class TestCalendarComponent:
         result = calendar.advance(10)
 
         assert result.start_date == Date(2024, 2, 25)
-        assert result.end_date == Date(2024, 3, 5)  # Crosses Feb 29
+        assert result.end_date == Date(2024, 3, 6)  # Crosses Feb 29 (leap year: Feb has 29 days)
         assert result.days_advanced == 10
 
     def test_advance_invalid_days_negative(self):
@@ -288,7 +288,7 @@ class TestCalendarComponent:
 
         repr_str = repr(calendar)
         assert "CalendarComponent" in repr_str
-        assert "2024-01-15" in repr_str
+        assert "Date(2024, 1, 15)" in repr_str
 
 
 class TestCalendarThreadSafety:

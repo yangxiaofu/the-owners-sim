@@ -105,12 +105,12 @@ class FullGameSimulator:
         
         # Record simulation start time for performance tracking
         simulation_start_time = time.time()
-        
+
         # Initialize GameLoopController with all required components
         try:
             # Create overtime manager based on configured type
             overtime_manager = create_overtime_manager(self.overtime_type)
-            
+
             game_loop_controller = GameLoopController(
                 game_manager=self.game_manager,
                 home_team=self.home_team,
@@ -122,19 +122,20 @@ class FullGameSimulator:
                 overtime_manager=overtime_manager,
                 game_date=date
             )
-            
+
             print("✅ GameLoopController initialized successfully")
-            
+
             # Run complete game simulation
             print("\n🏈 Beginning Full Game Simulation...")
             game_result = game_loop_controller.run_game()
-            
+
             # Record simulation completion time
             simulation_end_time = time.time()
             simulation_duration = simulation_end_time - simulation_start_time
-            
-            # Store results for API access
+
+            # Store results and controller for API access
             self._game_result = game_result
+            self._game_loop_controller = game_loop_controller  # Store controller for live stats access
             self._simulation_duration = simulation_duration
 
             # Game simulation complete - no persistence in standalone mode

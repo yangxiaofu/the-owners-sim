@@ -17,6 +17,7 @@ sys.path.insert(0, src_path)
 from src.calendar.date_models import (
     Date, DateAdvanceResult, normalize_date, days_between, is_valid_date
 )
+from src.calendar.calendar_exceptions import InvalidDateException
 
 
 class TestDate:
@@ -30,14 +31,14 @@ class TestDate:
         assert date.day == 15
 
     def test_date_creation_invalid(self):
-        """Test creating invalid dates raises ValueError."""
-        with pytest.raises(ValueError, match="Invalid date"):
+        """Test creating invalid dates raises InvalidDateException."""
+        with pytest.raises(InvalidDateException, match="Invalid date"):
             Date(2024, 2, 30)  # February 30th doesn't exist
 
-        with pytest.raises(ValueError, match="Invalid date"):
+        with pytest.raises(InvalidDateException, match="Invalid date"):
             Date(2024, 13, 1)  # Month 13 doesn't exist
 
-        with pytest.raises(ValueError, match="Invalid date"):
+        with pytest.raises(InvalidDateException, match="Invalid date"):
             Date(2024, 1, 32)  # January 32nd doesn't exist
 
     def test_date_from_python_date(self):
@@ -74,7 +75,7 @@ class TestDate:
         with pytest.raises(ValueError, match="Cannot parse date string"):
             Date.from_string("invalid-date")
 
-        with pytest.raises(ValueError, match="Cannot parse date string"):
+        with pytest.raises(InvalidDateException, match="Invalid date"):
             Date.from_string("2024-13-01")  # Invalid month
 
     def test_date_to_python_date(self):

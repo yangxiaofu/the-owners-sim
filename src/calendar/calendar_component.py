@@ -21,6 +21,7 @@ from .season_phase_tracker import (
 from .season_milestones import (
     SeasonMilestoneCalculator, SeasonMilestone, create_season_milestone_calculator
 )
+from .calendar_notifications import CalendarEventPublisher
 
 
 class CalendarComponent:
@@ -35,13 +36,15 @@ class CalendarComponent:
     MIN_ADVANCE_DAYS = 1
     MAX_ADVANCE_DAYS = 365
 
-    def __init__(self, start_date: Union[Date, PyDate, str], season_year: Optional[int] = None):
+    def __init__(self, start_date: Union[Date, PyDate, str], season_year: Optional[int] = None,
+                 publisher: Optional[CalendarEventPublisher] = None):
         """
         Initialize calendar component.
 
         Args:
             start_date: Starting date (Date object, Python date, or string)
             season_year: NFL season year (e.g., 2024 for 2024-25 season)
+            publisher: Optional event publisher for calendar notifications
 
         Raises:
             InvalidDateException: If start_date is invalid
@@ -66,6 +69,9 @@ class CalendarComponent:
         self._season_phase_tracker = SeasonPhaseTracker(self._current_date, season_year)
         self._milestone_calculator = create_season_milestone_calculator()
         self._season_milestones: List[SeasonMilestone] = []
+
+        # Optional event publisher for notifications
+        self._publisher: Optional[CalendarEventPublisher] = publisher
 
         # Initialize milestones for the season
         self._update_season_milestones()
@@ -107,6 +113,10 @@ class CalendarComponent:
                     end_date=end_date,
                     days_advanced=days
                 )
+
+                # Publish date advancement notification if publisher is configured
+                if self._publisher:
+                    self._publisher.publish_date_advanced(result)
 
                 return result
 
@@ -324,6 +334,10 @@ class CalendarComponent:
                 # Update milestones when phase changes
                 self._update_season_milestones()
 
+                # Publish phase transition notification if publisher is configured
+                if self._publisher:
+                    self._publisher.publish_phase_transition(transition)
+
             return transition
 
     def get_phase_info(self) -> Dict[str, Any]:
@@ -378,6 +392,11 @@ class CalendarComponent:
                 to_phase, self._current_date, metadata
             )
             self._update_season_milestones()
+
+            # Publish phase transition notification if publisher is configured
+            if self._publisher:
+                self._publisher.publish_phase_transition(transition)
+
             return transition
 
     def _update_season_milestones(self) -> None:

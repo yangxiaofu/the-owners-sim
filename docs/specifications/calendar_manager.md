@@ -128,6 +128,113 @@ OFFSEASON
 
 ---
 
+## Notification System (Observer Pattern)
+
+### Overview
+
+The Calendar Manager includes an optional notification system that publishes calendar state changes to subscribers. This enables loose coupling between the calendar and other systems that need to react to calendar changes.
+
+**Key Principle:** Calendar notifications are NOT simulation events - they are notifications ABOUT calendar state changes.
+
+### CalendarEventPublisher
+
+```python
+class CalendarEventPublisher:
+    def subscribe(listener: Callable, notification_types: Optional[List[NotificationType]] = None)
+    def unsubscribe(listener: Callable)
+    def publish(notification: CalendarNotification)
+
+    # Convenience methods
+    def publish_date_advanced(result: DateAdvanceResult)
+    def publish_phase_transition(transition: PhaseTransition)
+    def publish_milestone_reached(milestone_name: str, milestone_date: Date)
+```
+
+### Notification Types
+
+```python
+class NotificationType(Enum):
+    DATE_ADVANCED = "date_advanced"        # Calendar advanced by N days
+    PHASE_TRANSITION = "phase_transition"  # Season phase changed
+    MILESTONE_REACHED = "milestone_reached" # Milestone date reached
+    SEASON_STARTED = "season_started"      # New season began
+    SEASON_ENDED = "season_ended"          # Season concluded
+```
+
+### CalendarNotification Structure
+
+```python
+@dataclass(frozen=True)
+class CalendarNotification:
+    notification_type: NotificationType
+    timestamp: datetime
+    data: Dict[str, Any]  # Notification-specific payload
+```
+
+### Usage Examples
+
+**Subscribe to all calendar changes:**
+```python
+def calendar_listener(notification: CalendarNotification):
+    print(f"Calendar changed: {notification.notification_type}")
+
+publisher.subscribe(calendar_listener)
+```
+
+**Subscribe to specific notification types:**
+```python
+def phase_change_handler(notification: CalendarNotification):
+    if notification.notification_type == NotificationType.PHASE_TRANSITION:
+        from_phase = notification.data['from_phase']
+        to_phase = notification.data['to_phase']
+        print(f"Season phase: {from_phase} → {to_phase}")
+
+publisher.subscribe(phase_change_handler, [NotificationType.PHASE_TRANSITION])
+```
+
+**Integration with CalendarComponent:**
+```python
+# Optional publisher injection
+calendar = CalendarComponent(start_date, publisher=my_publisher)
+
+# When calendar.advance() is called, notifications are automatically published
+result = calendar.advance(7)  # Publishes DateAdvancedNotification
+```
+
+### Notification Data Payloads
+
+**DATE_ADVANCED:**
+```python
+{
+    "start_date": "2024-09-05",
+    "end_date": "2024-09-12",
+    "days_advanced": 7,
+    "advancement_id": "adv_123"
+}
+```
+
+**PHASE_TRANSITION:**
+```python
+{
+    "from_phase": "regular_season",
+    "to_phase": "playoffs",
+    "trigger_date": "2025-01-05",
+    "transition_type": "game_completion",
+    "metadata": {...}
+}
+```
+
+**MILESTONE_REACHED:**
+```python
+{
+    "milestone_name": "NFL Draft",
+    "milestone_date": "2025-04-24",
+    "metadata": {"round": 1, "location": "Detroit"}
+}
+```
+
+---
+
 ## Behavior Specifications
 
 ### Advancing Calendar
