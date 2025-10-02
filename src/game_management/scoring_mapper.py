@@ -7,7 +7,7 @@ and scoreboard systems while enabling seamless integration.
 """
 
 from typing import Optional
-from .scoreboard import ScoringType
+from game_management.scoreboard import ScoringType
 
 
 class ScoringTypeMapper:

@@ -17,19 +17,19 @@ from enum import Enum
 import json
 from pathlib import Path
 
-from .game_manager import GameManager, GamePhase
-from .overtime_manager import IOvertimeManager, RegularSeasonOvertimeManager
-from ..play_engine.game_state.drive_manager import DriveManager, DriveResult as DriveManagerResult, DriveEndReason
-from ..play_engine.play_calling.coaching_staff import CoachingStaff
-from ..play_engine.play_calling.staff_factory import StaffFactory
-from ..play_engine.play_calling.play_caller import PlayCaller, PlayCallContext
-from ..play_engine.core.engine import simulate
-from ..play_engine.core.params import PlayEngineParams
-from ..play_engine.core.play_result import PlayResult
-from ..play_engine.simulation.stats import PlayerStatsAccumulator, TeamStatsAccumulator
-from ..team_management.teams.team_loader import Team
-from .centralized_stats_aggregator import CentralizedStatsAggregator
-from .scoreboard import ScoringType
+from game_management.game_manager import GameManager, GamePhase
+from game_management.overtime_manager import IOvertimeManager, RegularSeasonOvertimeManager
+from play_engine.game_state.drive_manager import DriveManager, DriveResult as DriveManagerResult, DriveEndReason
+from play_engine.play_calling.coaching_staff import CoachingStaff
+from play_engine.play_calling.staff_factory import StaffFactory
+from play_engine.play_calling.play_caller import PlayCaller, PlayCallContext
+from play_engine.core.engine import simulate
+from play_engine.core.params import PlayEngineParams
+from play_engine.core.play_result import PlayResult
+from play_engine.simulation.stats import PlayerStatsAccumulator, TeamStatsAccumulator
+from team_management.teams.team_loader import Team
+from game_management.centralized_stats_aggregator import CentralizedStatsAggregator
+from game_management.scoreboard import ScoringType
 from shared.game_result import GameResult
 
 
@@ -123,7 +123,7 @@ class GameLoopController:
         self.team_stats = self.stats_aggregator.team_stats
         
         # Drive transition manager for handling drive-to-drive transitions
-        from .drive_transition_manager import DriveTransitionManager
+        from game_management.drive_transition_manager import DriveTransitionManager
         self.drive_transition_manager = DriveTransitionManager(
             possession_manager=self.game_manager.possession_manager,
             game_clock=self.game_manager.game_clock
@@ -192,8 +192,8 @@ class GameLoopController:
         """
         
         # Create DriveManager for this drive - need proper FieldPosition and DownState objects
-        from ..play_engine.game_state.field_position import FieldPosition, FieldZone
-        from ..play_engine.game_state.down_situation import DownState
+        from play_engine.game_state.field_position import FieldPosition, FieldZone
+        from play_engine.game_state.down_situation import DownState
         
         # Use transition field position if available, otherwise default to 25 (touchback)
         starting_yard_line = self.next_drive_field_position if self.next_drive_field_position is not None else 25
@@ -331,8 +331,8 @@ class GameLoopController:
         
         # Create a temporary DriveManager with the drive result for DriveTransitionManager
         # We need to convert our DriveResult back to the format DriveTransitionManager expects
-        from ..play_engine.game_state.field_position import FieldPosition, FieldZone
-        from ..play_engine.game_state.down_situation import DownState
+        from play_engine.game_state.field_position import FieldPosition, FieldZone
+        from play_engine.game_state.down_situation import DownState
         
         temp_drive_position = FieldPosition(
             yard_line=drive_result.ending_field_position,
@@ -594,7 +594,7 @@ class GameLoopController:
         """
         try:
             # Use PlayerDataLoader for team lookups (supports both team-based and single file formats)
-            from ..team_management.players.player_loader import get_player_loader
+            from team_management.players.player_loader import get_player_loader
 
             player_loader = get_player_loader()
 

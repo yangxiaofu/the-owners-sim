@@ -6,15 +6,13 @@ A clean, modular NFL game simulator that can be built up piece by piece.
 Starting with basic team initialization and ready for incremental feature additions.
 """
 
-from ..team_management.teams.team_loader import get_team_by_id
-from ..team_management.personnel import TeamRosterGenerator
-from ..constants.team_ids import TeamIDs
-from .game_manager import GameManager
-from .game_loop_controller import GameLoopController, GameResult, DriveResult
-from .drive_transition_manager import DriveTransitionManager
-from .overtime_manager import OvertimeType, create_overtime_manager
-from ..persistence.game_statistics import GameStatisticsService
-from ..database.connection import DatabaseConnection
+from team_management.teams.team_loader import get_team_by_id
+from team_management.personnel import TeamRosterGenerator
+from constants.team_ids import TeamIDs
+from game_management.game_manager import GameManager
+from game_management.game_loop_controller import GameLoopController, GameResult, DriveResult
+from game_management.drive_transition_manager import DriveTransitionManager
+from game_management.overtime_manager import OvertimeType, create_overtime_manager
 import json
 from pathlib import Path
 import time
@@ -29,7 +27,7 @@ class FullGameSimulator:
     added piece by piece for easy testing and development.
     """
     
-    def __init__(self, away_team_id: int, home_team_id: int, overtime_type: str = "regular_season", enable_persistence: bool = True, database_path: Optional[str] = None, dynasty_id: Optional[str] = None):
+    def __init__(self, away_team_id: int, home_team_id: int, overtime_type: str = "regular_season"):
         """
         Initialize game simulator with two teams
 
@@ -37,9 +35,6 @@ class FullGameSimulator:
             away_team_id: Numerical team ID for away team (1-32)
             home_team_id: Numerical team ID for home team (1-32)
             overtime_type: Type of overtime rules ("regular_season" or "playoffs")
-            enable_persistence: Whether to enable statistics persistence (default: True)
-            database_path: Optional path to database file (default: "data/database/nfl_simulation.db")
-            dynasty_id: Optional dynasty identifier for statistics isolation (default: "default_dynasty")
         """
         # Load team data
         self.away_team = get_team_by_id(away_team_id)
@@ -59,15 +54,6 @@ class FullGameSimulator:
         
         # Store overtime type for game simulation
         self.overtime_type = OvertimeType.PLAYOFFS if overtime_type == "playoffs" else OvertimeType.REGULAR_SEASON
-
-        # Store persistence settings
-        self._persistence_enabled = enable_persistence
-
-        # Store database configuration
-        self._database_path = database_path or "data/database/nfl_simulation.db"
-
-        # Store dynasty configuration
-        self._dynasty_id = dynasty_id or "default_dynasty"
 
         # Load team rosters
         self.away_roster = TeamRosterGenerator.load_team_roster(away_team_id)
@@ -89,18 +75,7 @@ class FullGameSimulator:
         
         print(f"   Away Coaching Staff: {self.away_coaching_staff['head_coach']['name']}")
         print(f"   Home Coaching Staff: {self.home_coaching_staff['head_coach']['name']}")
-
-        # Initialize game statistics service for immediate persistence (if enabled)
-        if self._persistence_enabled:
-            try:
-                self.statistics_service = self._create_statistics_service()
-                print(f"   Statistics Persistence: Enabled (database: {self._database_path}, dynasty: {self._dynasty_id})")
-            except Exception as e:
-                print(f"⚠️  Statistics service initialization failed: {e}")
-                self.statistics_service = None
-        else:
-            self.statistics_service = None
-            print(f"   Statistics Persistence: Disabled")
+        print(f"   Statistics Persistence: Disabled (standalone mode)")
 
         # Start game (includes coin toss)
         self.game_manager.start_game()
@@ -112,137 +87,7 @@ class FullGameSimulator:
         print(f"   Receiving Team: {receiving_team}")
         print(f"   Game Status: {self.game_manager.get_game_state().phase.value}")
 
-    def _create_statistics_service(self) -> GameStatisticsService:
-        """
-        Create a statistics service with the configured database path.
 
-        Returns:
-            Configured GameStatisticsService instance
-        """
-        # Create database connection with custom path
-        database_connection = DatabaseConnection(db_path=self._database_path)
-
-        # Create statistics service with custom database
-        return GameStatisticsService.create_default(database_connection=database_connection)
-
-    @property
-    def persistence(self) -> bool:
-        """
-        Get or set whether statistics persistence is enabled.
-
-        Returns:
-            bool: True if persistence is enabled, False otherwise
-        """
-        return self._persistence_enabled
-
-    @persistence.setter
-    def persistence(self, enabled: bool) -> None:
-        """
-        Enable or disable statistics persistence.
-
-        When enabling persistence, creates the statistics service if needed.
-        When disabling, sets the service to None to prevent persistence.
-
-        Args:
-            enabled: True to enable persistence, False to disable
-        """
-        if enabled == self._persistence_enabled:
-            return  # No change needed
-
-        self._persistence_enabled = enabled
-
-        if enabled:
-            # Enable persistence - create service if needed
-            if self.statistics_service is None:
-                try:
-                    self.statistics_service = self._create_statistics_service()
-                    print(f"✅ Statistics persistence enabled (database: {self._database_path}, dynasty: {self._dynasty_id})")
-                except Exception as e:
-                    print(f"⚠️  Failed to enable statistics persistence: {e}")
-                    self.statistics_service = None
-                    self._persistence_enabled = False
-        else:
-            # Disable persistence
-            self.statistics_service = None
-            print(f"🔄 Statistics persistence disabled")
-
-    @property
-    def database_path(self) -> str:
-        """
-        Get or set the database path for statistics persistence.
-
-        Returns:
-            str: Current database path
-        """
-        return self._database_path
-
-    @database_path.setter
-    def database_path(self, path: str) -> None:
-        """
-        Set the database path for statistics persistence.
-
-        When persistence is enabled, changing the database path will recreate
-        the statistics service with the new database connection.
-
-        Args:
-            path: Path to the database file
-        """
-        if path == self._database_path:
-            return  # No change needed
-
-        old_path = self._database_path
-        self._database_path = path
-
-        # If persistence is currently enabled, recreate the service with new database
-        if self._persistence_enabled and self.statistics_service is not None:
-            try:
-                self.statistics_service = self._create_statistics_service()
-                print(f"🔄 Database changed from {old_path} to {self._database_path}")
-            except Exception as e:
-                print(f"⚠️  Failed to recreate statistics service with new database: {e}")
-                # Revert to old path if creation failed
-                self._database_path = old_path
-                self.statistics_service = None
-                self._persistence_enabled = False
-
-    @property
-    def dynasty_id(self) -> str:
-        """
-        Get or set the dynasty ID for statistics isolation.
-
-        Returns:
-            str: Current dynasty ID
-        """
-        return self._dynasty_id
-
-    @dynasty_id.setter
-    def dynasty_id(self, dynasty_id: str) -> None:
-        """
-        Set the dynasty ID for statistics isolation.
-
-        When persistence is enabled, changing the dynasty ID will recreate
-        the statistics service with the new dynasty context.
-
-        Args:
-            dynasty_id: Dynasty identifier for statistics isolation
-        """
-        if dynasty_id == self._dynasty_id:
-            return  # No change needed
-
-        old_dynasty_id = self._dynasty_id
-        self._dynasty_id = dynasty_id
-
-        # If persistence is currently enabled, recreate the service with new dynasty context
-        if self._persistence_enabled and self.statistics_service is not None:
-            try:
-                self.statistics_service = self._create_statistics_service()
-                print(f"🔄 Dynasty changed from {old_dynasty_id} to {self._dynasty_id}")
-            except Exception as e:
-                print(f"⚠️  Failed to recreate statistics service with new dynasty: {e}")
-                # Revert to old dynasty if creation failed
-                self._dynasty_id = old_dynasty_id
-                self.statistics_service = None
-                self._persistence_enabled = False
 
     def simulate_game(self, date=None) -> GameResult:
         """
@@ -292,39 +137,8 @@ class FullGameSimulator:
             self._game_result = game_result
             self._simulation_duration = simulation_duration
 
-            # Persist comprehensive game statistics immediately (if enabled)
-            if self.statistics_service and self._persistence_enabled:
-                try:
-                    print(f"\n📊 Persisting comprehensive game statistics...")
-
-                    # Create game metadata for statistics persistence
-                    game_metadata = {
-                        'game_id': f"game_{self.away_team_id}_{self.home_team_id}_{date.strftime('%Y%m%d') if date else 'today'}",
-                        'dynasty_id': self._dynasty_id,
-                        'away_team_id': self.away_team_id,
-                        'home_team_id': self.home_team_id,
-                        'date': date if date else time.strftime('%Y-%m-%d'),
-                        'week': 1,  # TODO: Get from season context
-                        'season_type': 'regular_season'  # TODO: Get from game context
-                    }
-
-                    # Persist statistics
-                    persistence_result = self.statistics_service.persist_game_statistics(
-                        game_result=game_result,
-                        game_metadata=game_metadata
-                    )
-
-                    if persistence_result.success:
-                        print(f"✅ Statistics persisted: {persistence_result.records_persisted} records "
-                             f"({persistence_result.processing_time_ms:.1f}ms)")
-                    else:
-                        print(f"⚠️  Statistics persistence failed: {persistence_result.errors}")
-
-                except Exception as e:
-                    print(f"❌ Statistics persistence error: {e}")
-                    # Don't let statistics failures break the game simulation
-            elif not self._persistence_enabled:
-                print(f"\n📊 Statistics persistence disabled - game data not saved")
+            # Game simulation complete - no persistence in standalone mode
+            print(f"\n📊 Game complete - results available via get_game_result()")
 
             # Display final results
             print(f"\n🏁 GAME COMPLETE!")
@@ -604,7 +418,7 @@ class FullGameSimulator:
     
     def _create_fallback_game_result(self, game_state, start_time, date=None) -> GameResult:
         """Create minimal GameResult when full simulation fails"""
-        from .game_loop_controller import GameResult
+        from game_management.game_loop_controller import GameResult
         
         return GameResult(
             home_team=self.home_team,
@@ -695,228 +509,6 @@ class FullGameSimulator:
             "game_duration_minutes": game_result.game_duration_minutes,
             "game_completed": True,
             "simulation_time": getattr(self, '_simulation_duration', 0.0)
-        }
-    
-    def get_team_stats(self, team_id: Optional[int] = None) -> Dict[str, Any]:
-        """
-        Get team-level statistics
-        
-        Args:
-            team_id: Optional team ID to filter results (None returns both teams)
-            
-        Returns:
-            Dictionary with team statistics
-        """
-        if not hasattr(self, '_game_result') or not self._game_result:
-            return {}
-            
-        game_result = self._game_result
-        
-        # Extract team stats from final_statistics if available
-        if game_result.final_statistics and 'team_statistics' in game_result.final_statistics:
-            team_stats = game_result.final_statistics['team_statistics']
-            
-            if team_id is not None:
-                # Return stats for specific team
-                # Check if team_id matches home or away team
-                if team_id == self.home_team_id and 'home_team' in team_stats:
-                    stats = team_stats['home_team'].copy()
-                    stats['team_name'] = self._get_team_name(team_id)
-                    return stats
-                elif team_id == self.away_team_id and 'away_team' in team_stats:
-                    stats = team_stats['away_team'].copy()
-                    stats['team_name'] = self._get_team_name(team_id)
-                    return stats
-                else:
-                    return {}
-            else:
-                # Return stats for both teams with team names
-                result = {}
-                if 'home_team' in team_stats:
-                    home_team_name = self._get_team_name(self.home_team_id)
-                    result[home_team_name] = team_stats['home_team'].copy()
-                    result[home_team_name]['team_id'] = self.home_team_id
-                if 'away_team' in team_stats:
-                    away_team_name = self._get_team_name(self.away_team_id)
-                    result[away_team_name] = team_stats['away_team'].copy()
-                    result[away_team_name]['team_id'] = self.away_team_id
-                return result
-        else:
-            # Fallback to basic statistics from game result
-            basic_stats = {}
-            if team_id is not None:
-                team_name = self._get_team_name(team_id)
-                basic_stats[team_name] = {
-                    "team_id": team_id,
-                    "final_score": game_result.final_score.get(team_id, 0),
-                    "drives": sum(1 for drive in game_result.drive_results if drive.possessing_team_id == team_id),
-                    "total_plays": sum(drive.total_plays for drive in game_result.drive_results if drive.possessing_team_id == team_id)
-                }
-            else:
-                for tid, score in game_result.final_score.items():
-                    team_name = self._get_team_name(tid)
-                    basic_stats[team_name] = {
-                        "team_id": tid,
-                        "final_score": score,
-                        "drives": sum(1 for drive in game_result.drive_results if drive.possessing_team_id == tid),
-                        "total_plays": sum(drive.total_plays for drive in game_result.drive_results if drive.possessing_team_id == tid)
-                    }
-            return basic_stats
-    
-    def get_player_stats(self, team_id: Optional[int] = None, position: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Get player statistics
-        
-        Args:
-            team_id: Optional team ID to filter results  
-            position: Optional position to filter results (e.g., "QB", "RB", "WR")
-            
-        Returns:
-            Dictionary with player statistics
-        """
-        if not hasattr(self, '_game_result') or not self._game_result:
-            return {}
-            
-        game_result = self._game_result
-        
-        if game_result.final_statistics and 'player_statistics' in game_result.final_statistics:
-            player_stats = game_result.final_statistics['player_statistics']
-            
-            # Extract player data from all_players list
-            if 'all_players' in player_stats and isinstance(player_stats['all_players'], list):
-                filtered_stats = {}
-                
-                for player_data in player_stats['all_players']:
-                    include_player = True
-                    
-                    if team_id is not None:
-                        # Check if player belongs to specified team
-                        # This would need team information in player_data for proper filtering
-                        # For now, skip team filtering or implement based on available data
-                        pass  # Skip team filtering for now
-                    
-                    if position is not None and include_player:
-                        # Check if player plays specified position
-                        player_position = player_data.get('position', '').upper()
-                        if position.upper() not in player_position:
-                            include_player = False
-                    
-                    if include_player:
-                        player_name = player_data.get('player_name', 'Unknown Player')
-                        filtered_stats[player_name] = player_data
-                        
-                return filtered_stats
-            else:
-                return {}
-        else:
-            return {}
-    
-    def get_drive_summaries(self) -> List[Dict[str, Any]]:
-        """
-        Get drive-by-drive analysis
-        
-        Returns:
-            List of drive summary dictionaries
-        """
-        if not hasattr(self, '_game_result') or not self._game_result:
-            return []
-            
-        game_result = self._game_result
-        drive_summaries = []
-        
-        for i, drive in enumerate(game_result.drive_results, 1):
-            summary = {
-                "drive_number": i,
-                "possessing_team": self._get_team_name(drive.possessing_team_id),
-                "starting_field_position": drive.starting_field_position,
-                "ending_field_position": drive.ending_field_position,
-                "drive_outcome": drive.drive_outcome.value if hasattr(drive.drive_outcome, 'value') else str(drive.drive_outcome),
-                "total_plays": drive.total_plays,
-                "total_yards": drive.total_yards,
-                "time_elapsed": drive.time_elapsed,
-                "points_scored": drive.points_scored
-            }
-            drive_summaries.append(summary)
-            
-        return drive_summaries
-    
-    def get_play_by_play(self) -> List[Dict[str, Any]]:
-        """
-        Get complete play-by-play log
-        
-        Returns:
-            List of play-by-play dictionaries
-        """
-        if not hasattr(self, '_game_result') or not self._game_result:
-            return []
-            
-        game_result = self._game_result
-        play_by_play = []
-        
-        # Extract plays from drive results
-        play_number = 1
-        for drive_num, drive in enumerate(game_result.drive_results, 1):
-            for play_result in drive.plays:
-                play_entry = {
-                    "play_number": play_number,
-                    "drive_number": drive_num,
-                    "possessing_team": self._get_team_name(drive.possessing_team_id),
-                    "play_type": getattr(play_result, 'play_type', 'Unknown'),
-                    "yards_gained": getattr(play_result, 'yards_gained', 0),
-                    "description": getattr(play_result, 'description', f"Play #{play_number}"),
-                    "points_scored": getattr(play_result, 'points_scored', 0)
-                }
-                play_by_play.append(play_entry)
-                play_number += 1
-                
-        return play_by_play
-    
-    def get_penalty_summary(self) -> Dict[str, Any]:
-        """
-        Get penalty analysis
-        
-        Returns:
-            Dictionary with penalty statistics and analysis
-        """
-        if not hasattr(self, '_game_result') or not self._game_result:
-            return {"total_penalties": 0, "by_team": {}, "by_type": {}}
-            
-        game_result = self._game_result
-        
-        penalty_summary = {
-            "total_penalties": 0,
-            "by_team": {
-                self._get_team_name(self.home_team_id): 0,
-                self._get_team_name(self.away_team_id): 0
-            },
-            "by_type": {},
-            "penalty_yards": {
-                self._get_team_name(self.home_team_id): 0,
-                self._get_team_name(self.away_team_id): 0
-            }
-        }
-        
-        # Extract penalty information from plays (if available in final_statistics)
-        if game_result.final_statistics and 'penalties' in game_result.final_statistics:
-            penalties = game_result.final_statistics['penalties']
-            penalty_summary.update(penalties)
-        
-        return penalty_summary
-    
-    def get_performance_metrics(self) -> Dict[str, Any]:
-        """
-        Get simulation performance data
-        
-        Returns:
-            Dictionary with performance metrics
-        """
-        return {
-            "simulation_duration_seconds": getattr(self, '_simulation_duration', 0.0),
-            "total_plays": self._game_result.total_plays if hasattr(self, '_game_result') and self._game_result else 0,
-            "total_drives": self._game_result.total_drives if hasattr(self, '_game_result') and self._game_result else 0,
-            "plays_per_second": (self._game_result.total_plays / self._simulation_duration) if hasattr(self, '_simulation_duration') and self._simulation_duration > 0 and hasattr(self, '_game_result') else 0,
-            "performance_target_met": getattr(self, '_simulation_duration', float('inf')) < 5.0,
-            "game_completed": hasattr(self, '_game_result') and self._game_result is not None
         }
     
     def __str__(self):

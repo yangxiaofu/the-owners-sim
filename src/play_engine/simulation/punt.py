@@ -19,7 +19,7 @@ from ..play_types.base_types import PlayType
 from ..play_types.offensive_types import PuntPlayType
 from ..play_types.defensive_types import DefensivePlayType
 from ..play_types.punt_types import PuntOutcome
-from ...team_management.players.player import Position
+from team_management.players.player import Position
 from ..mechanics.penalties.penalty_engine import PenaltyEngine, PlayContext, PenaltyResult
 from ..mechanics.penalties.penalty_data_structures import PenaltyInstance
 from ..config.config_loader import config

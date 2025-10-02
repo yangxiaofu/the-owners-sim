@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 # Import dependencies with fallback handling
 try:
-    from .full_game_simulator import FullGameSimulator
+    from game_management.full_game_simulator import FullGameSimulator
     FULL_GAME_SIMULATOR_AVAILABLE = True
 except ImportError:
     try:

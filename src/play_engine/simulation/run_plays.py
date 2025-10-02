@@ -12,7 +12,7 @@ from typing import List, Tuple, Dict, Optional
 from .stats import PlayerStats, PlayStatsSummary, create_player_stats_from_player
 from ..mechanics.formations import OffensiveFormation, DefensiveFormation
 from ..play_types.base_types import PlayType
-from ...team_management.players.player import Position
+from team_management.players.player import Position
 from ..mechanics.penalties.penalty_engine import PenaltyEngine, PlayContext, PenaltyResult
 from ..mechanics.penalties.penalty_data_structures import PenaltyInstance
 from ..config.config_loader import config, get_run_formation_matchup

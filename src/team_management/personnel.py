@@ -1,7 +1,7 @@
 import random
 from typing import List, Dict, Any
 from .players.player import Player, Position
-from ..play_engine.mechanics.formations import OffensiveFormation, DefensiveFormation, FormationMapper
+from play_engine.mechanics.formations import OffensiveFormation, DefensiveFormation, FormationMapper
 from .teams.team_loader import get_team_by_id, Team
 from .players.player_loader import get_real_roster_for_team, has_real_roster_data, RealPlayer
 

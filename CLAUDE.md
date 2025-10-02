@@ -8,10 +8,11 @@ This is "The Owners Sim" - a comprehensive NFL football simulation engine writte
 
 ## Development Environment
 
-- **Python Version**: 3.13.5
-- **Virtual Environment**: `.venv/` (already configured)
+- **Python Version**: 3.13.5 (required, venv configured)
+- **Virtual Environment**: `.venv/` (Note: Python 3.13 binary path may need reconfiguration)
 - **Dependencies**: SQLite3 support via better-sqlite3 (Node.js binding)
 - **Package Manager**: npm for Node.js dependencies, pip for Python
+- **Database**: SQLite3 with dynasty-based isolation support
 
 ## Core Commands
 
@@ -32,29 +33,26 @@ python -m pytest -k "penalty" tests/
 # Run specific test function
 python -m pytest tests/test_game_loop_controller.py::TestGameLoopController::test_full_game_simulation
 
-# Schedule generator tests (Phase 0-3 available)
-python -m pytest tests/test_scheduling/
+# Note: Many test files have been removed. Check test availability before running.
+# The following patterns show how to run tests if they exist:
 
-# Playoff system tests
+# Schedule generator tests (if available in tests/test_scheduling/)
+python -m pytest tests/test_scheduling/ -v
+
+# Playoff system tests (if available)
 python -m pytest tests/playoff_system/ -v
 
-# Calendar system tests
-PYTHONPATH=src python tests/test_calendar_system.py
-PYTHONPATH=src python tests/test_event_manager.py
-PYTHONPATH=src python tests/test_calendar_database_api.py
-
-# Key test files for core functionality
+# Core functionality tests (run if files exist)
 PYTHONPATH=src python tests/test_penalty_system.py
 PYTHONPATH=src python tests/test_game_state_manager.py
 PYTHONPATH=src python tests/test_drive_manager.py
 PYTHONPATH=src python tests/test_game_loop_controller.py
-PYTHONPATH=. python tests/test_phase_4_comprehensive.py
 
-# Additional integration tests
-PYTHONPATH=src python tests/test_phase_2_integration.py  # Schedule generation integration
-PYTHONPATH=src python tests/test_daily_persister.py  # Persistence system tests
+# Integration tests (if available)
+PYTHONPATH=src python tests/test_phase_2_integration.py
+PYTHONPATH=src python tests/test_daily_persister.py
 
-# Interactive validation scripts
+# Validation scripts (if available)
 python tests/simple_penalty_validation.py
 
 # Diagnostic scripts (run from project root)
@@ -66,63 +64,61 @@ PYTHONPATH=src python debug_touchdown_detection.py  # Debug touchdown scoring is
 
 ### Running Demos
 ```bash
-# Primary demo - comprehensive game simulation with full analysis
+# Primary demos
 PYTHONPATH=src python cleveland_browns_vs_houston_texans_demo.py  # Complete Browns vs Texans game demo
+PYTHONPATH=src python demo.py  # Main demo entry point
+PYTHONPATH=src python test_full_game_simulator.py  # Full game simulator test
 
 # Interactive interface for comprehensive team and season management
 PYTHONPATH=src python src/demo/interactive_interface.py
 
-# Legacy demo files (if still available in demo/ directory)
+# Component demos (in demo/ directory)
 PYTHONPATH=src python demo/pass_play_demo.py  # Pass play simulation demonstration
 PYTHONPATH=src python demo/play_engine_demo.py  # Play engine core demonstration
 PYTHONPATH=src python demo/run_play_demo.py  # Run play simulation demonstration
 
-# Persistence control example
-PYTHONPATH=src python persistence_control_example.py  # Demonstrates optional persistence control
-
-# Database flexibility example
-PYTHONPATH=src python database_flexibility_demo.py  # Demonstrates flexible database configuration
-
-# Dynasty context example
-PYTHONPATH=src python dynasty_context_demo.py  # Demonstrates dynasty isolation and management
-
-# Calendar system demos
-PYTHONPATH=src python dynasty_calendar_demo.py  # Dynasty calendar and event management demo
-PYTHONPATH=src python test_dynasty_calendar.py  # Calendar system validation and testing
+# System demos (if available)
+PYTHONPATH=src python persistence_control_example.py  # Optional persistence control (if exists)
+PYTHONPATH=src python database_flexibility_demo.py  # Flexible database configuration (if exists)
+PYTHONPATH=src python dynasty_context_demo.py  # Dynasty isolation and management (if exists)
 ```
 
 ### Diagnostic Scripts
 ```bash
 # All diagnostic scripts require PYTHONPATH=src prefix
-PYTHONPATH=src python team_corruption_tracker.py
-PYTHONPATH=src python verify_player_stats_persistence.py
-PYTHONPATH=src python final_persistence_verification.py
-PYTHONPATH=src python track_transaction_failures.py
-PYTHONPATH=src python test_index_mismatch_issue.py
-PYTHONPATH=src python simulate_interactive_demo_issue.py
+PYTHONPATH=src python team_corruption_tracker.py  # Track team data corruption (if exists)
+PYTHONPATH=src python verify_player_stats_persistence.py  # Verify player stats (if exists)
+PYTHONPATH=src python simple_stats_check.py  # Simple statistics validation (if exists)
+PYTHONPATH=src python snap_tracking_diagnostic.py  # Snap count tracking diagnostics (if exists)
+PYTHONPATH=src python debug_game_result_structure.py  # Debug game result issues (if exists)
 
-# Player data migration (one-time)
+# Player data migration (if migration script exists)
 PYTHONPATH=src python scripts/migrate_players_to_teams.py
 
-# Check detailed_transaction_tracking.log for persistence debugging
-tail -f detailed_transaction_tracking.log
+# Check logs for debugging
+tail -f detailed_transaction_tracking.log  # If persistence logging is enabled
 ```
 
 ### Development Setup
 ```bash
-# Activate virtual environment (required for Python 3.13.5)
+# Activate virtual environment (Python 3.13.5 required)
 source .venv/bin/activate  # macOS/Linux
 # .venv\Scripts\activate   # Windows
 
+# Note: If Python 3.13 path error occurs, reconfigure venv:
+# python3.13 -m venv .venv --clear
+
 # Install Node.js dependencies (for SQLite3 bindings)
-npm install
+npm install  # Installs better-sqlite3 and @types/better-sqlite3
 
-# Install Python dependencies (if needed)
-pip install pytest
+# Install Python dependencies (minimal required)
+pip install pytest  # Core testing framework
 
-# Note: requirements_scheduling.txt has been removed - dependencies are now managed individually
-# Install additional development tools as needed:
-# pip install black mypy pylint pytest-benchmark
+# Optional development tools (install as needed):
+# pip install black  # Code formatting
+# pip install mypy  # Type checking
+# pip install pylint  # Code quality
+# pip install pytest-benchmark  # Performance testing
 ```
 
 ### Code Quality Tools
@@ -210,8 +206,6 @@ The simulation follows a layered architecture with clear separation of concerns:
 - `game_stats_reporter.py`: Comprehensive end-of-game reporting and analysis
 
 **8. Core Utilities (root level)**
-- `src/playcall.py`: High-level play calling interface
-- `src/play_call_params.py`: Parameter structures for play calls
 - `src/constants/team_ids.py`: Team ID constants and utilities
 
 **9. Data Management (`src/database/`, `src/stores/`, `src/persistence/`)**
@@ -259,6 +253,15 @@ The simulation follows a layered architecture with clear separation of concerns:
 **15. User Team Management (`src/user_team/`)**
 - `user_team_manager.py`: User team selection, preferences, and management
 - Dynasty mode user interaction and team ownership simulation
+
+**16. Season Management (`src/season/`)**
+- `season_manager.py`: Season-level management and coordination
+- Season progression and state management
+
+**17. Dynasty System (`src/dynasty/`)**
+- `dynasty_manager.py`: Dynasty lifecycle management, configuration, and metadata operations
+- Provides separation between dynasty management and season progression
+- Manages dynasty creation, team registry coordination, and validation
 
 ### Key Design Patterns
 
@@ -503,27 +506,23 @@ sim2 = FullGameSimulator(..., dynasty_id="user2_dynasty", database_path="shared.
 - **Real-time Standings**: Live tracking of division and conference standings
 - **Dynasty Support**: Multi-season dynasty management with persistent data
 
-## Migration Notes
+## Recent Architecture Changes
 
-Recent major changes to be aware of:
+Key architectural updates in the codebase:
 
-1. **Team Names → Numerical IDs**: `TeamRosterGenerator.generate_sample_roster()` now requires integer team_id instead of string team_name
-2. **Play Type Consolidation**: PLAY_ACTION_PASS and SCREEN_PASS now handled under PASS case
-3. **Match/Case Conversion**: Main play engine converted from if/elif to match/case pattern
-4. **Unified PlayResult**: Single PlayResult class replaces multiple result classes, eliminates import conflicts
-5. **Coaching Staff System**: New hierarchical coaching system with realistic NFL coaching philosophies
-6. **Type-Safe Formations**: String-based formation names replaced with enum-based system
-7. **Special Teams Coordinator**: New dedicated special teams coordinator with independent play calling for punts, field goals, and kickoffs
-8. **Schedule Generator**: NFL schedule generation system for creating game schedules
-9. **Database Architecture**: SQLite-based persistence with `DatabaseAPI` for retrieval and `DailyDataPersister` for persistence
-10. **Game Integration**: `GameSimulationEvent` moved to `src/game_management/` as standalone wrapper
-11. **Calendar System Addition**: New database-backed calendar system for event scheduling and management
-12. **Playoff System Addition**: Complete NFL playoff system with seeding, tiebreakers, and tournament management
-13. **User Team Management**: New user team selection and dynasty management system
-14. **Demo Consolidation**: Consolidated demos into `src/demo/` with comprehensive interactive interface
-15. **Player Data Migration**: Player data migrated from single `players.json` to team-based files in `src/data/players/` for better organization and performance
-16. **Optional Persistence Control**: New `enable_persistence` parameter and `persistence` property for FullGameSimulator to control statistics database saves
-17. **Flexible Database Configuration**: New `database_path` parameter and property for FullGameSimulator to specify custom database locations
-18. **Dynasty Context**: New `dynasty_id` parameter and property for FullGameSimulator to provide complete dynasty isolation for statistics
+1. **Dynasty System Addition**: New `src/dynasty/` module with `DynastyManager` for dynasty lifecycle management
+2. **Test Suite Reorganization**: Many test files have been removed or relocated - verify test file existence before running
+3. **Demo Consolidation**: Primary demos now in root directory (`cleveland_browns_vs_houston_texans_demo.py`, `demo.py`, `test_full_game_simulator.py`)
+4. **Player Data Structure**: Team-based player files in `src/data/players/team_XX_team_name.json` format
+5. **Database Flexibility**: Support for custom database paths and dynasty isolation in `FullGameSimulator`
+6. **Persistence Control**: Optional statistics persistence via `enable_persistence` parameter
+7. **Calendar System**: Database-backed calendar for event scheduling (some demos removed)
+8. **Coaching Staff Integration**: All 32 NFL teams mapped to coaching philosophies in `team_coaching_styles.json`
 
-When working with legacy code, check for hardcoded team names and convert to numerical IDs using the constants in `src/constants/team_ids.py`.
+## Key Implementation Notes
+
+- **Team IDs**: Always use numerical IDs (1-32) via `TeamIDs` constants
+- **Python Version**: Requires Python 3.13.5 (venv may need reconfiguration if path errors occur)
+- **Testing**: Use `PYTHONPATH=src` prefix for most test runs
+- **Database**: SQLite with dynasty-based isolation support
+- **Node Dependencies**: `better-sqlite3` provides SQLite bindings for Python integration

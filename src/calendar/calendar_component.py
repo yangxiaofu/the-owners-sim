@@ -7,13 +7,19 @@ and comprehensive state tracking for the NFL simulation system.
 
 import threading
 from datetime import date as PyDate
-from typing import Union, Dict, Any, Optional
+from typing import Union, Dict, Any, Optional, List
 
 from .date_models import Date, DateAdvanceResult, normalize_date
 from .calendar_exceptions import (
     InvalidDaysException,
     InvalidDateException,
     CalendarStateException
+)
+from .season_phase_tracker import (
+    SeasonPhaseTracker, SeasonPhase, GameCompletionEvent, PhaseTransition
+)
+from .season_milestones import (
+    SeasonMilestoneCalculator, SeasonMilestone, create_season_milestone_calculator
 )
 
 
@@ -29,12 +35,13 @@ class CalendarComponent:
     MIN_ADVANCE_DAYS = 1
     MAX_ADVANCE_DAYS = 365
 
-    def __init__(self, start_date: Union[Date, PyDate, str]):
+    def __init__(self, start_date: Union[Date, PyDate, str], season_year: Optional[int] = None):
         """
         Initialize calendar component.
 
         Args:
             start_date: Starting date (Date object, Python date, or string)
+            season_year: NFL season year (e.g., 2024 for 2024-25 season)
 
         Raises:
             InvalidDateException: If start_date is invalid
@@ -51,6 +58,17 @@ class CalendarComponent:
         self._total_days_advanced = 0
         self._advancement_count = 0
         self._max_single_advance = 0
+
+        # Season phase tracking
+        if season_year is None:
+            season_year = self._current_date.year
+
+        self._season_phase_tracker = SeasonPhaseTracker(self._current_date, season_year)
+        self._milestone_calculator = create_season_milestone_calculator()
+        self._season_milestones: List[SeasonMilestone] = []
+
+        # Initialize milestones for the season
+        self._update_season_milestones()
 
     def advance(self, days: Union[int, float]) -> DateAdvanceResult:
         """
@@ -232,6 +250,148 @@ class CalendarComponent:
             return True
         except InvalidDaysException:
             return False
+
+    # Season Phase Methods
+
+    def get_current_phase(self) -> SeasonPhase:
+        """Get the current NFL season phase."""
+        with self._lock:
+            return self._season_phase_tracker.get_current_phase()
+
+    def get_current_week(self) -> int:
+        """
+        Get the current week number within the season.
+
+        Note: This is a simplified implementation. In a full system,
+        this would be calculated based on actual game schedule.
+        """
+        # This is a placeholder implementation
+        # In a real system, this would be calculated based on the current phase
+        # and the actual game schedule
+        return 1
+
+    def get_season_day(self) -> int:
+        """Get the number of days since the season started."""
+        with self._lock:
+            phase_info = self._season_phase_tracker.get_phase_info()
+            return phase_info.get("days_in_current_phase", 0)
+
+    def is_offseason(self) -> bool:
+        """Check if currently in the offseason."""
+        return self.get_current_phase() == SeasonPhase.OFFSEASON
+
+    def is_during_regular_season(self) -> bool:
+        """Check if currently during the regular season."""
+        return self.get_current_phase() == SeasonPhase.REGULAR_SEASON
+
+    def is_during_playoffs(self) -> bool:
+        """Check if currently during the playoffs."""
+        return self.get_current_phase() == SeasonPhase.PLAYOFFS
+
+    def get_next_milestone(self) -> Optional[SeasonMilestone]:
+        """Get the next upcoming season milestone."""
+        with self._lock:
+            return self._milestone_calculator.get_next_milestone(
+                self._current_date, self._season_milestones
+            )
+
+    def get_recent_milestones(self, days_back: int = 30) -> List[SeasonMilestone]:
+        """Get milestones that occurred recently."""
+        with self._lock:
+            return self._milestone_calculator.get_recent_milestones(
+                self._current_date, self._season_milestones, days_back
+            )
+
+    def get_season_milestones(self) -> List[SeasonMilestone]:
+        """Get all season milestones."""
+        with self._lock:
+            return self._season_milestones.copy()
+
+    def record_game_completion(self, game_event: GameCompletionEvent) -> Optional[PhaseTransition]:
+        """
+        Record a completed game and check for phase transitions.
+
+        Args:
+            game_event: The completed game event
+
+        Returns:
+            PhaseTransition if a transition was triggered, None otherwise
+        """
+        with self._lock:
+            transition = self._season_phase_tracker.record_game_completion(game_event)
+
+            if transition:
+                # Update milestones when phase changes
+                self._update_season_milestones()
+
+            return transition
+
+    def get_phase_info(self) -> Dict[str, Any]:
+        """Get comprehensive information about the current season phase."""
+        with self._lock:
+            base_info = self._season_phase_tracker.get_phase_info()
+
+            # Add milestone information (avoid nested locking)
+            next_milestone = self._milestone_calculator.get_next_milestone(
+                self._current_date, self._season_milestones
+            )
+            recent_milestones = self._milestone_calculator.get_recent_milestones(
+                self._current_date, self._season_milestones, 30
+            )
+
+            base_info.update({
+                "next_milestone": {
+                    "name": next_milestone.name if next_milestone else None,
+                    "date": str(next_milestone.date) if next_milestone else None,
+                    "type": next_milestone.milestone_type.value if next_milestone else None
+                },
+                "recent_milestones_count": len(recent_milestones),
+                "total_milestones": len(self._season_milestones)
+            })
+
+            return base_info
+
+    def get_days_until_next_phase(self) -> Optional[int]:
+        """
+        Get the number of days until the next phase transition.
+
+        Note: This is an estimate since transitions are event-driven.
+        """
+        # This would need more sophisticated prediction logic
+        # For now, return None as transitions are event-driven
+        return None
+
+    def force_phase_transition(self, to_phase: SeasonPhase,
+                              metadata: Optional[Dict[str, Any]] = None) -> PhaseTransition:
+        """
+        Force a phase transition (for testing or manual control).
+
+        Args:
+            to_phase: Phase to transition to
+            metadata: Optional metadata for the transition
+
+        Returns:
+            The transition that was executed
+        """
+        with self._lock:
+            transition = self._season_phase_tracker.force_phase_transition(
+                to_phase, self._current_date, metadata
+            )
+            self._update_season_milestones()
+            return transition
+
+    def _update_season_milestones(self) -> None:
+        """Update season milestones based on current state."""
+        # Get current phase info to determine season context
+        phase_info = self._season_phase_tracker.get_phase_info()
+        season_year = phase_info.get("season_year", self._current_date.year)
+
+        # Calculate milestones for the current season
+        self._season_milestones = self._milestone_calculator.calculate_milestones_for_season(
+            season_year=season_year,
+            super_bowl_date=None,  # Would be set when Super Bowl is completed
+            regular_season_start=None  # Would be set when regular season starts
+        )
 
     def _validate_days_parameter(self, days: Union[int, float]) -> None:
         """

@@ -13,8 +13,8 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from ..play_engine.core.play_result import PlayResult
-from ..play_engine.simulation.stats import (
+from play_engine.core.play_result import PlayResult
+from play_engine.simulation.stats import (
     PlayerStatsAccumulator,
     TeamStatsAccumulator,
     PlayStatsSummary,
@@ -22,8 +22,8 @@ from ..play_engine.simulation.stats import (
     TeamStats
 )
 # PlayerGameStats removed with simulation system - will need to be recreated if needed
-# from ..simulation.results.game_result import PlayerGameStats
-from ..team_management.teams.team_loader import Team
+# from simulation.results.game_result import PlayerGameStats
+from team_management.teams.team_loader import Team
 
 
 @dataclass

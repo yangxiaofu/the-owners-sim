@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 from .penalty_config_loader import get_penalty_config
 from .penalty_data_structures import PenaltyInstance, PlayerPenaltyStats, TeamPenaltyStats
-from ....team_management.players.player import Player
+from team_management.players.player import Player
 
 
 @dataclass

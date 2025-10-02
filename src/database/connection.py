@@ -436,6 +436,18 @@ class DatabaseConnection:
             )
         ''')
 
+        # Events table - generic event storage for polymorphic event system
+        # Implements Event Database API specification
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS events (
+                event_id TEXT PRIMARY KEY,
+                event_type TEXT NOT NULL,       -- 'GAME', 'MEDIA', 'TRADE', 'INJURY', etc.
+                timestamp INTEGER NOT NULL,     -- Unix timestamp in milliseconds
+                game_id TEXT NOT NULL,          -- Game/context identifier for grouping
+                data TEXT NOT NULL              -- JSON event data
+            )
+        ''')
+
         # Create indexes for performance
         conn.execute("CREATE INDEX IF NOT EXISTS idx_games_dynasty_season ON games(dynasty_id, season, week)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_games_teams ON games(home_team_id, away_team_id)")
@@ -453,6 +465,11 @@ class DatabaseConnection:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_playoff_seedings_conference ON playoff_seedings(dynasty_id, season, conference)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tiebreaker_apps ON tiebreaker_applications(dynasty_id, season)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_playoff_brackets ON playoff_brackets(dynasty_id, season, round_name)")
+
+        # Events table indexes for polymorphic event retrieval
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_events_game_id ON events(game_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)")
 
         self.logger.info("All tables and indexes created successfully")
     

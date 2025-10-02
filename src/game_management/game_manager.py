@@ -10,12 +10,12 @@ from dataclasses import dataclass
 from typing import Optional, Dict, List, Tuple
 from enum import Enum
 
-from src.play_engine.game_state.game_clock import GameClock
-from src.play_engine.game_state.drive_manager import DriveManager
-from src.play_engine.game_state.possession_manager import PossessionManager
-from src.game_management.scoreboard import Scoreboard
-from src.play_engine.simulation.stats import PlayerStatsAccumulator, TeamStatsAccumulator
-from src.team_management.teams.team_loader import Team
+from play_engine.game_state.game_clock import GameClock
+from play_engine.game_state.drive_manager import DriveManager
+from play_engine.game_state.possession_manager import PossessionManager
+from game_management.scoreboard import Scoreboard
+from play_engine.simulation.stats import PlayerStatsAccumulator, TeamStatsAccumulator
+from team_management.teams.team_loader import Team
 
 
 class GamePhase(Enum):
