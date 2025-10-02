@@ -24,6 +24,9 @@ from constants.team_ids import TeamIDs
 from game_management.box_score_generator import BoxScoreGenerator
 from game_management.player_stats_query_service import PlayerStatsQueryService
 
+# Import new workflow system
+from workflows import SimulationWorkflow
+
 
 def print_header(title: str, width: int = 80):
     """Print formatted header."""
@@ -322,6 +325,111 @@ def display_snap_counts(player_stats, team_name: str):
             print(f"{player['name']:<25} {player['position']:<10} {player['defensive_snaps']:<8}")
 
 
+def initialize_database_schema(db_path: str):
+    """Initialize database schema if tables don't exist."""
+    import sqlite3
+
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # Check if games table exists
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='games'")
+    if cursor.fetchone() is None:
+        print("   📋 Creating required tables...")
+
+        # Create games table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS games (
+                game_id TEXT PRIMARY KEY,
+                dynasty_id TEXT NOT NULL,
+                season INTEGER NOT NULL,
+                week INTEGER NOT NULL,
+                game_type TEXT DEFAULT 'regular',
+                home_team_id INTEGER NOT NULL,
+                away_team_id INTEGER NOT NULL,
+                home_score INTEGER NOT NULL,
+                away_score INTEGER NOT NULL,
+                total_plays INTEGER,
+                game_duration_minutes INTEGER,
+                overtime_periods INTEGER DEFAULT 0,
+                created_at TEXT
+            )
+        """)
+
+        # Create player_game_stats table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS player_game_stats (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dynasty_id TEXT NOT NULL,
+                game_id TEXT NOT NULL,
+                player_id TEXT NOT NULL,
+                player_name TEXT NOT NULL,
+                team_id INTEGER NOT NULL,
+                position TEXT NOT NULL,
+                passing_yards INTEGER DEFAULT 0,
+                passing_tds INTEGER DEFAULT 0,
+                passing_completions INTEGER DEFAULT 0,
+                passing_attempts INTEGER DEFAULT 0,
+                rushing_yards INTEGER DEFAULT 0,
+                rushing_tds INTEGER DEFAULT 0,
+                rushing_attempts INTEGER DEFAULT 0,
+                receiving_yards INTEGER DEFAULT 0,
+                receiving_tds INTEGER DEFAULT 0,
+                receptions INTEGER DEFAULT 0,
+                targets INTEGER DEFAULT 0,
+                tackles_total INTEGER DEFAULT 0,
+                sacks REAL DEFAULT 0,
+                interceptions INTEGER DEFAULT 0,
+                field_goals_made INTEGER DEFAULT 0,
+                field_goals_attempted INTEGER DEFAULT 0,
+                extra_points_made INTEGER DEFAULT 0,
+                extra_points_attempted INTEGER DEFAULT 0,
+                offensive_snaps INTEGER DEFAULT 0,
+                defensive_snaps INTEGER DEFAULT 0,
+                total_snaps INTEGER DEFAULT 0,
+                FOREIGN KEY (game_id) REFERENCES games(game_id)
+            )
+        """)
+
+        # Create standings table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS standings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dynasty_id TEXT NOT NULL,
+                team_id INTEGER NOT NULL,
+                season INTEGER NOT NULL,
+                wins INTEGER DEFAULT 0,
+                losses INTEGER DEFAULT 0,
+                ties INTEGER DEFAULT 0,
+                points_for INTEGER DEFAULT 0,
+                points_against INTEGER DEFAULT 0,
+                division_wins INTEGER DEFAULT 0,
+                division_losses INTEGER DEFAULT 0,
+                conference_wins INTEGER DEFAULT 0,
+                conference_losses INTEGER DEFAULT 0,
+                home_wins INTEGER DEFAULT 0,
+                home_losses INTEGER DEFAULT 0,
+                away_wins INTEGER DEFAULT 0,
+                away_losses INTEGER DEFAULT 0,
+                current_streak TEXT,
+                division_rank INTEGER,
+                UNIQUE(dynasty_id, team_id, season)
+            )
+        """)
+
+        # Create indices
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_games_dynasty ON games(dynasty_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_player_stats_game ON player_game_stats(game_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_standings_dynasty ON standings(dynasty_id)")
+
+        conn.commit()
+        print("   ✅ Tables created successfully")
+    else:
+        print("   ✅ Tables already exist")
+
+    conn.close()
+
+
 def main():
     """Main demo execution."""
     print_header("GAME SIMULATION PERSISTENCE DEMO", 80)
@@ -339,6 +447,9 @@ def main():
 
     print(f"✅ Database initialized: {demo_db_path}")
     print(f"   This database is isolated to this demo only")
+
+    # Initialize persistence tables if needed
+    initialize_database_schema(demo_db_path)
 
     # Show database stats
     stats = event_db.get_statistics()
@@ -398,40 +509,61 @@ def main():
     print(f"✅ Event reconstructed successfully")
 
     # ========================================
-    # STEP 5: Simulate the Game
+    # STEP 5: Execute Complete 3-Stage Workflow
     # ========================================
-    print_header("SIMULATING GAME", 80)
+    print_header("EXECUTING 3-STAGE SIMULATION WORKFLOW", 80)
     print(f"Matchup: {retrieved_game.get_matchup_description()}")
-    print(f"{'='*80}\n")
 
-    # Execute simulation
-    result = retrieved_game.simulate()
+    # Create workflow optimized for demo with persistence enabled
+    workflow = SimulationWorkflow.for_demo(
+        database_path=demo_db_path,
+        dynasty_id="demo_dynasty"
+    )
 
-    print(f"\n{'='*80}")
-    print("SIMULATION COMPLETE")
-    print(f"{'='*80}")
+    print(f"\n🔧 Workflow Configuration:")
+    print(f"   Persistence: {'ENABLED' if workflow.is_persistence_enabled() else 'DISABLED'}")
+    print(f"   Database: {workflow.get_database_path()}")
+    print(f"   Dynasty: {workflow.get_dynasty_id()}")
+
+    # Execute complete 3-stage workflow
+    workflow_result = workflow.execute(retrieved_game)
 
     # ========================================
-    # STEP 6: Display Game Results
+    # STEP 6: Display Workflow Results
     # ========================================
-    print_section("Step 6: Game Results Summary")
+    print_section("Step 6: Workflow Results Summary")
 
-    if result.success:
-        print(f"✅ Simulation successful")
+    if workflow_result.was_successful():
+        print(f"✅ Complete workflow successful")
+
+        # Game scores
+        scores = workflow_result.get_game_score()
+        winner = workflow_result.get_game_winner()
         print(f"\n📊 Final Score:")
-        print(f"   Cleveland Browns: {result.data['away_score']}")
-        print(f"   Minnesota Vikings: {result.data['home_score']}")
+        print(f"   Cleveland Browns: {scores['away_score']}")
+        print(f"   Minnesota Vikings: {scores['home_score']}")
+        print(f"   Winner: {winner.title()}")
 
-        if result.data.get('winner_name'):
-            print(f"\n🏆 Winner: {result.data['winner_name']}")
-
+        # Game statistics
         print(f"\n📈 Game Statistics:")
-        print(f"   Total Plays: {result.data['total_plays']}")
-        print(f"   Total Drives: {result.data['total_drives']}")
-        print(f"   Game Duration: {result.data.get('game_duration_minutes', 'N/A')} minutes")
-        print(f"   Simulation Time: {result.data['simulation_time']:.2f} seconds")
+        print(f"   Total Plays: {workflow_result.get_total_plays()}")
+        print(f"   Game Duration: {workflow_result.get_game_duration()} minutes")
+        print(f"   Player Stats Collected: {len(workflow_result.player_stats)}")
+
+        # Persistence results
+        if workflow_result.persistence_result:
+            print(f"\n💾 Persistence Results:")
+            print(f"   Status: {workflow_result.persistence_result.overall_status.value}")
+            print(f"   Records Persisted: {workflow_result.persistence_result.total_records_persisted}")
+            print(f"   Processing Time: {workflow_result.persistence_result.total_processing_time_ms:.2f}ms")
+
     else:
-        print(f"❌ Simulation failed: {result.error_message}")
+        print(f"❌ Workflow failed")
+        errors = workflow_result.get_error_summary()
+        if errors['simulation_error']:
+            print(f"   Simulation Error: {errors['simulation_error']}")
+        if errors['persistence_errors']:
+            print(f"   Persistence Errors: {len(errors['persistence_errors'])}")
         return
 
     # ========================================
@@ -439,18 +571,14 @@ def main():
     # ========================================
     print_header("DETAILED STATISTICS", 80)
 
-    # Use PlayerStatsQueryService to access LIVE stats from the simulation
-    simulator = retrieved_game._simulator
-
-    # Get all player stats using the query service
-    all_player_stats = PlayerStatsQueryService.get_live_stats(simulator)
-
-    print(f"\n✅ Accessing LIVE stats via PlayerStatsQueryService")
+    # Access player stats from workflow result
+    all_player_stats = workflow_result.player_stats
+    print(f"\n✅ Player statistics from workflow result")
     print(f"   Total players with stats: {len(all_player_stats)}")
 
-    # Filter player stats by team using the query service
-    away_player_stats = PlayerStatsQueryService.get_stats_by_team(all_player_stats, TeamIDs.CLEVELAND_BROWNS)
-    home_player_stats = PlayerStatsQueryService.get_stats_by_team(all_player_stats, TeamIDs.MINNESOTA_VIKINGS)
+    # Filter player stats by team using workflow result methods
+    away_player_stats = workflow_result.get_player_stats_by_team(TeamIDs.CLEVELAND_BROWNS)
+    home_player_stats = workflow_result.get_player_stats_by_team(TeamIDs.MINNESOTA_VIKINGS)
 
     print(f"   Cleveland Browns players: {len(away_player_stats)}")
     print(f"   Minnesota Vikings players: {len(home_player_stats)}")
@@ -492,9 +620,13 @@ def main():
     print("  ✅ Event creation (Browns vs Vikings)")
     print("  ✅ Event storage in isolated database")
     print("  ✅ Event retrieval using Events API")
-    print("  ✅ Game simulation execution")
-    print("  ✅ Results display with scores")
+    print("  ✅ 3-Stage Simulation Workflow (NEW)")
+    print("     • Stage 1: Game simulation execution")
+    print("     • Stage 2: Player statistics gathering")
+    print("     • Stage 3: Complete data persistence")
+    print("  ✅ Workflow result management")
     print("  ✅ Box score generation")
+    print("  ✅ Toggleable persistence support")
 
     print(f"\n📁 Demo Database Location:")
     print(f"   {demo_db_path}")
