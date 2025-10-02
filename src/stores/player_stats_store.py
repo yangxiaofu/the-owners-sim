@@ -55,7 +55,7 @@ class PlayerSeasonStats:
     total_touchdowns: int = 0
     total_fantasy_points: float = 0.0
 
-    def add_game_stats(self, game_stats: PlayerGameStats) -> None:
+    def add_game_stats(self, game_stats: Any) -> None:
         """Add a game's statistics to season totals"""
         self.games_played += 1
 
@@ -111,7 +111,7 @@ class PlayerSeasonStats:
         return self.receiving_yards / self.receptions
 
 
-class PlayerStatsStore(BaseStore[Dict[str, PlayerGameStats]]):
+class PlayerStatsStore(BaseStore[Dict[str, Any]]):
     """
     Store for player statistics with game logs and season aggregation.
     Tracks individual game performances and maintains season totals
@@ -126,13 +126,13 @@ class PlayerStatsStore(BaseStore[Dict[str, PlayerGameStats]]):
         self.season_totals: Dict[str, PlayerSeasonStats] = {}
 
         # Game logs for each player (player_name -> list of game stats)
-        self.game_logs: Dict[str, List[Tuple[str, PlayerGameStats]]] = defaultdict(list)
+        self.game_logs: Dict[str, List[Tuple[str, Any]]] = defaultdict(list)
 
         # Position group indices for quick lookups
         self.by_position: Dict[str, List[str]] = defaultdict(list)  # position -> [player_names]
         self.by_team: Dict[int, List[str]] = defaultdict(list)  # team_id -> [player_names]
 
-    def add(self, key: str, item: Dict[str, PlayerGameStats]) -> None:
+    def add(self, key: str, item: Dict[str, Any]) -> None:
         """
         Add game statistics for multiple players.
 
@@ -154,9 +154,9 @@ class PlayerStatsStore(BaseStore[Dict[str, PlayerGameStats]]):
         self._update_metadata()
         self._log_transaction('add', key, True, {'player_count': len(item)})
 
-    def add_game_stats(self, game_id: str, stats_list: List[PlayerGameStats]) -> None:
+    def add_game_stats(self, game_id: str, stats_list: List[Any]) -> None:
         """
-        Add game statistics from a list of PlayerGameStats.
+        Add game statistics from a list of player stats objects.
 
         Args:
             game_id: Unique game identifier
@@ -166,7 +166,7 @@ class PlayerStatsStore(BaseStore[Dict[str, PlayerGameStats]]):
         stats_dict = {stats.player_name: stats for stats in stats_list}
         self.add(game_id, stats_dict)
 
-    def get(self, key: str) -> Optional[Dict[str, PlayerGameStats]]:
+    def get(self, key: str) -> Optional[Dict[str, Any]]:
         """
         Get all player stats for a specific game.
 
@@ -178,7 +178,7 @@ class PlayerStatsStore(BaseStore[Dict[str, PlayerGameStats]]):
         """
         return self.data.get(key)
 
-    def get_all(self) -> Dict[str, Dict[str, PlayerGameStats]]:
+    def get_all(self) -> Dict[str, Dict[str, Any]]:
         """Get all stored game statistics."""
         return self.data.copy()
 
@@ -236,7 +236,7 @@ class PlayerStatsStore(BaseStore[Dict[str, PlayerGameStats]]):
         """
         return self.season_totals.get(player_name)
 
-    def get_player_game_log(self, player_name: str) -> List[Tuple[str, PlayerGameStats]]:
+    def get_player_game_log(self, player_name: str) -> List[Tuple[str, Any]]:
         """
         Get all game statistics for a player.
 
@@ -319,7 +319,7 @@ class PlayerStatsStore(BaseStore[Dict[str, PlayerGameStats]]):
         return leaders
 
     def _process_player_game_stats(self, game_id: str, player_name: str,
-                                  stats: PlayerGameStats) -> None:
+                                  stats: Any) -> None:
         """
         Process a player's game statistics.
 

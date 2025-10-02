@@ -11,6 +11,7 @@ from collections import defaultdict
 from .base_store import BaseStore
 # GameResult from simulation removed - using shared.game_result instead
 # from simulation.results.game_result import GameResult
+from shared.game_result import GameResult
 
 try:
     from database.connection import DatabaseConnection

@@ -264,7 +264,7 @@ class GameResultStore(BaseStore[GameResult]):
 
         return [self.data[gid] for gid in common_games if gid in self.data]
 
-    def get_player_stats_from_games(self, player_name: str) -> List[PlayerGameStats]:
+    def get_player_stats_from_games(self, player_name: str) -> List[Any]:
         """
         Extract all stats for a specific player across all games.
 
