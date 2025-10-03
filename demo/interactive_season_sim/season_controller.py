@@ -103,6 +103,11 @@ class SeasonController:
         # Ensure database directory exists
         Path(database_path).parent.mkdir(parents=True, exist_ok=True)
 
+        # Ensure dynasty exists in database (auto-create if needed)
+        from database.connection import DatabaseConnection
+        db_conn = DatabaseConnection(database_path)
+        db_conn.ensure_dynasty_exists(dynasty_id)
+
         # Initialize core components
         self.calendar = CalendarComponent(
             start_date=start_date,

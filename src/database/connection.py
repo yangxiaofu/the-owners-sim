@@ -70,7 +70,7 @@ class DatabaseConnection:
                 dynasty_id TEXT PRIMARY KEY,
                 dynasty_name TEXT NOT NULL,
                 owner_name TEXT,
-                team_id INTEGER NOT NULL,
+                team_id INTEGER,  -- Nullable to support league-wide simulations
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_played TIMESTAMP,
                 total_seasons INTEGER DEFAULT 0,
@@ -505,6 +505,65 @@ class DatabaseConnection:
             conn.close()
         
         return dynasty_id
+
+    def ensure_dynasty_exists(
+        self,
+        dynasty_id: str,
+        dynasty_name: Optional[str] = None,
+        owner_name: Optional[str] = None,
+        team_id: Optional[int] = None
+    ) -> bool:
+        """
+        Ensure a dynasty record exists, creating it if necessary.
+
+        This is useful for auto-creating dynasties when users start new simulations
+        without explicitly creating a dynasty first.
+
+        Args:
+            dynasty_id: Dynasty identifier
+            dynasty_name: Name of dynasty (defaults to dynasty_id)
+            owner_name: Optional owner name
+            team_id: Optional team ID (can be NULL for league-wide simulations)
+
+        Returns:
+            True if dynasty exists or was created, False on error
+        """
+        conn = sqlite3.connect(self.db_path)
+
+        try:
+            # Check if dynasty already exists
+            cursor = conn.cursor()
+            cursor.execute('SELECT dynasty_id FROM dynasties WHERE dynasty_id = ?', (dynasty_id,))
+            exists = cursor.fetchone() is not None
+
+            if exists:
+                self.logger.debug(f"Dynasty already exists: {dynasty_id}")
+                return True
+
+            # Create new dynasty record
+            if dynasty_name is None:
+                dynasty_name = dynasty_id
+
+            # Use team_id if provided, otherwise use 0 for league-wide simulations
+            # (0 is a safe default that won't conflict with team IDs 1-32)
+            if team_id is None:
+                team_id = 0
+
+            conn.execute('''
+                INSERT INTO dynasties (dynasty_id, dynasty_name, owner_name, team_id)
+                VALUES (?, ?, ?, ?)
+            ''', (dynasty_id, dynasty_name, owner_name, team_id))
+
+            conn.commit()
+            self.logger.info(f"Auto-created dynasty: {dynasty_name} (ID: {dynasty_id})")
+            return True
+
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error ensuring dynasty exists: {e}")
+            return False
+        finally:
+            conn.close()
 
     def update_dynasty_team(self, dynasty_id: str, team_id: int) -> bool:
         """
