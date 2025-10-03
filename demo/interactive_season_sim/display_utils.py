@@ -237,17 +237,25 @@ def display_standings(standings_data: Dict[str, Any]) -> None:
         print(f"{Colors.RED}No standings data available{Colors.RESET}")
         return
 
+    # Extract divisions dict from standings_data structure
+    # get_standings() returns {'divisions': {...}, 'conferences': {...}, ...}
+    divisions_data = standings_data.get('divisions', {})
+
+    if not divisions_data:
+        print(f"{Colors.RED}No division standings available{Colors.RESET}")
+        return
+
     print(f"\n{Colors.BOLD}{Colors.BRIGHT_CYAN}═══ NFL STANDINGS ═══{Colors.RESET}\n")
 
     # Display AFC divisions
     print(f"{Colors.BOLD}{Colors.BLUE}═══ AFC ═══{Colors.RESET}")
-    _display_conference_standings(standings_data, 'AFC')
+    _display_conference_standings(divisions_data, 'AFC')
 
     print()
 
     # Display NFC divisions
     print(f"{Colors.BOLD}{Colors.GREEN}═══ NFC ═══{Colors.RESET}")
-    _display_conference_standings(standings_data, 'NFC')
+    _display_conference_standings(divisions_data, 'NFC')
 
     print(f"\n{Colors.BRIGHT_CYAN}{'═' * 80}{Colors.RESET}\n")
 
@@ -273,13 +281,28 @@ def _display_conference_standings(standings_data: Dict[str, Any], conference: st
         print(f"  {Colors.DIM}{'─' * 70}{Colors.RESET}")
 
         for rank, team in enumerate(teams, 1):
-            team_name = team.get('name', 'Unknown')[:22]
-            wins = team.get('wins', 0)
-            losses = team.get('losses', 0)
-            ties = team.get('ties', 0)
-            win_pct = team.get('win_percentage', 0.0)
-            points_for = team.get('points_for', 0)
-            points_against = team.get('points_against', 0)
+            # Extract data from team['standing'] object
+            team_id = team.get('team_id')
+            standing = team.get('standing')
+
+            if not standing:
+                continue
+
+            # Get team name from team_id
+            from team_management.teams.team_loader import get_team_by_id
+            try:
+                team_info = get_team_by_id(team_id)
+                team_name = str(team_info)[:22]  # Team object's __str__ returns team name
+            except:
+                team_name = f"Team {team_id}"[:22]
+
+            # Extract stats from standing object
+            wins = standing.wins
+            losses = standing.losses
+            ties = standing.ties
+            win_pct = standing.win_percentage
+            points_for = standing.points_for
+            points_against = standing.points_against
 
             # Format record string
             if ties > 0:
