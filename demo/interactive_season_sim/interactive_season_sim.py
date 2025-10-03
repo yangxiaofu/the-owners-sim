@@ -46,16 +46,20 @@ class InteractiveSeasonSimulator:
     def __init__(
         self,
         dynasty_id: str,
-        database_path: str = "demo/interactive_season_sim/data/season_2024.db"
+        database_path: str = None
     ):
         """
         Initialize interactive season simulator.
 
         Args:
             dynasty_id: Unique dynasty identifier for data isolation
-            database_path: Path to season database
+            database_path: Path to season database (defaults to data/season_2024.db relative to this script)
         """
         print_info("Initializing Interactive Season Simulator...")
+
+        # Use absolute path for database to avoid duplicate databases when running from different directories
+        if database_path is None:
+            database_path = str(Path(__file__).parent / "data" / "season_2024.db")
 
         # Store dynasty ID
         self.dynasty_id = dynasty_id
