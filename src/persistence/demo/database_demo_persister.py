@@ -45,6 +45,15 @@ class DatabaseDemoPersister(DemoPersister):
         self.total_player_stats_persisted = 0
         self.total_standings_updates = 0
 
+        # Ensure schema exists (DatabaseConnection auto-creates tables in __init__)
+        # This just verifies the connection is established and tables are ready
+        try:
+            conn = self.db_connection.get_connection()
+            conn.close()
+        except Exception as e:
+            self.logger.error(f"Failed to verify database schema: {e}")
+            raise
+
         self.logger.info(f"DatabaseDemoPersister initialized: {database_path}")
 
     def persist_game_result(
