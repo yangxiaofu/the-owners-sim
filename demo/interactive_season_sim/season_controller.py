@@ -113,7 +113,10 @@ class SeasonController:
 
         self.simulation_executor = SimulationExecutor(
             calendar=self.calendar,
-            event_db=self.event_db
+            event_db=self.event_db,
+            database_path=database_path,
+            dynasty_id=dynasty_id,
+            enable_persistence=enable_persistence
         )
 
         self.database_api = DatabaseAPI(database_path)

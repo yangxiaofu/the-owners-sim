@@ -20,6 +20,7 @@ from calendar.calendar_component import CalendarComponent
 from calendar.season_phase_tracker import GameCompletionEvent, PhaseTransition
 from calendar.date_models import Date
 from events import EventDatabaseAPI, GameEvent, EventResult
+from workflows import SimulationWorkflow
 
 
 class SimulationExecutor:
@@ -31,21 +32,44 @@ class SimulationExecutor:
     - EventDatabaseAPI (event storage/retrieval)
     - GameEvent (individual game simulation)
     - SeasonPhaseTracker (phase management via calendar)
+    - SimulationWorkflow (3-stage simulation with persistence)
 
     This component is used by SeasonManager to execute scheduled events
     and can be used standalone for testing or demos.
     """
 
-    def __init__(self, calendar: CalendarComponent, event_db: EventDatabaseAPI):
+    def __init__(
+        self,
+        calendar: CalendarComponent,
+        event_db: EventDatabaseAPI,
+        database_path: Optional[str] = None,
+        dynasty_id: str = "default",
+        enable_persistence: bool = True
+    ):
         """
         Initialize simulation executor.
 
         Args:
             calendar: Calendar component for date management
             event_db: Event database API for event storage/retrieval
+            database_path: Path to database for persistence (required if enable_persistence=True)
+            dynasty_id: Dynasty context for data isolation
+            enable_persistence: Whether to persist game results to database
         """
         self.calendar = calendar
         self.event_db = event_db
+        self.enable_persistence = enable_persistence
+
+        # Initialize SimulationWorkflow for 3-stage simulation
+        if enable_persistence:
+            if not database_path:
+                raise ValueError("database_path is required when enable_persistence=True")
+            self.workflow = SimulationWorkflow.for_season(
+                database_path=database_path,
+                dynasty_id=dynasty_id
+            )
+        else:
+            self.workflow = SimulationWorkflow.for_testing()
 
     def simulate_day(self, target_date: Optional[Date] = None) -> Dict[str, Any]:
         """
@@ -110,8 +134,9 @@ class SimulationExecutor:
                     errors.append(f"Game {game_event.get_game_id()}: Validation failed - {error_msg}")
                     continue
 
-                # Simulate the game
-                result = game_event.simulate()
+                # Simulate the game using workflow (includes persistence)
+                workflow_result = self.workflow.execute(game_event)
+                result = workflow_result.simulation_result
 
                 # Record game completion in phase tracker
                 if result.success:
