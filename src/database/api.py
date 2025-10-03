@@ -7,7 +7,8 @@ Provides single source of truth for all data access.
 
 from typing import Dict, List, Any, Optional
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
+import json
 
 from .connection import DatabaseConnection
 from stores.standings_store import EnhancedTeamStanding, NFL_DIVISIONS, NFL_CONFERENCES
@@ -436,5 +437,122 @@ class DatabaseAPI:
         '''
 
         results = self.db_connection.execute_query(query, (dynasty_id, limit))
+
+        return [dict(row) for row in results]
+
+    def get_upcoming_games(self, start_date_str: str, days: int = 7) -> List[Dict[str, Any]]:
+        """
+        Get games scheduled in the next N days from events table.
+
+        This method queries the events table to find scheduled games within
+        a date range, providing a reusable way to view upcoming matchups.
+
+        Args:
+            start_date_str: Starting date in YYYY-MM-DD format
+            days: Number of days ahead to look (default: 7)
+
+        Returns:
+            List of upcoming game dictionaries with matchup information
+        """
+        # Parse date manually to avoid calendar module conflict
+        year, month, day = map(int, start_date_str.split('-'))
+        start_date = datetime(year, month, day)
+        end_date = start_date + timedelta(days=days)
+        end_date_str = f"{end_date.year:04d}-{end_date.month:02d}-{end_date.day:02d}"
+
+        query = '''
+            SELECT event_id, game_id, data, timestamp
+            FROM events
+            WHERE event_type = 'GAME'
+            ORDER BY timestamp
+        '''
+
+        results = self.db_connection.execute_query(query)
+
+        upcoming_games = []
+        for row in results:
+            data = json.loads(row['data'])
+            params = data.get('parameters', data)
+
+            game_date_str = params.get('game_date', '')
+            if 'T' in game_date_str:
+                game_date_part = game_date_str.split('T')[0]
+            else:
+                game_date_part = game_date_str[:10] if len(game_date_str) >= 10 else game_date_str
+
+            if start_date_str <= game_date_part < end_date_str:
+                upcoming_games.append({
+                    'event_id': row['event_id'],
+                    'game_id': row['game_id'],
+                    'game_date': game_date_part,
+                    'away_team_id': params.get('away_team_id'),
+                    'home_team_id': params.get('home_team_id'),
+                    'week': params.get('week'),
+                    'season': params.get('season', 2024),
+                    'timestamp': row['timestamp']
+                })
+
+        return upcoming_games
+
+    def get_player_leaders_unified(
+        self,
+        dynasty_id: str,
+        season: int,
+        stat_category: str,
+        limit: int = 10,
+        position_filter: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Unified method to get player stat leaders across any category.
+
+        Provides flexible querying for any statistical category without
+        requiring separate methods for each stat type.
+
+        Args:
+            dynasty_id: Dynasty identifier
+            season: Season year
+            stat_category: Stat category ('passing_yards', 'rushing_yards', 'receiving_yards', etc.)
+            limit: Number of top players to return
+            position_filter: Optional position filter (e.g., 'QB', 'RB', 'WR')
+
+        Returns:
+            List of player leaders with aggregated stats for the requested category
+        """
+        # Validate stat category
+        valid_categories = {
+            'passing_yards', 'passing_tds', 'passing_completions', 'passing_attempts',
+            'rushing_yards', 'rushing_tds', 'rushing_attempts',
+            'receiving_yards', 'receiving_tds', 'receptions', 'targets',
+            'tackles_total', 'sacks', 'interceptions',
+            'field_goals_made', 'field_goals_attempted'
+        }
+
+        if stat_category not in valid_categories:
+            raise ValueError(f"Invalid stat category: {stat_category}. Must be one of {valid_categories}")
+
+        # Build dynamic query based on category
+        position_clause = "AND position = ?" if position_filter else ""
+        position_params = (position_filter,) if position_filter else ()
+
+        query = f'''
+            SELECT
+                player_name,
+                player_id,
+                team_id,
+                position,
+                SUM({stat_category}) as total_{stat_category},
+                COUNT(*) as games_played,
+                ROUND(AVG(CAST({stat_category} AS FLOAT)), 1) as avg_per_game
+            FROM player_game_stats
+            WHERE dynasty_id = ?
+                {position_clause}
+                AND {stat_category} > 0
+            GROUP BY player_id, player_name, team_id, position
+            ORDER BY total_{stat_category} DESC
+            LIMIT ?
+        '''
+
+        params = (dynasty_id,) + position_params + (limit,)
+        results = self.db_connection.execute_query(query, params)
 
         return [dict(row) for row in results]

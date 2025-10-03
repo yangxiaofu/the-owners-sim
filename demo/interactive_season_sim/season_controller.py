@@ -395,24 +395,12 @@ class SeasonController:
             List of game dictionaries with matchup information
         """
         current_date = self.calendar.get_current_date()
-        upcoming_games = []
 
-        # Check each day in the range
-        for day_offset in range(1, days + 1):
-            check_date = current_date.add_days(day_offset)
-            events_for_day = self.simulation_executor._get_events_for_date(check_date)
+        # Convert Date object to string format for DatabaseAPI
+        start_date_str = f"{current_date.year:04d}-{current_date.month:02d}-{current_date.day:02d}"
 
-            for event_data in events_for_day:
-                params = event_data['data'].get('parameters', event_data['data'])
-                upcoming_games.append({
-                    "date": str(check_date),
-                    "away_team_id": params.get('away_team_id'),
-                    "home_team_id": params.get('home_team_id'),
-                    "week": params.get('week'),
-                    "game_id": event_data['game_id']
-                })
-
-        return upcoming_games
+        # Use centralized DatabaseAPI method
+        return self.database_api.get_upcoming_games(start_date_str, days)
 
     def get_current_state(self) -> Dict[str, Any]:
         """

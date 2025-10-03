@@ -4,14 +4,17 @@ Query Persisted Data Example
 
 Demonstrates how to query data that was persisted using the demo persistence API.
 Shows different query patterns for games, player stats, and standings.
+
+UPDATED: Now uses centralized DatabaseAPI instead of raw SQL queries.
 """
 
 import sys
-import sqlite3
 from pathlib import Path
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
+
+from database.api import DatabaseAPI
 
 
 def print_header(title: str, width: int = 80):
@@ -21,159 +24,119 @@ def print_header(title: str, width: int = 80):
     print(f"{'='*width}\n")
 
 
-def query_games(db_path: str, dynasty_id: str = "demo_dynasty"):
-    """Query all games for a dynasty."""
+def query_games(db_path: str, dynasty_id: str = "demo_dynasty", season: int = 2024):
+    """Query all games for a dynasty using DatabaseAPI."""
     print_header("GAMES")
 
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    db_api = DatabaseAPI(db_path)
 
-    query = """
-        SELECT game_id, season, week,
-               away_team_id, home_team_id,
-               away_score, home_score,
-               total_plays, game_duration_minutes
-        FROM games
-        WHERE dynasty_id = ?
-        ORDER BY season, week
-    """
+    # Query all weeks (NFL regular season has 18 weeks)
+    all_games = []
+    for week in range(1, 19):
+        week_games = db_api.get_game_results(dynasty_id, week, season)
+        all_games.extend(week_games)
 
-    cursor.execute(query, (dynasty_id,))
-    games = cursor.fetchall()
-
-    if not games:
+    if not all_games:
         print("No games found")
         return
 
-    print(f"Found {len(games)} game(s):")
+    print(f"Found {len(all_games)} game(s):")
     print("-" * 80)
 
-    for game in games:
+    for game in all_games:
         winner = "Away" if game['away_score'] > game['home_score'] else "Home"
         print(f"Week {game['week']}: Team {game['away_team_id']} @ Team {game['home_team_id']}")
         print(f"  Score: {game['away_score']}-{game['home_score']} (Winner: {winner})")
-        print(f"  Total Plays: {game['total_plays']}, Duration: {game['game_duration_minutes']} min")
+        print(f"  Total Plays: {game.get('total_plays', 'N/A')}, Duration: {game.get('game_duration_minutes', 'N/A')} min")
         print(f"  Game ID: {game['game_id']}")
         print()
 
-    conn.close()
 
-
-def query_player_stats(db_path: str, dynasty_id: str = "demo_dynasty"):
-    """Query top player statistics."""
+def query_player_stats(db_path: str, dynasty_id: str = "demo_dynasty", season: int = 2024):
+    """Query top player statistics using DatabaseAPI."""
     print_header("TOP PERFORMERS")
 
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    db_api = DatabaseAPI(db_path)
 
-    # Top passers
+    # Top passers using DatabaseAPI
     print("🏈 Top Passers:")
-    cursor.execute("""
-        SELECT player_name, team_id,
-               SUM(passing_yards) as total_yards,
-               SUM(passing_tds) as total_tds,
-               SUM(passing_completions) as completions,
-               SUM(passing_attempts) as attempts
-        FROM player_game_stats
-        WHERE dynasty_id = ? AND passing_attempts > 0
-        GROUP BY player_id, player_name, team_id
-        ORDER BY total_yards DESC
-        LIMIT 5
-    """, (dynasty_id,))
+    passers = db_api.get_passing_leaders(dynasty_id, season, limit=5)
 
-    for row in cursor.fetchall():
-        comp_pct = (row['completions'] / row['attempts'] * 100) if row['attempts'] > 0 else 0
-        print(f"  {row['player_name']} (Team {row['team_id']}): "
-              f"{row['total_yards']} yards, {row['total_tds']} TDs, "
-              f"{row['completions']}/{row['attempts']} ({comp_pct:.1f}%)")
+    for player in passers:
+        comp_pct = player.get('completion_percentage', 0)
+        print(f"  {player['player_name']} (Team {player['team_id']}): "
+              f"{player['total_passing_yards']} yards, {player['total_passing_tds']} TDs, "
+              f"{player['total_completions']}/{player['total_attempts']} ({comp_pct:.1f}%)")
 
-    # Top rushers
+    # Top rushers using DatabaseAPI
     print("\n🏃 Top Rushers:")
-    cursor.execute("""
-        SELECT player_name, team_id,
-               SUM(rushing_yards) as total_yards,
-               SUM(rushing_tds) as total_tds,
-               SUM(rushing_attempts) as attempts
-        FROM player_game_stats
-        WHERE dynasty_id = ? AND rushing_attempts > 0
-        GROUP BY player_id, player_name, team_id
-        ORDER BY total_yards DESC
-        LIMIT 5
-    """, (dynasty_id,))
+    rushers = db_api.get_rushing_leaders(dynasty_id, season, limit=5)
 
-    for row in cursor.fetchall():
-        ypc = (row['total_yards'] / row['attempts']) if row['attempts'] > 0 else 0
-        print(f"  {row['player_name']} (Team {row['team_id']}): "
-              f"{row['total_yards']} yards, {row['total_tds']} TDs, "
-              f"{row['attempts']} att ({ypc:.1f} YPC)")
+    for player in rushers:
+        ypc = player.get('yards_per_carry', 0)
+        print(f"  {player['player_name']} (Team {player['team_id']}): "
+              f"{player['total_rushing_yards']} yards, {player['total_rushing_tds']} TDs, "
+              f"{player['total_attempts']} att ({ypc:.1f} YPC)")
 
-    # Top receivers
+    # Top receivers using DatabaseAPI
     print("\n🎯 Top Receivers:")
-    cursor.execute("""
-        SELECT player_name, team_id,
-               SUM(receiving_yards) as total_yards,
-               SUM(receiving_tds) as total_tds,
-               SUM(receptions) as catches,
-               SUM(targets) as targets
-        FROM player_game_stats
-        WHERE dynasty_id = ? AND targets > 0
-        GROUP BY player_id, player_name, team_id
-        ORDER BY total_yards DESC
-        LIMIT 5
-    """, (dynasty_id,))
+    receivers = db_api.get_receiving_leaders(dynasty_id, season, limit=5)
 
-    for row in cursor.fetchall():
-        catch_pct = (row['catches'] / row['targets'] * 100) if row['targets'] > 0 else 0
-        print(f"  {row['player_name']} (Team {row['team_id']}): "
-              f"{row['total_yards']} yards, {row['total_tds']} TDs, "
-              f"{row['catches']}/{row['targets']} ({catch_pct:.1f}%)")
-
-    conn.close()
+    for player in receivers:
+        catch_pct = player.get('catch_percentage', 0)
+        print(f"  {player['player_name']} (Team {player['team_id']}): "
+              f"{player['total_receiving_yards']} yards, {player['total_receiving_tds']} TDs, "
+              f"{player['total_receptions']}/{player['total_targets']} ({catch_pct:.1f}%)")
 
 
 def query_standings(db_path: str, dynasty_id: str = "demo_dynasty", season: int = 2024):
-    """Query current standings."""
+    """Query current standings using DatabaseAPI."""
     print_header(f"STANDINGS - {season} Season")
 
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    db_api = DatabaseAPI(db_path)
 
-    query = """
-        SELECT team_id, wins, losses, ties,
-               points_for, points_against,
-               home_wins, home_losses,
-               away_wins, away_losses
-        FROM standings
-        WHERE dynasty_id = ? AND season = ?
-        ORDER BY wins DESC, points_for DESC
-    """
+    standings_data = db_api.get_standings(dynasty_id, season)
 
-    cursor.execute(query, (dynasty_id, season))
-    teams = cursor.fetchall()
-
-    if not teams:
+    if not standings_data or not standings_data.get('divisions'):
         print("No standings data found")
         return
 
     print(f"{'Team':<10} {'Record':<12} {'Points For':<12} {'Points Against':<15} {'Home':<10} {'Away':<10}")
     print("-" * 80)
 
-    for team in teams:
+    # Extract all teams from divisions
+    all_teams = []
+    for division_name, teams in standings_data['divisions'].items():
+        for team_data in teams:
+            team_id = team_data.get('team_id')
+            standing = team_data.get('standing')
+            if standing:
+                all_teams.append({
+                    'team_id': team_id,
+                    'wins': standing.wins,
+                    'losses': standing.losses,
+                    'ties': standing.ties,
+                    'points_for': standing.points_for,
+                    'points_against': standing.points_against,
+                    'home_wins': standing.home_wins,
+                    'home_losses': standing.home_losses,
+                    'away_wins': standing.away_wins,
+                    'away_losses': standing.away_losses
+                })
+
+    # Sort by wins descending, then points for
+    all_teams.sort(key=lambda t: (t['wins'], t['points_for']), reverse=True)
+
+    for team in all_teams:
         record = f"{team['wins']}-{team['losses']}"
         if team['ties'] > 0:
             record += f"-{team['ties']}"
 
-        point_diff = team['points_for'] - team['points_against']
         home_record = f"{team['home_wins']}-{team['home_losses']}"
         away_record = f"{team['away_wins']}-{team['away_losses']}"
 
         print(f"Team {team['team_id']:<6} {record:<12} {team['points_for']:<12} "
               f"{team['points_against']:<15} {home_record:<10} {away_record:<10}")
-
-    conn.close()
 
 
 def query_game_detail(db_path: str, game_id: str):
