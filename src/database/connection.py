@@ -546,14 +546,18 @@ class DatabaseConnection:
 
     def get_connection(self) -> sqlite3.Connection:
         """
-        Get a database connection.
-        
+        Get a database connection with schema initialized.
+
         Returns:
-            SQLite connection object
+            SQLite connection object with tables created
         """
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row  # Enable column access by name
         conn.execute("PRAGMA foreign_keys=ON")
+
+        # Ensure tables exist (idempotent - safe to call multiple times)
+        self._create_tables(conn)
+
         return conn
     
     def execute_query(self, query: str, params: tuple = None) -> list:
