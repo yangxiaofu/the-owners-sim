@@ -43,14 +43,22 @@ class InteractiveSeasonSimulator:
     - View standings and upcoming games
     """
 
-    def __init__(self, database_path: str = "demo/interactive_season_sim/data/season_2024.db"):
+    def __init__(
+        self,
+        dynasty_id: str,
+        database_path: str = "demo/interactive_season_sim/data/season_2024.db"
+    ):
         """
         Initialize interactive season simulator.
 
         Args:
+            dynasty_id: Unique dynasty identifier for data isolation
             database_path: Path to season database
         """
         print_info("Initializing Interactive Season Simulator...")
+
+        # Store dynasty ID
+        self.dynasty_id = dynasty_id
 
         # Create season controller
         try:
@@ -58,7 +66,7 @@ class InteractiveSeasonSimulator:
                 database_path=database_path,
                 start_date=Date(2024, 9, 5),  # September 5, 2024 (Thursday)
                 season_year=2024,
-                dynasty_id="interactive_season"
+                dynasty_id=dynasty_id
             )
             print_success("Season controller initialized successfully")
         except Exception as e:
@@ -109,6 +117,10 @@ class InteractiveSeasonSimulator:
 
     def display_current_status(self):
         """Display current season status."""
+        # Display dynasty info
+        print(f"\n{Colors.BOLD}{Colors.MAGENTA}🏆 Dynasty: {self.dynasty_id}{Colors.RESET}")
+
+        # Display simulation status
         state = self.controller.get_current_state()
         print_status(state)
 
@@ -290,6 +302,7 @@ class InteractiveSeasonSimulator:
         try:
             state = self.controller.get_current_state()
             print(f"\nFinal Status:")
+            print(f"  Dynasty: {self.dynasty_id}")
             print(f"  Games Played: {state['games_played']} of 272")
             print(f"  Current Week: {state['week_number']}")
             print(f"  Current Phase: {state['current_phase']}")
@@ -303,7 +316,31 @@ class InteractiveSeasonSimulator:
 def main():
     """Main entry point."""
     try:
-        simulator = InteractiveSeasonSimulator()
+        from datetime import datetime
+
+        # Prompt for dynasty name
+        print_banner()
+        print_info("Welcome to the Interactive NFL Season Simulator!")
+        print_separator()
+        print("\nEach simulation requires a unique dynasty name for data isolation.")
+        print("You can provide a custom name or use an auto-generated one.\n")
+
+        dynasty_name = input("Enter dynasty name (or press Enter for auto-generated): ").strip()
+
+        # Generate dynasty ID
+        if dynasty_name:
+            # User provided a name - use it directly
+            dynasty_id = dynasty_name
+            print_success(f"Using dynasty: {dynasty_id}")
+        else:
+            # Auto-generate timestamp-based dynasty ID
+            dynasty_id = f"dynasty_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            print_info(f"Auto-generated dynasty: {dynasty_id}")
+
+        print()
+
+        # Initialize simulator with unique dynasty ID
+        simulator = InteractiveSeasonSimulator(dynasty_id=dynasty_id)
         simulator.run()
     except KeyboardInterrupt:
         print("\n\n⚠️  Interrupted by user")
