@@ -3,7 +3,7 @@
 **Project**: The Owners Sim - NFL Football Simulation Engine
 **Database**: SQLite3
 **File Location**: `data/database/nfl_simulation.db`
-**Schema Version**: 1.1.0 (with polymorphic event system)
+**Schema Version**: 2.0.0 (production schema matching actual implementation)
 
 ## Table of Contents
 
@@ -110,11 +110,19 @@ Master record for each dynasty (user franchise).
 CREATE TABLE dynasties (
     dynasty_id TEXT PRIMARY KEY,
     dynasty_name TEXT NOT NULL,
-    user_team_id INTEGER NOT NULL,
-    created_at TEXT NOT NULL,
-    current_season INTEGER NOT NULL DEFAULT 2024,
-    current_week INTEGER NOT NULL DEFAULT 1,
-    settings TEXT NOT NULL
+    owner_name TEXT,
+    team_id INTEGER,  -- Nullable to support league-wide simulations
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_played TIMESTAMP,
+    total_seasons INTEGER DEFAULT 0,
+    championships_won INTEGER DEFAULT 0,
+    super_bowls_won INTEGER DEFAULT 0,
+    conference_championships INTEGER DEFAULT 0,
+    division_titles INTEGER DEFAULT 0,
+    total_wins INTEGER DEFAULT 0,
+    total_losses INTEGER DEFAULT 0,
+    total_ties INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE
 );
 ```
 
@@ -124,11 +132,19 @@ CREATE TABLE dynasties (
 |--------|------|-------------|-------------|
 | `dynasty_id` | TEXT | PRIMARY KEY | Unique dynasty identifier (e.g., "eagles_rebuild_2024") |
 | `dynasty_name` | TEXT | NOT NULL | Display name for dynasty |
-| `user_team_id` | INTEGER | NOT NULL | Team ID (1-32) user controls |
-| `created_at` | TEXT | NOT NULL | ISO timestamp of dynasty creation |
-| `current_season` | INTEGER | NOT NULL, DEFAULT 2024 | Active season year |
-| `current_week` | INTEGER | NOT NULL, DEFAULT 1 | Current week (1-18 regular season) |
-| `settings` | TEXT | NOT NULL | JSON configuration for dynasty rules |
+| `owner_name` | TEXT | | Name of the dynasty owner/player |
+| `team_id` | INTEGER | | Team ID (1-32) user controls, NULL for league-wide |
+| `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | Dynasty creation timestamp |
+| `last_played` | TIMESTAMP | | Last time this dynasty was played |
+| `total_seasons` | INTEGER | DEFAULT 0 | Total seasons completed |
+| `championships_won` | INTEGER | DEFAULT 0 | Total championships (all types) |
+| `super_bowls_won` | INTEGER | DEFAULT 0 | Super Bowl victories |
+| `conference_championships` | INTEGER | DEFAULT 0 | Conference championship wins |
+| `division_titles` | INTEGER | DEFAULT 0 | Division titles won |
+| `total_wins` | INTEGER | DEFAULT 0 | All-time wins across all seasons |
+| `total_losses` | INTEGER | DEFAULT 0 | All-time losses across all seasons |
+| `total_ties` | INTEGER | DEFAULT 0 | All-time ties across all seasons |
+| `is_active` | BOOLEAN | DEFAULT TRUE | Whether dynasty is currently active |
 
 **Indexes**: None (primary key only)
 
@@ -137,11 +153,19 @@ CREATE TABLE dynasties (
 INSERT INTO dynasties VALUES (
     'eagles_rebuild_2024',
     'Philadelphia Eagles Rebuild',
+    'John Smith',
     14,
     '2024-01-15T10:30:00',
-    2024,
+    '2024-12-25T16:30:00',
     1,
-    '{"difficulty":"hard","salary_cap_enabled":true}'
+    0,
+    0,
+    0,
+    1,
+    12,
+    4,
+    0,
+    TRUE
 );
 ```
 
@@ -155,17 +179,18 @@ Game results with comprehensive metadata.
 CREATE TABLE games (
     game_id TEXT PRIMARY KEY,
     dynasty_id TEXT NOT NULL,
-    away_team_id INTEGER NOT NULL,
+    season INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    game_type TEXT DEFAULT 'regular',
     home_team_id INTEGER NOT NULL,
-    away_score INTEGER NOT NULL,
+    away_team_id INTEGER NOT NULL,
     home_score INTEGER NOT NULL,
-    week INTEGER,
-    season INTEGER,
-    game_type TEXT,
-    game_date TEXT,
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    away_score INTEGER NOT NULL,
+    total_plays INTEGER,
+    game_duration_minutes INTEGER,
+    overtime_periods INTEGER DEFAULT 0,
+    created_at TEXT,
     FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id)
-        ON DELETE CASCADE
 );
 ```
 
@@ -175,21 +200,25 @@ CREATE TABLE games (
 |--------|------|-------------|-------------|
 | `game_id` | TEXT | PRIMARY KEY | Unique game identifier |
 | `dynasty_id` | TEXT | NOT NULL, FK | Dynasty isolation key |
-| `away_team_id` | INTEGER | NOT NULL | Away team ID (1-32) |
+| `season` | INTEGER | NOT NULL | Season year |
+| `week` | INTEGER | NOT NULL | Week number (1-18 regular, 19+ playoffs) |
+| `game_type` | TEXT | DEFAULT 'regular' | "regular", "playoff", "super_bowl" |
 | `home_team_id` | INTEGER | NOT NULL | Home team ID (1-32) |
-| `away_score` | INTEGER | NOT NULL | Final away team score |
+| `away_team_id` | INTEGER | NOT NULL | Away team ID (1-32) |
 | `home_score` | INTEGER | NOT NULL | Final home team score |
-| `week` | INTEGER | | Week number (1-18 regular, 19+ playoffs) |
-| `season` | INTEGER | | Season year |
-| `game_type` | TEXT | | "REGULAR", "WILD_CARD", "DIVISIONAL", etc. |
-| `game_date` | TEXT | | ISO timestamp of game |
-| `created_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Record creation timestamp |
+| `away_score` | INTEGER | NOT NULL | Final away team score |
+| `total_plays` | INTEGER | | Total plays in game |
+| `game_duration_minutes` | INTEGER | | Game duration in minutes |
+| `overtime_periods` | INTEGER | DEFAULT 0 | Number of overtime periods |
+| `created_at` | TEXT | | Record creation timestamp |
 
 **Indexes**:
 ```sql
-CREATE INDEX idx_games_dynasty_id ON games(dynasty_id);
-CREATE INDEX idx_games_away_team ON games(away_team_id);
-CREATE INDEX idx_games_home_team ON games(home_team_id);
+CREATE INDEX idx_games_dynasty ON games(dynasty_id);
+CREATE INDEX idx_games_week ON games(week);
+CREATE INDEX idx_games_season ON games(season);
+CREATE INDEX idx_games_dynasty_season ON games(dynasty_id, season, week);
+CREATE INDEX idx_games_teams ON games(home_team_id, away_team_id);
 ```
 
 **Example Data**:
@@ -197,14 +226,16 @@ CREATE INDEX idx_games_home_team ON games(home_team_id);
 INSERT INTO games VALUES (
     'game_20241225_22_at_23',
     'eagles_rebuild_2024',
-    22,  -- Detroit Lions
-    23,  -- Green Bay Packers
-    9,
-    24,
-    17,
     2024,
-    'REGULAR',
-    '2024-12-25T13:00:00',
+    17,
+    'regular',
+    23,  -- Green Bay Packers (home)
+    22,  -- Detroit Lions (away)
+    24,
+    9,
+    142,
+    180,
+    0,
     '2024-12-25T16:30:00'
 );
 ```
@@ -213,118 +244,87 @@ INSERT INTO games VALUES (
 
 ### 3. player_game_stats
 
-Comprehensive player statistics for all positions.
+Player statistics for all positions.
 
 ```sql
 CREATE TABLE player_game_stats (
-    stat_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     dynasty_id TEXT NOT NULL,
     game_id TEXT NOT NULL,
-    team_id INTEGER NOT NULL,
     player_id TEXT NOT NULL,
     player_name TEXT NOT NULL,
+    team_id INTEGER NOT NULL,
     position TEXT NOT NULL,
 
     -- Passing stats
-    pass_attempts INTEGER DEFAULT 0,
-    pass_completions INTEGER DEFAULT 0,
-    pass_yards INTEGER DEFAULT 0,
-    pass_touchdowns INTEGER DEFAULT 0,
-    interceptions INTEGER DEFAULT 0,
-    sacks_taken INTEGER DEFAULT 0,
-    sack_yards_lost INTEGER DEFAULT 0,
+    passing_yards INTEGER DEFAULT 0,
+    passing_tds INTEGER DEFAULT 0,
+    passing_completions INTEGER DEFAULT 0,
+    passing_attempts INTEGER DEFAULT 0,
 
     -- Rushing stats
-    rush_attempts INTEGER DEFAULT 0,
-    rush_yards INTEGER DEFAULT 0,
-    rush_touchdowns INTEGER DEFAULT 0,
-    rush_long INTEGER DEFAULT 0,
-    fumbles_lost INTEGER DEFAULT 0,
+    rushing_yards INTEGER DEFAULT 0,
+    rushing_tds INTEGER DEFAULT 0,
+    rushing_attempts INTEGER DEFAULT 0,
 
     -- Receiving stats
-    receptions INTEGER DEFAULT 0,
     receiving_yards INTEGER DEFAULT 0,
-    receiving_touchdowns INTEGER DEFAULT 0,
+    receiving_tds INTEGER DEFAULT 0,
+    receptions INTEGER DEFAULT 0,
     targets INTEGER DEFAULT 0,
-    receiving_long INTEGER DEFAULT 0,
 
     -- Defense stats
-    tackles_solo INTEGER DEFAULT 0,
-    tackles_assists INTEGER DEFAULT 0,
-    tackles_for_loss INTEGER DEFAULT 0,
+    tackles_total INTEGER DEFAULT 0,
     sacks REAL DEFAULT 0,
-    qb_hits INTEGER DEFAULT 0,
-    passes_defended INTEGER DEFAULT 0,
-    interceptions_def INTEGER DEFAULT 0,
-    fumbles_forced INTEGER DEFAULT 0,
-    fumbles_recovered INTEGER DEFAULT 0,
-    defensive_touchdowns INTEGER DEFAULT 0,
+    interceptions INTEGER DEFAULT 0,
 
     -- Special teams stats
     field_goals_made INTEGER DEFAULT 0,
     field_goals_attempted INTEGER DEFAULT 0,
-    field_goal_long INTEGER DEFAULT 0,
     extra_points_made INTEGER DEFAULT 0,
     extra_points_attempted INTEGER DEFAULT 0,
-    punts INTEGER DEFAULT 0,
-    punt_yards INTEGER DEFAULT 0,
-    punt_long INTEGER DEFAULT 0,
-    kickoffs INTEGER DEFAULT 0,
-    touchbacks INTEGER DEFAULT 0,
-    kick_returns INTEGER DEFAULT 0,
-    kick_return_yards INTEGER DEFAULT 0,
-    kick_return_touchdowns INTEGER DEFAULT 0,
-    punt_returns INTEGER DEFAULT 0,
-    punt_return_yards INTEGER DEFAULT 0,
-    punt_return_touchdowns INTEGER DEFAULT 0,
 
-    -- Offensive line stats
-    snaps_played INTEGER DEFAULT 0,
-    pancake_blocks INTEGER DEFAULT 0,
-    sacks_allowed INTEGER DEFAULT 0,
-    qb_pressures_allowed INTEGER DEFAULT 0,
-    penalties_committed INTEGER DEFAULT 0,
+    -- Snap counts
+    offensive_snaps INTEGER DEFAULT 0,
+    defensive_snaps INTEGER DEFAULT 0,
+    total_snaps INTEGER DEFAULT 0,
 
-    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-
-    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id)
-        ON DELETE CASCADE,
     FOREIGN KEY (game_id) REFERENCES games(game_id)
-        ON DELETE CASCADE
 );
 ```
 
-**Columns**: 50+ statistical fields across all position groups
+**Columns**: Essential statistical fields for core positions
 
 **Position Groups**:
-- **Passing**: QB statistics (attempts, completions, yards, TDs, INTs, sacks)
-- **Rushing**: RB/QB rushing (attempts, yards, TDs, long, fumbles)
-- **Receiving**: WR/TE/RB receiving (receptions, yards, TDs, targets, long)
-- **Defense**: Tackles, sacks, QB hits, passes defended, turnovers, TDs
-- **Special Teams**: Kicking, punting, returns (FG, XP, punts, kickoffs, returns)
-- **Offensive Line**: Snaps, blocks, sacks allowed, pressures, penalties
+- **Passing**: QB statistics (completions, attempts, yards, TDs)
+- **Rushing**: RB/QB rushing (attempts, yards, TDs)
+- **Receiving**: WR/TE/RB receiving (receptions, targets, yards, TDs)
+- **Defense**: Tackles, sacks, interceptions
+- **Special Teams**: Kicking (FG, XP)
+- **Snap Counts**: Offensive, defensive, and total snaps
 
 **Indexes**:
 ```sql
-CREATE INDEX idx_stats_dynasty_id ON player_game_stats(dynasty_id);
-CREATE INDEX idx_stats_game_id ON player_game_stats(game_id);
-CREATE INDEX idx_stats_player_id ON player_game_stats(player_id);
-CREATE INDEX idx_stats_team_id ON player_game_stats(team_id);
+CREATE INDEX idx_player_stats_game ON player_game_stats(game_id);
+CREATE INDEX idx_player_stats_player ON player_game_stats(player_id);
+CREATE INDEX idx_player_stats_dynasty ON player_game_stats(dynasty_id);
 ```
 
 **Example Data**:
 ```sql
 INSERT INTO player_game_stats (
-    dynasty_id, game_id, team_id, player_id, player_name, position,
-    pass_attempts, pass_completions, pass_yards, pass_touchdowns, interceptions
+    dynasty_id, game_id, player_id, player_name, team_id, position,
+    passing_attempts, passing_completions, passing_yards, passing_tds,
+    offensive_snaps, total_snaps
 ) VALUES (
     'eagles_rebuild_2024',
     'game_20241225_22_at_23',
-    22,
     'player_22_qb_1',
     'Detroit Starting QB',
+    22,
     'QB',
-    35, 22, 287, 2, 1
+    35, 22, 287, 2,
+    65, 65
 );
 ```
 
@@ -336,7 +336,7 @@ Team records with conference/division/home/away splits.
 
 ```sql
 CREATE TABLE standings (
-    standing_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
     dynasty_id TEXT NOT NULL,
     team_id INTEGER NOT NULL,
     season INTEGER NOT NULL,
@@ -346,27 +346,28 @@ CREATE TABLE standings (
     losses INTEGER DEFAULT 0,
     ties INTEGER DEFAULT 0,
 
-    -- Situational splits
+    -- Scoring
+    points_for INTEGER DEFAULT 0,
+    points_against INTEGER DEFAULT 0,
+
+    -- Division record
     division_wins INTEGER DEFAULT 0,
     division_losses INTEGER DEFAULT 0,
+
+    -- Conference record
     conference_wins INTEGER DEFAULT 0,
     conference_losses INTEGER DEFAULT 0,
+
+    -- Home/Away splits
     home_wins INTEGER DEFAULT 0,
     home_losses INTEGER DEFAULT 0,
     away_wins INTEGER DEFAULT 0,
     away_losses INTEGER DEFAULT 0,
 
-    -- Scoring
-    points_for INTEGER DEFAULT 0,
-    points_against INTEGER DEFAULT 0,
-
-    -- Streaks
+    -- Streaks and rankings
     current_streak TEXT,
+    division_rank INTEGER,
 
-    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
-
-    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id)
-        ON DELETE CASCADE,
     UNIQUE(dynasty_id, team_id, season)
 );
 ```
@@ -375,13 +376,15 @@ CREATE TABLE standings (
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| `standing_id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Auto-generated ID |
-| `dynasty_id` | TEXT | NOT NULL, FK | Dynasty isolation |
+| `id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Auto-generated ID |
+| `dynasty_id` | TEXT | NOT NULL | Dynasty isolation |
 | `team_id` | INTEGER | NOT NULL | Team ID (1-32) |
 | `season` | INTEGER | NOT NULL | Season year |
 | `wins` | INTEGER | DEFAULT 0 | Total wins |
 | `losses` | INTEGER | DEFAULT 0 | Total losses |
 | `ties` | INTEGER | DEFAULT 0 | Total ties |
+| `points_for` | INTEGER | DEFAULT 0 | Total points scored |
+| `points_against` | INTEGER | DEFAULT 0 | Total points allowed |
 | `division_wins` | INTEGER | DEFAULT 0 | Division game wins |
 | `division_losses` | INTEGER | DEFAULT 0 | Division game losses |
 | `conference_wins` | INTEGER | DEFAULT 0 | Conference wins |
@@ -390,17 +393,15 @@ CREATE TABLE standings (
 | `home_losses` | INTEGER | DEFAULT 0 | Home game losses |
 | `away_wins` | INTEGER | DEFAULT 0 | Away game wins |
 | `away_losses` | INTEGER | DEFAULT 0 | Away game losses |
-| `points_for` | INTEGER | DEFAULT 0 | Total points scored |
-| `points_against` | INTEGER | DEFAULT 0 | Total points allowed |
 | `current_streak` | TEXT | | Streak notation (e.g., "W3", "L2") |
-| `updated_at` | TEXT | DEFAULT CURRENT_TIMESTAMP | Last update time |
+| `division_rank` | INTEGER | | Current division rank |
 
 **Unique Constraint**: One standings record per (dynasty_id, team_id, season)
 
 **Indexes**:
 ```sql
-CREATE INDEX idx_standings_dynasty_id ON standings(dynasty_id);
-CREATE INDEX idx_standings_team_id ON standings(team_id);
+CREATE INDEX idx_standings_dynasty ON standings(dynasty_id);
+CREATE INDEX idx_standings_team ON standings(team_id);
 CREATE INDEX idx_standings_season ON standings(season);
 ```
 
@@ -832,6 +833,8 @@ CREATE TABLE events (
 );
 ```
 
+**Note**: This table is used by the calendar/event system and does NOT have dynasty isolation. Events are grouped by `game_id` which serves as a context identifier.
+
 **Columns**:
 
 | Column | Type | Constraints | Description |
@@ -864,9 +867,9 @@ CREATE TABLE events (
 
 **Indexes**:
 ```sql
-CREATE INDEX idx_events_game_id ON events(game_id);
-CREATE INDEX idx_events_timestamp ON events(timestamp);
-CREATE INDEX idx_events_type ON events(event_type);
+CREATE INDEX idx_game_id ON events(game_id);
+CREATE INDEX idx_timestamp ON events(timestamp);
+CREATE INDEX idx_event_type ON events(event_type);
 ```
 
 **Event Types**:
@@ -1028,47 +1031,44 @@ All tables have primary key indexes (automatic):
 
 **Dynasty-scoped queries** (most common pattern):
 ```sql
-CREATE INDEX idx_games_dynasty_id ON games(dynasty_id);
-CREATE INDEX idx_stats_dynasty_id ON player_game_stats(dynasty_id);
-CREATE INDEX idx_standings_dynasty_id ON standings(dynasty_id);
-CREATE INDEX idx_schedules_dynasty_id ON schedules(dynasty_id);
-CREATE INDEX idx_dynasty_seasons_dynasty_id ON dynasty_seasons(dynasty_id);
-CREATE INDEX idx_box_scores_dynasty_id ON box_scores(dynasty_id);
-CREATE INDEX idx_playoff_seedings_dynasty_id ON playoff_seedings(dynasty_id);
-CREATE INDEX idx_tiebreakers_dynasty_id ON tiebreaker_applications(dynasty_id);
-CREATE INDEX idx_playoff_brackets_dynasty_id ON playoff_brackets(dynasty_id);
+CREATE INDEX idx_games_dynasty ON games(dynasty_id);
+CREATE INDEX idx_player_stats_dynasty ON player_game_stats(dynasty_id);
+CREATE INDEX idx_standings_dynasty ON standings(dynasty_id);
+CREATE INDEX idx_schedules_dynasty ON schedules(dynasty_id, season, week);
+CREATE INDEX idx_dynasty_seasons ON dynasty_seasons(dynasty_id, season);
+CREATE INDEX idx_box_scores ON box_scores(dynasty_id, game_id);
+CREATE INDEX idx_playoff_seedings_dynasty ON playoff_seedings(dynasty_id, season);
+CREATE INDEX idx_playoff_seedings_conference ON playoff_seedings(dynasty_id, season, conference);
+CREATE INDEX idx_tiebreaker_apps ON tiebreaker_applications(dynasty_id, season);
+CREATE INDEX idx_playoff_brackets ON playoff_brackets(dynasty_id, season, round_name);
 ```
 
 **Team lookups**:
 ```sql
-CREATE INDEX idx_games_away_team ON games(away_team_id);
-CREATE INDEX idx_games_home_team ON games(home_team_id);
-CREATE INDEX idx_stats_team_id ON player_game_stats(team_id);
-CREATE INDEX idx_standings_team_id ON standings(team_id);
+CREATE INDEX idx_games_teams ON games(home_team_id, away_team_id);
+CREATE INDEX idx_standings_team ON standings(team_id);
+CREATE INDEX idx_schedules_teams ON schedules(home_team_id, away_team_id);
 ```
 
 **Player statistics**:
 ```sql
-CREATE INDEX idx_stats_game_id ON player_game_stats(game_id);
-CREATE INDEX idx_stats_player_id ON player_game_stats(player_id);
+CREATE INDEX idx_player_stats_game ON player_game_stats(game_id);
+CREATE INDEX idx_player_stats_player ON player_game_stats(player_id);
 ```
 
 **Time-based queries**:
 ```sql
+CREATE INDEX idx_games_week ON games(week);
+CREATE INDEX idx_games_season ON games(season);
+CREATE INDEX idx_games_dynasty_season ON games(dynasty_id, season, week);
 CREATE INDEX idx_standings_season ON standings(season);
-CREATE INDEX idx_schedules_season_week ON schedules(season, week);
-CREATE INDEX idx_schedules_date ON schedules(game_date);
-CREATE INDEX idx_playoff_seedings_season ON playoff_seedings(season);
-CREATE INDEX idx_tiebreakers_season ON tiebreaker_applications(season);
-CREATE INDEX idx_playoff_brackets_season ON playoff_brackets(season);
 CREATE INDEX idx_events_timestamp ON events(timestamp);
 ```
 
-**Box scores and events**:
+**Events**:
 ```sql
-CREATE INDEX idx_box_scores_game_id ON box_scores(game_id);
-CREATE INDEX idx_events_game_id ON events(game_id);
-CREATE INDEX idx_events_type ON events(event_type);
+CREATE INDEX idx_game_id ON events(game_id);
+CREATE INDEX idx_event_type ON events(event_type);
 ```
 
 ### Query Optimization Tips
@@ -1586,11 +1586,12 @@ WHERE dynasty_id = 'eagles_rebuild_2024'
 
 ### Schema Version
 
-Current version: **1.1.0** (with polymorphic event system)
+Current version: **2.0.0** (production schema matching actual implementation)
 
 Version history:
 - **1.0.0**: Initial schema with dynasty isolation
 - **1.1.0**: Added events table for polymorphic event system
+- **2.0.0**: Production schema update - simplified tables to match actual implementation, updated dynasties table with career tracking, streamlined player_game_stats, updated all indexes
 
 ### Adding New Tables
 
