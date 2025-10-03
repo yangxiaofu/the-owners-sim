@@ -44,7 +44,8 @@ class SimulationExecutor:
         event_db: EventDatabaseAPI,
         database_path: Optional[str] = None,
         dynasty_id: str = "default",
-        enable_persistence: bool = True
+        enable_persistence: bool = True,
+        season_year: Optional[int] = None
     ):
         """
         Initialize simulation executor.
@@ -55,10 +56,19 @@ class SimulationExecutor:
             database_path: Path to database for persistence (required if enable_persistence=True)
             dynasty_id: Dynasty context for data isolation
             enable_persistence: Whether to persist game results to database
+            season_year: Season year for filtering dynasty-specific events (extracted from calendar if None)
         """
         self.calendar = calendar
         self.event_db = event_db
         self.enable_persistence = enable_persistence
+        self.dynasty_id = dynasty_id
+
+        # Extract season year from calendar if not provided
+        if season_year is None:
+            phase_info = calendar.get_phase_info()
+            self.season_year = phase_info.get("season_year", calendar.get_current_date().year)
+        else:
+            self.season_year = season_year
 
         # Initialize SimulationWorkflow for 3-stage simulation
         if enable_persistence:
@@ -200,20 +210,45 @@ class SimulationExecutor:
         """
         Retrieve all events scheduled for a specific date.
 
+        Filters events by dynasty for playoff/preseason games while keeping
+        regular season games shared across all dynasties.
+
         Args:
             target_date: Date to retrieve events for
 
         Returns:
             List of event dictionaries from database
         """
-        # Get all GAME events from database
+        # Get playoff events for this specific dynasty/season
+        playoff_prefix = f"playoff_{self.dynasty_id}_{self.season_year}_"
+        playoff_events = self.event_db.get_events_by_game_id_prefix(
+            playoff_prefix,
+            event_type="GAME"
+        )
+
+        # Get preseason events for this specific dynasty/season (future-proofing)
+        preseason_prefix = f"preseason_{self.dynasty_id}_{self.season_year}_"
+        preseason_events = self.event_db.get_events_by_game_id_prefix(
+            preseason_prefix,
+            event_type="GAME"
+        )
+
+        # Get ALL game events to extract regular season games (shared across dynasties)
         all_game_events = self.event_db.get_events_by_type("GAME")
+        regular_season_events = [
+            e for e in all_game_events
+            if not e.get('game_id', '').startswith('playoff_')
+            and not e.get('game_id', '').startswith('preseason_')
+        ]
+
+        # Combine dynasty-specific and shared events
+        all_events_for_dynasty = playoff_events + preseason_events + regular_season_events
 
         # Filter by date
         events_for_date = []
         target_date_str = str(target_date)
 
-        for event_data in all_game_events:
+        for event_data in all_events_for_dynasty:
             # Check if game_date in parameters matches target date
             params = event_data['data'].get('parameters', event_data['data'])
             game_date_str = params.get('game_date', '')

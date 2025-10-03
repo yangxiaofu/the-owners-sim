@@ -211,8 +211,8 @@ class PlayoffScheduler:
             )
 
             # Store event and capture event ID
-            event_id = self.event_db_api.store_event(event)
-            event_ids.append(event_id)
+            stored_event = self.event_db_api.insert_event(event)
+            event_ids.append(stored_event.event_id)
 
         return event_ids
 

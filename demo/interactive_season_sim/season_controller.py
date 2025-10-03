@@ -121,7 +121,8 @@ class SeasonController:
             event_db=self.event_db,
             database_path=database_path,
             dynasty_id=dynasty_id,
-            enable_persistence=enable_persistence
+            enable_persistence=enable_persistence,
+            season_year=season_year
         )
 
         self.database_api = DatabaseAPI(database_path)

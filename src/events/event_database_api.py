@@ -307,6 +307,62 @@ class EventDatabaseAPI:
         finally:
             conn.close()
 
+    def get_events_by_game_id_prefix(
+        self,
+        prefix: str,
+        event_type: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve events where game_id starts with the specified prefix.
+
+        Efficient database-level filtering for dynasty-specific queries.
+        Useful for isolating events by dynasty, season, or event category.
+
+        Examples:
+            # Get all playoff events for dynasty_a in 2024
+            events = api.get_events_by_game_id_prefix("playoff_dynasty_a_2024_", "GAME")
+
+            # Get all preseason events for dynasty_b
+            events = api.get_events_by_game_id_prefix("preseason_dynasty_b_", "GAME")
+
+            # Get all events (any type) for a specific game series
+            events = api.get_events_by_game_id_prefix("playoff_eagles_2024_wild_card_")
+
+        Args:
+            prefix: Game ID prefix to match (e.g., "playoff_dynasty_a_2024_")
+            event_type: Optional filter by event type (e.g., "GAME", "MEDIA")
+                       If None, returns events of all types matching the prefix
+
+        Returns:
+            List of event dictionaries matching the criteria, ordered by timestamp DESC
+
+        Performance:
+            - Uses SQL LIKE for efficient database-level filtering
+            - Leverages game_id index for fast lookups
+            - More efficient than loading all events and filtering in Python
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        try:
+            if event_type:
+                cursor.execute(
+                    'SELECT * FROM events WHERE game_id LIKE ? AND event_type = ? ORDER BY timestamp DESC',
+                    (f"{prefix}%", event_type)
+                )
+            else:
+                cursor.execute(
+                    'SELECT * FROM events WHERE game_id LIKE ? ORDER BY timestamp DESC',
+                    (f"{prefix}%",)
+                )
+
+            rows = cursor.fetchall()
+            return [self._row_to_dict(row) for row in rows]
+
+        finally:
+            conn.close()
+
     def count_events(self, game_id: Optional[str] = None) -> int:
         """
         Count total events, optionally filtered by game_id.
