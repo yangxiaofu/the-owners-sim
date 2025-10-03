@@ -384,6 +384,54 @@ class SeasonController:
             self.logger.error(f"Error retrieving standings: {e}")
             return {"divisions": {}, "conferences": {}}
 
+    def get_playoff_seeding(self) -> Dict[str, Any]:
+        """
+        Get current playoff seeding based on standings.
+
+        Returns:
+            Dictionary with playoff seeding for both conferences:
+            {
+                "season": int,
+                "week": int,
+                "afc": {"seeds": [...], "division_winners": [...], "wildcards": [...]},
+                "nfc": {"seeds": [...], "division_winners": [...], "wildcards": [...]},
+                "calculation_date": str
+            }
+        """
+        try:
+            # Get current standings from database
+            standings_data = self.database_api.get_standings(
+                dynasty_id=self.dynasty_id,
+                season=self.season_year
+            )
+
+            if not standings_data:
+                self.logger.warning(f"No standings found for playoff seeding")
+                return {}
+
+            # Convert to format expected by PlayoffSeeder
+            from playoff_system import PlayoffSeeder
+
+            # DatabaseAPI returns standings organized by division/conference
+            # Each team_data has: {'team_id': int, 'standing': EnhancedTeamStanding}
+            # Need to flatten to dict[team_id, EnhancedTeamStanding]
+            standings_dict = {}
+            for division_name, teams in standings_data.get('divisions', {}).items():
+                for team_data in teams:
+                    team_id = team_data['team_id']
+                    # Use the EnhancedTeamStanding object directly from database
+                    standings_dict[team_id] = team_data['standing']
+
+            # Calculate playoff seeding
+            seeder = PlayoffSeeder()
+            seeding = seeder.calculate_seeding(standings_dict, self.season_year, self.current_week)
+
+            return seeding.to_dict()
+
+        except Exception as e:
+            self.logger.error(f"Error calculating playoff seeding: {e}")
+            return {}
+
     def get_upcoming_games(self, days: int = 7) -> List[Dict[str, Any]]:
         """
         Get games scheduled in the next N days.

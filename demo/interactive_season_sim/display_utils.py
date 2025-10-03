@@ -78,10 +78,16 @@ def print_status(controller: Any) -> None:
         - Current season phase (Preseason, Regular Season, Playoffs, Offseason)
     """
     try:
+        # Get accurate state from controller (tracks week and games correctly)
+        state = controller.get_current_state()
+
+        # Get date and phase from calendar (these are accurate)
         current_date = controller.calendar.get_current_date()
         current_phase = controller.calendar.get_current_phase()
-        current_week = controller.calendar.get_current_week()
-        games_played = getattr(controller, 'games_played', 0)
+
+        # Use controller's tracked values for week and games (accurate)
+        current_week = state.get('week_number', 1)
+        games_played = state.get('games_played', 0)
 
         print(f"\n{Colors.BOLD}{Colors.CYAN}═══ SIMULATION STATUS ═══{Colors.RESET}")
         print(f"📅 Date: {Colors.BOLD}{current_date}{Colors.RESET}")
@@ -94,7 +100,7 @@ def print_status(controller: Any) -> None:
         print(f"{Colors.RED}Error displaying status: {e}{Colors.RESET}")
 
 
-def print_menu() -> None:
+def print_menu(current_week: int = 0) -> None:
     """
     Display interactive command menu with available options.
 
@@ -104,7 +110,13 @@ def print_menu() -> None:
     - 3: Simulate to end of season
     - 4: View standings
     - 5: View upcoming games
+    - 6: View season summary
+    - 7: View playoff picture (available week 10+)
+    - 8: Advance to Week 10 (only before week 10)
     - 0: Exit
+
+    Args:
+        current_week: Current week number (shows conditional options based on week)
     """
     print(f"\n{Colors.BOLD}{Colors.BRIGHT_YELLOW}╔═══ COMMAND MENU ═══╗{Colors.RESET}")
     print(f"{Colors.YELLOW}║{Colors.RESET}  1️⃣  Simulate 1 Day")
@@ -112,6 +124,16 @@ def print_menu() -> None:
     print(f"{Colors.YELLOW}║{Colors.RESET}  3️⃣  Simulate to End of Season")
     print(f"{Colors.YELLOW}║{Colors.RESET}  4️⃣  View Standings")
     print(f"{Colors.YELLOW}║{Colors.RESET}  5️⃣  View Upcoming Games")
+    print(f"{Colors.YELLOW}║{Colors.RESET}  6️⃣  View Season Summary")
+
+    # Show playoff picture option only when week >= 10
+    if current_week >= 10:
+        print(f"{Colors.YELLOW}║{Colors.RESET}  {Colors.BRIGHT_GREEN}7️⃣  View Playoff Picture{Colors.RESET}")
+
+    # Show advance to week 10 option only when week < 10
+    if current_week < 10:
+        print(f"{Colors.YELLOW}║{Colors.RESET}  {Colors.BRIGHT_MAGENTA}8️⃣  Advance to Week 10{Colors.RESET}")
+
     print(f"{Colors.YELLOW}║{Colors.RESET}  0️⃣  Exit")
     print(f"{Colors.BOLD}{Colors.BRIGHT_YELLOW}╚════════════════════╝{Colors.RESET}\n")
 
@@ -600,6 +622,146 @@ def format_date(date_obj: Any) -> str:
         return str(date_obj)
     except Exception:
         return "Unknown Date"
+
+
+def display_playoff_seeding(seeding_data: Dict[str, Any]) -> None:
+    """
+    Display playoff seeding for both conferences.
+
+    Args:
+        seeding_data: Dictionary containing playoff seeding data:
+            - season: Season year
+            - week: Current week
+            - afc: AFC seeding with seeds, division_winners, wildcards
+            - nfc: NFC seeding with seeds, division_winners, wildcards
+            - calculation_date: When seeding was calculated
+
+    Displays:
+        - Current playoff seeding for AFC and NFC
+        - Division winners (seeds 1-4)
+        - Wild card teams (seeds 5-7)
+        - Team records and seed positions
+    """
+    if not seeding_data or 'afc' not in seeding_data or 'nfc' not in seeding_data:
+        print(f"{Colors.RED}No playoff seeding data available{Colors.RESET}")
+        return
+
+    season = seeding_data.get('season', 'Unknown')
+    week = seeding_data.get('week', '?')
+
+    print(f"\n{Colors.BOLD}{Colors.BRIGHT_CYAN}╔═══════════════════════════════════════════════════════════╗")
+    print(f"║                                                           ║")
+    print(f"║              {season} NFL PLAYOFF PICTURE                    ║")
+    print(f"║                    Week {week:2d}                                 ║")
+    print(f"║                                                           ║")
+    print(f"╚═══════════════════════════════════════════════════════════╝{Colors.RESET}\n")
+
+    # Display AFC seeding
+    print(f"{Colors.BOLD}{Colors.BLUE}{'═' * 60}{Colors.RESET}")
+    print(f"{Colors.BOLD}{Colors.BLUE}                         AFC                              {Colors.RESET}")
+    print(f"{Colors.BOLD}{Colors.BLUE}{'═' * 60}{Colors.RESET}\n")
+
+    afc_data = seeding_data.get('afc', {})
+    _display_conference_seeding(afc_data, 'AFC')
+
+    print()
+
+    # Display NFC seeding
+    print(f"{Colors.BOLD}{Colors.GREEN}{'═' * 60}{Colors.RESET}")
+    print(f"{Colors.BOLD}{Colors.GREEN}                         NFC                              {Colors.RESET}")
+    print(f"{Colors.BOLD}{Colors.GREEN}{'═' * 60}{Colors.RESET}\n")
+
+    nfc_data = seeding_data.get('nfc', {})
+    _display_conference_seeding(nfc_data, 'NFC')
+
+    print(f"\n{Colors.BRIGHT_CYAN}{'═' * 60}{Colors.RESET}")
+    print(f"{Colors.DIM}Calculated: {seeding_data.get('calculation_date', 'Unknown')}{Colors.RESET}\n")
+
+
+def _display_conference_seeding(conference_data: Dict[str, Any], conference: str) -> None:
+    """
+    Helper function to display playoff seeding for a single conference.
+
+    Args:
+        conference_data: Conference seeding data with seeds list
+        conference: 'AFC' or 'NFC'
+    """
+    seeds = conference_data.get('seeds', [])
+
+    if not seeds:
+        print(f"{Colors.YELLOW}No seeding data available for {conference}{Colors.RESET}")
+        return
+
+    # Import team loader to get team names
+    from team_management.teams.team_loader import get_team_by_id
+
+    # Display seeds 1-4 (Division Winners)
+    print(f"{Colors.BOLD}Division Winners:{Colors.RESET}")
+    for seed_data in seeds[:4]:
+        seed = seed_data.get('seed', '?')
+        team_id = seed_data.get('team_id')
+        wins = seed_data.get('wins', 0)
+        losses = seed_data.get('losses', 0)
+        ties = seed_data.get('ties', 0)
+        division = seed_data.get('division_name', 'Unknown')
+
+        # Get team name
+        try:
+            team_info = get_team_by_id(team_id)
+            team_name = str(team_info)[:25]
+        except:
+            team_name = f"Team {team_id}"[:25]
+
+        # Format record
+        if ties > 0:
+            record = f"{wins:2d}-{losses:2d}-{ties:1d}"
+        else:
+            record = f"{wins:2d}-{losses:2d}   "
+
+        # Color code by seed
+        if seed == 1:
+            color = Colors.BRIGHT_GREEN
+            emoji = "👑"  # #1 seed gets bye
+        elif seed == 2:
+            color = Colors.GREEN
+            emoji = "🏆"
+        elif seed == 3:
+            color = Colors.BRIGHT_YELLOW
+            emoji = "🏆"
+        else:
+            color = Colors.YELLOW
+            emoji = "🏆"
+
+        print(f"  {color}{emoji} {seed}. {team_name:25s}  {record}  ({division}){Colors.RESET}")
+
+    # Display seeds 5-7 (Wild Cards)
+    print(f"\n{Colors.BOLD}Wild Card:{Colors.RESET}")
+    for seed_data in seeds[4:]:
+        seed = seed_data.get('seed', '?')
+        team_id = seed_data.get('team_id')
+        wins = seed_data.get('wins', 0)
+        losses = seed_data.get('losses', 0)
+        ties = seed_data.get('ties', 0)
+        division = seed_data.get('division_name', 'Unknown')
+
+        # Get team name
+        try:
+            team_info = get_team_by_id(team_id)
+            team_name = str(team_info)[:25]
+        except:
+            team_name = f"Team {team_id}"[:25]
+
+        # Format record
+        if ties > 0:
+            record = f"{wins:2d}-{losses:2d}-{ties:1d}"
+        else:
+            record = f"{wins:2d}-{losses:2d}   "
+
+        # Wild cards get different color
+        color = Colors.CYAN
+        emoji = "🎫"
+
+        print(f"  {color}{emoji} {seed}. {team_name:25s}  {record}  ({division}){Colors.RESET}")
 
 
 # Example usage and testing

@@ -69,8 +69,24 @@ PYTHONPATH=src python cleveland_browns_vs_houston_texans_demo.py  # Complete Bro
 PYTHONPATH=src python demo.py  # Main demo entry point
 PYTHONPATH=src python test_full_game_simulator.py  # Full game simulator test
 
-# Interactive interface for comprehensive team and season management
-PYTHONPATH=src python src/demo/interactive_interface.py
+# Interactive Season Simulation (PRIMARY INTERFACE)
+PYTHONPATH=src python demo/interactive_season_sim/interactive_season_sim.py
+# Terminal-based interactive NFL season simulation with comprehensive controls:
+# - Day-by-day or week-by-week simulation
+# - View standings, upcoming games, season summary
+# - Playoff picture tracking (Week 10+)
+# - Full database persistence with dynasty support
+# See demo/interactive_season_sim/QUICK_START.md for detailed usage
+
+# Season Simulation Utilities
+PYTHONPATH=src python demo/interactive_season_sim/initialize_season_db.py  # Initialize new season database
+PYTHONPATH=src python demo/interactive_season_sim/schedule_generator_example.py  # Generate season schedule
+
+# Playoff System Demo
+PYTHONPATH=src python demo/playoff_seeder_demo/playoff_seeder_demo.py  # NFL playoff seeding and tiebreaker demonstration
+
+# Legacy interactive interface (if available)
+PYTHONPATH=src python src/demo/interactive_interface.py  # Older team/season management interface
 
 # Component demos (in demo/ directory)
 PYTHONPATH=src python demo/pass_play_demo.py  # Pass play simulation demonstration
@@ -358,11 +374,17 @@ The project uses multiple testing approaches:
 Comprehensive documentation is available in `docs/`:
 
 - **Architecture**: `docs/architecture/play_engine.md` - Core system architecture documentation
-- **System Summaries**: 
+- **Database Schema**: `docs/schema/database_schema.md` - Complete SQLite schema v2.0.0 documentation with table definitions, indexes, and query examples
+- **System Summaries**:
   - `docs/PENALTY_SYSTEM_SUMMARY.md` - Penalty system overview
   - `docs/TEAM_SYSTEM_SUMMARY.md` - Team management system details
   - `docs/TEST_GUIDE.md` - Testing guidelines and approaches
+- **How-To Guides**:
+  - `docs/how-to/full_game_simulator_usage.md` - FullGameSimulator configuration and usage
+  - `docs/how-to/nfl_schedule_generator_usage.md` - NFL schedule generation
+  - `docs/how-to/simulation-workflow.md` - Complete simulation workflow guide
 - **Planning Documents**: `docs/plans/` - Architecture plans and data flow analysis
+- **Interactive Season Sim**: `demo/interactive_season_sim/QUICK_START.md` - Quick start guide for interactive season simulation
 
 ## Common Issues and Troubleshooting
 

@@ -11,6 +11,8 @@ Commands:
   [4] Show current standings
   [5] Show upcoming games
   [6] Show season summary
+  [7] View playoff picture (available Week 10+)
+  [8] Advance to Week 10 (only before Week 10)
   [0] Exit
 """
 
@@ -101,8 +103,15 @@ class InteractiveSeasonSimulator:
             except Exception as e:
                 print_error(f"Error displaying status: {e}")
 
-            # Display menu
-            print_menu()
+            # Get current week for menu display
+            try:
+                state = self.controller.get_current_state()
+                current_week = state.get('week_number', 0)
+            except:
+                current_week = 0
+
+            # Display menu with current week
+            print_menu(current_week=current_week)
 
             # Get user input
             try:
@@ -146,6 +155,10 @@ class InteractiveSeasonSimulator:
             self.handle_show_upcoming()
         elif choice == "6":
             self.handle_show_summary()
+        elif choice == "7":
+            self.handle_view_playoff_picture()
+        elif choice == "8":
+            self.handle_advance_to_week_10()
         elif choice == "0":
             self.handle_exit()
         else:
@@ -293,6 +306,82 @@ class InteractiveSeasonSimulator:
 
         except Exception as e:
             print_error(f"Error fetching summary: {e}")
+
+        input("\nPress Enter to continue...")
+
+    def handle_view_playoff_picture(self):
+        """Display current playoff seeding."""
+        print_separator()
+
+        # Check if playoff seeding is available (week 10+)
+        try:
+            state = self.controller.get_current_state()
+            current_week = state.get('week_number', 0)
+
+            if current_week < 10:
+                print_warning("Playoff seeding is only available starting Week 10")
+                print_info("Continue simulating to reach Week 10")
+                input("\nPress Enter to continue...")
+                return
+
+            print_info("Calculating current playoff seeding...")
+
+            # Get playoff seeding from controller
+            seeding_data = self.controller.get_playoff_seeding()
+
+            if seeding_data:
+                display_playoff_seeding(seeding_data)
+            else:
+                print_error("Unable to calculate playoff seeding")
+                print_info("Make sure games have been played and standings are available")
+
+        except Exception as e:
+            print_error(f"Error fetching playoff seeding: {e}")
+
+        input("\nPress Enter to continue...")
+
+    def handle_advance_to_week_10(self):
+        """Advance directly to Week 10."""
+        print_separator()
+
+        # Get current week
+        try:
+            state = self.controller.get_current_state()
+            current_week = state.get('week_number', 1)
+
+            if current_week >= 10:
+                print_info("Already at or past Week 10")
+                input("\nPress Enter to continue...")
+                return
+
+            weeks_to_simulate = 10 - current_week
+            print_info(f"Fast-forwarding {weeks_to_simulate} weeks to reach Week 10...")
+            print_info("This may take a moment...")
+            print()
+
+            # Simulate weeks until we reach week 10
+            for week in range(weeks_to_simulate):
+                result = self.controller.advance_week()
+                if not result['success']:
+                    print_error(f"Failed to advance week {current_week + week + 1}")
+                    break
+
+                # Show progress
+                week_number = self.controller.current_week - 1
+                games_played = result.get('total_games_played', 0)
+                print(f"  ✓ Week {week_number} complete ({games_played} games)")
+
+            print()
+            print_success(f"Reached Week 10! Playoff seeding now available.")
+
+            # Show current standings summary
+            state = self.controller.get_current_state()
+            print(f"\n{Colors.BOLD}Current Status:{Colors.RESET}")
+            print(f"  Week: {state['week_number']}")
+            print(f"  Games Played: {state['games_played']} / 272")
+
+        except Exception as e:
+            print_error(f"Error advancing to Week 10: {e}")
 
         input("\nPress Enter to continue...")
 
