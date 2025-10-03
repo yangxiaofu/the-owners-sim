@@ -125,8 +125,7 @@ class InteractiveSeasonSimulator:
         print(f"\n{Colors.BOLD}{Colors.MAGENTA}🏆 Dynasty: {self.dynasty_id}{Colors.RESET}")
 
         # Display simulation status
-        state = self.controller.get_current_state()
-        print_status(state)
+        print_status(self.controller)
 
     def handle_command(self, choice: str):
         """
