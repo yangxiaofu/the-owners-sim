@@ -29,6 +29,14 @@
         "penalty_technique": 83,
         "awareness": 83,
         "leadership": 82
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 33500000,
+        "signing_bonus": 32000000,
+        "guaranteed_money": 55000000,
+        "contract_type": "free_agent",
+        "cap_hit_2025": 37500000
       }
     },
     "3201": {
@@ -50,6 +58,14 @@
         "penalty_technique": 80,
         "awareness": 79,
         "leadership": 78
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 2500000,
+        "signing_bonus": 1000000,
+        "guaranteed_money": 2250000,
+        "contract_type": "free_agent",
+        "cap_hit_2025": 2750000
       }
     },
     "3202": {
@@ -71,6 +87,14 @@
         "experience": 79,
         "penalty_technique": 83,
         "awareness": 84
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 2110395,
+        "signing_bonus": 3319332,
+        "guaranteed_money": 5439040,
+        "contract_type": "rookie",
+        "cap_hit_2025": 2693517
       }
     },
     "3203": {
@@ -92,6 +116,14 @@
         "experience": 77,
         "penalty_technique": 81,
         "awareness": 81
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1719020,
+        "signing_bonus": 2000784,
+        "guaranteed_money": 3813333,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1719020
       }
     },
     "3204": {
@@ -113,6 +145,14 @@
         "experience": 75,
         "penalty_technique": 79,
         "awareness": 77
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 920000,
+        "signing_bonus": 50000,
+        "guaranteed_money": 150000,
+        "contract_type": "undrafted",
+        "cap_hit_2025": 920000
       }
     },
     "3205": {
@@ -133,6 +173,14 @@
         "experience": 77,
         "penalty_technique": 83,
         "awareness": 84
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 3604327,
+        "signing_bonus": 7485316,
+        "guaranteed_money": 14417307,
+        "contract_type": "rookie",
+        "cap_hit_2025": 3931993
       }
     },
     "3206": {
@@ -153,6 +201,14 @@
         "experience": 76,
         "penalty_technique": 82,
         "awareness": 80
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 985000,
+        "signing_bonus": 75000,
+        "guaranteed_money": 200000,
+        "contract_type": "undrafted",
+        "cap_hit_2025": 985000
       }
     },
     "3207": {
@@ -173,6 +229,14 @@
         "experience": 74,
         "penalty_technique": 81,
         "awareness": 78
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 950000,
+        "signing_bonus": 50000,
+        "guaranteed_money": 150000,
+        "contract_type": "undrafted",
+        "cap_hit_2025": 950000
       }
     },
     "3208": {
@@ -193,6 +257,14 @@
         "experience": 75,
         "penalty_technique": 80,
         "awareness": 77
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 920000,
+        "signing_bonus": 25000,
+        "guaranteed_money": 100000,
+        "contract_type": "undrafted",
+        "cap_hit_2025": 920000
       }
     },
     "3209": {
@@ -213,6 +285,14 @@
         "experience": 73,
         "penalty_technique": 79,
         "awareness": 75
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 900000,
+        "signing_bonus": 10000,
+        "guaranteed_money": 50000,
+        "contract_type": "practice_squad",
+        "cap_hit_2025": 900000
       }
     },
     "3210": {
@@ -233,6 +313,14 @@
         "experience": 72,
         "penalty_technique": 78,
         "awareness": 74
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 870000,
+        "signing_bonus": 5000,
+        "guaranteed_money": 25000,
+        "contract_type": "practice_squad",
+        "cap_hit_2025": 870000
       }
     },
     "3211": {
@@ -254,6 +342,14 @@
         "experience": 84,
         "penalty_technique": 84,
         "awareness": 83
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 10500000,
+        "signing_bonus": 9000000,
+        "guaranteed_money": 11490000,
+        "contract_type": "free_agent",
+        "cap_hit_2025": 13410000
       }
     },
     "3212": {
@@ -275,6 +371,14 @@
         "experience": 75,
         "penalty_technique": 80,
         "awareness": 78
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1050000,
+        "signing_bonus": 350000,
+        "guaranteed_money": 750000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1050000
       }
     },
     "3213": {
@@ -296,6 +400,14 @@
         "experience": 74,
         "penalty_technique": 79,
         "awareness": 76
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 940000,
+        "signing_bonus": 50000,
+        "guaranteed_money": 125000,
+        "contract_type": "undrafted",
+        "cap_hit_2025": 940000
       }
     },
     "3214": {
@@ -316,6 +428,14 @@
         "experience": 78,
         "penalty_technique": 82,
         "awareness": 83
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 5345907,
+        "signing_bonus": 12731728,
+        "guaranteed_money": 21383626,
+        "contract_type": "rookie",
+        "cap_hit_2025": 6803881
       }
     },
     "3215": {
@@ -336,6 +456,14 @@
         "experience": 77,
         "penalty_technique": 81,
         "awareness": 82
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 15330000,
+        "signing_bonus": 18000000,
+        "guaranteed_money": 28000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 12500000
       }
     },
     "3216": {
@@ -356,6 +484,14 @@
         "experience": 76,
         "penalty_technique": 79,
         "awareness": 77
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 1350000,
+        "signing_bonus": 150000,
+        "guaranteed_money": 400000,
+        "contract_type": "reserve",
+        "cap_hit_2025": 1350000
       }
     },
     "3217": {
@@ -376,6 +512,14 @@
         "experience": 79,
         "penalty_technique": 80,
         "awareness": 80
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 13250000,
+        "signing_bonus": 20000000,
+        "guaranteed_money": 26215000,
+        "contract_type": "free_agent",
+        "cap_hit_2025": 13250000
       }
     },
     "3218": {
@@ -396,6 +540,14 @@
         "experience": 76,
         "penalty_technique": 79,
         "awareness": 78
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1100000,
+        "signing_bonus": 500000,
+        "guaranteed_money": 1200000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1100000
       }
     },
     "3219": {
@@ -416,6 +568,14 @@
         "experience": 74,
         "penalty_technique": 78,
         "awareness": 76
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1050000,
+        "signing_bonus": 450000,
+        "guaranteed_money": 1000000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1050000
       }
     },
     "3220": {
@@ -436,6 +596,14 @@
         "experience": 83,
         "penalty_technique": 81,
         "awareness": 82
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 4000000,
+        "signing_bonus": 1500000,
+        "guaranteed_money": 3000000,
+        "contract_type": "free_agent",
+        "cap_hit_2025": 5500000
       }
     },
     "3221": {
@@ -456,6 +624,14 @@
         "experience": 75,
         "penalty_technique": 79,
         "awareness": 77
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 980000,
+        "signing_bonus": 100000,
+        "guaranteed_money": 250000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 980000
       }
     },
     "3222": {
@@ -476,6 +652,14 @@
         "experience": 92,
         "penalty_technique": 89,
         "awareness": 89
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 21500000,
+        "signing_bonus": 24900000,
+        "guaranteed_money": 43850000,
+        "contract_type": "trade_extension",
+        "cap_hit_2025": 15044715
       }
     },
     "3223": {
@@ -496,6 +680,14 @@
         "experience": 88,
         "penalty_technique": 86,
         "awareness": 86
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 7333333,
+        "signing_bonus": 4500000,
+        "guaranteed_money": 10000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 5000000
       }
     },
     "3224": {
@@ -516,6 +708,14 @@
         "experience": 75,
         "penalty_technique": 80,
         "awareness": 80
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 4020781,
+        "signing_bonus": 8516000,
+        "guaranteed_money": 16083122,
+        "contract_type": "rookie",
+        "cap_hit_2025": 2924781
       }
     },
     "3225": {
@@ -536,6 +736,14 @@
         "experience": 90,
         "penalty_technique": 85,
         "awareness": 85
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 2050000,
+        "signing_bonus": 300000,
+        "guaranteed_money": 300000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 2050000
       }
     },
     "3226": {
@@ -557,6 +765,14 @@
         "experience": 82,
         "penalty_technique": 84,
         "awareness": 85
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 9755000,
+        "signing_bonus": 6000000,
+        "guaranteed_money": 15000000,
+        "contract_type": "restructure",
+        "cap_hit_2025": 11850000
       }
     },
     "3227": {
@@ -578,6 +794,14 @@
         "experience": 77,
         "penalty_technique": 81,
         "awareness": 81
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 2278901,
+        "signing_bonus": 3629528,
+        "guaranteed_money": 7222566,
+        "contract_type": "rookie",
+        "cap_hit_2025": 2378901
       }
     },
     "3228": {
@@ -599,6 +823,14 @@
         "experience": 78,
         "penalty_technique": 82,
         "awareness": 82
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1850000,
+        "signing_bonus": 2400000,
+        "guaranteed_money": 4500000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 2450000
       }
     },
     "3229": {
@@ -620,6 +852,14 @@
         "experience": 79,
         "penalty_technique": 84,
         "awareness": 84
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 9500000,
+        "signing_bonus": 12000000,
+        "guaranteed_money": 15000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 5200000
       }
     },
     "3230": {
@@ -641,6 +881,14 @@
         "experience": 75,
         "penalty_technique": 80,
         "awareness": 78
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1050000,
+        "signing_bonus": 400000,
+        "guaranteed_money": 850000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1050000
       }
     },
     "3231": {
@@ -662,6 +910,14 @@
         "experience": 74,
         "penalty_technique": 79,
         "awareness": 76
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 960000,
+        "signing_bonus": 75000,
+        "guaranteed_money": 150000,
+        "contract_type": "undrafted",
+        "cap_hit_2025": 960000
       }
     },
     "3232": {
@@ -682,6 +938,14 @@
         "experience": 76,
         "penalty_technique": 83,
         "awareness": 85
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 7965000,
+        "signing_bonus": 20200000,
+        "guaranteed_money": 31860000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 7965000
       }
     },
     "3233": {
@@ -702,6 +966,14 @@
         "experience": 78,
         "penalty_technique": 81,
         "awareness": 83
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 997500,
+        "signing_bonus": 332216,
+        "guaranteed_money": 3990000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 5300000
       }
     },
     "3234": {
@@ -722,6 +994,14 @@
         "experience": 81,
         "penalty_technique": 84,
         "awareness": 85
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 11000000,
+        "signing_bonus": 10500000,
+        "guaranteed_money": 13165000,
+        "contract_type": "extension",
+        "cap_hit_2025": 6120132
       }
     },
     "3235": {
@@ -742,6 +1022,14 @@
         "experience": 77,
         "penalty_technique": 81,
         "awareness": 81
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1100000,
+        "signing_bonus": 450000,
+        "guaranteed_money": 1200000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1100000
       }
     },
     "3236": {
@@ -762,6 +1050,14 @@
         "experience": 76,
         "penalty_technique": 80,
         "awareness": 79
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 1020000,
+        "signing_bonus": 100000,
+        "guaranteed_money": 250000,
+        "contract_type": "reserve",
+        "cap_hit_2025": 1020000
       }
     },
     "3237": {
@@ -782,6 +1078,14 @@
         "experience": 85,
         "penalty_technique": 83,
         "awareness": 84
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 6000000,
+        "signing_bonus": 5000000,
+        "guaranteed_money": 6260000,
+        "contract_type": "free_agent",
+        "cap_hit_2025": 7900000
       }
     },
     "3238": {
@@ -802,6 +1106,14 @@
         "experience": 78,
         "penalty_technique": 80,
         "awareness": 80
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 1150000,
+        "signing_bonus": 150000,
+        "guaranteed_money": 350000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 1150000
       }
     },
     "3239": {
@@ -822,6 +1134,14 @@
         "experience": 82,
         "penalty_technique": 79,
         "awareness": 78
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1100000,
+        "signing_bonus": 75000,
+        "guaranteed_money": 150000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 1100000
       }
     },
     "3240": {
@@ -840,6 +1160,14 @@
         "experience": 86,
         "penalty_technique": 90,
         "awareness": 87
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 5275000,
+        "signing_bonus": 7500000,
+        "guaranteed_money": 12300000,
+        "contract_type": "extension",
+        "cap_hit_2025": 5510000
       }
     },
     "3241": {
@@ -858,6 +1186,14 @@
         "experience": 83,
         "penalty_technique": 89,
         "awareness": 86
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 4050000,
+        "signing_bonus": 5000000,
+        "guaranteed_money": 10000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 4050000
       }
     },
     "3242": {
@@ -876,6 +1212,14 @@
         "experience": 82,
         "penalty_technique": 86,
         "awareness": 83
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 1200000,
+        "signing_bonus": 150000,
+        "guaranteed_money": 500000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 1200000
       }
     },
     "3243": {
@@ -897,6 +1241,14 @@
         "experience": 74,
         "penalty_technique": 79,
         "awareness": 77
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 950000,
+        "signing_bonus": 100000,
+        "guaranteed_money": 250000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 950000
       }
     },
     "3244": {
@@ -917,6 +1269,14 @@
         "experience": 75,
         "penalty_technique": 78,
         "awareness": 77
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 1080000,
+        "signing_bonus": 100000,
+        "guaranteed_money": 250000,
+        "contract_type": "reserve",
+        "cap_hit_2025": 1080000
       }
     },
     "3245": {
@@ -937,6 +1297,14 @@
         "experience": 84,
         "penalty_technique": 80,
         "awareness": 81
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 3500000,
+        "signing_bonus": 1000000,
+        "guaranteed_money": 2500000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 4000000
       }
     },
     "3246": {
@@ -957,6 +1325,14 @@
         "experience": 75,
         "penalty_technique": 79,
         "awareness": 78
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 1050000,
+        "signing_bonus": 200000,
+        "guaranteed_money": 450000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1050000
       }
     },
     "3247": {
@@ -977,6 +1353,14 @@
         "experience": 74,
         "penalty_technique": 78,
         "awareness": 76
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 970000,
+        "signing_bonus": 75000,
+        "guaranteed_money": 175000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 970000
       }
     },
     "3248": {
@@ -998,6 +1382,14 @@
         "experience": 73,
         "penalty_technique": 78,
         "awareness": 75
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 920000,
+        "signing_bonus": 50000,
+        "guaranteed_money": 125000,
+        "contract_type": "undrafted",
+        "cap_hit_2025": 920000
       }
     },
     "3249": {
@@ -1018,6 +1410,14 @@
         "experience": 73,
         "penalty_technique": 78,
         "awareness": 76
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 940000,
+        "signing_bonus": 60000,
+        "guaranteed_money": 150000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 940000
       }
     },
     "3250": {
@@ -1038,6 +1438,14 @@
         "experience": 72,
         "penalty_technique": 77,
         "awareness": 74
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 900000,
+        "signing_bonus": 25000,
+        "guaranteed_money": 75000,
+        "contract_type": "undrafted",
+        "cap_hit_2025": 900000
       }
     },
     "3251": {
@@ -1058,6 +1466,14 @@
         "experience": 71,
         "penalty_technique": 76,
         "awareness": 73
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 870000,
+        "signing_bonus": 10000,
+        "guaranteed_money": 50000,
+        "contract_type": "practice_squad",
+        "cap_hit_2025": 870000
       }
     },
     "3252": {
@@ -1079,6 +1495,14 @@
         "penalty_technique": 77,
         "awareness": 74,
         "leadership": 76
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 950000,
+        "signing_bonus": 300000,
+        "guaranteed_money": 700000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 950000
       }
     }
   }

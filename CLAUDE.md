@@ -16,6 +16,18 @@ This is "The Owners Sim" - a comprehensive NFL football simulation engine writte
 
 ## Core Commands
 
+### Running the UI Application
+```bash
+# Install UI dependencies (first time only)
+pip install -r requirements-ui.txt
+
+# Launch desktop application (PySide6/Qt)
+python main.py
+
+# Test UI imports
+python test_ui.py
+```
+
 ### Running Tests
 ```bash
 # Run all tests with pytest
@@ -64,52 +76,51 @@ PYTHONPATH=src python debug_touchdown_detection.py  # Debug touchdown scoring is
 
 ### Running Demos
 ```bash
-# Primary demos
-PYTHONPATH=src python cleveland_browns_vs_houston_texans_demo.py  # Complete Browns vs Texans game demo
-PYTHONPATH=src python demo.py  # Main demo entry point
-PYTHONPATH=src python test_full_game_simulator.py  # Full game simulator test
+# Full Season Simulation (PRIMARY - Complete Season Cycle)
+PYTHONPATH=src python demo/full_season_demo/full_season_sim.py
+# Interactive NFL season simulation from Week 1 → Super Bowl → Offseason
+# Uses SeasonCycleController (src/season/season_cycle_controller.py)
+# - All 3 phases: Regular Season, Playoffs, Offseason
+# - Automatic phase transitions
+# - Real playoff seeding from standings
+# - Dynasty isolation with database persistence
+# See docs/plans/full_season_simulation_plan.md for architecture details
 
-# Interactive Season Simulation (PRIMARY INTERFACE - Regular Season)
+# Interactive Season Simulation (Regular Season Only)
 PYTHONPATH=src python demo/interactive_season_sim/interactive_season_sim.py
-# Terminal-based interactive NFL season simulation with comprehensive controls:
+# Terminal-based interactive NFL regular season simulation:
 # - Day-by-day or week-by-week simulation
 # - View standings, upcoming games, season summary
 # - Playoff picture tracking (Week 10+)
 # - Full database persistence with dynasty support
-# See demo/interactive_season_sim/QUICK_START.md for detailed usage
+# - Stops after Week 18 (use full_season_sim.py for playoffs)
+# See demo/interactive_season_sim/README.md for detailed usage
 
-# Interactive Playoff Simulation (Uses centralized PlayoffController)
+# Interactive Playoff Simulation (Playoffs Only)
 PYTHONPATH=src python demo/interactive_playoff_sim/interactive_playoff_sim.py
 # Terminal-based interactive NFL playoff simulation:
+# - Uses centralized PlayoffController (src/playoff_system/playoff_controller.py)
 # - Day/week/round advancement controls
 # - Wild Card → Divisional → Conference → Super Bowl
 # - Complete playoff bracket display
-# - Automatic round progression
-# See demo/interactive_playoff_sim/ for usage
+# - Supports random OR real seeding from regular season
+# See demo/interactive_playoff_sim/README.md for usage
 
 # Season Simulation Utilities
 PYTHONPATH=src python demo/interactive_season_sim/initialize_season_db.py  # Initialize new season database
 PYTHONPATH=src python demo/interactive_season_sim/schedule_generator_example.py  # Generate season schedule
 
-# Playoff System Demo
+# Playoff System Demos
 PYTHONPATH=src python demo/playoff_seeder_demo/playoff_seeder_demo.py  # NFL playoff seeding and tiebreaker demonstration
 
-# Full Season Demo (PLANNED - In Development)
-# Future: demo/full_season_demo/ - Unified regular season → playoffs → offseason
-# See docs/plans/full_season_simulation_plan.md for implementation status
+# Play Demos (Individual Play Mechanics)
+PYTHONPATH=src python demo/play_demos/pass_play_demo.py  # Pass play mechanics with real NFL players
+PYTHONPATH=src python demo/play_demos/run_play_demo.py  # Run play mechanics with formation matchups
+PYTHONPATH=src python demo/play_demos/play_engine_demo.py  # Player roster and personnel package management
 
-# Legacy interactive interface (if available)
-PYTHONPATH=src python src/demo/interactive_interface.py  # Older team/season management interface
-
-# Component demos (in demo/ directory)
-PYTHONPATH=src python demo/pass_play_demo.py  # Pass play simulation demonstration
-PYTHONPATH=src python demo/play_engine_demo.py  # Play engine core demonstration
-PYTHONPATH=src python demo/run_play_demo.py  # Run play simulation demonstration
-
-# System demos (if available)
-PYTHONPATH=src python persistence_control_example.py  # Optional persistence control (if exists)
-PYTHONPATH=src python database_flexibility_demo.py  # Flexible database configuration (if exists)
-PYTHONPATH=src python dynasty_context_demo.py  # Dynasty isolation and management (if exists)
+# Root-level test scripts (Event system testing)
+PYTHONPATH=src python test_event_system.py  # Event system testing
+PYTHONPATH=src python test_hybrid_event_storage.py  # Hybrid event storage testing
 ```
 
 ### Diagnostic Scripts
@@ -289,8 +300,14 @@ The simulation follows a layered architecture with clear separation of concerns:
 - Dynasty mode user interaction and team ownership simulation
 
 **16. Season Management (`src/season/`)**
-- `season_manager.py`: Season-level management and coordination
-- Season progression and state management
+- `season_manager.py`: Basic API layer for season management (legacy)
+- `season_cycle_controller.py`: **Production-ready complete season cycle orchestrator**
+  - Manages all 3 phases: Regular Season → Playoffs → Offseason
+  - Automatic phase transitions with calendar continuity
+  - Integrates SeasonController (regular season) + PlayoffController (playoffs)
+  - Real playoff seeding from regular season standings
+  - Dynasty isolation and flexible persistence control
+  - **Recommended for full season simulations**
 
 **17. Dynasty System (`src/dynasty/`)**
 - `dynasty_manager.py`: Dynasty lifecycle management, configuration, and metadata operations
@@ -307,8 +324,23 @@ The simulation follows a layered architecture with clear separation of concerns:
 - `base_event.py`: Base event class and event result structures
 - `game_event.py`: GameEvent for NFL game simulation with metadata
 - `scouting_event.py`: Scouting and player evaluation events
+- `deadline_event.py`: NFL offseason deadline events (franchise tag, RFA tender, etc.)
+- `window_event.py`: Time-bounded window events (legal tampering, OTAs, etc.)
+- `milestone_event.py`: Informational milestone events (schedule release, combine, etc.)
 - `event_database_api.py`: Event storage and retrieval API
-- Complete event lifecycle management and execution framework
+- Complete event lifecycle management and execution framework with offseason support
+
+**20. Desktop UI (`ui/`)**
+- **OOTP-inspired PySide6/Qt desktop application** (Phase 1 complete)
+- `main_window.py`: Main application window with tab-based navigation
+- `views/`: 6 primary view modules (Season, Team, Player, Offseason, League, Game)
+- `widgets/`: Reusable custom widgets (stats tables, depth charts, calendars)
+- `dialogs/`: Modal dialogs for user interactions (franchise tag, free agency, draft)
+- `models/`: Qt Model/View data models for efficient data display
+- `controllers/`: UI controllers mediating between views and simulation engine
+- `resources/styles/`: QSS stylesheets (OOTP-inspired professional theme)
+- **Clean separation**: UI layer completely independent of simulation engine
+- See `docs/plans/ui_development_plan.md` for complete architecture
 
 ### Key Design Patterns
 
@@ -416,9 +448,11 @@ Comprehensive documentation is available in `docs/`:
   - `docs/how-to/simulation-workflow.md` - Complete simulation workflow guide
 - **Planning Documents**:
   - `docs/plans/full_season_simulation_plan.md` - **ACTIVE**: Unified season simulation (regular season → playoffs → offseason)
+  - `docs/plans/ui_development_plan.md` - **ACTIVE**: Desktop UI development roadmap (Phase 1 complete, Phase 2 in progress)
+  - `docs/plans/offseason_plan.md` - Offseason system implementation (complete)
+  - `docs/plans/salary_cap_plan.md` - Salary cap system design
   - `docs/plans/playoff_manager_plan.md` - Playoff system architecture and design
   - `docs/plans/calendar_manager_plan.md` - Calendar system design
-  - `docs/plans/rosters-update-plans.md` - Player roster update strategy
 - **Interactive Demos**:
   - `demo/interactive_season_sim/QUICK_START.md` - Quick start guide for interactive season simulation
   - `demo/interactive_playoff_sim/` - Interactive playoff simulator documentation
@@ -587,17 +621,29 @@ Key architectural updates in the codebase:
 
 5. **Test Suite Reorganization**: Many test files have been removed or relocated - verify test file existence before running
 
-6. **Demo Consolidation**: Primary demos now in root directory (`cleveland_browns_vs_houston_texans_demo.py`, `demo.py`, `test_full_game_simulator.py`)
+6. **Player Data Structure**: Team-based player files in `src/data/players/team_XX_team_name.json` format
 
-7. **Player Data Structure**: Team-based player files in `src/data/players/team_XX_team_name.json` format
+7. **Database Flexibility**: Support for custom database paths and dynasty isolation in `FullGameSimulator`
 
-8. **Database Flexibility**: Support for custom database paths and dynasty isolation in `FullGameSimulator`
+8. **Persistence Control**: Optional statistics persistence via `enable_persistence` parameter
 
-9. **Persistence Control**: Optional statistics persistence via `enable_persistence` parameter
+9. **Calendar System**: Database-backed calendar for event scheduling
 
-10. **Calendar System**: Database-backed calendar for event scheduling (some demos removed)
+10. **Coaching Staff Integration**: All 32 NFL teams mapped to coaching philosophies in `team_coaching_styles.json`
 
-11. **Coaching Staff Integration**: All 32 NFL teams mapped to coaching philosophies in `team_coaching_styles.json`
+11. **Offseason Event System** (Oct 2025): Complete offseason event infrastructure implemented
+   - New event types: `DeadlineEvent`, `WindowEvent`, `MilestoneEvent` in `src/events/`
+   - Support for NFL offseason timeline (franchise tags, free agency, draft, roster cuts)
+   - Date-driven event triggering via existing `SimulationExecutor`
+   - See `docs/plans/offseason_plan.md` for complete architecture and implementation details
+
+12. **Desktop UI Development** (Oct 2025): OOTP-inspired PySide6/Qt desktop application (Phase 1 complete)
+   - Complete `ui/` package with tab-based navigation (6 primary tabs)
+   - Main window with menu bar, toolbar, and status bar
+   - OOTP-inspired QSS stylesheet with professional theme
+   - Clean UI/engine separation via controller pattern
+   - Phase 1 delivered: Foundation complete, Phase 2 (Season/Team views) ready to start
+   - See `docs/plans/ui_development_plan.md` and `PHASE_1_COMPLETE.md` for details
 
 ## Key Implementation Notes
 

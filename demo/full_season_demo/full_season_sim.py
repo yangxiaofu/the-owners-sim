@@ -41,14 +41,13 @@ from datetime import datetime
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from calendar.date_models import Date
+from season.season_cycle_controller import SeasonCycleController
 
-# Handle both direct execution and module import
+# Handle both direct execution and module import for display utilities
 try:
-    from .full_season_controller import FullSeasonController
     from .display_utils import *
 except ImportError:
     # Direct execution - use absolute imports
-    from full_season_controller import FullSeasonController
     from display_utils import *
 
 
@@ -85,9 +84,9 @@ class InteractiveFullSeasonSimulator:
         # Store dynasty ID
         self.dynasty_id = dynasty_id
 
-        # Create full season controller
+        # Create season cycle controller
         try:
-            self.controller = FullSeasonController(
+            self.controller = SeasonCycleController(
                 database_path=database_path,
                 dynasty_id=dynasty_id,
                 season_year=2024,
@@ -95,7 +94,7 @@ class InteractiveFullSeasonSimulator:
                 enable_persistence=True,
                 verbose_logging=True
             )
-            print_success("Full season controller initialized successfully")
+            print_success("Season cycle controller initialized successfully")
         except Exception as e:
             print_error(f"Failed to initialize controller: {e}")
             raise

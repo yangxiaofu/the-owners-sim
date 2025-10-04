@@ -38,6 +38,40 @@ from events.game_event import GameEvent
 from events.scouting_event import ScoutingEvent
 from events.event_database_api import EventDatabaseAPI
 
+# Offseason foundation events
+from events.deadline_event import DeadlineEvent, DeadlineType
+from events.window_event import WindowEvent, WindowName
+from events.milestone_event import MilestoneEvent, MilestoneType
+
+# Offseason action events - Contract management
+from events.contract_events import (
+    FranchiseTagEvent,
+    TransitionTagEvent,
+    PlayerReleaseEvent,
+    ContractRestructureEvent
+)
+
+# Offseason action events - Free agency
+from events.free_agency_events import (
+    UFASigningEvent,
+    RFAOfferSheetEvent,
+    CompensatoryPickEvent
+)
+
+# Offseason action events - Draft
+from events.draft_events import (
+    DraftPickEvent,
+    UDFASigningEvent,
+    DraftTradeEvent
+)
+
+# Offseason action events - Roster management
+from events.roster_events import (
+    RosterCutEvent,
+    WaiverClaimEvent,
+    PracticeSquadEvent
+)
+
 # Public API
 __all__ = [
     # Base interfaces
@@ -49,9 +83,38 @@ __all__ = [
     'GameEvent',
     'ScoutingEvent',
 
+    # Offseason foundation events
+    'DeadlineEvent',
+    'DeadlineType',
+    'WindowEvent',
+    'WindowName',
+    'MilestoneEvent',
+    'MilestoneType',
+
+    # Contract events
+    'FranchiseTagEvent',
+    'TransitionTagEvent',
+    'PlayerReleaseEvent',
+    'ContractRestructureEvent',
+
+    # Free agency events
+    'UFASigningEvent',
+    'RFAOfferSheetEvent',
+    'CompensatoryPickEvent',
+
+    # Draft events
+    'DraftPickEvent',
+    'UDFASigningEvent',
+    'DraftTradeEvent',
+
+    # Roster events
+    'RosterCutEvent',
+    'WaiverClaimEvent',
+    'PracticeSquadEvent',
+
     # Database API
     'EventDatabaseAPI',
 ]
 
 # Version
-__version__ = '1.1.0'  # Updated for hybrid storage pattern
+__version__ = '2.0.0'  # Updated for offseason event system

@@ -8,7 +8,9 @@
       "first_name": "Brock",
       "last_name": "Purdy",
       "number": 13,
-      "positions": ["quarterback"],
+      "positions": [
+        "quarterback"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 85,
@@ -22,6 +24,14 @@
         "penalty_technique": 90,
         "leadership": 85,
         "pocket_presence": 88
+      },
+      "contract": {
+        "contract_years": 5,
+        "annual_salary": 53000000,
+        "signing_bonus": 40000000,
+        "guaranteed_money": 182550000,
+        "contract_type": "extension",
+        "cap_hit_2025": 9128073
       }
     },
     "3101": {
@@ -29,7 +39,9 @@
       "first_name": "Mac",
       "last_name": "Jones",
       "number": 10,
-      "positions": ["quarterback"],
+      "positions": [
+        "quarterback"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 80,
@@ -43,6 +55,14 @@
         "penalty_technique": 88,
         "leadership": 82,
         "pocket_presence": 85
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 2500000,
+        "signing_bonus": 500000,
+        "guaranteed_money": 1500000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 2500000
       }
     },
     "3102": {
@@ -68,6 +88,14 @@
         "penalty_technique": 88,
         "elusiveness": 95,
         "receiving": 88
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 16000000,
+        "signing_bonus": 20000000,
+        "guaranteed_money": 36000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 9806000
       }
     },
     "3103": {
@@ -75,7 +103,9 @@
       "first_name": "Jauan",
       "last_name": "Jennings",
       "number": 15,
-      "positions": ["wide_receiver"],
+      "positions": [
+        "wide_receiver"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 82,
@@ -91,6 +121,14 @@
         "penalty_technique": 88,
         "catching": 88,
         "contested_catch": 85
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 7500000,
+        "signing_bonus": 5000000,
+        "guaranteed_money": 10500000,
+        "contract_type": "extension",
+        "cap_hit_2025": 4258000
       }
     },
     "3104": {
@@ -115,6 +153,14 @@
         "penalty_technique": 88,
         "release": 88,
         "contested_catch": 85
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 30000000,
+        "signing_bonus": 23000000,
+        "guaranteed_money": 76000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 9923405
       }
     },
     "3105": {
@@ -139,6 +185,14 @@
         "experience": 85,
         "penalty_technique": 90,
         "yards_after_catch": 90
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 19100000,
+        "signing_bonus": 18145000,
+        "guaranteed_money": 35000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 14231842
       }
     },
     "3106": {
@@ -163,6 +217,14 @@
         "penalty_technique": 95,
         "anchor": 92,
         "footwork": 95
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 27550000,
+        "signing_bonus": 25690000,
+        "guaranteed_money": 48000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 21900000
       }
     },
     "3107": {
@@ -186,6 +248,14 @@
         "experience": 75,
         "penalty_technique": 82,
         "anchor": 85
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 5000000,
+        "signing_bonus": 1000000,
+        "guaranteed_money": 3000000,
+        "contract_type": "final_year",
+        "cap_hit_2025": 5000000
       }
     },
     "3108": {
@@ -209,6 +279,14 @@
         "experience": 82,
         "penalty_technique": 88,
         "snap_accuracy": 92
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 3500000,
+        "signing_bonus": 750000,
+        "guaranteed_money": 2000000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 3500000
       }
     },
     "3109": {
@@ -232,6 +310,14 @@
         "experience": 70,
         "penalty_technique": 75,
         "anchor": 80
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1200000,
+        "signing_bonus": 0,
+        "guaranteed_money": 1200000,
+        "contract_type": "rookie_scale",
+        "cap_hit_2025": 1200000
       }
     },
     "3110": {
@@ -255,6 +341,14 @@
         "experience": 75,
         "penalty_technique": 75,
         "anchor": 78
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 2000000,
+        "signing_bonus": 300000,
+        "guaranteed_money": 1000000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 2000000
       }
     },
     "3111": {
@@ -281,6 +375,14 @@
         "finesse_moves": 95,
         "power_moves": 88,
         "bend": 95
+      },
+      "contract": {
+        "contract_years": 5,
+        "annual_salary": 34000000,
+        "signing_bonus": 29015529,
+        "guaranteed_money": 122500000,
+        "contract_type": "extension",
+        "cap_hit_2025": 20438430
       }
     },
     "3112": {
@@ -307,6 +409,14 @@
         "penalty_technique": 90,
         "tackling": 90,
         "range": 92
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 21000000,
+        "signing_bonus": 16395000,
+        "guaranteed_money": 56700000,
+        "contract_type": "extension",
+        "cap_hit_2025": 16058000
       }
     },
     "3113": {
@@ -331,6 +441,14 @@
         "penalty_technique": 85,
         "man_coverage": 85,
         "zone_coverage": 90
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 18000000,
+        "signing_bonus": 0,
+        "guaranteed_money": 18000000,
+        "contract_type": "final_year",
+        "cap_hit_2025": 18400000
       }
     },
     "3114": {
@@ -356,6 +474,14 @@
         "penalty_technique": 85,
         "tackling": 88,
         "range": 82
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 4000000,
+        "signing_bonus": 0,
+        "guaranteed_money": 4000000,
+        "contract_type": "final_year",
+        "cap_hit_2025": 4000000
       }
     },
     "3115": {
@@ -376,6 +502,14 @@
         "experience": 70,
         "penalty_technique": 88,
         "clutch": 75
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1326020,
+        "signing_bonus": 857512,
+        "guaranteed_money": 857512,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1326020
       }
     },
     "3116": {
@@ -396,6 +530,14 @@
         "composure": 90,
         "experience": 95,
         "penalty_technique": 95
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 2500000,
+        "signing_bonus": 500000,
+        "guaranteed_money": 1500000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 2500000
       }
     },
     "3117": {
@@ -419,6 +561,14 @@
         "experience": 75,
         "penalty_technique": 85,
         "power": 88
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 5346000,
+        "signing_bonus": 0,
+        "guaranteed_money": 5346000,
+        "contract_type": "tender",
+        "cap_hit_2025": 5346000
       }
     },
     "3118": {
@@ -443,6 +593,14 @@
         "penalty_technique": 82,
         "power": 80,
         "elusiveness": 90
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1181133,
+        "signing_bonus": 704532,
+        "guaranteed_money": 704532,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1136132
       }
     },
     "3119": {
@@ -467,6 +625,14 @@
         "penalty_technique": 80,
         "release": 82,
         "contested_catch": 78
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 3087500,
+        "signing_bonus": 5930000,
+        "guaranteed_money": 12350000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 3087500
       }
     },
     "3120": {
@@ -474,7 +640,9 @@
       "first_name": "Kyle",
       "last_name": "Juszczyk",
       "number": 44,
-      "positions": ["fullback"],
+      "positions": [
+        "fullback"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 84,
@@ -490,6 +658,14 @@
         "blocking": 88,
         "receiving": 82,
         "leadership": 88
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 4000000,
+        "signing_bonus": 3500000,
+        "guaranteed_money": 7000000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 4000000
       }
     },
     "3121": {
@@ -497,7 +673,9 @@
       "first_name": "Jordan",
       "last_name": "Watkins",
       "number": 17,
-      "positions": ["wide_receiver"],
+      "positions": [
+        "wide_receiver"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 73,
@@ -514,6 +692,14 @@
         "release": 82,
         "catching": 78,
         "potential": 82
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 900000,
+        "signing_bonus": 0,
+        "guaranteed_money": 900000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 900000
       }
     },
     "3122": {
@@ -521,7 +707,9 @@
       "first_name": "Skyy",
       "last_name": "Moore",
       "number": 6,
-      "positions": ["wide_receiver"],
+      "positions": [
+        "wide_receiver"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 76,
@@ -538,6 +726,14 @@
         "release": 85,
         "catching": 80,
         "elusiveness": 85
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1100000,
+        "signing_bonus": 0,
+        "guaranteed_money": 1100000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 1100000
       }
     },
     "3123": {
@@ -545,7 +741,9 @@
       "first_name": "Jacob",
       "last_name": "Cowing",
       "number": 2,
-      "positions": ["wide_receiver"],
+      "positions": [
+        "wide_receiver"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 71,
@@ -562,6 +760,14 @@
         "release": 78,
         "catching": 75,
         "return_skills": 85
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 850000,
+        "signing_bonus": 100000,
+        "guaranteed_money": 850000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 850000
       }
     },
     "3124": {
@@ -569,7 +775,9 @@
       "first_name": "Luke",
       "last_name": "Farrell",
       "number": 80,
-      "positions": ["tight_end"],
+      "positions": [
+        "tight_end"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 75,
@@ -585,6 +793,14 @@
         "route_running": 75,
         "blocking": 80,
         "catching": 78
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1200000,
+        "signing_bonus": 150000,
+        "guaranteed_money": 800000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 1200000
       }
     },
     "3125": {
@@ -592,7 +808,9 @@
       "first_name": "Jake",
       "last_name": "Tonges",
       "number": 88,
-      "positions": ["tight_end"],
+      "positions": [
+        "tight_end"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 70,
@@ -609,6 +827,14 @@
         "blocking": 78,
         "catching": 72,
         "development": 75
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 900000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "minimum",
+        "cap_hit_2025": 900000
       }
     },
     "3126": {
@@ -616,7 +842,9 @@
       "first_name": "Dominick",
       "last_name": "Puni",
       "number": 77,
-      "positions": ["right_guard"],
+      "positions": [
+        "right_guard"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 79,
@@ -632,6 +860,14 @@
         "run_blocking": 82,
         "athleticism": 78,
         "potential": 85
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1425137,
+        "signing_bonus": 965852,
+        "guaranteed_money": 965852,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1304399
       }
     },
     "3127": {
@@ -639,7 +875,9 @@
       "first_name": "Ben",
       "last_name": "Bartch",
       "number": 65,
-      "positions": ["guard"],
+      "positions": [
+        "guard"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 74,
@@ -654,6 +892,14 @@
         "pass_blocking": 72,
         "run_blocking": 78,
         "versatility": 80
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1150000,
+        "signing_bonus": 100000,
+        "guaranteed_money": 800000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 1150000
       }
     },
     "3128": {
@@ -661,7 +907,9 @@
       "first_name": "Austen",
       "last_name": "Pleasants",
       "number": 62,
-      "positions": ["tackle"],
+      "positions": [
+        "tackle"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 72,
@@ -676,6 +924,14 @@
         "pass_blocking": 70,
         "run_blocking": 75,
         "development": 78
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 950000,
+        "signing_bonus": 50000,
+        "guaranteed_money": 500000,
+        "contract_type": "minimum",
+        "cap_hit_2025": 950000
       }
     },
     "3129": {
@@ -683,7 +939,9 @@
       "first_name": "Matt",
       "last_name": "Hennessy",
       "number": 61,
-      "positions": ["center"],
+      "positions": [
+        "center"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 73,
@@ -698,6 +956,14 @@
         "pass_blocking": 72,
         "run_blocking": 75,
         "snap_accuracy": 85
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1300000,
+        "signing_bonus": 150000,
+        "guaranteed_money": 900000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 1300000
       }
     },
     "3130": {
@@ -705,7 +971,9 @@
       "first_name": "Leonard",
       "last_name": "Floyd",
       "number": 54,
-      "positions": ["outside_linebacker"],
+      "positions": [
+        "outside_linebacker"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 84,
@@ -722,6 +990,14 @@
         "coverage": 70,
         "tackling": 82,
         "motor": 88
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 10000000,
+        "signing_bonus": 10790000,
+        "guaranteed_money": 12000000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 10110000
       }
     },
     "3131": {
@@ -729,7 +1005,9 @@
       "first_name": "Javon",
       "last_name": "Hargrave",
       "number": 98,
-      "positions": ["defensive_tackle"],
+      "positions": [
+        "defensive_tackle"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 87,
@@ -745,6 +1023,14 @@
         "run_defense": 88,
         "power_moves": 88,
         "technique": 88
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 21000000,
+        "signing_bonus": 24000000,
+        "guaranteed_money": 40000000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 10300000
       }
     },
     "3132": {
@@ -752,7 +1038,9 @@
       "first_name": "Jordan",
       "last_name": "Elliott",
       "number": 90,
-      "positions": ["defensive_tackle"],
+      "positions": [
+        "defensive_tackle"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 78,
@@ -768,6 +1056,14 @@
         "run_defense": 82,
         "power_moves": 78,
         "motor": 82
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 2500000,
+        "signing_bonus": 400000,
+        "guaranteed_money": 1500000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 2500000
       }
     },
     "3133": {
@@ -775,7 +1071,9 @@
       "first_name": "Maliek",
       "last_name": "Collins",
       "number": 95,
-      "positions": ["defensive_tackle"],
+      "positions": [
+        "defensive_tackle"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 76,
@@ -791,6 +1089,14 @@
         "run_defense": 85,
         "power_moves": 82,
         "anchor": 85
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 3000000,
+        "signing_bonus": 500000,
+        "guaranteed_money": 2000000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 3000000
       }
     },
     "3134": {
@@ -798,7 +1104,9 @@
       "first_name": "Yetur",
       "last_name": "Gross-Matos",
       "number": 91,
-      "positions": ["defensive_end"],
+      "positions": [
+        "defensive_end"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 77,
@@ -814,6 +1122,14 @@
         "run_defense": 75,
         "power_moves": 78,
         "versatility": 80
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 2800000,
+        "signing_bonus": 600000,
+        "guaranteed_money": 1800000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 2800000
       }
     },
     "3135": {
@@ -821,7 +1137,9 @@
       "first_name": "Dee",
       "last_name": "Winters",
       "number": 53,
-      "positions": ["linebacker"],
+      "positions": [
+        "linebacker"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 75,
@@ -838,6 +1156,14 @@
         "coverage": 80,
         "tackling": 82,
         "athleticism": 82
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1050000,
+        "signing_bonus": 200000,
+        "guaranteed_money": 1050000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1050000
       }
     },
     "3136": {
@@ -845,7 +1171,9 @@
       "first_name": "Dre",
       "last_name": "Greenlaw",
       "number": 57,
-      "positions": ["linebacker"],
+      "positions": [
+        "linebacker"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 82,
@@ -862,6 +1190,14 @@
         "coverage": 82,
         "tackling": 88,
         "instincts": 88
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 8000000,
+        "signing_bonus": 0,
+        "guaranteed_money": 8000000,
+        "contract_type": "final_year",
+        "cap_hit_2025": 9632384
       }
     },
     "3137": {
@@ -869,7 +1205,9 @@
       "first_name": "De'Vondre",
       "last_name": "Campbell",
       "number": 59,
-      "positions": ["linebacker"],
+      "positions": [
+        "linebacker"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 80,
@@ -886,6 +1224,14 @@
         "coverage": 85,
         "tackling": 85,
         "leadership": 85
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 5000000,
+        "signing_bonus": 3350000,
+        "guaranteed_money": 4560000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 5000000
       }
     },
     "3138": {
@@ -893,7 +1239,9 @@
       "first_name": "Charvarius",
       "last_name": "Ward",
       "number": 7,
-      "positions": ["cornerback"],
+      "positions": [
+        "cornerback"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 85,
@@ -910,6 +1258,14 @@
         "ball_skills": 82,
         "tackling": 80,
         "press": 82
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 18000000,
+        "signing_bonus": 0,
+        "guaranteed_money": 18000000,
+        "contract_type": "final_year",
+        "cap_hit_2025": 18400000
       }
     },
     "3139": {
@@ -917,7 +1273,9 @@
       "first_name": "Deommodore",
       "last_name": "Lenoir",
       "number": 38,
-      "positions": ["cornerback"],
+      "positions": [
+        "cornerback"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 81,
@@ -934,6 +1292,14 @@
         "ball_skills": 80,
         "tackling": 78,
         "development": 85
+      },
+      "contract": {
+        "contract_years": 5,
+        "annual_salary": 17760000,
+        "signing_bonus": 6500000,
+        "guaranteed_money": 15400000,
+        "contract_type": "extension",
+        "cap_hit_2025": 5831765
       }
     },
     "3140": {
@@ -941,7 +1307,9 @@
       "first_name": "Renardo",
       "last_name": "Green",
       "number": 25,
-      "positions": ["cornerback"],
+      "positions": [
+        "cornerback"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 74,
@@ -958,6 +1326,14 @@
         "ball_skills": 78,
         "tackling": 72,
         "potential": 82
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 950000,
+        "signing_bonus": 250000,
+        "guaranteed_money": 250000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1012500
       }
     },
     "3141": {
@@ -965,7 +1341,9 @@
       "first_name": "Ji'Ayir",
       "last_name": "Brown",
       "number": 27,
-      "positions": ["safety"],
+      "positions": [
+        "safety"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 78,
@@ -982,6 +1360,14 @@
         "ball_skills": 85,
         "tackling": 80,
         "range": 85
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1347500,
+        "signing_bonus": 924224,
+        "guaranteed_money": 924224,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1471584
       }
     },
     "3142": {
@@ -989,7 +1375,9 @@
       "first_name": "George",
       "last_name": "Odum",
       "number": 30,
-      "positions": ["safety"],
+      "positions": [
+        "safety"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 74,
@@ -1006,6 +1394,14 @@
         "ball_skills": 75,
         "tackling": 82,
         "special_teams": 88
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1400000,
+        "signing_bonus": 200000,
+        "guaranteed_money": 1000000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 1400000
       }
     },
     "3143": {
@@ -1013,7 +1409,9 @@
       "first_name": "Malik",
       "last_name": "Mustapha",
       "number": 37,
-      "positions": ["safety"],
+      "positions": [
+        "safety"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 72,
@@ -1030,6 +1428,14 @@
         "ball_skills": 75,
         "tackling": 80,
         "potential": 78
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 900000,
+        "signing_bonus": 150000,
+        "guaranteed_money": 150000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 937500
       }
     },
     "3144": {
@@ -1037,7 +1443,9 @@
       "first_name": "Darrell",
       "last_name": "Luter Jr.",
       "number": 29,
-      "positions": ["cornerback"],
+      "positions": [
+        "cornerback"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 70,
@@ -1054,6 +1462,14 @@
         "ball_skills": 72,
         "tackling": 68,
         "development": 75
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 950000,
+        "signing_bonus": 100000,
+        "guaranteed_money": 950000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 950000
       }
     },
     "3145": {
@@ -1061,7 +1477,9 @@
       "first_name": "Samuel",
       "last_name": "Womack III",
       "number": 26,
-      "positions": ["cornerback"],
+      "positions": [
+        "cornerback"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 72,
@@ -1078,6 +1496,14 @@
         "ball_skills": 75,
         "tackling": 68,
         "slot_coverage": 78
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1050000,
+        "signing_bonus": 150000,
+        "guaranteed_money": 1050000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 1050000
       }
     },
     "3146": {
@@ -1085,7 +1511,9 @@
       "first_name": "Mitch",
       "last_name": "Wishnowsky",
       "number": 18,
-      "positions": ["punter"],
+      "positions": [
+        "punter"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 81,
@@ -1101,6 +1529,14 @@
         "punt_accuracy": 88,
         "hang_time": 85,
         "directional_punting": 88
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 2700000,
+        "signing_bonus": 500000,
+        "guaranteed_money": 1800000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 2700000
       }
     },
     "3147": {
@@ -1108,7 +1544,9 @@
       "first_name": "Taybor",
       "last_name": "Pepper",
       "number": 46,
-      "positions": ["long_snapper"],
+      "positions": [
+        "long_snapper"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 80,
@@ -1123,6 +1561,14 @@
         "snap_accuracy": 95,
         "consistency": 92,
         "leadership": 82
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 1300000,
+        "signing_bonus": 250000,
+        "guaranteed_money": 1500000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 1300000
       }
     },
     "3148": {
@@ -1130,7 +1576,9 @@
       "first_name": "Sam",
       "last_name": "Okuayinonu",
       "number": 92,
-      "positions": ["defensive_end"],
+      "positions": [
+        "defensive_end"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 72,
@@ -1146,6 +1594,14 @@
         "run_defense": 72,
         "power_moves": 75,
         "motor": 78
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1100000,
+        "signing_bonus": 150000,
+        "guaranteed_money": 800000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 1100000
       }
     },
     "3149": {
@@ -1153,7 +1609,9 @@
       "first_name": "Robert",
       "last_name": "Beal Jr.",
       "number": 51,
-      "positions": ["linebacker"],
+      "positions": [
+        "linebacker"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 69,
@@ -1170,6 +1628,14 @@
         "coverage": 65,
         "tackling": 72,
         "special_teams": 78
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 950000,
+        "signing_bonus": 100000,
+        "guaranteed_money": 950000,
+        "contract_type": "minimum",
+        "cap_hit_2025": 950000
       }
     },
     "3150": {
@@ -1177,7 +1643,9 @@
       "first_name": "Alex",
       "last_name": "Barrett",
       "number": 99,
-      "positions": ["defensive_end"],
+      "positions": [
+        "defensive_end"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 71,
@@ -1193,6 +1661,14 @@
         "run_defense": 75,
         "power_moves": 78,
         "motor": 75
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1050000,
+        "signing_bonus": 100000,
+        "guaranteed_money": 850000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 1050000
       }
     },
     "3151": {
@@ -1200,7 +1676,9 @@
       "first_name": "Kalia",
       "last_name": "Davis",
       "number": 96,
-      "positions": ["defensive_tackle"],
+      "positions": [
+        "defensive_tackle"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 74,
@@ -1216,6 +1694,14 @@
         "run_defense": 78,
         "power_moves": 80,
         "development": 78
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1100000,
+        "signing_bonus": 200000,
+        "guaranteed_money": 1100000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1100000
       }
     },
     "3152": {
@@ -1223,7 +1709,9 @@
       "first_name": "Curtis",
       "last_name": "Robinson",
       "number": 56,
-      "positions": ["linebacker"],
+      "positions": [
+        "linebacker"
+      ],
       "team_id": 31,
       "attributes": {
         "overall": 68,
@@ -1240,6 +1728,14 @@
         "coverage": 68,
         "tackling": 75,
         "special_teams": 82
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 900000,
+        "signing_bonus": 50000,
+        "guaranteed_money": 900000,
+        "contract_type": "minimum",
+        "cap_hit_2025": 900000
       }
     }
   }

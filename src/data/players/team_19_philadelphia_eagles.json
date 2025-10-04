@@ -7,7 +7,7 @@
     "conference": "NFC",
     "division": "East",
     "head_coach": "Nick Sirianni",
-    "last_updated": "2025-09-21"
+    "last_updated": "2025-10-04"
   },
   "players": {
     "1900": {
@@ -30,6 +30,14 @@
         "leadership": 89,
         "pocket_presence": 85,
         "rushing": 90
+      },
+      "contract": {
+        "contract_years": 5,
+        "annual_salary": 51000000,
+        "signing_bonus": 23294000,
+        "guaranteed_money": 179399000,
+        "contract_type": "extension",
+        "cap_hit_2025": 21877360
       }
     },
     "1901": {
@@ -51,6 +59,14 @@
         "penalty_technique": 80,
         "leadership": 75,
         "pocket_presence": 80
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1100000,
+        "signing_bonus": 0,
+        "guaranteed_money": 1100000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1100000
       }
     },
     "1902": {
@@ -72,6 +88,14 @@
         "penalty_technique": 72,
         "leadership": 68,
         "pocket_presence": 72
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 915000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "practice_squad",
+        "cap_hit_2025": 915000
       }
     },
     "1903": {
@@ -96,6 +120,14 @@
         "vision": 90,
         "elusiveness": 92,
         "receiving": 88
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 20600000,
+        "signing_bonus": 15080000,
+        "guaranteed_money": 36000000,
+        "contract_type": "free_agent",
+        "cap_hit_2025": 6661000
       }
     },
     "1904": {
@@ -120,6 +152,14 @@
         "vision": 78,
         "elusiveness": 75,
         "receiving": 72
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 2500000,
+        "signing_bonus": 500000,
+        "guaranteed_money": 1500000,
+        "contract_type": "free_agent",
+        "cap_hit_2025": 1750000
       }
     },
     "1905": {
@@ -144,6 +184,14 @@
         "vision": 78,
         "elusiveness": 82,
         "receiving": 80
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 985000,
+        "signing_bonus": 125000,
+        "guaranteed_money": 985000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1016250
       }
     },
     "1906": {
@@ -168,6 +216,14 @@
         "vision": 75,
         "elusiveness": 78,
         "receiving": 68
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1055000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1055000
       }
     },
     "1907": {
@@ -191,6 +247,14 @@
         "release": 90,
         "catching": 94,
         "contested_catch": 92
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 32000000,
+        "signing_bonus": 19875000,
+        "guaranteed_money": 84000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 26500000
       }
     },
     "1908": {
@@ -214,6 +278,14 @@
         "release": 88,
         "catching": 89,
         "separation": 92
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 25000000,
+        "signing_bonus": 20351000,
+        "guaranteed_money": 51000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 15591000
       }
     },
     "1909": {
@@ -237,6 +309,14 @@
         "release": 85,
         "catching": 85,
         "deep_threat": 88
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 2757048,
+        "signing_bonus": 0,
+        "guaranteed_money": 2757048,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1440229
       }
     },
     "1910": {
@@ -259,6 +339,14 @@
         "penalty_technique": 78,
         "release": 78,
         "catching": 78
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1125000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1125000
       }
     },
     "1911": {
@@ -281,6 +369,14 @@
         "penalty_technique": 68,
         "release": 70,
         "catching": 72
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 915000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "practice_squad",
+        "cap_hit_2025": 915000
       }
     },
     "1912": {
@@ -303,6 +399,14 @@
         "penalty_technique": 70,
         "release": 78,
         "catching": 75
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 950000,
+        "signing_bonus": 85000,
+        "guaranteed_money": 950000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 971250
       }
     },
     "1913": {
@@ -326,6 +430,14 @@
         "penalty_technique": 86,
         "catching": 88,
         "red_zone": 88
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 10000000,
+        "signing_bonus": 8745000,
+        "guaranteed_money": 10000000,
+        "contract_type": "restructure",
+        "cap_hit_2025": 10720133
       }
     },
     "1914": {
@@ -348,6 +460,14 @@
         "experience": 75,
         "penalty_technique": 78,
         "catching": 80
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 1500000,
+        "signing_bonus": 200000,
+        "guaranteed_money": 800000,
+        "contract_type": "free_agent",
+        "cap_hit_2025": 1600000
       }
     },
     "1915": {
@@ -370,6 +490,14 @@
         "experience": 68,
         "penalty_technique": 70,
         "catching": 75
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 925000,
+        "signing_bonus": 75000,
+        "guaranteed_money": 925000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 943750
       }
     },
     "1916": {
@@ -392,6 +520,14 @@
         "experience": 78,
         "penalty_technique": 78,
         "catching": 78
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1165000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1165000
       }
     },
     "1917": {
@@ -414,6 +550,14 @@
         "penalty_technique": 90,
         "technique": 92,
         "leadership": 88
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 24000000,
+        "signing_bonus": 23745000,
+        "guaranteed_money": 40000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 18412000
       }
     },
     "1918": {
@@ -436,6 +580,14 @@
         "penalty_technique": 88,
         "size": 95,
         "athleticism": 85
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 22000000,
+        "signing_bonus": 20000000,
+        "guaranteed_money": 48000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 15202000
       }
     },
     "1919": {
@@ -457,6 +609,14 @@
         "experience": 78,
         "penalty_technique": 88,
         "technique": 88
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 21000000,
+        "signing_bonus": 20095000,
+        "guaranteed_money": 50000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 6553000
       }
     },
     "1920": {
@@ -479,6 +639,14 @@
         "penalty_technique": 84,
         "snap_accuracy": 88,
         "intelligence": 82
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 17000000,
+        "signing_bonus": 9246000,
+        "guaranteed_money": 39400000,
+        "contract_type": "extension",
+        "cap_hit_2025": 3543088
       }
     },
     "1921": {
@@ -500,6 +668,14 @@
         "experience": 72,
         "penalty_technique": 78,
         "technique": 78
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1050000,
+        "signing_bonus": 250000,
+        "guaranteed_money": 1050000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1112500
       }
     },
     "1922": {
@@ -521,6 +697,14 @@
         "experience": 75,
         "penalty_technique": 75,
         "technique": 75
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 2000000,
+        "signing_bonus": 300000,
+        "guaranteed_money": 1200000,
+        "contract_type": "free_agent",
+        "cap_hit_2025": 1450000
       }
     },
     "1923": {
@@ -542,6 +726,14 @@
         "experience": 75,
         "penalty_technique": 72,
         "versatility": 78
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1200000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1200000
       }
     },
     "1924": {
@@ -564,6 +756,14 @@
         "penalty_technique": 70,
         "snap_accuracy": 75,
         "versatility": 75
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 920000,
+        "signing_bonus": 65000,
+        "guaranteed_money": 920000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 936250
       }
     },
     "1925": {
@@ -585,6 +785,14 @@
         "experience": 82,
         "penalty_technique": 78,
         "versatility": 80
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1250000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1250000
       }
     },
     "1926": {
@@ -606,6 +814,14 @@
         "experience": 75,
         "penalty_technique": 68,
         "technique": 68
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1085000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1085000
       }
     },
     "1927": {
@@ -630,6 +846,14 @@
         "penalty_technique": 84,
         "power_moves": 88,
         "technique": 87
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 5451504,
+        "signing_bonus": 12858919,
+        "guaranteed_money": 21806014,
+        "contract_type": "rookie",
+        "cap_hit_2025": 5898735
       }
     },
     "1928": {
@@ -654,6 +878,14 @@
         "penalty_technique": 85,
         "power_moves": 95,
         "size": 98
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 4252320,
+        "signing_bonus": 9550384,
+        "guaranteed_money": 17009278,
+        "contract_type": "rookie",
+        "cap_hit_2025": 5408606
       }
     },
     "1929": {
@@ -677,6 +909,14 @@
         "experience": 72,
         "penalty_technique": 78,
         "technique": 75
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 1350000,
+        "signing_bonus": 150000,
+        "guaranteed_money": 800000,
+        "contract_type": "free_agent",
+        "cap_hit_2025": 1425000
       }
     },
     "1930": {
@@ -700,6 +940,14 @@
         "experience": 70,
         "penalty_technique": 72,
         "power_moves": 80
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1085000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1085000
       }
     },
     "1931": {
@@ -723,6 +971,14 @@
         "experience": 70,
         "penalty_technique": 75,
         "technique": 72
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1100000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1100000
       }
     },
     "1932": {
@@ -746,6 +1002,14 @@
         "experience": 80,
         "penalty_technique": 80,
         "finesse_moves": 82
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 2800000,
+        "signing_bonus": 400000,
+        "guaranteed_money": 1800000,
+        "contract_type": "free_agent",
+        "cap_hit_2025": 2000000
       }
     },
     "1933": {
@@ -770,6 +1034,14 @@
         "penalty_technique": 85,
         "finesse_moves": 88,
         "leadership": 82
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 4000000,
+        "signing_bonus": 1000000,
+        "guaranteed_money": 4000000,
+        "contract_type": "free_agent",
+        "cap_hit_2025": 4000000
       }
     },
     "1934": {
@@ -794,6 +1066,14 @@
         "penalty_technique": 85,
         "tackling": 85,
         "versatility": 88
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 17000000,
+        "signing_bonus": 15580000,
+        "guaranteed_money": 34000000,
+        "contract_type": "free_agent",
+        "cap_hit_2025": 22193333
       }
     },
     "1935": {
@@ -817,6 +1097,14 @@
         "experience": 68,
         "penalty_technique": 78,
         "tackling": 82
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1100000,
+        "signing_bonus": 200000,
+        "guaranteed_money": 1100000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1150000
       }
     },
     "1936": {
@@ -841,6 +1129,14 @@
         "penalty_technique": 78,
         "tackling": 80,
         "leadership": 75
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 980000,
+        "signing_bonus": 150000,
+        "guaranteed_money": 980000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1017500
       }
     },
     "1937": {
@@ -864,6 +1160,14 @@
         "experience": 72,
         "penalty_technique": 78,
         "finesse_moves": 85
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 2200000,
+        "signing_bonus": 1500000,
+        "guaranteed_money": 2200000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 2575000
       }
     },
     "1938": {
@@ -887,6 +1191,14 @@
         "experience": 68,
         "penalty_technique": 70,
         "technique": 72
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 940000,
+        "signing_bonus": 100000,
+        "guaranteed_money": 940000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 965000
       }
     },
     "1939": {
@@ -910,6 +1222,14 @@
         "experience": 78,
         "penalty_technique": 78,
         "finesse_moves": 85
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1800000,
+        "signing_bonus": 200000,
+        "guaranteed_money": 1000000,
+        "contract_type": "free_agent",
+        "cap_hit_2025": 1800000
       }
     },
     "1940": {
@@ -933,6 +1253,14 @@
         "experience": 75,
         "penalty_technique": 75,
         "technique": 78
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1650000,
+        "signing_bonus": 150000,
+        "guaranteed_money": 800000,
+        "contract_type": "free_agent",
+        "cap_hit_2025": 1650000
       }
     },
     "1941": {
@@ -956,6 +1284,14 @@
         "experience": 68,
         "penalty_technique": 70,
         "tackling": 75
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 915000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "practice_squad",
+        "cap_hit_2025": 915000
       }
     },
     "1942": {
@@ -980,6 +1316,14 @@
         "zone_coverage": 82,
         "ball_skills": 80,
         "press_coverage": 82
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 3704524,
+        "signing_bonus": 7596796,
+        "guaranteed_money": 14818096,
+        "contract_type": "rookie",
+        "cap_hit_2025": 3376569
       }
     },
     "1943": {
@@ -1004,6 +1348,14 @@
         "zone_coverage": 80,
         "ball_skills": 82,
         "versatility": 85
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 2320906,
+        "signing_bonus": 3571724,
+        "guaranteed_money": 9283622,
+        "contract_type": "rookie",
+        "cap_hit_2025": 2118734
       }
     },
     "1944": {
@@ -1028,6 +1380,14 @@
         "zone_coverage": 80,
         "ball_skills": 78,
         "return_specialist": 82
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 2500000,
+        "signing_bonus": 500000,
+        "guaranteed_money": 2000000,
+        "contract_type": "free_agent",
+        "cap_hit_2025": 2500000
       }
     },
     "1945": {
@@ -1051,6 +1411,14 @@
         "man_coverage": 75,
         "zone_coverage": 72,
         "ball_skills": 70
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1055000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1055000
       }
     },
     "1946": {
@@ -1074,6 +1442,14 @@
         "man_coverage": 78,
         "zone_coverage": 75,
         "ball_skills": 75
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1000000,
+        "signing_bonus": 180000,
+        "guaranteed_money": 1000000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1045000
       }
     },
     "1947": {
@@ -1098,6 +1474,14 @@
         "zone_coverage": 70,
         "ball_skills": 70,
         "size": 88
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1015000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1015000
       }
     },
     "1948": {
@@ -1122,6 +1506,14 @@
         "zone_coverage": 85,
         "ball_skills": 82,
         "tackling": 80
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1475000,
+        "signing_bonus": 0,
+        "guaranteed_money": 1475000,
+        "contract_type": "extension",
+        "cap_hit_2025": 1475000
       }
     },
     "1949": {
@@ -1146,6 +1538,14 @@
         "zone_coverage": 80,
         "ball_skills": 78,
         "tackling": 78
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1050000,
+        "signing_bonus": 220000,
+        "guaranteed_money": 1050000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1105000
       }
     },
     "1950": {
@@ -1170,6 +1570,14 @@
         "zone_coverage": 78,
         "ball_skills": 75,
         "tackling": 72
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 930000,
+        "signing_bonus": 95000,
+        "guaranteed_money": 930000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 953750
       }
     },
     "1951": {
@@ -1189,6 +1597,14 @@
         "penalty_technique": 88,
         "clutch": 85,
         "leg_strength": 87
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 6000000,
+        "signing_bonus": 5540000,
+        "guaranteed_money": 9700000,
+        "contract_type": "extension",
+        "cap_hit_2025": 4180000
       }
     },
     "1952": {
@@ -1209,14 +1625,22 @@
         "hang_time": 82,
         "directional": 78,
         "leg_strength": 82
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 2100000,
+        "signing_bonus": 100000,
+        "guaranteed_money": 2775000,
+        "contract_type": "extension",
+        "cap_hit_2025": 1591000
       }
     }
   },
   "metadata": {
     "total_players": 53,
-    "version": "1.0",
+    "version": "2.0",
     "roster_type": "53_man_active",
     "season": "2025",
-    "notes": "Complete 53-man roster with Super Bowl champion core intact, featuring MVP-caliber QB Jalen Hurts and OPOTY Saquon Barkley"
+    "notes": "Complete 53-man roster with 2024-2025 NFL contract data. All contracts researched from Spotrac and OverTheCap. Super Bowl champion core intact, featuring MVP-caliber QB Jalen Hurts and OPOTY Saquon Barkley. Contract data updated October 2025."
   }
 }

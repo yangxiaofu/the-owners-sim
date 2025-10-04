@@ -25,6 +25,14 @@
         "leadership": 92,
         "pocket_presence": 95,
         "clutch": 95
+      },
+      "contract": {
+        "contract_years": 5,
+        "annual_salary": 55000000,
+        "signing_bonus": 40000000,
+        "guaranteed_money": 219010000,
+        "contract_type": "extension",
+        "cap_hit_2025": 46004509
       }
     },
     "8002": {
@@ -49,6 +57,14 @@
         "penalty_technique": 82,
         "elusiveness": 88,
         "power": 82
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1031539,
+        "signing_bonus": 286156,
+        "guaranteed_money": 286156,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1103039
       }
     },
     "8003": {
@@ -74,6 +90,14 @@
         "release": 95,
         "contested_catch": 92,
         "deep_threat": 95
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 40250000,
+        "signing_bonus": 48100000,
+        "guaranteed_money": 112000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 41000000
       }
     },
     "8004": {
@@ -99,6 +123,14 @@
         "release": 90,
         "contested_catch": 95,
         "red_zone_threat": 92
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 28750000,
+        "signing_bonus": 35000000,
+        "guaranteed_money": 40900000,
+        "contract_type": "extension",
+        "cap_hit_2025": 30000000
       }
     },
     "8005": {
@@ -123,6 +155,14 @@
         "experience": 85,
         "penalty_technique": 85,
         "contested_catch": 88
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 8500000,
+        "signing_bonus": 6500000,
+        "guaranteed_money": 6500000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 7666666
       }
     },
     "8006": {
@@ -146,6 +186,14 @@
         "experience": 85,
         "penalty_technique": 82,
         "anchor": 88
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 16023000,
+        "signing_bonus": 12000000,
+        "guaranteed_money": 31100000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 17523000
       }
     },
     "8007": {
@@ -169,6 +217,14 @@
         "experience": 88,
         "penalty_technique": 88,
         "snap_accuracy": 90
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 6000000,
+        "signing_bonus": 3000000,
+        "guaranteed_money": 3000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 6500000
       }
     },
     "8008": {
@@ -194,6 +250,14 @@
         "penalty_technique": 85,
         "finesse_moves": 95,
         "power_moves": 88
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 30000000,
+        "signing_bonus": 14000000,
+        "guaranteed_money": 30000000,
+        "contract_type": "restructured",
+        "cap_hit_2025": 30000000
       }
     },
     "8009": {
@@ -219,6 +283,14 @@
         "experience": 82,
         "penalty_technique": 88,
         "tackling": 88
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 9000000,
+        "signing_bonus": 10000000,
+        "guaranteed_money": 14000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 8759176
       }
     },
     "8010": {
@@ -243,6 +315,14 @@
         "penalty_technique": 82,
         "man_coverage": 85,
         "zone_coverage": 85
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 7333333,
+        "signing_bonus": 5000000,
+        "guaranteed_money": 10000000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 8000000
       }
     },
     "8011": {
@@ -269,6 +349,14 @@
         "tackling": 85,
         "range": 92,
         "ball_skills": 90
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 16000000,
+        "signing_bonus": 20000000,
+        "guaranteed_money": 40000000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 17000000
       }
     },
     "8012": {
@@ -290,6 +378,14 @@
         "penalty_technique": 90,
         "clutch": 92,
         "long_range": 95
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 5500000,
+        "signing_bonus": 5000000,
+        "guaranteed_money": 5000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 5500000
       }
     },
     "35272": {
@@ -314,6 +410,14 @@
         "leadership": 92,
         "pocket_presence": 90,
         "intelligence": 95
+      },
+      "contract": {
+        "contract_years": 5,
+        "annual_salary": 55000000,
+        "signing_bonus": 40000000,
+        "guaranteed_money": 219010000,
+        "contract_type": "extension",
+        "cap_hit_2025": 46004509
       }
     },
     "35273": {
@@ -338,6 +442,14 @@
         "leadership": 75,
         "pocket_presence": 78,
         "intelligence": 85
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1210000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1210000
       }
     },
     "35274": {
@@ -362,6 +474,14 @@
         "leadership": 72,
         "pocket_presence": 75,
         "intelligence": 88
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1165000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1165000
       }
     },
     "35275": {
@@ -388,6 +508,14 @@
         "elusiveness": 85,
         "vision": 82,
         "receiving": 80
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1031539,
+        "signing_bonus": 286156,
+        "guaranteed_money": 286156,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1103039
       }
     },
     "35276": {
@@ -414,6 +542,14 @@
         "elusiveness": 78,
         "vision": 80,
         "potential": 82
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 915000,
+        "signing_bonus": 100000,
+        "guaranteed_money": 100000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 940000
       }
     },
     "35277": {
@@ -441,6 +577,14 @@
         "vision": 82,
         "blocking": 85,
         "leadership": 82
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 2500000,
+        "signing_bonus": 500000,
+        "guaranteed_money": 1000000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 2750000
       }
     },
     "35278": {
@@ -469,6 +613,14 @@
         "special_teams": 85,
         "development": 78,
         "motor": 80
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 870000,
+        "signing_bonus": 50000,
+        "guaranteed_money": 50000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 882500
       }
     },
     "35279": {
@@ -496,6 +648,14 @@
         "catching": 95,
         "yac": 92,
         "separation": 92
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 40250000,
+        "signing_bonus": 48100000,
+        "guaranteed_money": 112000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 41000000
       }
     },
     "35280": {
@@ -523,6 +683,14 @@
         "catching": 88,
         "size": 92,
         "red_zone": 90
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 28750000,
+        "signing_bonus": 35000000,
+        "guaranteed_money": 40900000,
+        "contract_type": "extension",
+        "cap_hit_2025": 30000000
       }
     },
     "35281": {
@@ -550,6 +718,14 @@
         "catching": 82,
         "deep_routes": 88,
         "development": 85
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1455224,
+        "signing_bonus": 1053380,
+        "guaranteed_money": 1053380,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1058345
       }
     },
     "35282": {
@@ -577,6 +753,14 @@
         "catching": 82,
         "intelligence": 85,
         "reliability": 88
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 940000,
+        "signing_bonus": 180000,
+        "guaranteed_money": 180000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 985000
       }
     },
     "35283": {
@@ -604,6 +788,14 @@
         "catching": 80,
         "return_skills": 90,
         "slot_routes": 85
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 920000,
+        "signing_bonus": 150000,
+        "guaranteed_money": 150000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 957500
       }
     },
     "35284": {
@@ -632,6 +824,14 @@
         "special_teams": 88,
         "development": 80,
         "motor": 85
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 895000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "practice_squad",
+        "cap_hit_2025": 895000
       }
     },
     "35285": {
@@ -660,6 +860,14 @@
         "blocking": 70,
         "size": 90,
         "red_zone": 85
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 8500000,
+        "signing_bonus": 6500000,
+        "guaranteed_money": 6500000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 7666666
       }
     },
     "35286": {
@@ -687,6 +895,14 @@
         "catching": 82,
         "blocking": 72,
         "athleticism": 85
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 2750000,
+        "signing_bonus": 1000000,
+        "guaranteed_money": 1000000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 2705882
       }
     },
     "35287": {
@@ -714,6 +930,14 @@
         "catching": 78,
         "blocking": 90,
         "leadership": 85
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 3500000,
+        "signing_bonus": 1500000,
+        "guaranteed_money": 2000000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 4000000
       }
     },
     "35288": {
@@ -742,6 +966,14 @@
         "blocking": 82,
         "special_teams": 85,
         "versatility": 80
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1165000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1165000
       }
     },
     "35289": {
@@ -771,6 +1003,14 @@
         "size": 88,
         "development": 82,
         "potential": 78
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 895000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "practice_squad",
+        "cap_hit_2025": 895000
       }
     },
     "35290": {
@@ -796,6 +1036,14 @@
         "run_blocking": 82,
         "leadership": 90,
         "size": 92
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 16023000,
+        "signing_bonus": 12000000,
+        "guaranteed_money": 31100000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 17523000
       }
     },
     "35291": {
@@ -820,6 +1068,14 @@
         "pass_blocking": 80,
         "run_blocking": 82,
         "toughness": 88
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1337500,
+        "signing_bonus": 167500,
+        "guaranteed_money": 167500,
+        "contract_type": "veteran",
+        "cap_hit_2025": 1197500
       }
     },
     "35292": {
@@ -846,6 +1102,14 @@
         "snap_accuracy": 90,
         "intelligence": 92,
         "leadership": 90
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 6000000,
+        "signing_bonus": 3000000,
+        "guaranteed_money": 3000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 6500000
       }
     },
     "35293": {
@@ -870,6 +1134,14 @@
         "pass_blocking": 78,
         "run_blocking": 80,
         "potential": 88
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 950000,
+        "signing_bonus": 200000,
+        "guaranteed_money": 200000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1000000
       }
     },
     "35294": {
@@ -896,6 +1168,14 @@
         "size": 95,
         "athleticism": 85,
         "development": 85
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 3842500,
+        "signing_bonus": 7990000,
+        "guaranteed_money": 15370000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 5840000
       }
     },
     "35295": {
@@ -921,6 +1201,14 @@
         "pass_blocking": 75,
         "run_blocking": 78,
         "versatility": 88
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1210000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1210000
       }
     },
     "35296": {
@@ -947,6 +1235,14 @@
         "size": 90,
         "athleticism": 82,
         "potential": 85
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 915000,
+        "signing_bonus": 120000,
+        "guaranteed_money": 120000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 945000
       }
     },
     "35297": {
@@ -975,6 +1271,14 @@
         "intelligence": 80,
         "versatility": 82,
         "development": 78
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1055000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1055000
       }
     },
     "35298": {
@@ -1001,6 +1305,14 @@
         "power_moves": 88,
         "technique": 90,
         "leadership": 85
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 30000000,
+        "signing_bonus": 14000000,
+        "guaranteed_money": 30000000,
+        "contract_type": "restructured",
+        "cap_hit_2025": 30000000
       }
     },
     "35299": {
@@ -1026,6 +1338,14 @@
         "run_defense": 78,
         "power_moves": 82,
         "potential": 90
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1050000,
+        "signing_bonus": 400000,
+        "guaranteed_money": 400000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1150000
       }
     },
     "35300": {
@@ -1051,6 +1371,14 @@
         "run_defense": 88,
         "power_moves": 85,
         "leadership": 88
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 11000000,
+        "signing_bonus": 10000000,
+        "guaranteed_money": 16000000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 14333333
       }
     },
     "35301": {
@@ -1077,6 +1405,14 @@
         "power_moves": 78,
         "development": 85,
         "motor": 88
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 3200000,
+        "signing_bonus": 6800000,
+        "guaranteed_money": 13200000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 4900000
       }
     },
     "35302": {
@@ -1102,6 +1438,14 @@
         "run_defense": 85,
         "power_moves": 85,
         "size": 90
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1100000,
+        "signing_bonus": 650000,
+        "guaranteed_money": 650000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1262500
       }
     },
     "35303": {
@@ -1128,6 +1472,14 @@
         "power_moves": 75,
         "versatility": 82,
         "motor": 85
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1150000,
+        "signing_bonus": 750000,
+        "guaranteed_money": 750000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1337500
       }
     },
     "35304": {
@@ -1154,6 +1506,14 @@
         "power_moves": 78,
         "development": 80,
         "motor": 82
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 940000,
+        "signing_bonus": 250000,
+        "guaranteed_money": 250000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1002500
       }
     },
     "35305": {
@@ -1181,6 +1541,14 @@
         "motor": 85,
         "special_teams": 82,
         "development": 78
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1165000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1165000
       }
     },
     "35306": {
@@ -1208,6 +1576,14 @@
         "run_defense": 85,
         "intelligence": 90,
         "leadership": 90
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 9000000,
+        "signing_bonus": 10000000,
+        "guaranteed_money": 14000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 8759176
       }
     },
     "35307": {
@@ -1234,6 +1610,14 @@
         "pass_rush": 75,
         "run_defense": 78,
         "potential": 88
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1020000,
+        "signing_bonus": 450000,
+        "guaranteed_money": 450000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1132500
       }
     },
     "35308": {
@@ -1260,6 +1644,14 @@
         "pass_rush": 72,
         "run_defense": 75,
         "versatility": 85
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 950000,
+        "signing_bonus": 350000,
+        "guaranteed_money": 350000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1037500
       }
     },
     "35309": {
@@ -1287,6 +1679,14 @@
         "run_defense": 75,
         "special_teams": 88,
         "versatility": 82
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1210000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1210000
       }
     },
     "35310": {
@@ -1314,6 +1714,14 @@
         "run_defense": 72,
         "special_teams": 85,
         "motor": 82
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1055000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1055000
       }
     },
     "35311": {
@@ -1340,6 +1748,14 @@
         "ball_skills": 80,
         "tackling": 78,
         "development": 85
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1488182,
+        "signing_bonus": 1509256,
+        "guaranteed_money": 1509256,
+        "contract_type": "rookie",
+        "cap_hit_2025": 4041819
       }
     },
     "35312": {
@@ -1366,6 +1782,14 @@
         "ball_skills": 78,
         "tackling": 72,
         "development": 85
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1080000,
+        "signing_bonus": 680000,
+        "guaranteed_money": 680000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1250000
       }
     },
     "35313": {
@@ -1392,6 +1816,14 @@
         "ball_skills": 78,
         "tackling": 70,
         "potential": 85
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 985000,
+        "signing_bonus": 450000,
+        "guaranteed_money": 450000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1097500
       }
     },
     "35314": {
@@ -1419,6 +1851,14 @@
         "tackling": 78,
         "physicality": 80,
         "intelligence": 82
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1165000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1165000
       }
     },
     "35315": {
@@ -1446,6 +1886,14 @@
         "tackling": 70,
         "special_teams": 85,
         "development": 78
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1055000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1055000
       }
     },
     "35316": {
@@ -1474,6 +1922,14 @@
         "tackling": 75,
         "versatility": 85,
         "special_teams": 82
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 895000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "practice_squad",
+        "cap_hit_2025": 895000
       }
     },
     "35317": {
@@ -1501,6 +1957,14 @@
         "tackling": 78,
         "versatility": 88,
         "development": 85
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 2916754,
+        "signing_bonus": 5665104,
+        "guaranteed_money": 11667018,
+        "contract_type": "rookie",
+        "cap_hit_2025": 3712233
       }
     },
     "35318": {
@@ -1528,6 +1992,14 @@
         "tackling": 75,
         "range": 82,
         "intelligence": 85
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 7500000,
+        "signing_bonus": 6000000,
+        "guaranteed_money": 9000000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 7000000
       }
     },
     "35319": {
@@ -1556,6 +2028,14 @@
         "run_support": 88,
         "physicality": 82,
         "development": 80
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1050000,
+        "signing_bonus": 520000,
+        "guaranteed_money": 520000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1180000
       }
     },
     "35320": {
@@ -1583,6 +2063,14 @@
         "tackling": 78,
         "special_teams": 85,
         "development": 78
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 920000,
+        "signing_bonus": 280000,
+        "guaranteed_money": 280000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 990000
       }
     },
     "35321": {
@@ -1608,6 +2096,14 @@
         "accuracy": 88,
         "clutch": 92,
         "long_range": 90
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 5500000,
+        "signing_bonus": 5000000,
+        "guaranteed_money": 5000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 5500000
       }
     },
     "35322": {
@@ -1634,6 +2130,14 @@
         "punt_power": 85,
         "hang_time": 82,
         "directional": 78
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 915000,
+        "signing_bonus": 200000,
+        "guaranteed_money": 200000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 965000
       }
     },
     "35323": {
@@ -1658,6 +2162,14 @@
         "snap_accuracy": 90,
         "consistency": 88,
         "leadership": 78
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 1165000,
+        "signing_bonus": 0,
+        "guaranteed_money": 0,
+        "contract_type": "veteran_minimum",
+        "cap_hit_2025": 1165000
       }
     }
   }

@@ -6,5 +6,6 @@ Provides reusable components for season initialization, progression, and trackin
 """
 
 from .season_manager import SeasonManager
+from .season_cycle_controller import SeasonCycleController
 
-__all__ = ['SeasonManager']
+__all__ = ['SeasonManager', 'SeasonCycleController']

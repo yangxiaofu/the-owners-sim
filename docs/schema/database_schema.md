@@ -3,7 +3,7 @@
 **Project**: The Owners Sim - NFL Football Simulation Engine
 **Database**: SQLite3
 **File Location**: `data/database/nfl_simulation.db`
-**Schema Version**: 2.1.0 (with season_type support for regular season/playoff separation)
+**Schema Version**: 2.2.0 (with salary cap system)
 
 ## Table of Contents
 
@@ -21,11 +21,12 @@
 
 ## Overview
 
-The NFL Simulation database provides comprehensive storage for dynasty management, game simulations, player statistics, standings, schedules, playoff systems, and a polymorphic event system. The schema is designed to support:
+The NFL Simulation database provides comprehensive storage for dynasty management, game simulations, player statistics, standings, schedules, playoff systems, salary cap management, and a polymorphic event system. The schema is designed to support:
 
 - **Multi-dynasty isolation**: Complete statistical separation between different user franchises
 - **Comprehensive statistics**: Detailed player and team performance tracking
 - **Playoff systems**: Seeding, tiebreakers, and tournament brackets
+- **Salary cap management**: Complete NFL contract tracking, cap space calculations, and compliance validation
 - **Event polymorphism**: Unified storage for games, scouting, media, trades, and future event types
 - **Season persistence**: Historical data for multi-season dynasty modes
 
@@ -43,6 +44,7 @@ The NFL Simulation database provides comprehensive storage for dynasty managemen
 - Comprehensive player statistics (passing, rushing, receiving, defense, special teams, offensive line)
 - NFL-realistic standings tracking with conference/division/home/away splits
 - Playoff seeding with detailed tiebreaker tracking
+- Complete salary cap system (contracts, dead money, franchise tags, compliance tracking)
 - Polymorphic event system for mixed timelines
 - Box score generation with quarter-by-quarter breakdowns
 
@@ -844,7 +846,457 @@ INSERT INTO playoff_brackets VALUES (
 
 ---
 
-### 11. events
+### 11. player_contracts
+
+Player contract records with comprehensive financial details.
+
+```sql
+CREATE TABLE player_contracts (
+    contract_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id INTEGER NOT NULL,
+    team_id INTEGER NOT NULL,
+    dynasty_id TEXT NOT NULL,
+
+    -- Contract Duration
+    start_year INTEGER NOT NULL,
+    end_year INTEGER NOT NULL,
+    contract_years INTEGER NOT NULL,
+
+    -- Contract Type
+    contract_type TEXT NOT NULL CHECK(contract_type IN (
+        'ROOKIE', 'VETERAN', 'FRANCHISE_TAG', 'TRANSITION_TAG', 'EXTENSION'
+    )),
+
+    -- Financial Terms
+    total_value INTEGER NOT NULL,
+    signing_bonus INTEGER DEFAULT 0,
+    signing_bonus_proration INTEGER DEFAULT 0,
+
+    -- Guarantees
+    guaranteed_at_signing INTEGER DEFAULT 0,
+    injury_guaranteed INTEGER DEFAULT 0,
+    total_guaranteed INTEGER DEFAULT 0,
+
+    -- Status
+    is_active BOOLEAN DEFAULT TRUE,
+    signed_date DATE NOT NULL,
+    voided_date DATE,
+
+    -- Metadata
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+**Columns**:
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `contract_id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Auto-generated contract ID |
+| `player_id` | INTEGER | NOT NULL | Player identifier |
+| `team_id` | INTEGER | NOT NULL | Team ID (1-32) |
+| `dynasty_id` | TEXT | NOT NULL | Dynasty isolation |
+| `start_year` | INTEGER | NOT NULL | Contract start year |
+| `end_year` | INTEGER | NOT NULL | Contract end year |
+| `contract_years` | INTEGER | NOT NULL | Total contract years |
+| `contract_type` | TEXT | NOT NULL | Contract type (ROOKIE, VETERAN, etc.) |
+| `total_value` | INTEGER | NOT NULL | Total contract value in dollars |
+| `signing_bonus` | INTEGER | DEFAULT 0 | Signing bonus amount |
+| `signing_bonus_proration` | INTEGER | DEFAULT 0 | Annual proration amount |
+| `guaranteed_at_signing` | INTEGER | DEFAULT 0 | Guaranteed money at signing |
+| `injury_guaranteed` | INTEGER | DEFAULT 0 | Injury guarantee amount |
+| `total_guaranteed` | INTEGER | DEFAULT 0 | Total guaranteed money |
+| `is_active` | BOOLEAN | DEFAULT TRUE | Contract active status |
+| `signed_date` | DATE | NOT NULL | Contract signing date |
+| `voided_date` | DATE | | Contract void date (if voided) |
+| `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | Record creation |
+| `modified_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | Last modification |
+
+**Indexes**:
+```sql
+CREATE INDEX idx_contracts_player ON player_contracts(player_id);
+CREATE INDEX idx_contracts_team_season ON player_contracts(team_id, start_year);
+CREATE INDEX idx_contracts_dynasty ON player_contracts(dynasty_id);
+CREATE INDEX idx_contracts_active ON player_contracts(is_active);
+CREATE INDEX idx_contracts_team_active ON player_contracts(team_id, is_active);
+```
+
+**Example Data**:
+```sql
+INSERT INTO player_contracts VALUES (
+    1,
+    12345,  -- Player ID
+    7,      -- Detroit Lions
+    'eagles_rebuild_2024',
+    2025, 2028, 4,
+    'VETERAN',
+    40000000, 16000000, 4000000,
+    23000000, 0, 23000000,
+    TRUE,
+    '2025-03-15',
+    NULL,
+    '2025-03-15T10:00:00',
+    '2025-03-15T10:00:00'
+);
+```
+
+---
+
+### 12. contract_year_details
+
+Year-by-year contract breakdown with cap hits and cash flow.
+
+```sql
+CREATE TABLE contract_year_details (
+    detail_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contract_id INTEGER NOT NULL,
+    contract_year INTEGER NOT NULL,
+    season_year INTEGER NOT NULL,
+
+    -- Salary Components
+    base_salary INTEGER NOT NULL,
+    roster_bonus INTEGER DEFAULT 0,
+    workout_bonus INTEGER DEFAULT 0,
+    option_bonus INTEGER DEFAULT 0,
+    per_game_roster_bonus INTEGER DEFAULT 0,
+
+    -- Performance Incentives
+    ltbe_incentives INTEGER DEFAULT 0,
+    nltbe_incentives INTEGER DEFAULT 0,
+
+    -- Guarantees
+    base_salary_guaranteed BOOLEAN DEFAULT FALSE,
+    guarantee_type TEXT CHECK(guarantee_type IN ('FULL', 'INJURY', 'SKILL', 'NONE') OR guarantee_type IS NULL),
+    guarantee_date DATE,
+
+    -- Cap Impact
+    signing_bonus_proration INTEGER DEFAULT 0,
+    option_bonus_proration INTEGER DEFAULT 0,
+    total_cap_hit INTEGER NOT NULL,
+
+    -- Cash Flow
+    cash_paid INTEGER NOT NULL,
+
+    -- Status
+    is_voided BOOLEAN DEFAULT FALSE,
+
+    FOREIGN KEY (contract_id) REFERENCES player_contracts(contract_id) ON DELETE CASCADE
+);
+```
+
+**Columns**:
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `detail_id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Auto-generated detail ID |
+| `contract_id` | INTEGER | NOT NULL, FK | Parent contract |
+| `contract_year` | INTEGER | NOT NULL | Contract year (1, 2, 3, etc.) |
+| `season_year` | INTEGER | NOT NULL | Absolute season year |
+| `base_salary` | INTEGER | NOT NULL | Base salary for year |
+| `roster_bonus` | INTEGER | DEFAULT 0 | Roster bonus |
+| `workout_bonus` | INTEGER | DEFAULT 0 | Workout bonus |
+| `signing_bonus_proration` | INTEGER | DEFAULT 0 | Prorated signing bonus |
+| `total_cap_hit` | INTEGER | NOT NULL | Total cap hit for year |
+| `cash_paid` | INTEGER | NOT NULL | Actual cash paid in year |
+| `is_voided` | BOOLEAN | DEFAULT FALSE | Year is void year |
+
+**Indexes**:
+```sql
+CREATE INDEX idx_contract_details_contract ON contract_year_details(contract_id);
+CREATE INDEX idx_contract_details_season ON contract_year_details(season_year);
+CREATE INDEX idx_contract_details_contract_year ON contract_year_details(contract_id, contract_year);
+```
+
+---
+
+### 13. team_salary_cap
+
+Team salary cap tracking with compliance data.
+
+```sql
+CREATE TABLE team_salary_cap (
+    cap_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    team_id INTEGER NOT NULL,
+    season INTEGER NOT NULL,
+    dynasty_id TEXT NOT NULL,
+
+    -- Cap Limits
+    salary_cap_limit INTEGER NOT NULL,
+    carryover_from_previous INTEGER DEFAULT 0,
+
+    -- Current Status
+    active_contracts_total INTEGER DEFAULT 0,
+    dead_money_total INTEGER DEFAULT 0,
+    ltbe_incentives_total INTEGER DEFAULT 0,
+    practice_squad_total INTEGER DEFAULT 0,
+
+    -- Top 51 Rule
+    is_top_51_active BOOLEAN DEFAULT TRUE,
+    top_51_total INTEGER DEFAULT 0,
+
+    -- Cash Spending
+    cash_spent_this_year INTEGER DEFAULT 0,
+
+    -- Metadata
+    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    UNIQUE(team_id, season, dynasty_id)
+);
+```
+
+**Columns**:
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `cap_id` | INTEGER | PRIMARY KEY AUTOINCREMENT | Auto-generated cap ID |
+| `team_id` | INTEGER | NOT NULL | Team ID (1-32) |
+| `season` | INTEGER | NOT NULL | Season year |
+| `dynasty_id` | TEXT | NOT NULL | Dynasty isolation |
+| `salary_cap_limit` | INTEGER | NOT NULL | League salary cap limit |
+| `carryover_from_previous` | INTEGER | DEFAULT 0 | Cap carryover from previous year |
+| `active_contracts_total` | INTEGER | DEFAULT 0 | Total active contract cap hits |
+| `dead_money_total` | INTEGER | DEFAULT 0 | Total dead money |
+| `ltbe_incentives_total` | INTEGER | DEFAULT 0 | Likely To Be Earned incentives |
+| `practice_squad_total` | INTEGER | DEFAULT 0 | Practice squad cap total |
+| `is_top_51_active` | BOOLEAN | DEFAULT TRUE | Top-51 rule active (offseason) |
+| `top_51_total` | INTEGER | DEFAULT 0 | Top 51 contracts total |
+| `cash_spent_this_year` | INTEGER | DEFAULT 0 | Cash spending for 89% floor |
+
+**Indexes**:
+```sql
+CREATE INDEX idx_cap_team_season ON team_salary_cap(team_id, season);
+CREATE INDEX idx_cap_dynasty ON team_salary_cap(dynasty_id);
+CREATE INDEX idx_cap_season ON team_salary_cap(season);
+```
+
+---
+
+### 14. franchise_tags
+
+Franchise and transition tag tracking.
+
+```sql
+CREATE TABLE franchise_tags (
+    tag_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id INTEGER NOT NULL,
+    team_id INTEGER NOT NULL,
+    season INTEGER NOT NULL,
+    dynasty_id TEXT NOT NULL,
+
+    -- Tag Details
+    tag_type TEXT NOT NULL CHECK(tag_type IN (
+        'FRANCHISE_EXCLUSIVE', 'FRANCHISE_NON_EXCLUSIVE', 'TRANSITION'
+    )),
+    tag_salary INTEGER NOT NULL,
+
+    -- Dates
+    tag_date DATE NOT NULL,
+    deadline_date DATE NOT NULL,
+    extension_deadline DATE,
+
+    -- Status
+    is_extended BOOLEAN DEFAULT FALSE,
+    extension_contract_id INTEGER,
+    consecutive_tag_number INTEGER DEFAULT 1,
+
+    FOREIGN KEY (extension_contract_id) REFERENCES player_contracts(contract_id)
+);
+```
+
+**Key Fields**:
+- `tag_type`: FRANCHISE_EXCLUSIVE, FRANCHISE_NON_EXCLUSIVE, or TRANSITION
+- `consecutive_tag_number`: Tracks 1st, 2nd, 3rd consecutive tags (with salary escalators)
+- `extension_contract_id`: Links to long-term contract if extended
+
+**Indexes**:
+```sql
+CREATE INDEX idx_tags_player ON franchise_tags(player_id);
+CREATE INDEX idx_tags_team_season ON franchise_tags(team_id, season);
+```
+
+---
+
+### 15. rfa_tenders
+
+Restricted Free Agent tender tracking.
+
+```sql
+CREATE TABLE rfa_tenders (
+    tender_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    player_id INTEGER NOT NULL,
+    team_id INTEGER NOT NULL,
+    season INTEGER NOT NULL,
+    dynasty_id TEXT NOT NULL,
+
+    -- Tender Details
+    tender_level TEXT NOT NULL CHECK(tender_level IN (
+        'FIRST_ROUND', 'SECOND_ROUND', 'ORIGINAL_ROUND', 'RIGHT_OF_FIRST_REFUSAL'
+    )),
+    tender_salary INTEGER NOT NULL,
+    compensation_round INTEGER,
+
+    -- Dates
+    tender_date DATE NOT NULL,
+    offer_sheet_deadline DATE,
+
+    -- Status
+    is_accepted BOOLEAN DEFAULT FALSE,
+    has_offer_sheet BOOLEAN DEFAULT FALSE,
+    is_matched BOOLEAN
+);
+```
+
+**Key Fields**:
+- `tender_level`: Four RFA tender levels with different draft pick compensation
+- `compensation_round`: Draft pick compensation if offer sheet signed (NULL for right of first refusal)
+- `is_matched`: Whether original team matched offer sheet
+
+**Indexes**:
+```sql
+CREATE INDEX idx_tenders_player ON rfa_tenders(player_id);
+CREATE INDEX idx_tenders_team_season ON rfa_tenders(team_id, season);
+```
+
+---
+
+### 16. dead_money
+
+Dead money tracking from player releases.
+
+```sql
+CREATE TABLE dead_money (
+    dead_money_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    team_id INTEGER NOT NULL,
+    player_id INTEGER NOT NULL,
+    season INTEGER NOT NULL,
+    dynasty_id TEXT NOT NULL,
+
+    -- Source
+    contract_id INTEGER NOT NULL,
+    release_date DATE NOT NULL,
+
+    -- Dead Money Amount
+    dead_money_amount INTEGER NOT NULL,
+
+    -- June 1 Designation
+    is_june_1_designation BOOLEAN DEFAULT FALSE,
+    current_year_dead_money INTEGER NOT NULL,
+    next_year_dead_money INTEGER DEFAULT 0,
+
+    -- Breakdown
+    remaining_signing_bonus INTEGER NOT NULL,
+    guaranteed_salary INTEGER DEFAULT 0,
+
+    FOREIGN KEY (contract_id) REFERENCES player_contracts(contract_id)
+);
+```
+
+**Key Fields**:
+- `is_june_1_designation`: June 1 designation splits dead money across 2 years
+- `current_year_dead_money`: Dead money hit in current year
+- `next_year_dead_money`: Dead money deferred to next year (June 1 only)
+
+**Indexes**:
+```sql
+CREATE INDEX idx_dead_money_team_season ON dead_money(team_id, season);
+CREATE INDEX idx_dead_money_contract ON dead_money(contract_id);
+CREATE INDEX idx_dead_money_dynasty ON dead_money(dynasty_id);
+```
+
+---
+
+### 17. cap_transactions
+
+Complete audit trail of all salary cap transactions.
+
+```sql
+CREATE TABLE cap_transactions (
+    transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    team_id INTEGER NOT NULL,
+    season INTEGER NOT NULL,
+    dynasty_id TEXT NOT NULL,
+
+    -- Transaction Type
+    transaction_type TEXT NOT NULL CHECK(transaction_type IN (
+        'SIGNING', 'RELEASE', 'RESTRUCTURE', 'TRADE', 'TAG', 'TENDER'
+    )),
+
+    -- Related Entities
+    player_id INTEGER,
+    contract_id INTEGER,
+
+    -- Transaction Date
+    transaction_date DATE NOT NULL,
+
+    -- Cap Impact
+    cap_impact_current INTEGER DEFAULT 0,
+    cap_impact_future TEXT,  -- JSON
+
+    -- Cash Impact
+    cash_impact INTEGER DEFAULT 0,
+    dead_money_created INTEGER DEFAULT 0,
+
+    -- Description
+    description TEXT,
+
+    -- Metadata
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (contract_id) REFERENCES player_contracts(contract_id)
+);
+```
+
+**Transaction Types**:
+- `SIGNING`: New contract signed
+- `RELEASE`: Player released
+- `RESTRUCTURE`: Contract restructured
+- `TRADE`: Player traded
+- `TAG`: Franchise/transition tag applied
+- `TENDER`: RFA tender offered
+
+**Indexes**:
+```sql
+CREATE INDEX idx_transactions_team_season ON cap_transactions(team_id, season);
+CREATE INDEX idx_transactions_type ON cap_transactions(transaction_type);
+CREATE INDEX idx_transactions_date ON cap_transactions(transaction_date);
+CREATE INDEX idx_transactions_dynasty ON cap_transactions(dynasty_id);
+```
+
+---
+
+### 18. league_salary_cap_history
+
+Historical league-wide salary cap data.
+
+```sql
+CREATE TABLE league_salary_cap_history (
+    season INTEGER PRIMARY KEY,
+    salary_cap_amount INTEGER NOT NULL,
+    increase_from_previous INTEGER,
+    increase_percentage REAL,
+
+    -- Metadata
+    announcement_date DATE,
+    notes TEXT
+);
+```
+
+**Prepopulated Data**:
+```sql
+INSERT INTO league_salary_cap_history (season, salary_cap_amount) VALUES
+    (2023, 224800000),
+    (2024, 255400000),
+    (2025, 279200000),
+    (2026, 301000000),
+    (2027, 325000000),
+    (2028, 350000000),
+    (2029, 375000000),
+    (2030, 400000000);
+```
+
+---
+
+### 19. events
 
 Polymorphic event storage for games, scouting, media, trades, and future event types.
 
@@ -991,10 +1443,21 @@ dynasties (1) ──┬──→ (N) games
                 ├──→ (N) box_scores
                 ├──→ (N) playoff_seedings
                 ├──→ (N) tiebreaker_applications
-                └──→ (N) playoff_brackets
+                ├──→ (N) playoff_brackets
+                ├──→ (N) player_contracts
+                ├──→ (N) team_salary_cap
+                ├──→ (N) franchise_tags
+                ├──→ (N) rfa_tenders
+                ├──→ (N) dead_money
+                └──→ (N) cap_transactions
 
 games (1) ──┬──→ (N) player_game_stats
             └──→ (1) box_scores
+
+player_contracts (1) ──┬──→ (N) contract_year_details
+                       ├──→ (N) dead_money
+                       ├──→ (N) cap_transactions
+                       └──→ (N) franchise_tags (extension_contract_id)
 ```
 
 ### Cascade Behavior
@@ -1013,6 +1476,13 @@ DELETE FROM dynasties WHERE dynasty_id = 'eagles_rebuild_2024';
 --   - All playoff_seedings
 --   - All tiebreaker_applications
 --   - All playoff_brackets
+--   - All player_contracts
+--   - All contract_year_details (via contracts)
+--   - All team_salary_cap records
+--   - All franchise_tags
+--   - All rfa_tenders
+--   - All dead_money records
+--   - All cap_transactions
 ```
 
 ### Unique Constraints
@@ -1031,6 +1501,9 @@ UNIQUE(dynasty_id, game_id)
 
 -- One playoff seed per position per conference per season per dynasty
 UNIQUE(dynasty_id, season, conference, seed)
+
+-- One cap record per team per season per dynasty
+UNIQUE(team_id, season, dynasty_id)
 ```
 
 ---
@@ -1050,6 +1523,14 @@ All tables have primary key indexes (automatic):
 - `playoff_seedings.seeding_id`
 - `tiebreaker_applications.tiebreaker_id`
 - `playoff_brackets.bracket_id`
+- `player_contracts.contract_id`
+- `contract_year_details.detail_id`
+- `team_salary_cap.cap_id`
+- `franchise_tags.tag_id`
+- `rfa_tenders.tender_id`
+- `dead_money.dead_money_id`
+- `cap_transactions.transaction_id`
+- `league_salary_cap_history.season`
 - `events.event_id`
 
 ### Secondary Indexes
@@ -1611,12 +2092,14 @@ WHERE dynasty_id = 'eagles_rebuild_2024'
 
 ### Schema Version
 
-Current version: **2.0.0** (production schema matching actual implementation)
+Current version: **2.2.0** (with salary cap system)
 
 Version history:
 - **1.0.0**: Initial schema with dynasty isolation
 - **1.1.0**: Added events table for polymorphic event system
 - **2.0.0**: Production schema update - simplified tables to match actual implementation, updated dynasties table with career tracking, streamlined player_game_stats, updated all indexes
+- **2.1.0**: Added season_type support for regular season/playoff separation
+- **2.2.0**: Added complete salary cap system - 8 new tables (player_contracts, contract_year_details, team_salary_cap, franchise_tags, rfa_tenders, dead_money, cap_transactions, league_salary_cap_history) with full dynasty isolation
 
 ### Adding New Tables
 
@@ -1680,6 +2163,7 @@ This database schema provides:
 ✅ **Comprehensive statistics** tracking for all positions
 ✅ **NFL-realistic standings** with conference/division/home/away splits
 ✅ **Playoff systems** with seeding, tiebreakers, and tournament brackets
+✅ **Complete salary cap system** with contracts, dead money, franchise tags, and compliance tracking
 ✅ **Polymorphic event system** for mixed timelines (games, scouting, etc.)
 ✅ **Performance optimization** through strategic indexing
 ✅ **Referential integrity** via foreign key constraints
@@ -1689,6 +2173,10 @@ This database schema provides:
 For implementation details, see:
 - `src/database/connection.py`: Database initialization
 - `src/database/api.py`: Data retrieval API
+- `src/database/migrations/002_salary_cap_schema.sql`: Salary cap schema migration
+- `src/salary_cap/`: Complete salary cap system implementation
 - `src/persistence/daily_persister.py`: Batch persistence
 - `src/events/event_database_api.py`: Event storage API
 - `docs/specifications/base_event_interface.md`: Event interface specification
+- `docs/specifications/salary_cap_system.md`: Complete NFL salary cap rules
+- `docs/plans/salary_cap_plan.md`: Salary cap implementation plan
