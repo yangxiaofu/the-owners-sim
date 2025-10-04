@@ -3,7 +3,7 @@
 **Project**: The Owners Sim - NFL Football Simulation Engine
 **Database**: SQLite3
 **File Location**: `data/database/nfl_simulation.db`
-**Schema Version**: 2.0.0 (production schema matching actual implementation)
+**Schema Version**: 2.1.0 (with season_type support for regular season/playoff separation)
 
 ## Table of Contents
 
@@ -173,7 +173,7 @@ INSERT INTO dynasties VALUES (
 
 ### 2. games
 
-Game results with comprehensive metadata.
+Game results with comprehensive metadata and regular season/playoff separation.
 
 ```sql
 CREATE TABLE games (
@@ -181,7 +181,15 @@ CREATE TABLE games (
     dynasty_id TEXT NOT NULL,
     season INTEGER NOT NULL,
     week INTEGER NOT NULL,
+
+    -- Season type discriminator for regular season vs playoffs
+    season_type TEXT NOT NULL DEFAULT 'regular_season',
+    -- Values: 'regular_season' | 'playoffs'
+
+    -- Specific game type for detailed tracking
     game_type TEXT DEFAULT 'regular',
+    -- Values: 'regular', 'wildcard', 'divisional', 'conference', 'super_bowl'
+
     home_team_id INTEGER NOT NULL,
     away_team_id INTEGER NOT NULL,
     home_score INTEGER NOT NULL,
@@ -202,7 +210,8 @@ CREATE TABLE games (
 | `dynasty_id` | TEXT | NOT NULL, FK | Dynasty isolation key |
 | `season` | INTEGER | NOT NULL | Season year |
 | `week` | INTEGER | NOT NULL | Week number (1-18 regular, 19+ playoffs) |
-| `game_type` | TEXT | DEFAULT 'regular' | "regular", "playoff", "super_bowl" |
+| `season_type` | TEXT | NOT NULL, DEFAULT 'regular_season' | **NEW**: 'regular_season' or 'playoffs' for stat separation |
+| `game_type` | TEXT | DEFAULT 'regular' | Detailed game type: 'regular', 'wildcard', 'divisional', 'conference', 'super_bowl' |
 | `home_team_id` | INTEGER | NOT NULL | Home team ID (1-32) |
 | `away_team_id` | INTEGER | NOT NULL | Away team ID (1-32) |
 | `home_score` | INTEGER | NOT NULL | Final home team score |
@@ -219,6 +228,10 @@ CREATE INDEX idx_games_week ON games(week);
 CREATE INDEX idx_games_season ON games(season);
 CREATE INDEX idx_games_dynasty_season ON games(dynasty_id, season, week);
 CREATE INDEX idx_games_teams ON games(home_team_id, away_team_id);
+
+-- Season type indexes for regular season/playoff separation (v2.1.0+)
+CREATE INDEX idx_games_season_type ON games(dynasty_id, season, season_type);
+CREATE INDEX idx_games_type ON games(game_type);
 ```
 
 **Example Data**:
@@ -244,13 +257,18 @@ INSERT INTO games VALUES (
 
 ### 3. player_game_stats
 
-Player statistics for all positions.
+Player statistics for all positions with regular season/playoff separation.
 
 ```sql
 CREATE TABLE player_game_stats (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     dynasty_id TEXT NOT NULL,
     game_id TEXT NOT NULL,
+
+    -- Season type for stat filtering and separation
+    season_type TEXT NOT NULL DEFAULT 'regular_season',
+    -- Values: 'regular_season' | 'playoffs'
+
     player_id TEXT NOT NULL,
     player_name TEXT NOT NULL,
     team_id INTEGER NOT NULL,
@@ -295,6 +313,9 @@ CREATE TABLE player_game_stats (
 
 **Columns**: Essential statistical fields for core positions
 
+**Key Fields**:
+- `season_type`: **NEW** - Enables filtering regular season vs playoff statistics
+
 **Position Groups**:
 - **Passing**: QB statistics (completions, attempts, yards, TDs)
 - **Rushing**: RB/QB rushing (attempts, yards, TDs)
@@ -308,6 +329,10 @@ CREATE TABLE player_game_stats (
 CREATE INDEX idx_player_stats_game ON player_game_stats(game_id);
 CREATE INDEX idx_player_stats_player ON player_game_stats(player_id);
 CREATE INDEX idx_player_stats_dynasty ON player_game_stats(dynasty_id);
+
+-- Season type indexes for filtering regular season vs playoff stats (v2.1.0+)
+CREATE INDEX idx_stats_season_type ON player_game_stats(dynasty_id, season_type);
+CREATE INDEX idx_stats_player_type ON player_game_stats(player_id, season_type);
 ```
 
 **Example Data**:

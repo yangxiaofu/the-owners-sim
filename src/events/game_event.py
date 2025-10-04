@@ -35,7 +35,8 @@ class GameEvent(BaseEvent):
         event_id: Optional[str] = None,
         overtime_type: str = "regular_season",
         season: Optional[int] = None,
-        season_type: str = "regular_season"
+        season_type: str = "regular_season",
+        game_type: str = "regular"
     ):
         """
         Initialize game event.
@@ -50,6 +51,7 @@ class GameEvent(BaseEvent):
             overtime_type: Overtime rules ("regular_season" or "playoffs")
             season: Season year (e.g., 2024)
             season_type: Type of season ("preseason", "regular_season", "playoffs")
+            game_type: Specific game type ("regular", "wildcard", "divisional", "conference", "super_bowl")
         """
         super().__init__(event_id=event_id, timestamp=game_date)
 
@@ -68,6 +70,7 @@ class GameEvent(BaseEvent):
         self.overtime_type = overtime_type
         self.season = season or game_date.year
         self.season_type = season_type
+        self.game_type = game_type
 
         # Generate game_id if not provided
         self._game_id = game_id or self._generate_game_id()
@@ -134,6 +137,7 @@ class GameEvent(BaseEvent):
                 "week": self.week,
                 "season": self.season,
                 "season_type": self.season_type,
+                "game_type": self.game_type,
                 "game_date": self.game_date.isoformat(),
                 # Store full game result for detailed access
                 "game_result": game_result
@@ -190,6 +194,7 @@ class GameEvent(BaseEvent):
             "week": self.week,
             "season": self.season,
             "season_type": self.season_type,
+            "game_type": self.game_type,
             "game_date": self.game_date.isoformat(),
             "overtime_type": self.overtime_type
         }
@@ -334,7 +339,8 @@ class GameEvent(BaseEvent):
             event_id=event_data['event_id'],
             overtime_type=params.get('overtime_type', 'regular_season'),
             season=params.get('season'),
-            season_type=params.get('season_type', 'regular_season')
+            season_type=params.get('season_type', 'regular_season'),
+            game_type=params.get('game_type', 'regular')
         )
 
         # If results exist in database, restore them (historical data)

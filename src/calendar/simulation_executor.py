@@ -262,7 +262,25 @@ class SimulationExecutor:
             if game_date_part == target_date_str:
                 events_for_date.append(event_data)
 
-        return events_for_date
+        # DEDUPLICATION: Remove duplicate game_ids (keep first occurrence)
+        # This prevents the same game from being simulated multiple times if
+        # it was accidentally inserted into the events table more than once
+        seen_game_ids = set()
+        deduplicated_events = []
+        duplicates_removed = 0
+
+        for event_data in events_for_date:
+            game_id = event_data.get('game_id', '')
+            if game_id and game_id not in seen_game_ids:
+                seen_game_ids.add(game_id)
+                deduplicated_events.append(event_data)
+            elif game_id in seen_game_ids:
+                duplicates_removed += 1
+
+        if duplicates_removed > 0:
+            print(f"⚠️  Removed {duplicates_removed} duplicate game(s) for {target_date}")
+
+        return deduplicated_events
 
     def _record_game_completion(self, game_event: GameEvent, result: EventResult) -> Optional[PhaseTransition]:
         """

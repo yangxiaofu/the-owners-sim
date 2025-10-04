@@ -25,13 +25,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from calendar.date_models import Date
 
-# Handle both direct execution and module import
+# Import playoff controller from centralized location
+from playoff_system.playoff_controller import PlayoffController
+
+# Handle both direct execution and module import for display_utils
 try:
-    from .playoff_controller import PlayoffController
     from .display_utils import *
 except ImportError:
     # Direct execution - use absolute imports
-    from playoff_controller import PlayoffController
     from display_utils import *
 
 

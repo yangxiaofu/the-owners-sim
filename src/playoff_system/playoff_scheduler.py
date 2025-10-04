@@ -182,18 +182,32 @@ class PlayoffScheduler:
         Create GameEvent objects from bracket, return event IDs.
 
         Converts PlayoffGame objects to GameEvent objects and stores
-        them in the event database.
+        them in the event database. Skips games that are already scheduled
+        (duplicate prevention).
 
         Args:
             bracket: PlayoffBracket with games to schedule
             dynasty_id: Dynasty context for game_id generation
 
         Returns:
-            List of event IDs for created events
+            List of event IDs for created events (excludes already-scheduled games)
         """
         event_ids = []
+        skipped_duplicates = 0
 
         for game in bracket.games:
+            # Generate game_id first to check for duplicates
+            game_id = self._generate_playoff_game_id(game, dynasty_id)
+
+            # Check if this game is already scheduled (duplicate prevention)
+            existing_events = self.event_db_api.get_events_by_game_id(game_id)
+            if existing_events:
+                # Game already exists - skip to prevent duplicate simulation
+                skipped_duplicates += 1
+                # Still include the existing event_id in return list
+                event_ids.append(existing_events[0]['event_id'])
+                continue
+
             # Convert Date to datetime for GameEvent
             py_date = game.game_date.to_python_date()
             game_datetime = datetime.combine(py_date, datetime.min.time())
@@ -205,14 +219,18 @@ class PlayoffScheduler:
                 game_date=game_datetime,
                 week=game.week,
                 season_type="playoffs",
+                game_type=game.round_name,  # 'wildcard', 'divisional', 'conference', 'super_bowl'
                 overtime_type="playoffs",
                 season=game.season,
-                game_id=self._generate_playoff_game_id(game, dynasty_id)
+                game_id=game_id
             )
 
             # Store event and capture event ID
             stored_event = self.event_db_api.insert_event(event)
             event_ids.append(stored_event.event_id)
+
+        if skipped_duplicates > 0:
+            print(f"⚠️  Skipped {skipped_duplicates} already-scheduled playoff game(s)")
 
         return event_ids
 

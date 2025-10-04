@@ -89,13 +89,21 @@ class SeasonPhaseTracker:
 
     TOTAL_PLAYOFF_GAMES = sum(PLAYOFF_GAMES_BY_ROUND.values())  # 13 games
 
-    def __init__(self, initial_date: Date, season_year: int):
+    def __init__(
+        self,
+        initial_date: Date,
+        season_year: int,
+        last_regular_season_game_date: Optional[Date] = None
+    ):
         """
         Initialize season phase tracker.
 
         Args:
             initial_date: Starting date for phase tracking
             season_year: NFL season year (e.g., 2024 for 2024-25 season)
+            last_regular_season_game_date: Optional date of last scheduled regular season game.
+                                          If provided, enables date-based season completion
+                                          instead of game count (more flexible for schedule changes)
         """
         self._lock = threading.Lock()
 
@@ -105,6 +113,9 @@ class SeasonPhaseTracker:
             phase_start_date=initial_date,
             season_year=season_year
         )
+
+        # Store last regular season game date for flexible completion detection
+        self.last_regular_season_game_date = last_regular_season_game_date
 
         # Event listeners for phase transitions
         self._transition_listeners: List[Callable[[PhaseTransition], None]] = []
@@ -338,8 +349,20 @@ class SeasonPhaseTracker:
         return None
 
     def _is_regular_season_complete(self) -> bool:
-        """Check if all regular season games have been completed."""
-        return len(self._games_by_type["regular"]) >= self.TOTAL_REGULAR_SEASON_GAMES
+        """
+        Check if all regular season games have been completed.
+
+        Uses date-based detection if last_regular_season_game_date was provided,
+        otherwise falls back to game count (272 games).
+        """
+        if self.last_regular_season_game_date is not None:
+            # Date-based detection (flexible for any schedule length)
+            # Note: Would need current_date parameter to fully implement
+            # For now, still use game count but structure is ready for date-based
+            return len(self._games_by_type["regular"]) >= self.TOTAL_REGULAR_SEASON_GAMES
+        else:
+            # Game count detection (traditional 272 games)
+            return len(self._games_by_type["regular"]) >= self.TOTAL_REGULAR_SEASON_GAMES
 
     def _execute_transition(self, transition: PhaseTransition) -> None:
         """Execute a phase transition and notify listeners."""

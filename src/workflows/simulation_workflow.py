@@ -316,7 +316,8 @@ class SimulationWorkflow:
                 'overtime_periods': simulation_result.data.get('overtime_periods', 0),
                 'season': getattr(game_event, 'season', 2024),
                 'week': getattr(game_event, 'week', 1),
-                'season_type': getattr(game_event, 'season_type', 'regular_season')
+                'season_type': getattr(game_event, 'season_type', 'regular_season'),
+                'game_type': getattr(game_event, 'game_type', 'regular')
             }
 
             if self.config.verbose_logging:

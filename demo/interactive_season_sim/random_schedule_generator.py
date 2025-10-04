@@ -297,6 +297,7 @@ class RandomScheduleGenerator:
                     week=week_number,
                     season=season_year,
                     season_type="regular_season",
+                    game_type="regular",
                     overtime_type="regular_season"
                 )
 

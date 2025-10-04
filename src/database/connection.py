@@ -92,7 +92,15 @@ class DatabaseConnection:
                 dynasty_id TEXT NOT NULL,
                 season INTEGER NOT NULL,
                 week INTEGER NOT NULL,
-                game_type TEXT DEFAULT 'regular',  -- regular, playoff, super_bowl
+
+                -- Season type discriminator for regular season vs playoffs
+                season_type TEXT NOT NULL DEFAULT 'regular_season',
+                -- Values: 'regular_season' | 'playoffs'
+
+                -- Specific game type for detailed tracking
+                game_type TEXT DEFAULT 'regular',
+                -- Values: 'regular', 'wildcard', 'divisional', 'conference', 'super_bowl'
+
                 home_team_id INTEGER NOT NULL,
                 away_team_id INTEGER NOT NULL,
                 home_score INTEGER NOT NULL,
@@ -119,11 +127,16 @@ class DatabaseConnection:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 dynasty_id TEXT NOT NULL,
                 game_id TEXT NOT NULL,
+
+                -- Season type for stat filtering and separation
+                season_type TEXT NOT NULL DEFAULT 'regular_season',
+                -- Values: 'regular_season' | 'playoffs'
+
                 player_id TEXT NOT NULL,
                 player_name TEXT,
                 team_id INTEGER NOT NULL,
                 position TEXT,
-                
+
                 -- Passing stats
                 passing_yards INTEGER DEFAULT 0,
                 passing_tds INTEGER DEFAULT 0,
@@ -451,8 +464,18 @@ class DatabaseConnection:
         # Create indexes for performance
         conn.execute("CREATE INDEX IF NOT EXISTS idx_games_dynasty_season ON games(dynasty_id, season, week)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_games_teams ON games(home_team_id, away_team_id)")
+
+        # Season type indexes for regular season/playoff separation (Phase 1 - Full Season Simulation)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_games_season_type ON games(dynasty_id, season, season_type)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_games_type ON games(game_type)")
+
         conn.execute("CREATE INDEX IF NOT EXISTS idx_player_stats_dynasty ON player_game_stats(dynasty_id, game_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_player_stats_player ON player_game_stats(player_id, dynasty_id)")
+
+        # Player stats season type indexes for filtering regular season vs playoff stats
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_stats_season_type ON player_game_stats(dynasty_id, season_type)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_stats_player_type ON player_game_stats(player_id, season_type)")
+
         conn.execute("CREATE INDEX IF NOT EXISTS idx_standings_dynasty ON standings(dynasty_id, season)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_standings_team ON standings(team_id, season)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_schedules_dynasty ON schedules(dynasty_id, season, week)")

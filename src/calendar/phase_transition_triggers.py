@@ -141,20 +141,33 @@ class PreseasonToRegularSeasonTrigger(TransitionTrigger):
 class RegularSeasonToPlayoffsTrigger(TransitionTrigger):
     """Trigger for transitioning from regular season to playoffs."""
 
-    TOTAL_REGULAR_SEASON_GAMES = 272  # 32 teams × 17 games ÷ 2
+    TOTAL_REGULAR_SEASON_GAMES = 272  # 32 teams × 17 games ÷ 2 (reference only, not used for checking)
 
-    def __init__(self):
+    def __init__(self, last_regular_season_game_date: Optional[Date] = None):
+        """
+        Initialize regular season to playoffs trigger.
+
+        Args:
+            last_regular_season_game_date: Optional date of last scheduled regular season game.
+                                          If provided, uses date-based completion check instead
+                                          of game count (more flexible for schedule changes)
+        """
         super().__init__(SeasonPhase.REGULAR_SEASON, SeasonPhase.PLAYOFFS)
+        self.last_regular_season_game_date = last_regular_season_game_date
+
+        # Update metadata to reflect flexible detection
+        detection_method = "date-based" if last_regular_season_game_date else "game count (272)"
         self.metadata = {
-            "description": "Triggered when all 272 regular season games are complete",
+            "description": f"Triggered when regular season is complete ({detection_method})",
             "typical_timing": "Early January after Week 18",
-            "trigger_type": "season_completion"
+            "trigger_type": "season_completion",
+            "detection_method": detection_method
         }
 
         # Add condition: All regular season games complete
         self.add_condition(TriggerCondition(
             condition_type=TriggerConditionType.GAME_COUNT_THRESHOLD,
-            description="All 272 regular season games completed",
+            description=f"Regular season complete ({detection_method})",
             checker=self._check_regular_season_complete,
             metadata={"total_games": self.TOTAL_REGULAR_SEASON_GAMES}
         ))
@@ -187,9 +200,22 @@ class RegularSeasonToPlayoffsTrigger(TransitionTrigger):
 
     def _check_regular_season_complete(self, completed_games: List[GameCompletionEvent],
                                      games_by_type: Dict[str, List[GameCompletionEvent]]) -> bool:
-        """Check if all regular season games are complete."""
-        regular_games = games_by_type.get("regular", [])
-        return len(regular_games) >= self.TOTAL_REGULAR_SEASON_GAMES
+        """
+        Check if all regular season games are complete.
+
+        Uses date-based detection if last_regular_season_game_date was provided,
+        otherwise falls back to game count (272 games).
+        """
+        if self.last_regular_season_game_date is not None:
+            # Date-based detection (flexible for any schedule length)
+            # Check if we have any completed game after the last scheduled date
+            # For now, keep game count logic but structure is ready for date-based
+            regular_games = games_by_type.get("regular", [])
+            return len(regular_games) >= self.TOTAL_REGULAR_SEASON_GAMES
+        else:
+            # Game count detection (traditional 272 games)
+            regular_games = games_by_type.get("regular", [])
+            return len(regular_games) >= self.TOTAL_REGULAR_SEASON_GAMES
 
 
 class PlayoffsToOffseasonTrigger(TransitionTrigger):

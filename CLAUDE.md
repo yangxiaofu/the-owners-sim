@@ -69,7 +69,7 @@ PYTHONPATH=src python cleveland_browns_vs_houston_texans_demo.py  # Complete Bro
 PYTHONPATH=src python demo.py  # Main demo entry point
 PYTHONPATH=src python test_full_game_simulator.py  # Full game simulator test
 
-# Interactive Season Simulation (PRIMARY INTERFACE)
+# Interactive Season Simulation (PRIMARY INTERFACE - Regular Season)
 PYTHONPATH=src python demo/interactive_season_sim/interactive_season_sim.py
 # Terminal-based interactive NFL season simulation with comprehensive controls:
 # - Day-by-day or week-by-week simulation
@@ -78,12 +78,25 @@ PYTHONPATH=src python demo/interactive_season_sim/interactive_season_sim.py
 # - Full database persistence with dynasty support
 # See demo/interactive_season_sim/QUICK_START.md for detailed usage
 
+# Interactive Playoff Simulation (Uses centralized PlayoffController)
+PYTHONPATH=src python demo/interactive_playoff_sim/interactive_playoff_sim.py
+# Terminal-based interactive NFL playoff simulation:
+# - Day/week/round advancement controls
+# - Wild Card → Divisional → Conference → Super Bowl
+# - Complete playoff bracket display
+# - Automatic round progression
+# See demo/interactive_playoff_sim/ for usage
+
 # Season Simulation Utilities
 PYTHONPATH=src python demo/interactive_season_sim/initialize_season_db.py  # Initialize new season database
 PYTHONPATH=src python demo/interactive_season_sim/schedule_generator_example.py  # Generate season schedule
 
 # Playoff System Demo
 PYTHONPATH=src python demo/playoff_seeder_demo/playoff_seeder_demo.py  # NFL playoff seeding and tiebreaker demonstration
+
+# Full Season Demo (PLANNED - In Development)
+# Future: demo/full_season_demo/ - Unified regular season → playoffs → offseason
+# See docs/plans/full_season_simulation_plan.md for implementation status
 
 # Legacy interactive interface (if available)
 PYTHONPATH=src python src/demo/interactive_interface.py  # Older team/season management interface
@@ -249,6 +262,11 @@ The simulation follows a layered architecture with clear separation of concerns:
 - `converters/`: Schedule to event conversion utilities
 
 **13. Playoff System (`src/playoff_system/`)**
+- `playoff_controller.py`: **Centralized playoff orchestration** (moved from demo/)
+  - Calendar advancement, bracket management, round progression
+  - Supports random OR real seeding from regular season standings
+  - Dynasty isolation and flexible simulation control (day/week/round)
+  - See `docs/architecture/playoff_controller.md` for details
 - `seeding/`: Complete NFL playoff seeding system with tiebreaker resolution
 - `management/`: Playoff tournament management and bracket generation
 - `constants/`: Playoff configuration and team structure definitions
@@ -278,6 +296,19 @@ The simulation follows a layered architecture with clear separation of concerns:
 - `dynasty_manager.py`: Dynasty lifecycle management, configuration, and metadata operations
 - Provides separation between dynasty management and season progression
 - Manages dynasty creation, team registry coordination, and validation
+
+**18. Workflow System (`src/workflows/`)**
+- `simulation_workflow.py`: Reusable 3-stage workflow orchestrator (Simulation → Statistics → Persistence)
+- `workflow_result.py`: Standardized result objects for consistent API
+- Toggleable persistence, flexible configuration, and dynasty isolation support
+- Used across demos, testing, and production season simulation
+
+**19. Events System (`src/events/`)**
+- `base_event.py`: Base event class and event result structures
+- `game_event.py`: GameEvent for NFL game simulation with metadata
+- `scouting_event.py`: Scouting and player evaluation events
+- `event_database_api.py`: Event storage and retrieval API
+- Complete event lifecycle management and execution framework
 
 ### Key Design Patterns
 
@@ -383,8 +414,14 @@ Comprehensive documentation is available in `docs/`:
   - `docs/how-to/full_game_simulator_usage.md` - FullGameSimulator configuration and usage
   - `docs/how-to/nfl_schedule_generator_usage.md` - NFL schedule generation
   - `docs/how-to/simulation-workflow.md` - Complete simulation workflow guide
-- **Planning Documents**: `docs/plans/` - Architecture plans and data flow analysis
-- **Interactive Season Sim**: `demo/interactive_season_sim/QUICK_START.md` - Quick start guide for interactive season simulation
+- **Planning Documents**:
+  - `docs/plans/full_season_simulation_plan.md` - **ACTIVE**: Unified season simulation (regular season → playoffs → offseason)
+  - `docs/plans/playoff_manager_plan.md` - Playoff system architecture and design
+  - `docs/plans/calendar_manager_plan.md` - Calendar system design
+  - `docs/plans/rosters-update-plans.md` - Player roster update strategy
+- **Interactive Demos**:
+  - `demo/interactive_season_sim/QUICK_START.md` - Quick start guide for interactive season simulation
+  - `demo/interactive_playoff_sim/` - Interactive playoff simulator documentation
 
 ## Common Issues and Troubleshooting
 
@@ -532,14 +569,35 @@ sim2 = FullGameSimulator(..., dynasty_id="user2_dynasty", database_path="shared.
 
 Key architectural updates in the codebase:
 
-1. **Dynasty System Addition**: New `src/dynasty/` module with `DynastyManager` for dynasty lifecycle management
-2. **Test Suite Reorganization**: Many test files have been removed or relocated - verify test file existence before running
-3. **Demo Consolidation**: Primary demos now in root directory (`cleveland_browns_vs_houston_texans_demo.py`, `demo.py`, `test_full_game_simulator.py`)
-4. **Player Data Structure**: Team-based player files in `src/data/players/team_XX_team_name.json` format
-5. **Database Flexibility**: Support for custom database paths and dynasty isolation in `FullGameSimulator`
-6. **Persistence Control**: Optional statistics persistence via `enable_persistence` parameter
-7. **Calendar System**: Database-backed calendar for event scheduling (some demos removed)
-8. **Coaching Staff Integration**: All 32 NFL teams mapped to coaching philosophies in `team_coaching_styles.json`
+1. **PlayoffController Centralization** (Oct 2025): Moved from `demo/` to `src/playoff_system/playoff_controller.py`
+   - Now accepts real playoff seeding from regular season standings (via `initial_seeding` parameter)
+   - Maintains backward compatibility with random seeding
+   - See `GAP1_IMPLEMENTATION_SUMMARY.md` and `docs/architecture/playoff_controller.md`
+
+2. **Full Season Simulation Plan** (Oct 2025): Active development of unified season simulation
+   - Target: Seamless regular season → playoffs → offseason progression
+   - See `docs/plans/full_season_simulation_plan.md` for implementation status
+   - Integrates `SeasonController` + `PlayoffController` + calendar system
+
+3. **Workflow System Addition**: New `src/workflows/` module with reusable simulation patterns
+   - `SimulationWorkflow`: 3-stage orchestrator (Simulation → Statistics → Persistence)
+   - Toggleable persistence, flexible configuration, standardized results
+
+4. **Dynasty System Addition**: New `src/dynasty/` module with `DynastyManager` for dynasty lifecycle management
+
+5. **Test Suite Reorganization**: Many test files have been removed or relocated - verify test file existence before running
+
+6. **Demo Consolidation**: Primary demos now in root directory (`cleveland_browns_vs_houston_texans_demo.py`, `demo.py`, `test_full_game_simulator.py`)
+
+7. **Player Data Structure**: Team-based player files in `src/data/players/team_XX_team_name.json` format
+
+8. **Database Flexibility**: Support for custom database paths and dynasty isolation in `FullGameSimulator`
+
+9. **Persistence Control**: Optional statistics persistence via `enable_persistence` parameter
+
+10. **Calendar System**: Database-backed calendar for event scheduling (some demos removed)
+
+11. **Coaching Staff Integration**: All 32 NFL teams mapped to coaching philosophies in `team_coaching_styles.json`
 
 ## Key Implementation Notes
 

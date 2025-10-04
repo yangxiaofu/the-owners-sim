@@ -14,16 +14,10 @@ This controller is the central component for playoff simulation, managing the in
 """
 
 import logging
-import sys
 import random
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 from pathlib import Path
-
-# Add parent directories to path for imports
-current_dir = Path(__file__).parent
-project_root = current_dir.parent.parent
-sys.path.insert(0, str(project_root / "src"))
 
 from calendar.calendar_component import CalendarComponent
 from calendar.simulation_executor import SimulationExecutor
@@ -88,6 +82,7 @@ class PlayoffController:
         dynasty_id: str = "default",
         season_year: int = 2024,
         wild_card_start_date: Optional[Date] = None,
+        initial_seeding: Optional[PlayoffSeeding] = None,
         enable_persistence: bool = True,
         verbose_logging: bool = True
     ):
@@ -99,6 +94,7 @@ class PlayoffController:
             dynasty_id: Dynasty context for data isolation
             season_year: NFL season year (e.g., 2024 for 2024-25 season)
             wild_card_start_date: Starting date for Wild Card round (defaults to Jan 11, 2025)
+            initial_seeding: Playoff seeding from regular season standings (if None, generates random seeding)
             enable_persistence: Whether to persist game results to database
             verbose_logging: Whether to print detailed progress messages
         """
@@ -170,8 +166,8 @@ class PlayoffController:
         self.total_games_played = 0
         self.total_days_simulated = 0
 
-        # Initialize playoff bracket with random seeding
-        self._initialize_playoff_bracket()
+        # Initialize playoff bracket with provided seeding or random seeding
+        self._initialize_playoff_bracket(initial_seeding)
 
         if self.verbose_logging:
             print(f"\n{'='*80}")
@@ -609,16 +605,21 @@ class PlayoffController:
 
     # ========== Private Helper Methods ==========
 
-    def _initialize_playoff_bracket(self):
+    def _initialize_playoff_bracket(self, initial_seeding: Optional[PlayoffSeeding] = None):
         """
-        Generate initial playoff bracket with random seeding.
+        Generate initial playoff bracket with provided or random seeding.
 
-        Creates random playoff seeding and schedules the Wild Card round.
+        Creates playoff seeding and schedules the Wild Card round.
         Checks for existing playoff events for this dynasty/season to avoid duplicates.
+
+        Args:
+            initial_seeding: Optional playoff seeding from regular season standings.
+                           If None, generates random seeding for standalone demos.
         """
+        seeding_type = "REAL SEEDING" if initial_seeding else "RANDOM SEEDING"
         if self.verbose_logging:
             print(f"\n{'='*80}")
-            print(f"INITIALIZING PLAYOFF BRACKET WITH RANDOM SEEDING")
+            print(f"INITIALIZING PLAYOFF BRACKET WITH {seeding_type}")
             print(f"{'='*80}")
 
         # Check if Wild Card round already scheduled for this dynasty/season
@@ -634,8 +635,11 @@ class PlayoffController:
                 print(f"\n✅ Found existing playoff bracket for dynasty '{self.dynasty_id}': {len(dynasty_playoff_events)} games")
                 print(f"   Reusing existing playoff schedule")
 
-            # Regenerate random seeding for display purposes (won't affect existing games)
-            self.original_seeding = self._generate_random_seeding()
+            # Use provided seeding if available, otherwise generate random seeding for display
+            if initial_seeding:
+                self.original_seeding = initial_seeding
+            else:
+                self.original_seeding = self._generate_random_seeding()
 
             # TODO: Reconstruct bracket structure from existing events if needed
             # For now, bracket will be populated as games are simulated
@@ -645,8 +649,11 @@ class PlayoffController:
             return
 
         # No existing playoff events for this dynasty - generate new bracket
-        # Generate random playoff seeding
-        self.original_seeding = self._generate_random_seeding()
+        # Use provided seeding if available, otherwise generate random seeding
+        if initial_seeding:
+            self.original_seeding = initial_seeding
+        else:
+            self.original_seeding = self._generate_random_seeding()
 
         if self.verbose_logging:
             print(f"\nAFC Seeding:")
