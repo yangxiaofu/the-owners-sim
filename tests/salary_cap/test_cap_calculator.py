@@ -13,7 +13,6 @@ Based on 2024-2025 NFL CBA rules.
 """
 
 import pytest
-from salary_cap.cap_calculator import CapCalculator
 
 
 class TestSigningBonusProration:
@@ -360,6 +359,214 @@ class TestCapSpaceCalculations:
 
         # Should decrease by $5M
         assert new_cap == initial_cap - 5_000_000
+
+    def test_cap_space_offseason_mode_with_top_51(
+        self,
+        cap_calculator,
+        cap_database_api,
+        initialized_team_cap,
+        test_team_id,
+        test_season,
+        test_dynasty_id
+    ):
+        """
+        Test cap space calculation in offseason mode uses top_51_total.
+
+        This tests the fix for the demo bug where top_51_total wasn't set,
+        causing incorrect cap space calculations in offseason mode.
+        """
+        # Set team cap with different values for active_contracts vs top_51
+        # Scenario: Team has 60 contracts totaling $200M, but only top 51 = $180M
+        cap_database_api.update_team_cap(
+            test_team_id,
+            test_season,
+            test_dynasty_id,
+            active_contracts_total=200_000_000,  # All 60 contracts
+            top_51_total=180_000_000,  # Only top 51 contracts
+            dead_money_total=5_000_000,
+            ltbe_incentives_total=2_000_000,
+            practice_squad_total=1_500_000,
+            is_top_51_active=True
+        )
+
+        # Calculate cap space in offseason mode
+        cap_space = cap_calculator.calculate_team_cap_space(
+            test_team_id,
+            test_season,
+            test_dynasty_id,
+            roster_mode="offseason"
+        )
+
+        # Expected: $279.2M - ($180M top-51 + $5M dead + $2M incentives + $1.5M practice)
+        # = $279.2M - $188.5M = $90.7M
+        expected_space = 279_200_000 - 188_500_000
+        assert cap_space == expected_space
+
+    def test_cap_space_regular_season_mode_uses_all_contracts(
+        self,
+        cap_calculator,
+        cap_database_api,
+        initialized_team_cap,
+        test_team_id,
+        test_season,
+        test_dynasty_id
+    ):
+        """
+        Test cap space calculation in regular season mode uses all active contracts.
+
+        In regular season, ALL 53 contracts count (not just top-51).
+        """
+        # Set same scenario as above but in regular season mode
+        cap_database_api.update_team_cap(
+            test_team_id,
+            test_season,
+            test_dynasty_id,
+            active_contracts_total=200_000_000,  # All 53 contracts
+            top_51_total=180_000_000,  # Top 51 (ignored in regular season)
+            dead_money_total=5_000_000,
+            ltbe_incentives_total=2_000_000,
+            practice_squad_total=1_500_000,
+            is_top_51_active=False  # Regular season mode
+        )
+
+        # Calculate cap space in regular season mode
+        cap_space = cap_calculator.calculate_team_cap_space(
+            test_team_id,
+            test_season,
+            test_dynasty_id,
+            roster_mode="regular_season"
+        )
+
+        # Expected: $279.2M - ($200M all contracts + $5M dead + $2M incentives + $1.5M practice)
+        # = $279.2M - $208.5M = $70.7M
+        expected_space = 279_200_000 - 208_500_000
+        assert cap_space == expected_space
+
+    def test_cap_space_offseason_missing_top_51_defaults_to_zero(
+        self,
+        cap_calculator,
+        cap_database_api,
+        initialized_team_cap,
+        test_team_id,
+        test_season,
+        test_dynasty_id
+    ):
+        """
+        Test that missing top_51_total defaults to 0 in offseason mode.
+
+        This was the original bug in the demo - top_51_total not set,
+        causing it to default to 0 and showing too much cap space.
+        """
+        # Set team cap WITHOUT top_51_total (simulating the bug)
+        cap_database_api.update_team_cap(
+            test_team_id,
+            test_season,
+            test_dynasty_id,
+            active_contracts_total=180_000_000,
+            # top_51_total NOT set - will default to 0
+            dead_money_total=5_000_000,
+            ltbe_incentives_total=2_000_000,
+            practice_squad_total=1_500_000,
+            is_top_51_active=True
+        )
+
+        # Calculate cap space in offseason mode
+        cap_space = cap_calculator.calculate_team_cap_space(
+            test_team_id,
+            test_season,
+            test_dynasty_id,
+            roster_mode="offseason"
+        )
+
+        # Expected: $279.2M - ($0 top-51 + $5M dead + $2M incentives + $1.5M practice)
+        # = $279.2M - $8.5M = $270.7M (unrealistically high!)
+        expected_space = 279_200_000 - 8_500_000
+        assert cap_space == expected_space
+
+
+class TestTop51Calculations:
+    """Test top-51 roster calculation logic."""
+
+    def test_calculate_top_51_with_exactly_51_contracts(
+        self,
+        cap_calculator,
+        cap_database_api,
+        contract_manager,
+        test_team_id,
+        test_season,
+        test_dynasty_id
+    ):
+        """Test top-51 calculation with exactly 51 contracts."""
+        # Create 51 contracts with cap hits from $1M to $51M
+        total_expected = 0
+        for i in range(1, 52):
+            player_id = 1000 + i
+            cap_hit = i * 1_000_000
+            total_expected += cap_hit
+
+            # Create simple contract
+            contract_manager.create_contract(
+                player_id=player_id,
+                team_id=test_team_id,
+                dynasty_id=test_dynasty_id,
+                contract_years=1,
+                total_value=cap_hit,
+                signing_bonus=0,
+                base_salaries=[cap_hit],
+                season=test_season
+            )
+
+        # Calculate top-51
+        top_51_total = cap_calculator.calculate_top_51_total(
+            test_team_id,
+            test_season,
+            test_dynasty_id
+        )
+
+        # Should be sum of all 51 contracts: (1+2+...+51) million
+        assert top_51_total == total_expected
+
+    def test_calculate_top_51_with_60_contracts_excludes_bottom_9(
+        self,
+        cap_calculator,
+        cap_database_api,
+        contract_manager,
+        test_team_id,
+        test_season,
+        test_dynasty_id
+    ):
+        """
+        Test top-51 calculation with 60 contracts (typical offseason roster).
+
+        Should only include top 51 contracts, excluding the 9 lowest.
+        """
+        # Create 60 contracts with cap hits from $1M to $60M
+        for i in range(1, 61):
+            player_id = 1000 + i
+            cap_hit = i * 1_000_000
+
+            contract_manager.create_contract(
+                player_id=player_id,
+                team_id=test_team_id,
+                dynasty_id=test_dynasty_id,
+                contract_years=1,
+                total_value=cap_hit,
+                signing_bonus=0,
+                base_salaries=[cap_hit],
+                season=test_season
+            )
+
+        # Calculate top-51
+        top_51_total = cap_calculator.calculate_top_51_total(
+            test_team_id,
+            test_season,
+            test_dynasty_id
+        )
+
+        # Top 51 = contracts 10-60 (excluding 1-9)
+        # Sum = (10+11+...+60) million
+        expected_total = sum(i * 1_000_000 for i in range(10, 61))
+        assert top_51_total == expected_total
 
 
 class TestTransactionValidation:

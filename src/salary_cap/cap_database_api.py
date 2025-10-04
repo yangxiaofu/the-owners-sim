@@ -771,3 +771,89 @@ class CapDatabaseAPI:
                 ORDER BY season
             ''', (start_year, end_year))
             return [dict(row) for row in cursor.fetchall()]
+
+    # ========================================================================
+    # FRANCHISE TAG QUERY OPERATIONS
+    # ========================================================================
+
+    def get_player_franchise_tags(
+        self,
+        player_id: int,
+        team_id: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all franchise tags for a player with a specific team.
+
+        Args:
+            player_id: Player ID
+            team_id: Team ID
+
+        Returns:
+            List of franchise tag records
+        """
+        with sqlite3.connect(self.database_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute('''
+                SELECT * FROM franchise_tags
+                WHERE player_id = ? AND team_id = ?
+                ORDER BY season DESC
+            ''', (player_id, team_id))
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_team_franchise_tags(
+        self,
+        team_id: int,
+        season: int,
+        dynasty_id: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all franchise tags used by team in a season.
+
+        Args:
+            team_id: Team ID
+            season: Season year
+            dynasty_id: Dynasty identifier
+
+        Returns:
+            List of franchise tag records
+        """
+        with sqlite3.connect(self.database_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute('''
+                SELECT * FROM franchise_tags
+                WHERE team_id = ? AND season = ? AND dynasty_id = ?
+            ''', (team_id, season, dynasty_id))
+            return [dict(row) for row in cursor.fetchall()]
+
+    def update_franchise_tag_contract(
+        self,
+        tag_id: int,
+        contract_id: int
+    ) -> None:
+        """
+        Link a contract to a franchise tag.
+
+        Args:
+            tag_id: Franchise tag ID
+            contract_id: Contract ID
+        """
+        with sqlite3.connect(self.database_path) as conn:
+            conn.execute('''
+                UPDATE franchise_tags
+                SET extension_contract_id = ?
+                WHERE tag_id = ?
+            ''', (contract_id, tag_id))
+            conn.commit()
+
+    def _get_connection(self) -> sqlite3.Connection:
+        """
+        Get a database connection.
+
+        Returns:
+            SQLite connection
+
+        Note: Caller is responsible for closing connection.
+        """
+        conn = sqlite3.connect(self.database_path)
+        conn.execute("PRAGMA foreign_keys = ON")
+        return conn

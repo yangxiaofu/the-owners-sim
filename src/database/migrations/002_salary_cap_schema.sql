@@ -351,6 +351,7 @@ SELECT
     tsc.dead_money_total,
     tsc.ltbe_incentives_total,
     tsc.practice_squad_total,
+    tsc.top_51_total,
     (tsc.active_contracts_total + tsc.dead_money_total + tsc.ltbe_incentives_total + tsc.practice_squad_total) as total_cap_used,
     (tsc.salary_cap_limit + tsc.carryover_from_previous - tsc.active_contracts_total - tsc.dead_money_total - tsc.ltbe_incentives_total - tsc.practice_squad_total) as cap_space_available,
     tsc.is_top_51_active,
