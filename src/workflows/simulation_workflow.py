@@ -253,19 +253,29 @@ class SimulationWorkflow:
             # Use existing PlayerStatsQueryService for statistics
             all_player_stats = PlayerStatsQueryService.get_live_stats(simulator)
 
+            # WARNING: Check for empty player stats
+            if len(all_player_stats) == 0:
+                self.logger.warning("⚠️  No player stats found! Game may not have been simulated properly")
+                print("⚠️  WARNING: No player stats found! Player stats will NOT be persisted.")
+
             if self.config.verbose_logging:
                 print(f"   ✅ Statistics gathered for {len(all_player_stats)} players")
 
-                # Get team breakdowns for additional info
-                home_players = PlayerStatsQueryService.get_stats_by_team(
-                    all_player_stats, game_event.home_team_id
-                )
-                away_players = PlayerStatsQueryService.get_stats_by_team(
-                    all_player_stats, game_event.away_team_id
-                )
+                if len(all_player_stats) > 0:
+                    # Get team breakdowns for additional info
+                    home_players = PlayerStatsQueryService.get_stats_by_team(
+                        all_player_stats, game_event.home_team_id
+                    )
+                    away_players = PlayerStatsQueryService.get_stats_by_team(
+                        all_player_stats, game_event.away_team_id
+                    )
 
-                print(f"   Home team players: {len(home_players)}")
-                print(f"   Away team players: {len(away_players)}")
+                    print(f"   Home team players: {len(home_players)}")
+                    print(f"   Away team players: {len(away_players)}")
+
+                    # Show sample player for debugging
+                    sample_player = all_player_stats[0]
+                    print(f"   Sample player: {sample_player.player_name} (Team {sample_player.team_id}, {sample_player.position})")
 
             return all_player_stats
 

@@ -85,7 +85,7 @@ class SimulationController(QObject):
             season_year=self.season,
             start_date=start_date,
             enable_persistence=True,
-            verbose_logging=False
+            verbose_logging=True  # Enable for player stats debugging
         )
 
     def _get_state_from_db(self) -> Optional[Dict[str, Any]]:

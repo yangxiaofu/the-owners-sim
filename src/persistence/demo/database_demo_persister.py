@@ -187,8 +187,8 @@ class DatabaseDemoPersister(DemoPersister):
                     tackles_total, sacks, interceptions,
                     field_goals_made, field_goals_attempted,
                     extra_points_made, extra_points_attempted,
-                    offensive_snaps, defensive_snaps, total_snaps
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    snap_counts_offense, snap_counts_defense
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
 
             persisted_count = 0
@@ -222,8 +222,7 @@ class DatabaseDemoPersister(DemoPersister):
                         getattr(player_stat, 'extra_points_made', 0),
                         getattr(player_stat, 'extra_points_attempted', 0),
                         getattr(player_stat, 'offensive_snaps', 0),
-                        getattr(player_stat, 'defensive_snaps', 0),
-                        getattr(player_stat, 'total_snaps', 0)
+                        getattr(player_stat, 'defensive_snaps', 0)
                     )
 
                     conn.execute(query, params)
@@ -231,7 +230,12 @@ class DatabaseDemoPersister(DemoPersister):
 
                 except Exception as e:
                     failed_count += 1
-                    result.add_error(f"Failed to persist player {getattr(player_stat, 'player_name', 'unknown')}: {str(e)}")
+                    player_name = getattr(player_stat, 'player_name', 'unknown')
+                    error_msg = f"Failed to persist player {player_name}: {str(e)}"
+                    result.add_error(error_msg)
+                    # Print to console for immediate debugging visibility
+                    print(f"❌ [DatabaseDemoPersister] {error_msg}")
+                    self.logger.error(error_msg, exc_info=True)
 
             result.records_persisted = persisted_count
             result.records_failed = failed_count
