@@ -27,19 +27,24 @@ class FullGameSimulator:
     added piece by piece for easy testing and development.
     """
     
-    def __init__(self, away_team_id: int, home_team_id: int, overtime_type: str = "regular_season"):
+    def __init__(self, away_team_id: int, home_team_id: int,
+                 dynasty_id: Optional[str] = None,
+                 db_path: Optional[str] = None,
+                 overtime_type: str = "regular_season"):
         """
-        Initialize game simulator with two teams
+        Initialize game simulator with two teams.
 
         Args:
             away_team_id: Numerical team ID for away team (1-32)
             home_team_id: Numerical team ID for home team (1-32)
+            dynasty_id: Dynasty context (REQUIRED for database rosters, None for demo mode)
+            db_path: Database path (REQUIRED for database rosters, None for demo mode)
             overtime_type: Type of overtime rules ("regular_season" or "playoffs")
         """
         # Load team data
         self.away_team = get_team_by_id(away_team_id)
         self.home_team = get_team_by_id(home_team_id)
-        
+
         # Validate team loading
         if not self.away_team:
             raise ValueError(f"Could not load away team with ID: {away_team_id}")
@@ -47,39 +52,54 @@ class FullGameSimulator:
             raise ValueError(f"Could not load home team with ID: {home_team_id}")
         if away_team_id == home_team_id:
             raise ValueError("Away and home teams must be different")
-        
+
         # Store team IDs for easy access
         self.away_team_id = away_team_id
         self.home_team_id = home_team_id
-        
+
+        # Store dynasty context
+        self.dynasty_id = dynasty_id
+        self.db_path = db_path
+
         # Store overtime type for game simulation
         self.overtime_type = OvertimeType.PLAYOFFS if overtime_type == "playoffs" else OvertimeType.REGULAR_SEASON
 
-        # Load team rosters
-        self.away_roster = TeamRosterGenerator.load_team_roster(away_team_id)
-        self.home_roster = TeamRosterGenerator.load_team_roster(home_team_id)
-        
+        # Load team rosters (database or synthetic)
+        if dynasty_id and db_path:
+            # Production mode: Load from database
+            self.away_roster = TeamRosterGenerator.load_team_roster(
+                away_team_id, dynasty_id=dynasty_id, db_path=db_path
+            )
+            self.home_roster = TeamRosterGenerator.load_team_roster(
+                home_team_id, dynasty_id=dynasty_id, db_path=db_path
+            )
+            roster_source = f"database (dynasty: {dynasty_id})"
+        else:
+            # Demo mode: Use synthetic rosters
+            self.away_roster = TeamRosterGenerator.generate_synthetic_roster(away_team_id)
+            self.home_roster = TeamRosterGenerator.generate_synthetic_roster(home_team_id)
+            roster_source = "synthetic (demo mode)"
+
         print(f"🏈 Full Game Simulator Initialized")
         print(f"   Away Team: {self.away_team.full_name} (ID: {self.away_team_id})")
         print(f"   Home Team: {self.home_team.full_name} (ID: {self.home_team_id})")
         print(f"   Matchup: {self.away_team.abbreviation} @ {self.home_team.abbreviation}")
-        print(f"   Away Roster: {len(self.away_roster)} players")
-        print(f"   Home Roster: {len(self.home_roster)} players")
-        
+        print(f"   Away Roster: {len(self.away_roster)} players ({roster_source})")
+        print(f"   Home Roster: {len(self.home_roster)} players ({roster_source})")
+
         # Initialize GameManager for core game management
         self.game_manager = GameManager(self.home_team, self.away_team)
-        
+
         # Load coaching staff
         self.away_coaching_staff = self._load_coaching_staff(away_team_id)
         self.home_coaching_staff = self._load_coaching_staff(home_team_id)
-        
+
         print(f"   Away Coaching Staff: {self.away_coaching_staff['head_coach']['name']}")
         print(f"   Home Coaching Staff: {self.home_coaching_staff['head_coach']['name']}")
-        print(f"   Statistics Persistence: Disabled (standalone mode)")
 
         # Start game (includes coin toss)
         self.game_manager.start_game()
-        
+
         # Display coin toss results
         coin_toss_results = self.game_manager._get_team_name(self.game_manager.coin_toss_winner)
         receiving_team = self.game_manager.possession_manager.get_possessing_team_id()

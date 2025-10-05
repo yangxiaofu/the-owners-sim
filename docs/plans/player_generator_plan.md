@@ -1,8 +1,8 @@
 # Player Generator System - Step-by-Step Development Plan
 
-**Version**: 1.0
+**Version**: 1.1
 **Date**: October 5, 2025
-**Status**: Planning Phase
+**Status**: Sprint 1 Complete (Core Infrastructure)
 **Target**: Flexible NFL player generation system supporting Draft, UDFA, International, and Custom contexts
 **Reference Specification**: `docs/specifications/player_generator_system.md`
 
@@ -23,9 +23,7 @@
    - [Sprint 7: Development Curves](#sprint-7-development-curves)
    - [Sprint 8: Traits & Names](#sprint-8-traits--names)
    - [Sprint 9: College & Background](#sprint-9-college--background)
-   - [Sprint 10: Contracts & Integration](#sprint-10-contracts--integration)
-   - [Sprint 11: Advanced Features](#sprint-11-advanced-features)
-   - [Sprint 12: API & Dynasty](#sprint-12-api--dynasty)
+   - [Sprint 10: Advanced Features](#sprint-10-advanced-features)
 5. [Testing Strategy](#testing-strategy)
 6. [Integration Points](#integration-points)
 7. [Risk Assessment](#risk-assessment)
@@ -57,16 +55,15 @@ Create a comprehensive, flexible player generation system that can produce reali
 - **Statistical Realism**: Normal and beta distributions matching real NFL talent spreads
 - **Scouting Uncertainty**: Separation of true vs scouted ratings for draft risk
 - **Development System**: Age-based growth curves with peak performance periods
-- **Dynasty Integration**: Multi-season talent pool management with class-to-class variation
-- **Complete Integration**: Seamless connection to draft events, free agency, and salary cap
+- **Player Conversion**: Clean conversion to existing Player class format
 
 ### Key Benefits
 
 - **Realistic Draft Classes**: Varied talent with busts, reaches, and hidden gems
-- **Repeatable Process**: Consistent player quality across multiple dynasties
+- **Repeatable Process**: Consistent player quality across multiple generations
 - **Designer Flexibility**: Full control over generation parameters when needed
 - **Statistical Authenticity**: Attributes that mirror real NFL distributions
-- **Long-term Engagement**: Development curves keep players interesting over careers
+- **Long-term Value**: Development curves and scouting create interesting player profiles
 
 ---
 
@@ -82,19 +79,16 @@ Create a comprehensive, flexible player generation system that can produce reali
 ✅ **FR-6**: Create development curves with position-specific peak ages
 ✅ **FR-7**: Support trait assignment (special abilities and weaknesses)
 ✅ **FR-8**: Generate realistic player backgrounds (college, hometown, combine stats)
-✅ **FR-9**: Integrate with existing contract system for rookie deals
-✅ **FR-10**: Maintain dynasty isolation for multi-season consistency
 
 ### Technical Requirements
 
 ✅ **TR-1**: Statistical distribution system (normal, beta, bounded) for attributes
 ✅ **TR-2**: Attribute correlation engine (size/speed, experience/awareness)
 ✅ **TR-3**: Position-specific validation and constraints
-✅ **TR-4**: Database persistence for generated players
-✅ **TR-5**: Event system integration (DraftPickEvent, UFASigningEvent)
-✅ **TR-6**: JSON-based archetype definitions for designer modification
-✅ **TR-7**: Comprehensive test coverage (>80% for core generation logic)
-✅ **TR-8**: Performance optimization (generate 262-player class in <5 seconds)
+✅ **TR-4**: JSON-based archetype definitions for designer modification
+✅ **TR-5**: Comprehensive test coverage (>80% for core generation logic)
+✅ **TR-6**: Performance optimization (generate 262-player class in <5 seconds)
+✅ **TR-7**: Conversion to existing Player class format
 
 ### Quality Requirements
 
@@ -488,10 +482,6 @@ class GenerationConfig:
     age: Optional[int] = None
     development_override: Optional[str] = None  # Override development curve
 
-    # Dynasty
-    dynasty_id: str = "default"
-    class_id: Optional[str] = None  # For tracking draft class
-
     def get_overall_range(self) -> tuple[int, int]:
         """Calculate overall range based on context and round."""
         if self.context == GenerationContext.NFL_DRAFT and self.draft_round:
@@ -683,9 +673,7 @@ class GeneratedPlayer:
     development: Optional[DevelopmentProfile] = None
     traits: List[str] = field(default_factory=list)
 
-    # Dynasty tracking
-    dynasty_id: str = "default"
-    draft_class_id: Optional[str] = None
+    # Draft metadata
     draft_round: Optional[int] = None
     draft_pick: Optional[int] = None
 
@@ -721,7 +709,6 @@ def test_generated_player_creation():
         scouted_overall=85,
         archetype_id="pocket_passer_qb",
         generation_context="nfl_draft",
-        dynasty_id="test_dynasty",
         draft_round=1,
         draft_pick=15
     )
@@ -934,6 +921,40 @@ def test_weighted_archetype_selection():
 - ✅ Weighted selection respects frequency values
 - ✅ Registry provides query methods for archetype access
 - ✅ Invalid archetypes are rejected with clear error messages
+
+---
+
+### Sprint 1 Completion Summary
+
+**Status**: ✅ **COMPLETE** (October 5, 2025)
+
+**Implemented Components**:
+1. ✅ Statistical Distribution Module (`src/player_generation/core/distributions.py`)
+2. ✅ Attribute Correlation System (`src/player_generation/core/correlations.py`)
+3. ✅ Player Archetype Base Class (`src/player_generation/archetypes/base_archetype.py`)
+4. ✅ Player Generation Context (`src/player_generation/core/generation_context.py`)
+5. ✅ Generated Player Data Model (`src/player_generation/models/generated_player.py`)
+6. ✅ Archetype Registry and Loader (`src/player_generation/archetypes/archetype_registry.py`)
+
+**Test Results**:
+- **Total Tests**: 21 tests
+- **Test Status**: All passing (100%)
+- **Test File**: `tests/player_generation/test_sprint1.py`
+- **Coverage**: Core infrastructure components fully tested
+
+**Key Achievements**:
+- Complete directory structure created under `src/player_generation/`
+- All 6 core infrastructure components implemented and tested
+- Statistical distribution system operational with normal and beta distributions
+- Attribute correlation engine working with negative/positive correlations
+- Archetype system foundation complete with validation
+- Generation context supports all target scenarios (Draft, UDFA, International, Custom)
+- Player data model ready for integration with existing Player class
+
+**Next Steps**:
+- Proceed to Sprint 2 for basic player generation implementation
+- Begin implementing attribute generator and name generator
+- Create core player generator with archetype selection
 
 ---
 
@@ -1326,8 +1347,6 @@ class PlayerGenerator:
             true_overall=true_overall,
             archetype_id=archetype.archetype_id,
             generation_context=config.context.value,
-            dynasty_id=config.dynasty_id,
-            draft_class_id=config.class_id,
             draft_round=config.draft_round,
             draft_pick=config.draft_pick
         )
@@ -1473,13 +1492,10 @@ class DraftClassGenerator:
 
     def generate_draft_class(
         self,
-        year: int,
-        dynasty_id: str = "default",
-        class_id: str = None
+        year: int
     ) -> List[GeneratedPlayer]:
         """Generate complete draft class."""
 
-        class_id = class_id or f"draft_class_{year}"
         draft_class = []
 
         pick_number = 1
@@ -1487,8 +1503,6 @@ class DraftClassGenerator:
             round_players = self._generate_round(
                 round_num=round_num,
                 year=year,
-                dynasty_id=dynasty_id,
-                class_id=class_id,
                 start_pick=pick_number
             )
             draft_class.extend(round_players)
@@ -1500,8 +1514,6 @@ class DraftClassGenerator:
         self,
         round_num: int,
         year: int,
-        dynasty_id: str,
-        class_id: str,
         start_pick: int
     ) -> List[GeneratedPlayer]:
         """Generate all players for a single round."""
@@ -1517,9 +1529,7 @@ class DraftClassGenerator:
                 position=position,
                 draft_round=round_num,
                 draft_pick=pick_number,
-                draft_year=year,
-                dynasty_id=dynasty_id,
-                class_id=class_id
+                draft_year=year
             )
 
             player = self.generator.generate_player(config)
@@ -1889,6 +1899,41 @@ def test_player_dict_conversion():
 - ✅ Draft metadata is preserved in conversion
 - ✅ Default jersey numbers follow NFL position rules
 - ✅ Dictionary conversion maintains all necessary data
+
+---
+
+### Sprint 2 Completion Summary
+
+**Status**: ✅ **COMPLETE** (October 5, 2025)
+
+**Implemented Components**:
+1. ✅ Attribute Generator (`src/player_generation/generators/attribute_generator.py`)
+2. ✅ Name Generator (`src/player_generation/generators/name_generator.py`)
+3. ✅ Player Generator (`src/player_generation/generators/player_generator.py`)
+4. ✅ Draft Class Generator (`src/player_generation/generators/draft_class_generator.py`)
+
+**Test Results**:
+- **Total Tests**: 6 tests (all passing)
+- **Test Status**: ✅ All tests verified and passing
+- **Test File**: `tests/player_generation/test_sprint2.py`
+- **Coverage**: All 4 generator components tested with multiple scenarios
+- **Test Execution**: Successfully executed with PYTHONPATH=src
+
+**Key Achievements**:
+- Complete generator module created under `src/player_generation/generators/`
+- Attribute generation respects archetype ranges and correlations
+- Position-weighted overall calculation implemented for all NFL positions
+- Name generator creates realistic, unique player names
+- Player ID generation contextual (DRAFT_YYYY_XXX, UDFA_XXXX, GEN_XXXX)
+- Overall range enforcement from generation context working correctly
+- Draft class generator produces complete 7-round, 224-player draft classes
+- Position distribution per round realistic and NFL-accurate
+- Round-based overall trending (Round 1 > Round 7) verified
+
+**Next Steps**:
+- Proceed to Sprint 3 for archetype JSON configuration files
+- Create realistic archetypes for all 14 NFL positions
+- Define multiple archetypes per position for diversity
 
 ---
 
@@ -2396,8 +2441,6 @@ class DraftClassGenerator:
     def generate_draft_class_with_variation(
         self,
         year: int,
-        dynasty_id: str = "default",
-        class_id: str = None,
         talent_level: DraftClassTalentLevel = None
     ) -> List[GeneratedPlayer]:
         """Generate draft class with talent variation and position scarcity."""
@@ -2406,7 +2449,6 @@ class DraftClassGenerator:
         if talent_level is None:
             talent_level = TalentClassGenerator.determine_class_talent()
 
-        class_id = class_id or f"draft_class_{year}"
         draft_class = []
         elite_count = {}  # Track elite players by position
 
@@ -2417,8 +2459,6 @@ class DraftClassGenerator:
             round_players = self._generate_round_with_variation(
                 round_num=round_num,
                 year=year,
-                dynasty_id=dynasty_id,
-                class_id=class_id,
                 start_pick=pick_number,
                 talent_modifier=talent_modifier,
                 elite_count=elite_count
@@ -2432,8 +2472,6 @@ class DraftClassGenerator:
         self,
         round_num: int,
         year: int,
-        dynasty_id: str,
-        class_id: str,
         start_pick: int,
         talent_modifier: int,
         elite_count: Dict[str, int]
@@ -2451,9 +2489,7 @@ class DraftClassGenerator:
                 position=position,
                 draft_round=round_num,
                 draft_pick=pick_number,
-                draft_year=year,
-                dynasty_id=dynasty_id,
-                class_id=class_id
+                draft_year=year
             )
 
             # Apply talent modifier
@@ -2634,27 +2670,11 @@ def test_position_distribution_balance():
 
 ---
 
-### Sprint 10: Contracts & Integration
-**Duration**: 3-4 days
-**Goal**: Integrate with contract and salary cap systems
-
-*(Steps 55-58 cover rookie contracts, event integration, database persistence...)*
-
----
-
-### Sprint 11: Advanced Features
+### Sprint 10: Advanced Features
 **Duration**: 2-3 days
 **Goal**: Add UDFA and international player generation
 
-*(Steps 59-60 cover UDFA pools, international leagues...)*
-
----
-
-### Sprint 12: API & Dynasty
-**Duration**: 2-3 days
-**Goal**: Create public API and dynasty support
-
-*(Steps 61-62 cover unified API, dynasty talent pools, multi-season consistency...)*
+*(Steps 55-56 cover UDFA pools, international leagues...)*
 
 ---
 
@@ -2687,25 +2707,10 @@ def test_position_distribution_balance():
 
 ## Integration Points
 
-### Event System
-- `DraftPickEvent`: Triggered when player is selected
-- `UFASigningEvent`: For UDFA and international signings
-- Event data includes: player_id, true_ratings, scouted_ratings, archetype_id
-
-### Salary Cap System
-- Rookie contract calculation based on draft position
-- Signing bonus and guaranteed money structures
-- Cap hit calculations for new players
-
-### Database
-- `players` table: Store generated player data
-- `draft_classes` table: Track class metadata (year, talent_level)
-- `scouting_reports` table: Store scouting evaluations
-
-### Dynasty Mode
-- Class-to-class variation tracking
-- Talent pool management across seasons
-- Historical draft class comparison
+### Player Class Conversion
+- Clean conversion from GeneratedPlayer to existing Player class
+- Preservation of all attribute ratings and metadata
+- Support for scouted vs true ratings display
 
 ---
 
@@ -2754,22 +2759,17 @@ def test_position_distribution_balance():
 ### Phase 3: Advanced Features (Weeks 5-6)
 - **Week 5**: Sprints 7-8 (Development + Traits)
   - Milestone: Age-based development curves
-- **Week 6**: Sprints 9-10 (Background + Integration)
-  - Milestone: Full event system integration
+- **Week 6**: Sprints 9-10 (Background + Advanced Features)
+  - Milestone: College backgrounds, UDFA, international players
 
-### Phase 4: Completion (Week 7)
-- **Week 7**: Sprints 11-12 (Advanced + API)
-  - Milestone: Public API, UDFA, international players
-
-### Final Deliverables (Week 7)
+### Final Deliverables (Week 6)
 - ✅ 30+ position-specific archetypes
 - ✅ Complete draft class generator (262 players)
 - ✅ Scouting system with error and confidence
 - ✅ Development curves and aging
 - ✅ Trait and background systems
-- ✅ Full integration with events, contracts, database
 - ✅ UDFA and international player support
-- ✅ Dynasty mode with multi-season consistency
+- ✅ Player class conversion support
 - ✅ Comprehensive test suite (>80% coverage)
 - ✅ Documentation and API reference
 
@@ -2790,13 +2790,7 @@ def test_position_distribution_balance():
 - ✅ Attribute distributions match NFL statistical profiles
 - ✅ Draft class variation produces weak/average/elite classes
 - ✅ Zero crashes or data corruption in generation pipeline
-
-### Integration Metrics
 - ✅ 100% compatibility with existing Player class
-- ✅ Seamless DraftPickEvent and UFASigningEvent integration
-- ✅ Rookie contracts calculate correctly for all positions
-- ✅ Database persistence preserves all generation metadata
-- ✅ Dynasty mode maintains class quality across multiple seasons
 
 ---
 
@@ -2832,8 +2826,7 @@ generator = PlayerGenerator()
 class_gen = DraftClassGenerator(generator)
 
 draft_class = class_gen.generate_draft_class_with_variation(
-    year=2025,
-    dynasty_id="my_dynasty"
+    year=2025
 )
 
 print(f"Generated {len(draft_class)} players")

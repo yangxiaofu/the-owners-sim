@@ -1,9 +1,9 @@
 import random
-from typing import List, Dict, Any
+import json
+from typing import List, Dict, Any, Optional
 from .players.player import Player, Position
 from play_engine.mechanics.formations import OffensiveFormation, DefensiveFormation, FormationMapper
 from .teams.team_loader import get_team_by_id, Team
-from .players.player_loader import get_real_roster_for_team, has_real_roster_data, RealPlayer
 
 
 class PersonnelPackageManager:
@@ -117,71 +117,99 @@ class PersonnelPackageManager:
 
 
 class TeamRosterGenerator:
-    """Utility class to generate sample team rosters for testing"""
-    
+    """Utility class for team roster management (database-backed)."""
+
     @classmethod
-    def load_team_roster(cls, team_id: int) -> List[Player]:
+    def load_team_roster(cls, team_id: int,
+                        dynasty_id: Optional[str] = None,
+                        db_path: Optional[str] = None) -> List[Player]:
         """
-        Load complete team roster from available data sources
-        
-        First attempts to load real NFL player data from JSON configuration,
-        falls back to synthetic roster generation if real data unavailable.
-        
+        Load team roster from DATABASE ONLY.
+
         Args:
-            team_id: Numerical team ID (1-32) to load roster for
-            
+            team_id: Team ID (1-32)
+            dynasty_id: Dynasty context (REQUIRED for database loading)
+            db_path: Database path (REQUIRED for database loading)
+
         Returns:
-            List of Player objects representing the team's complete roster
+            List of Player objects from database
+
+        Raises:
+            ValueError: If dynasty_id or db_path missing (no fallbacks)
+            ValueError: If no roster found in database
+
+        Note:
+            For standalone demos without dynasties, use generate_synthetic_roster()
         """
-        # Check if real roster data exists for this team
-        if has_real_roster_data(team_id):
-            return cls.generate_real_roster(team_id)
-        
-        # Fall back to synthetic roster generation
-        return cls.generate_synthetic_roster(team_id)
-    
+        # Database loading is now REQUIRED
+        if dynasty_id and db_path:
+            return cls._load_from_database(team_id, dynasty_id, db_path)
+
+        # No fallback - fail with clear error message
+        raise ValueError(
+            f"❌ dynasty_id and db_path are REQUIRED to load rosters.\n"
+            f"   Player rosters are stored in database only.\n"
+            f"   For standalone testing, use TeamRosterGenerator.generate_synthetic_roster({team_id})"
+        )
+
     @classmethod
-    def generate_real_roster(cls, team_id: int) -> List[Player]:
+    def _load_from_database(cls, team_id: int, dynasty_id: str,
+                           db_path: str) -> List[Player]:
         """
-        Generate roster using real NFL player data
-        
+        Load roster from database (private method).
+
         Args:
-            team_id: Numerical team ID (must have real data available)
-            
+            team_id: Team ID (1-32)
+            dynasty_id: Dynasty context
+            db_path: Database path
+
         Returns:
-            List of Player objects created from real player data
+            List of Player objects from database
+
+        Raises:
+            ValueError: If no roster found
         """
-        if not has_real_roster_data(team_id):
-            raise ValueError(f"No real roster data available for team_id: {team_id}")
-        
-        # Get real players for this team
-        real_players = get_real_roster_for_team(team_id)
-        
-        # Convert RealPlayer objects to Player objects
+        from database.player_roster_api import PlayerRosterAPI
+
+        roster_api = PlayerRosterAPI(db_path)
+        roster_data = roster_api.get_team_roster(dynasty_id, team_id)
+
+        # Convert database records to Player objects
         roster = []
-        for real_player in real_players:
-            # Create Player object with real data
+        for row in roster_data:
+            # Parse JSON fields
+            positions = json.loads(row['positions'])
+            attributes = json.loads(row['attributes'])
+
+            # Create Player object
             player = Player(
-                name=real_player.full_name,
-                number=real_player.number,
-                primary_position=real_player.primary_position,
-                ratings=real_player.attributes.copy(),  # Use real attributes
-                team_id=team_id  # Pass team_id to preserve team assignment
+                name=f"{row['first_name']} {row['last_name']}",
+                number=row['number'],
+                primary_position=positions[0] if positions else Position.WR,
+                ratings=attributes,
+                team_id=row['team_id']
             )
             roster.append(player)
-        
+
         return roster
     
     @classmethod
     def generate_synthetic_roster(cls, team_id: int = 1) -> List[Player]:
         """
-        Generate a complete 53-man roster with synthetic/generated ratings
-        
+        Generate synthetic roster for standalone testing/demos.
+
+        Use this ONLY for:
+        - Unit tests
+        - Standalone demos without dynasties
+        - Development/debugging
+
+        Production code should use load_team_roster() with database.
+
         Args:
             team_id: Numerical team ID (1-32) to generate roster for
-            
+
         Returns:
-            List of Player objects representing the team's roster
+            List of Player objects with synthetic ratings
         """
         # Get team data
         team = get_team_by_id(team_id)

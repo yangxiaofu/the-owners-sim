@@ -481,6 +481,49 @@ class DatabaseConnection:
             )
         ''')
 
+        # Players table - master player data per dynasty
+        # Stores all player attributes and identities (JSON files only used for initialization)
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS players (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dynasty_id TEXT NOT NULL,
+                player_id INTEGER NOT NULL,     -- Auto-generated unique ID per dynasty
+                source_player_id TEXT,          -- Original JSON player_id (for reference only)
+                first_name TEXT NOT NULL,
+                last_name TEXT NOT NULL,
+                number INTEGER NOT NULL,
+                team_id INTEGER NOT NULL,       -- 0 = free agent, 1-32 = teams
+                positions TEXT NOT NULL,        -- JSON array: ["quarterback", "punter"]
+                attributes TEXT NOT NULL,       -- JSON object: {"overall": 85, "speed": 90, ...}
+                contract_id INTEGER,            -- FK to player_contracts (future salary cap integration)
+                status TEXT DEFAULT 'active',   -- 'active', 'injured', 'suspended', 'practice_squad'
+                years_pro INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE,
+                -- Note: contract_id FK will be added when player_contracts table exists
+                UNIQUE(dynasty_id, player_id)   -- Guaranteed unique with auto-generated IDs
+            )
+        ''')
+
+        # Team rosters table - links players to teams for roster management
+        # Supports depth chart ordering and roster status tracking
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS team_rosters (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dynasty_id TEXT NOT NULL,
+                team_id INTEGER NOT NULL,
+                player_id INTEGER NOT NULL,     -- References players.player_id (auto-generated int)
+                depth_chart_order INTEGER DEFAULT 99,  -- Lower = higher on depth chart
+                roster_status TEXT DEFAULT 'active',   -- 'active', 'inactive', 'injured_reserve', 'practice_squad'
+                joined_date TEXT,
+
+                FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE,
+                UNIQUE(dynasty_id, team_id, player_id)
+            )
+        ''')
+
         # Create indexes for performance
         conn.execute("CREATE INDEX IF NOT EXISTS idx_games_dynasty_season ON games(dynasty_id, season, week)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_games_teams ON games(home_team_id, away_team_id)")
@@ -505,6 +548,13 @@ class DatabaseConnection:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_schedules_teams ON schedules(home_team_id, away_team_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_dynasty_seasons ON dynasty_seasons(dynasty_id, season)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_box_scores ON box_scores(dynasty_id, game_id)")
+
+        # Player roster indexes for fast lookups
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_players_dynasty ON players(dynasty_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_players_team ON players(dynasty_id, team_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_players_lookup ON players(dynasty_id, player_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_rosters_team ON team_rosters(dynasty_id, team_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_rosters_player ON team_rosters(dynasty_id, player_id)")
 
         # Playoff system indexes
         conn.execute("CREATE INDEX IF NOT EXISTS idx_playoff_seedings_dynasty ON playoff_seedings(dynasty_id, season)")

@@ -193,17 +193,18 @@ class DynastyController:
         dynasty_id = self.generate_unique_dynasty_id(dynasty_name)
 
         # Create dynasty in database with initialization
+        # Everything in one transaction for atomicity
         conn = self.db.get_connection()
         cursor = conn.cursor()
 
         try:
-            # Create dynasty record
+            # Step 1: Create dynasty record
             cursor.execute('''
                 INSERT INTO dynasties (dynasty_id, dynasty_name, owner_name, team_id, is_active)
                 VALUES (?, ?, ?, ?, TRUE)
             ''', (dynasty_id, dynasty_name, owner_name, team_id))
 
-            # Initialize standings for all 32 NFL teams (0-0-0 records)
+            # Step 2: Initialize standings for all 32 NFL teams (0-0-0 records)
             for tid in range(1, 33):
                 cursor.execute('''
                     INSERT INTO standings
@@ -213,25 +214,48 @@ class DynastyController:
                     VALUES (?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0)
                 ''', (dynasty_id, season, tid))
 
+            # Step 3: Initialize player rosters from JSON → Database (ONE-TIME)
+            print(f"📥 Initializing player rosters for dynasty '{dynasty_id}'...")
+            print(f"   Loading from JSON files (one-time migration)...")
+
+            from database.player_roster_api import PlayerRosterAPI
+            # Pass shared connection so all operations use same transaction
+            roster_api = PlayerRosterAPI(self.db_path, connection=conn)
+
+            players_loaded = roster_api.initialize_dynasty_rosters(dynasty_id)
+
+            print(f"✅ Loaded {players_loaded} players from JSON → Database")
+            print(f"   Rosters for all 32 teams initialized")
+
+            # Step 4: Commit dynasty + standings + rosters atomically
+            # Must commit BEFORE schedule generation (which creates its own connections)
             conn.commit()
+            print(f"✅ Dynasty '{dynasty_id}' committed to database")
 
-            # Generate initial season schedule
-            from .season_controller import SeasonController
-            season_controller = SeasonController(
-                db_path=self.db_path,
-                dynasty_id=dynasty_id,
-                season=season
-            )
+            # Step 5: Generate initial season schedule (separate transaction)
+            # Note: Schedule generation creates its own database connections
+            # so we must commit the dynasty first to avoid database locks
+            try:
+                from .season_controller import SeasonController
+                season_controller = SeasonController(
+                    db_path=self.db_path,
+                    dynasty_id=dynasty_id,
+                    season=season
+                )
 
-            schedule_success, schedule_error = season_controller.generate_initial_schedule()
-            if not schedule_success:
-                print(f"[WARNING DynastyController] Schedule generation failed: {schedule_error}")
-                # Don't fail dynasty creation if schedule generation fails
-                # User can manually generate schedule later
+                schedule_success, schedule_error = season_controller.generate_initial_schedule()
+                if not schedule_success:
+                    print(f"[WARNING DynastyController] Schedule generation failed: {schedule_error}")
+                    # Dynasty creation succeeded, but schedule generation failed
+                    # User can manually generate schedule later
+            except Exception as schedule_ex:
+                print(f"[WARNING DynastyController] Schedule generation error: {schedule_ex}")
+                # Non-critical - dynasty is already committed
 
             return (True, dynasty_id, None)
 
         except Exception as e:
+            # Rollback entire transaction on any failure
             conn.rollback()
             error_message = f"Failed to create dynasty: {str(e)}"
             print(f"[ERROR DynastyController] {error_message}")
@@ -324,7 +348,13 @@ class DynastyController:
 
         try:
             # Delete in reverse order of foreign key dependencies
-            # This assumes CASCADE delete is not configured
+            # CASCADE delete should handle most of this, but being explicit
+
+            # Delete player rosters
+            cursor.execute("DELETE FROM team_rosters WHERE dynasty_id = ?", (dynasty_id,))
+
+            # Delete players
+            cursor.execute("DELETE FROM players WHERE dynasty_id = ?", (dynasty_id,))
 
             # Delete box scores
             cursor.execute("DELETE FROM box_scores WHERE dynasty_id = ?", (dynasty_id,))

@@ -43,6 +43,7 @@ python -m pytest tests/
 python -m pytest tests/calendar/ -v         # Calendar system tests
 python -m pytest tests/playoff_system/ -v   # Playoff system tests
 python -m pytest tests/salary_cap/ -v       # Salary cap tests
+python -m pytest tests/player_generation/ -v  # Player generation tests
 
 # Run tests with verbose output
 python -m pytest -v tests/
@@ -339,6 +340,20 @@ The simulation follows a layered architecture with clear separation of concerns:
 - **Proper MVC**: Controllers are thin orchestrators, domain models own data access
 - See `docs/plans/ui_development_plan.md` and `docs/architecture/ui_layer_separation.md`
 
+**19. Player Generation System (`src/player_generation/`)** - **IN DEVELOPMENT**
+- `core/`: Core generation engine with statistical distributions and correlations
+  - `distributions.py`: Normal, beta, and bounded distribution generators
+  - `correlations.py`: Attribute correlation engine (size/speed, experience/awareness)
+  - `generation_context.py`: Generation context and configuration management
+- `archetypes/`: Position-specific player archetype system (30+ templates planned)
+  - `base_archetype.py`: Base archetype class with attribute ranges
+  - `archetype_registry.py`: Registry for managing all position archetypes
+- `models/`: Player generation data models
+  - `generated_player.py`: Generated player data structure
+- Supports multiple generation contexts: NFL Draft, UDFA, International, Custom
+- Archetype-based generation with realistic attribute distributions
+- See `docs/plans/player_generator_plan.md` and `docs/specifications/player_generator_system.md`
+
 ### Key Design Patterns
 
 **Match/Case Play Selection**: The main play engine uses Python's match/case for clean play type routing:
@@ -429,6 +444,7 @@ The project uses multiple testing approaches:
    - `tests/playoff_system/` - Playoff system tests
    - `tests/salary_cap/` - Salary cap system tests
    - `tests/event_system/` - Event system tests
+   - `tests/player_generation/` - Player generation system tests (sprint-based)
    - `tests/conftest.py` - Shared pytest fixtures
 2. **Interactive Testing**: Menu-driven play-by-play testing and validation scripts
 3. **Validation Scripts** (`quick_test.py`, `simple_penalty_validation.py`): Automated validation
@@ -675,6 +691,15 @@ Key architectural updates in the codebase:
    - **Event Integration Complete**: All cap operations execute through event system via EventCapBridge
    - Interactive demo available: `demo/cap_calculator_demo/`
    - See `docs/plans/salary_cap_plan.md` for architecture and `docs/architecture/event_cap_integration.md` for event integration details
+
+13. **Player Generation System** (Oct 2025): **IN DEVELOPMENT** - Procedural player generation system
+   - New `src/player_generation/` module with archetype-based generation framework
+   - Statistical distribution system (normal, beta, bounded) for realistic attribute generation
+   - Attribute correlation engine for position-specific trait relationships
+   - Supports multiple contexts: NFL Draft, UDFA, International, Custom generation
+   - Position-specific archetypes (30+ planned) with realistic talent distributions
+   - Sprint-based development approach with comprehensive test coverage
+   - See `docs/plans/player_generator_plan.md` and `docs/specifications/player_generator_system.md`
 
 ## Key Implementation Notes
 

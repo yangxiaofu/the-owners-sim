@@ -46,6 +46,38 @@ def main():
 
     db_path, dynasty_id, season = dynasty_selection
 
+    # Verify dynasty has player rosters in database
+    try:
+        # Add src to path for imports
+        src_path = Path(__file__).parent / "src"
+        if str(src_path) not in sys.path:
+            sys.path.insert(0, str(src_path))
+
+        from database.player_roster_api import PlayerRosterAPI
+        from PySide6.QtWidgets import QMessageBox
+
+        roster_api = PlayerRosterAPI(db_path)
+
+        if not roster_api.dynasty_has_rosters(dynasty_id):
+            QMessageBox.critical(
+                None,
+                "Missing Dynasty Data",
+                f"Dynasty '{dynasty_id}' has no player rosters in database.\n\n"
+                f"This dynasty may be corrupted or incompletely initialized.\n"
+                f"Please create a new dynasty."
+            )
+            return 1
+
+    except Exception as e:
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.critical(
+            None,
+            "Dynasty Validation Error",
+            f"Failed to validate dynasty '{dynasty_id}':\n\n{str(e)}\n\n"
+            f"Please check your database and try again."
+        )
+        return 1
+
     # Create and show main window with dynasty context
     window = MainWindow(db_path=db_path, dynasty_id=dynasty_id, season=season)
     window.show()
