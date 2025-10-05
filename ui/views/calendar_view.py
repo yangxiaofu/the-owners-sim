@@ -410,14 +410,28 @@ class CalendarView(QWidget):
         if not index.isValid():
             return
 
-        # Get event from model
-        event = self.calendar_model.get_event_at_row(index.row())
-        if not event:
+        # Get event summary from table model (just to extract event_id)
+        event_summary = self.calendar_model.get_event_at_row(index.row())
+
+        if not event_summary:
             self.details_label.setText("No event data available")
             return
 
-        # Format event details
-        details = self._format_event_details(event)
+        # Extract event ID
+        event_id = event_summary.get('event_id')
+        if not event_id:
+            self.details_label.setText("Event ID not found")
+            return
+
+        # ✅ PROPER MVC: Call controller to get FULL event details from database
+        full_event_details = self.controller.get_event_details(event_id)
+
+        if not full_event_details:
+            self.details_label.setText("Could not load event details")
+            return
+
+        # Format with COMPLETE event details
+        details = self._format_event_details(full_event_details)
         self.details_label.setText(details)
 
     def _format_event_details(self, event) -> str:
@@ -425,34 +439,129 @@ class CalendarView(QWidget):
         Format event details for display.
 
         Args:
-            event: Event object from model
+            event: Full event data from database via controller
+                   Structure: {event_id, event_type, timestamp, game_id, dynasty_id, data}
+                   data = {parameters, results, metadata}
 
         Returns:
             Formatted string with event details
         """
+        if not event:
+            return "No event data available"
+
         # Build details string
         details = []
-        details.append(f"Event Type: {event.get('event_type', 'Unknown')}")
-        details.append(f"Date: {event.get('date', 'Unknown')}")
+        event_type = event.get('event_type', 'Unknown')
+        timestamp = event.get('timestamp')
 
-        # Add event-specific details
-        event_type = event.get('event_type', '')
+        # Format date
+        if timestamp:
+            if isinstance(timestamp, str):
+                date_str = timestamp
+            else:
+                date_str = timestamp.strftime('%Y-%m-%d %H:%M') if hasattr(timestamp, 'strftime') else str(timestamp)
+        else:
+            date_str = 'Unknown'
 
+        details.append(f"Event Type: {event_type}")
+        details.append(f"Date: {date_str}")
+
+        # Extract data sections (parameters, results, metadata)
+        data = event.get('data', {})
+        parameters = data.get('parameters', {})
+        results = data.get('results', {})
+        metadata = data.get('metadata', {})
+
+        # Add event-specific details based on type
         if event_type == 'GAME':
-            away_team = event.get('away_team', 'Unknown')
-            home_team = event.get('home_team', 'Unknown')
-            week = event.get('week', 'N/A')
-            details.append(f"Matchup: {away_team} @ {home_team}")
-            details.append(f"Week: {week}")
+            # Game parameters
+            away_team_id = parameters.get('away_team_id')
+            home_team_id = parameters.get('home_team_id')
+            week = parameters.get('week', 'N/A')
+            season_type = parameters.get('season_type', 'regular_season').replace('_', ' ').title()
 
-        elif event_type in ('DEADLINE', 'WINDOW', 'MILESTONE'):
-            description = event.get('description', 'No description available')
+            # Get team names for better display
+            try:
+                from team_management.teams.team_loader import TeamDataLoader
+                team_loader = TeamDataLoader()
+                away_team = team_loader.get_team_display_name(away_team_id) if away_team_id else "Unknown"
+                home_team = team_loader.get_team_display_name(home_team_id) if home_team_id else "Unknown"
+            except Exception:
+                away_team = f"Team {away_team_id}"
+                home_team = f"Team {home_team_id}"
+
+            details.append(f"\nGame Information:")
+            details.append(f"Week: {week} ({season_type})")
+            details.append(f"Matchup: {away_team} @ {home_team}")
+
+            # Game results (if completed)
+            if results:
+                away_score = results.get('away_score', 0)
+                home_score = results.get('home_score', 0)
+                winner_name = results.get('winner_name', 'Unknown')
+                total_plays = results.get('total_plays', 0)
+                total_drives = results.get('total_drives', 0)
+                duration = results.get('game_duration_minutes', 0)
+
+                details.append(f"\nFinal Score:")
+                details.append(f"Team {away_team_id}: {away_score}")
+                details.append(f"Team {home_team_id}: {home_score}")
+                details.append(f"Winner: {winner_name}")
+                details.append(f"\nGame Stats:")
+                details.append(f"Total Plays: {total_plays}")
+                details.append(f"Total Drives: {total_drives}")
+                details.append(f"Duration: {duration} minutes")
+            else:
+                details.append(f"\nStatus: Scheduled (not yet played)")
+
+        elif event_type == 'DEADLINE':
+            deadline_type = parameters.get('deadline_type', 'Unknown')
+            description = parameters.get('description', 'No description available')
+            season_year = parameters.get('season_year', 'N/A')
+
+            details.append(f"\nDeadline Type: {deadline_type}")
+            details.append(f"Season: {season_year}")
             details.append(f"Description: {description}")
 
-        # Add notes if available
-        notes = event.get('notes', '')
-        if notes:
-            details.append(f"Notes: {notes}")
+            # Show results if available
+            if results:
+                status = results.get('status', 'Unknown')
+                details.append(f"Status: {status}")
+
+        elif event_type == 'WINDOW':
+            window_type = parameters.get('window_type', 'Unknown')
+            description = parameters.get('description', 'No description available')
+            start_date = parameters.get('start_date', 'N/A')
+            end_date = parameters.get('end_date', 'N/A')
+
+            details.append(f"\nWindow Type: {window_type}")
+            details.append(f"Period: {start_date} to {end_date}")
+            details.append(f"Description: {description}")
+
+        elif event_type == 'MILESTONE':
+            milestone_type = parameters.get('milestone_type', 'Unknown')
+            description = parameters.get('description', 'No description available')
+
+            details.append(f"\nMilestone: {milestone_type}")
+            details.append(f"Description: {description}")
+
+        else:
+            # Generic fallback for unknown event types
+            if parameters:
+                details.append(f"\nParameters:")
+                for key, value in parameters.items():
+                    details.append(f"{key}: {value}")
+            if results:
+                details.append(f"\nResults:")
+                for key, value in results.items():
+                    details.append(f"{key}: {value}")
+
+        # Add metadata if available
+        if metadata:
+            details.append(f"\nAdditional Info:")
+            for key, value in metadata.items():
+                if key not in ['event_id', 'game_id']:  # Skip IDs already shown
+                    details.append(f"{key.replace('_', ' ').title()}: {value}")
 
         return "\n".join(details)
 
