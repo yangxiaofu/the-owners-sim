@@ -295,7 +295,9 @@ class CalendarDataModel:
 
         BUSINESS LOGIC:
         --------------
-        Simple database lookup by event ID.
+        Handles both regular event IDs and synthetic event IDs:
+        - Regular event IDs: Query events table directly
+        - Synthetic event IDs (starts with "completed_"): Reconstruct from games table
 
         Args:
             event_id: Unique identifier of the event
@@ -304,6 +306,78 @@ class CalendarDataModel:
             Event dictionary if found, None if not found.
             Dict contains: event_id, event_type, timestamp, game_id, data
         """
+        # Check if this is a synthetic event_id from completed games
+        if event_id.startswith('completed_'):
+            # Extract game_id from synthetic event_id: "completed_game_20250908_1_at_12" -> "game_20250908_1_at_12"
+            game_id = event_id.replace('completed_', '', 1)
+
+            # Query games table directly
+            query = '''
+                SELECT
+                    game_id,
+                    game_date,
+                    season,
+                    week,
+                    season_type,
+                    game_type,
+                    home_team_id,
+                    away_team_id,
+                    home_score,
+                    away_score,
+                    total_plays,
+                    game_duration_minutes,
+                    overtime_periods
+                FROM games
+                WHERE game_id = ? AND dynasty_id = ?
+            '''
+
+            results = self.database_api.db_connection.execute_query(
+                query,
+                (game_id, self.dynasty_id)
+            )
+
+            if not results or len(results) == 0:
+                return None
+
+            game = results[0]
+
+            # Reconstruct event structure (same format as get_events_for_month)
+            return {
+                'event_id': event_id,
+                'event_type': 'GAME',
+                'timestamp': game['game_date'],
+                'game_id': game_id,
+                'dynasty_id': self.dynasty_id,
+                'data': {
+                    'parameters': {
+                        'home_team_id': game['home_team_id'],
+                        'away_team_id': game['away_team_id'],
+                        'week': game['week'],
+                        'season': game['season'],
+                        'season_type': game['season_type'],
+                        'game_type': game['game_type']
+                    },
+                    'results': {
+                        'home_score': game['home_score'],
+                        'away_score': game['away_score'],
+                        'winner_id': None,  # Could calculate from scores if needed
+                        'winner_name': None,
+                        'total_plays': game['total_plays'],
+                        'total_drives': None,  # Not stored in games table
+                        'game_duration_minutes': game['game_duration_minutes'],
+                        'simulation_time': None,  # Not stored in games table
+                        'overtime_periods': game['overtime_periods'],
+                        'completed': True
+                    },
+                    'metadata': {
+                        'matchup_description': f"Week {game['week']}: Team {game['away_team_id']} @ Team {game['home_team_id']}",
+                        'is_playoff_game': game['season_type'] == 'playoffs',
+                        'game_id': game_id
+                    }
+                }
+            }
+
+        # Regular event_id - query events table
         return self.event_api.get_event_by_id(event_id)
 
     def get_dynasty_info(self) -> Dict[str, str]:
