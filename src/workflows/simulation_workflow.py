@@ -329,7 +329,9 @@ class SimulationWorkflow:
                 game_id=game_id,
                 game_result=game_result_data,
                 player_stats=player_stats,
-                dynasty_id=self.config.dynasty_id
+                dynasty_id=self.config.dynasty_id,
+                season=game_result_data['season'],
+                week=game_result_data['week']
             )
 
             if self.config.verbose_logging:

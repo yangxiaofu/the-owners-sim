@@ -61,7 +61,8 @@ from .calendar_exceptions import (
     handle_calendar_exception
 )
 
-from .simulation_executor import SimulationExecutor
+# NOTE: SimulationExecutor not imported at package level to avoid circular dependency
+# Import directly when needed: from calendar.simulation_executor import SimulationExecutor
 
 # Version information
 __version__ = "1.1.0"
@@ -74,7 +75,7 @@ __all__ = [
     "Date",
     "DateAdvanceResult",
     "CalendarComponent",
-    "SimulationExecutor",
+    # "SimulationExecutor",  # Removed to avoid circular import - import directly when needed
 
     # Factory functions
     "create_calendar",

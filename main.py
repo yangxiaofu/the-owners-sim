@@ -10,6 +10,7 @@ from pathlib import Path
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
 from ui.main_window import MainWindow
+from ui.dialogs.dynasty_selection_dialog import DynastySelectionDialog
 
 
 def main():
@@ -31,8 +32,22 @@ def main():
         with open(stylesheet_path, "r") as f:
             app.setStyleSheet(f.read())
 
-    # Create and show main window
-    window = MainWindow()
+    # Show dynasty selection dialog
+    dialog = DynastySelectionDialog()
+    if dialog.exec() != DynastySelectionDialog.DialogCode.Accepted:
+        # User cancelled - exit application
+        return 0
+
+    # Get selected dynasty
+    dynasty_selection = dialog.get_selection()
+    if dynasty_selection is None:
+        # No selection made - exit application
+        return 0
+
+    db_path, dynasty_id, season = dynasty_selection
+
+    # Create and show main window with dynasty context
+    window = MainWindow(db_path=db_path, dynasty_id=dynasty_id, season=season)
     window.show()
 
     # Run event loop

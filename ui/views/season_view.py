@@ -1,39 +1,56 @@
 """
 Season View for The Owner's Sim
 
-Displays season schedule, standings, stats leaders, and playoff picture.
+Displays season schedule, upcoming games, simulation controls, and playoff picture.
 """
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
 from PySide6.QtCore import Qt
+
+import sys
+import os
+
+# Add parent directories to path
+ui_path = os.path.dirname(os.path.dirname(__file__))
+if ui_path not in sys.path:
+    sys.path.insert(0, ui_path)
+
+from controllers.season_controller import SeasonController
 
 
 class SeasonView(QWidget):
     """
     Season overview view.
 
-    Phase 1: Placeholder
-    Phase 2: Full implementation with schedule, standings, simulation controls
+    Displays season schedule, simulation controls, and upcoming games.
+    For standings, see League tab.
     """
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, controller: SeasonController = None):
         super().__init__(parent)
         self.main_window = parent
+        self.controller = controller
 
         # Placeholder layout
         layout = QVBoxLayout()
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
 
-        title = QLabel("Season View")
-        title.setStyleSheet("font-size: 24px; font-weight: bold; padding: 20px;")
+        # Title
+        title = QLabel("Season Schedule & Simulation")
+        title.setStyleSheet("font-size: 24px; font-weight: bold;")
         title.setAlignment(Qt.AlignCenter)
 
+        # Description
         description = QLabel(
-            "Season schedule, standings, and playoff picture will appear here.\n\n"
+            "Season schedule, upcoming games, and simulation controls will appear here.\n\n"
             "Coming in Phase 2:\n"
-            "• Interactive schedule grid\n"
-            "• Division and conference standings\n"
-            "• Statistical leaders\n"
-            "• Playoff picture tracker\n"
-            "• Day/Week simulation controls"
+            "• Interactive schedule grid (18-week season)\n"
+            "• Upcoming games display\n"
+            "• Day/Week simulation controls\n"
+            "• Game results and highlights\n"
+            "• Playoff picture tracker (Week 10+)\n"
+            "• Your team's next game preview\n\n"
+            "For league standings, see the League tab →"
         )
         description.setAlignment(Qt.AlignCenter)
         description.setStyleSheet("color: #666; padding: 20px;")

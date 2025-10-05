@@ -25,6 +25,21 @@ class MilestoneType(Enum):
     TRADE_DEADLINE = "trade_deadline"
     IR_DEADLINE = "injured_reserve_deadline"
     PLAYOFF_PICTURE = "playoff_picture"
+    # Offseason milestone types
+    FRANCHISE_TAG_WINDOW_START = "franchise_tag_window_start"
+    FRANCHISE_TAG_DEADLINE = "franchise_tag_deadline"
+    TRANSITION_TAG_DEADLINE = "transition_tag_deadline"
+    LEGAL_TAMPERING_START = "legal_tampering_start"
+    NEW_LEAGUE_YEAR = "new_league_year"
+    SALARY_CAP_DEADLINE = "salary_cap_deadline"
+    RFA_OFFER_DEADLINE = "rfa_offer_deadline"
+    FIFTH_YEAR_OPTION_DEADLINE = "fifth_year_option_deadline"
+    SCOUTING_COMBINE = "scouting_combine"
+    ROOKIE_MINICAMP = "rookie_minicamp"
+    OTA_START = "ota_start"
+    MANDATORY_MINICAMP = "mandatory_minicamp"
+    FRANCHISE_TAG_EXTENSION_DEADLINE = "franchise_tag_extension_deadline"
+    WAIVER_CLAIM_DEADLINE = "waiver_claim_deadline"
 
 
 @dataclass(frozen=True)
@@ -131,6 +146,160 @@ class SeasonMilestoneCalculator:
             priority=6
         )
 
+        # Franchise Tag Window Start - 2 weeks after Super Bowl (Feb 17)
+        self.milestone_definitions[MilestoneType.FRANCHISE_TAG_WINDOW_START] = MilestoneDefinition(
+            milestone_type=MilestoneType.FRANCHISE_TAG_WINDOW_START,
+            name="Franchise Tag Window Opens",
+            description="Teams can begin applying franchise and transition tags",
+            base_phase=SeasonPhase.OFFSEASON,
+            offset_calculator=self._calculate_franchise_tag_window_start,
+            conditions={"weeks_after_super_bowl": 2, "fixed_date": (2, 17)},
+            priority=7
+        )
+
+        # Franchise Tag Deadline - March 4
+        self.milestone_definitions[MilestoneType.FRANCHISE_TAG_DEADLINE] = MilestoneDefinition(
+            milestone_type=MilestoneType.FRANCHISE_TAG_DEADLINE,
+            name="Franchise Tag Deadline",
+            description="Deadline for teams to apply franchise or transition tags",
+            base_phase=SeasonPhase.OFFSEASON,
+            offset_calculator=self._calculate_franchise_tag_deadline,
+            conditions={"fixed_date": (3, 4)},
+            priority=8
+        )
+
+        # Transition Tag Deadline - March 4 (same as franchise tag)
+        self.milestone_definitions[MilestoneType.TRANSITION_TAG_DEADLINE] = MilestoneDefinition(
+            milestone_type=MilestoneType.TRANSITION_TAG_DEADLINE,
+            name="Transition Tag Deadline",
+            description="Deadline for teams to apply transition tags",
+            base_phase=SeasonPhase.OFFSEASON,
+            offset_calculator=self._calculate_transition_tag_deadline,
+            conditions={"fixed_date": (3, 4)},
+            priority=8
+        )
+
+        # Legal Tampering Period Start - March 10 Noon ET
+        self.milestone_definitions[MilestoneType.LEGAL_TAMPERING_START] = MilestoneDefinition(
+            milestone_type=MilestoneType.LEGAL_TAMPERING_START,
+            name="Legal Tampering Period Begins",
+            description="Teams can negotiate with impending free agents (no signing)",
+            base_phase=SeasonPhase.OFFSEASON,
+            offset_calculator=self._calculate_legal_tampering_start,
+            conditions={"fixed_date": (3, 10), "time": "12:00 ET"},
+            priority=9
+        )
+
+        # New League Year - March 12 4PM ET
+        self.milestone_definitions[MilestoneType.NEW_LEAGUE_YEAR] = MilestoneDefinition(
+            milestone_type=MilestoneType.NEW_LEAGUE_YEAR,
+            name="New League Year Begins",
+            description="Free agent contracts can be signed, trades can be processed",
+            base_phase=SeasonPhase.OFFSEASON,
+            offset_calculator=self._calculate_new_league_year,
+            conditions={"fixed_date": (3, 12), "time": "16:00 ET"},
+            priority=10
+        )
+
+        # Salary Cap Deadline - March 12 4PM ET (same as new league year)
+        self.milestone_definitions[MilestoneType.SALARY_CAP_DEADLINE] = MilestoneDefinition(
+            milestone_type=MilestoneType.SALARY_CAP_DEADLINE,
+            name="Salary Cap Compliance Deadline",
+            description="Teams must be under salary cap when league year begins",
+            base_phase=SeasonPhase.OFFSEASON,
+            offset_calculator=self._calculate_salary_cap_deadline,
+            conditions={"fixed_date": (3, 12), "time": "16:00 ET"},
+            priority=10
+        )
+
+        # RFA Offer Deadline - April 22
+        self.milestone_definitions[MilestoneType.RFA_OFFER_DEADLINE] = MilestoneDefinition(
+            milestone_type=MilestoneType.RFA_OFFER_DEADLINE,
+            name="RFA Tender Deadline",
+            description="Deadline for teams to extend qualifying offers to restricted free agents",
+            base_phase=SeasonPhase.OFFSEASON,
+            offset_calculator=self._calculate_rfa_offer_deadline,
+            conditions={"fixed_date": (4, 22)},
+            priority=11
+        )
+
+        # Fifth Year Option Deadline - May 1-2
+        self.milestone_definitions[MilestoneType.FIFTH_YEAR_OPTION_DEADLINE] = MilestoneDefinition(
+            milestone_type=MilestoneType.FIFTH_YEAR_OPTION_DEADLINE,
+            name="Fifth Year Option Deadline",
+            description="Deadline for teams to exercise fifth-year options on first-round picks",
+            base_phase=SeasonPhase.OFFSEASON,
+            offset_calculator=self._calculate_fifth_year_option_deadline,
+            conditions={"fixed_date": (5, 2)},
+            priority=12
+        )
+
+        # Scouting Combine - Late February (Feb 24 - Mar 3)
+        self.milestone_definitions[MilestoneType.SCOUTING_COMBINE] = MilestoneDefinition(
+            milestone_type=MilestoneType.SCOUTING_COMBINE,
+            name="NFL Scouting Combine",
+            description="Annual scouting combine for draft-eligible players",
+            base_phase=SeasonPhase.OFFSEASON,
+            offset_calculator=self._calculate_scouting_combine,
+            conditions={"fixed_date": (2, 24), "duration_days": 7},
+            priority=13
+        )
+
+        # Rookie Minicamp - Early May (after draft)
+        self.milestone_definitions[MilestoneType.ROOKIE_MINICAMP] = MilestoneDefinition(
+            milestone_type=MilestoneType.ROOKIE_MINICAMP,
+            name="Rookie Minicamp",
+            description="Teams hold minicamp for drafted rookies",
+            base_phase=SeasonPhase.OFFSEASON,
+            offset_calculator=self._calculate_rookie_minicamp,
+            conditions={"weeks_after_draft": 1, "fixed_estimate": (5, 10)},
+            priority=14
+        )
+
+        # OTA Start - Late May
+        self.milestone_definitions[MilestoneType.OTA_START] = MilestoneDefinition(
+            milestone_type=MilestoneType.OTA_START,
+            name="OTA Period Begins",
+            description="Organized Team Activities (OTAs) begin",
+            base_phase=SeasonPhase.OFFSEASON,
+            offset_calculator=self._calculate_ota_start,
+            conditions={"fixed_date": (5, 20)},
+            priority=15
+        )
+
+        # Mandatory Minicamp - Mid June
+        self.milestone_definitions[MilestoneType.MANDATORY_MINICAMP] = MilestoneDefinition(
+            milestone_type=MilestoneType.MANDATORY_MINICAMP,
+            name="Mandatory Minicamp",
+            description="Teams hold mandatory minicamp for all players",
+            base_phase=SeasonPhase.OFFSEASON,
+            offset_calculator=self._calculate_mandatory_minicamp,
+            conditions={"fixed_date": (6, 15)},
+            priority=16
+        )
+
+        # Franchise Tag Extension Deadline - July 15
+        self.milestone_definitions[MilestoneType.FRANCHISE_TAG_EXTENSION_DEADLINE] = MilestoneDefinition(
+            milestone_type=MilestoneType.FRANCHISE_TAG_EXTENSION_DEADLINE,
+            name="Franchise Tag Extension Deadline",
+            description="Deadline for franchise-tagged players to sign long-term deals",
+            base_phase=SeasonPhase.OFFSEASON,
+            offset_calculator=self._calculate_franchise_tag_extension_deadline,
+            conditions={"fixed_date": (7, 15)},
+            priority=17
+        )
+
+        # Waiver Claim Deadline - August 27 Noon ET (day after roster cuts)
+        self.milestone_definitions[MilestoneType.WAIVER_CLAIM_DEADLINE] = MilestoneDefinition(
+            milestone_type=MilestoneType.WAIVER_CLAIM_DEADLINE,
+            name="Waiver Claim Deadline",
+            description="Deadline for waiver claims after final roster cuts",
+            base_phase=SeasonPhase.PRESEASON,
+            offset_calculator=self._calculate_waiver_claim_deadline,
+            conditions={"fixed_date": (8, 27), "time": "12:00 ET"},
+            priority=18
+        )
+
     def calculate_milestones_for_season(self, season_year: int,
                                       super_bowl_date: Optional[Date] = None,
                                       regular_season_start: Optional[Date] = None) -> List[SeasonMilestone]:
@@ -148,8 +317,8 @@ class SeasonMilestoneCalculator:
         milestones = []
         context = {
             "season_year": season_year,
-            "super_bowl_date": super_bowl_date,
-            "regular_season_start": regular_season_start
+            "super_bowl_date": str(super_bowl_date) if super_bowl_date else None,
+            "regular_season_start": str(regular_season_start) if regular_season_start else None
         }
 
         for milestone_def in self.milestone_definitions.values():
@@ -346,6 +515,89 @@ class SeasonMilestoneCalculator:
 
         # Standard estimate - early September
         return Date(season_year, 9, 7)
+
+    def _calculate_franchise_tag_window_start(self, base_date: Optional[Date], context: Dict[str, Any]) -> Date:
+        """Calculate Franchise Tag Window Start (2 weeks after Super Bowl, typically Feb 17)."""
+        season_year = context.get("season_year", 2024)
+
+        if base_date is None:
+            # Use standard estimate - Feb 17 of next year
+            return Date(season_year + 1, 2, 17)
+
+        # 2 weeks after Super Bowl
+        return base_date.add_days(14)
+
+    def _calculate_franchise_tag_deadline(self, base_date: Optional[Date], context: Dict[str, Any]) -> Date:
+        """Calculate Franchise Tag Deadline (March 4, fixed date)."""
+        season_year = context.get("season_year", 2024)
+        return Date(season_year + 1, 3, 4)  # March 4 of next year
+
+    def _calculate_transition_tag_deadline(self, base_date: Optional[Date], context: Dict[str, Any]) -> Date:
+        """Calculate Transition Tag Deadline (March 4, same as franchise tag)."""
+        season_year = context.get("season_year", 2024)
+        return Date(season_year + 1, 3, 4)  # March 4 of next year
+
+    def _calculate_legal_tampering_start(self, base_date: Optional[Date], context: Dict[str, Any]) -> Date:
+        """Calculate Legal Tampering Period Start (March 10 Noon ET, fixed date)."""
+        season_year = context.get("season_year", 2024)
+        return Date(season_year + 1, 3, 10)  # March 10 of next year
+
+    def _calculate_new_league_year(self, base_date: Optional[Date], context: Dict[str, Any]) -> Date:
+        """Calculate New League Year Start (March 12 4PM ET, fixed date)."""
+        season_year = context.get("season_year", 2024)
+        return Date(season_year + 1, 3, 12)  # March 12 of next year
+
+    def _calculate_salary_cap_deadline(self, base_date: Optional[Date], context: Dict[str, Any]) -> Date:
+        """Calculate Salary Cap Compliance Deadline (March 12 4PM ET, same as new league year)."""
+        season_year = context.get("season_year", 2024)
+        return Date(season_year + 1, 3, 12)  # March 12 of next year
+
+    def _calculate_rfa_offer_deadline(self, base_date: Optional[Date], context: Dict[str, Any]) -> Date:
+        """Calculate RFA Tender Deadline (April 22, fixed date)."""
+        season_year = context.get("season_year", 2024)
+        return Date(season_year + 1, 4, 22)  # April 22 of next year
+
+    def _calculate_fifth_year_option_deadline(self, base_date: Optional[Date], context: Dict[str, Any]) -> Date:
+        """Calculate Fifth Year Option Deadline (May 2, fixed date)."""
+        season_year = context.get("season_year", 2024)
+        return Date(season_year + 1, 5, 2)  # May 2 of next year
+
+    def _calculate_scouting_combine(self, base_date: Optional[Date], context: Dict[str, Any]) -> Date:
+        """Calculate Scouting Combine start date (Late February, Feb 24-Mar 3)."""
+        season_year = context.get("season_year", 2024)
+        return Date(season_year + 1, 2, 24)  # Feb 24 of next year
+
+    def _calculate_rookie_minicamp(self, base_date: Optional[Date], context: Dict[str, Any]) -> Date:
+        """Calculate Rookie Minicamp (Early May, 1 week after draft)."""
+        season_year = context.get("season_year", 2024)
+
+        # If we have draft date in context, use it
+        draft_date = context.get("draft_date")
+        if draft_date:
+            return draft_date.add_days(7)  # 1 week after draft
+
+        # Standard estimate - early May
+        return Date(season_year + 1, 5, 10)
+
+    def _calculate_ota_start(self, base_date: Optional[Date], context: Dict[str, Any]) -> Date:
+        """Calculate OTA Start (Late May, fixed date)."""
+        season_year = context.get("season_year", 2024)
+        return Date(season_year + 1, 5, 20)  # May 20 of next year
+
+    def _calculate_mandatory_minicamp(self, base_date: Optional[Date], context: Dict[str, Any]) -> Date:
+        """Calculate Mandatory Minicamp (Mid June, fixed date)."""
+        season_year = context.get("season_year", 2024)
+        return Date(season_year + 1, 6, 15)  # June 15 of next year
+
+    def _calculate_franchise_tag_extension_deadline(self, base_date: Optional[Date], context: Dict[str, Any]) -> Date:
+        """Calculate Franchise Tag Extension Deadline (July 15, fixed date)."""
+        season_year = context.get("season_year", 2024)
+        return Date(season_year + 1, 7, 15)  # July 15 of next year
+
+    def _calculate_waiver_claim_deadline(self, base_date: Optional[Date], context: Dict[str, Any]) -> Date:
+        """Calculate Waiver Claim Deadline (August 27 Noon ET, fixed date)."""
+        season_year = context.get("season_year", 2024)
+        return Date(season_year, 8, 27)  # August 27 of current season year
 
     def add_custom_milestone(self, milestone_def: MilestoneDefinition) -> None:
         """Add a custom milestone definition."""

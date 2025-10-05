@@ -53,6 +53,7 @@ except ImportError:
 
 class InteractiveFullSeasonSimulator:
     """
+
     Interactive terminal interface for full season simulation.
 
     Provides phase-aware user control over complete NFL season:
@@ -101,6 +102,10 @@ class InteractiveFullSeasonSimulator:
 
         self.running = True
         self.database_path = database_path
+
+        # Initialize logger
+        import logging
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     def run(self):
         """Main terminal loop with phase-aware menu."""
@@ -229,14 +234,28 @@ class InteractiveFullSeasonSimulator:
 
     def print_offseason_menu(self):
         """Display offseason command menu."""
-        print(f"\n{Colors.BOLD}{Colors.BRIGHT_BLUE}╔═══ OFFSEASON MENU ═══╗{Colors.RESET}")
-        print(f"{Colors.BLUE}║{Colors.RESET}")
-        print(f"{Colors.BLUE}║{Colors.RESET}  1️⃣  View season summary")
-        print(f"{Colors.BLUE}║{Colors.RESET}  2️⃣  View Super Bowl champion")
-        print(f"{Colors.BLUE}║{Colors.RESET}  3️⃣  View regular season stat leaders")
-        print(f"{Colors.BLUE}║{Colors.RESET}  4️⃣  View playoff stat leaders")
-        print(f"{Colors.BLUE}║{Colors.RESET}  0️⃣  Exit")
-        print(f"{Colors.BOLD}{Colors.BRIGHT_BLUE}╚══════════════════════╝{Colors.RESET}\n")
+        current_date = self.controller.calendar.get_current_date()
+        print(f"\n{Colors.BOLD}{Colors.BRIGHT_BLUE}{'='*80}{Colors.RESET}")
+        print(f"{Colors.BOLD}{Colors.BRIGHT_BLUE}[OFFSEASON MENU]{Colors.RESET}")
+        print(f"{Colors.BLUE}Current Date: {current_date}{Colors.RESET}")
+        print(f"{Colors.BLUE}Current Phase: Offseason{Colors.RESET}")
+
+        print(f"\n{Colors.BOLD}📅 CALENDAR CONTROLS{Colors.RESET}")
+        print(f"{Colors.BLUE}[1]{Colors.RESET} Advance 1 Day (trigger events for this date)")
+        print(f"{Colors.BLUE}[2]{Colors.RESET} Advance 1 Week (trigger events across 7 days)")
+        print(f"{Colors.BLUE}[3]{Colors.RESET} Advance to Next Event")
+
+        print(f"\n{Colors.BOLD}📋 EVENT MANAGEMENT{Colors.RESET}")
+        print(f"{Colors.BLUE}[4]{Colors.RESET} View Upcoming Events (next 10)")
+        print(f"{Colors.BLUE}[5]{Colors.RESET} View Event History (last 10 triggered)")
+
+        print(f"\n{Colors.BOLD}📊 SEASON REVIEW{Colors.RESET}")
+        print(f"{Colors.BLUE}[6]{Colors.RESET} View Final Standings")
+        print(f"{Colors.BLUE}[7]{Colors.RESET} View Season Summary")
+        print(f"{Colors.BLUE}[8]{Colors.RESET} View Stat Leaders")
+
+        print(f"\n{Colors.BLUE}[0]{Colors.RESET} Exit to Main Menu")
+        print(f"{Colors.BOLD}{Colors.BRIGHT_BLUE}{'='*80}{Colors.RESET}\n")
 
     def handle_command(self, choice: str, phase_name: str):
         """
@@ -543,14 +562,28 @@ class InteractiveFullSeasonSimulator:
 
         try:
             # Simulate until offseason
+            iteration_count = 0
+            max_iterations = 10  # Safety limit (playoffs shouldn't take more than ~5-6 weeks)
+
             while True:
+                iteration_count += 1
                 result = self.controller.advance_week()
                 current_phase = self.controller.get_current_phase()
+
+                print(f"\n[DEBUG] Iteration {iteration_count}: Phase = {current_phase.value}, Games = {result.get('total_games_played', 0)}")
 
                 if current_phase.value == "offseason":
                     # Super Bowl complete
                     if result.get('phase_transition'):
                         self.display_phase_transition(result['phase_transition'])
+                    break
+
+                # SAFETY: Prevent infinite loop
+                if iteration_count >= max_iterations:
+                    print_error(f"\n🛑 SAFETY BREAK: {max_iterations} weeks simulated without reaching offseason")
+                    print_error("This may indicate Super Bowl didn't trigger phase transition")
+                    print_info(f"Current phase: {current_phase.value}")
+                    print_info(f"Last week games: {result.get('total_games_played', 0)}")
                     break
 
             print_success("Super Bowl complete!")
@@ -565,18 +598,265 @@ class InteractiveFullSeasonSimulator:
     def handle_offseason_command(self, choice: str):
         """Handle commands during offseason phase."""
         if choice == "1":
-            self.handle_view_season_summary()
+            self.handle_offseason_advance_day()
         elif choice == "2":
-            self.handle_view_champion()
+            self.handle_offseason_advance_week()
         elif choice == "3":
-            self.handle_view_regular_stat_leaders()
+            self.handle_advance_to_next_event()
         elif choice == "4":
-            self.handle_view_playoff_stat_leaders()
+            self.handle_view_upcoming_events()
+        elif choice == "5":
+            self.handle_view_event_history()
+        elif choice == "6":
+            self.handle_show_standings()
+        elif choice == "7":
+            self.handle_view_season_summary()
+        elif choice == "8":
+            self.handle_view_stat_leaders()
         elif choice == "0":
             self.handle_exit()
         else:
             print_warning(f"Invalid command: {choice}")
             input("\nPress Enter to continue...")
+
+    def handle_offseason_advance_day(self):
+        """Advance 1 day in offseason and display triggered events."""
+        print_separator()
+        print_info("Advancing 1 day...")
+
+        try:
+            result = self.controller.advance_day()
+            print(f"\n✅ Advanced to {result['date']}")
+
+            if result.get('events_triggered'):
+                print(f"\n📅 Events Triggered:")
+                self._display_triggered_events(result['events_triggered'])
+            else:
+                print_info("No events triggered today")
+
+        except Exception as e:
+            print_error(f"Error advancing day: {e}")
+
+        input("\nPress Enter to continue...")
+
+    def handle_offseason_advance_week(self):
+        """Advance 7 days in offseason and display all triggered events."""
+        print_separator()
+        print_info("Advancing 7 days (1 week)...")
+
+        try:
+            all_events = []
+            for i in range(7):
+                result = self.controller.advance_day()
+                if result.get('events_triggered'):
+                    all_events.extend(result['events_triggered'])
+
+            print(f"\n✅ Advanced 1 week to {self.controller.calendar.get_current_date()}")
+
+            if all_events:
+                print(f"\n📅 Events Triggered ({len(all_events)} total):")
+                self._display_triggered_events(all_events)
+            else:
+                print_info("No events triggered this week")
+
+        except Exception as e:
+            print_error(f"Error advancing week: {e}")
+
+        input("\nPress Enter to continue...")
+
+    def handle_advance_to_next_event(self):
+        """Advance calendar to the next scheduled event date."""
+        print_separator()
+        print_info("Finding next scheduled event...")
+
+        try:
+            current_date = self.controller.calendar.get_current_date()
+
+            # Get upcoming events to find the next one
+            upcoming_events = self._get_upcoming_events(limit=1)
+
+            if not upcoming_events:
+                print_warning("No more offseason events scheduled")
+                input("\nPress Enter to continue...")
+                return
+
+            next_event = upcoming_events[0]
+            next_event_timestamp = next_event.get('timestamp')
+
+            if next_event_timestamp:
+                # Convert timestamp to Date
+                target_date = Date(
+                    next_event_timestamp.year,
+                    next_event_timestamp.month,
+                    next_event_timestamp.day
+                )
+
+                print(f"\nAdvancing to {target_date}...")
+
+                # Advance day by day until we reach the event
+                days_advanced = 0
+                all_triggered_events = []
+
+                while self.controller.calendar.get_current_date() < target_date:
+                    result = self.controller.advance_day()
+                    days_advanced += 1
+
+                    # Collect any events that triggered
+                    if result.get('events_triggered'):
+                        all_triggered_events.extend(result['events_triggered'])
+
+                # Advance one more day to trigger the target event
+                result = self.controller.advance_day()
+                days_advanced += 1
+                if result.get('events_triggered'):
+                    all_triggered_events.extend(result['events_triggered'])
+
+                print(f"\n✅ Advanced {days_advanced} days to {self.controller.calendar.get_current_date()}")
+
+                if all_triggered_events:
+                    print(f"\n📅 Events Triggered:")
+                    self._display_triggered_events(all_triggered_events)
+            else:
+                print_warning("Could not determine event date")
+
+        except Exception as e:
+            print_error(f"Error advancing to next event: {e}")
+
+        input("\nPress Enter to continue...")
+
+    def handle_view_upcoming_events(self):
+        """Display next 10 scheduled offseason events."""
+        print_separator()
+        print_info("Fetching upcoming events...")
+
+        try:
+            current_date = self.controller.calendar.get_current_date()
+            events = self._get_upcoming_events(limit=10)
+
+            if not events:
+                print_warning("No upcoming events scheduled")
+                input("\nPress Enter to continue...")
+                return
+
+            print(f"\n{Colors.BOLD}{Colors.BRIGHT_CYAN}{'='*80}{Colors.RESET}")
+            print(f"{Colors.BOLD}{Colors.BRIGHT_CYAN}UPCOMING OFFSEASON EVENTS{Colors.RESET}")
+            print(f"{Colors.BOLD}{Colors.BRIGHT_CYAN}{'='*80}{Colors.RESET}\n")
+
+            for i, event in enumerate(events, 1):
+                event_timestamp = event.get('timestamp')
+                event_type = event.get('event_type', 'UNKNOWN')
+                data = event.get('data', {})
+
+                # Calculate days until event
+                if event_timestamp:
+                    event_date = Date(event_timestamp.year, event_timestamp.month, event_timestamp.day)
+                    days_until = current_date.days_until(event_date)
+                    date_str = f"{event_date} ({days_until} days)"
+                else:
+                    date_str = "Unknown date"
+
+                # Get description
+                description = data.get('description', data.get('deadline_type', event_type))
+
+                print(f"{Colors.BOLD}{i}. {date_str}{Colors.RESET}")
+                print(f"   Type: {event_type}")
+                print(f"   {description}")
+                print()
+
+            print(f"{Colors.BOLD}{Colors.BRIGHT_CYAN}{'='*80}{Colors.RESET}")
+
+        except Exception as e:
+            print_error(f"Error retrieving upcoming events: {e}")
+
+        input("\nPress Enter to continue...")
+
+    def handle_view_event_history(self):
+        """Display event history (placeholder for future implementation)."""
+        print_separator()
+        print_info("Event history feature coming soon...")
+        input("\nPress Enter to continue...")
+
+    def handle_view_stat_leaders(self):
+        """View stat leaders (combines regular season and playoff)."""
+        print_separator()
+        print_info("Fetching stat leaders...")
+
+        try:
+            summary = self.controller.season_summary
+            if summary:
+                print(f"\n{Colors.BOLD}{Colors.GREEN}═══ STAT LEADERS ═══{Colors.RESET}\n")
+                # TODO: Display stat leaders
+                print("Stat leaders display coming soon")
+            else:
+                print_warning("Stats not available")
+
+        except Exception as e:
+            print_error(f"Error fetching stats: {e}")
+
+        input("\nPress Enter to continue...")
+
+    def _display_triggered_events(self, events):
+        """Display events that triggered."""
+        if not events:
+            print("  No events triggered")
+            return
+
+        for event_data in events:
+            event_type = event_data.get('event_type', 'UNKNOWN')
+            data = event_data.get('data', {})
+
+            if event_type == 'DEADLINE':
+                print(f"  ⏰ DEADLINE: {data.get('description', 'Unknown deadline')}")
+                if 'message' in data:
+                    print(f"     {data['message']}")
+
+            elif event_type == 'WINDOW':
+                window_type = data.get('window_type', 'Unknown')
+                action = data.get('action', 'UNKNOWN')
+                print(f"  📅 WINDOW: {window_type} {action}")
+
+            elif event_type == 'MILESTONE':
+                print(f"  🎯 MILESTONE: {data.get('description', 'Unknown milestone')}")
+
+    def _get_upcoming_events(self, limit=10):
+        """
+        Get upcoming events from the event database.
+
+        Args:
+            limit: Maximum number of events to return
+
+        Returns:
+            List of event dictionaries sorted by timestamp
+        """
+        try:
+            current_date = self.controller.calendar.get_current_date()
+
+            # Get all DEADLINE, WINDOW, and MILESTONE events
+            all_events = []
+
+            # Query each event type
+            for event_type in ['DEADLINE', 'WINDOW', 'MILESTONE']:
+                events = self.controller.season_controller.event_db.get_events_by_type(event_type)
+                all_events.extend(events)
+
+            # Filter for events after current date
+            upcoming = []
+            for event in all_events:
+                event_timestamp = event.get('timestamp')
+                if event_timestamp:
+                    event_date = Date(event_timestamp.year, event_timestamp.month, event_timestamp.day)
+                    if event_date >= current_date:
+                        upcoming.append(event)
+
+            # Sort by timestamp (ascending - earliest first)
+            upcoming.sort(key=lambda e: e.get('timestamp'))
+
+            # Return limited results
+            return upcoming[:limit]
+
+        except Exception as e:
+            self.logger.error(f"Error getting upcoming events: {e}")
+            return []
 
     def handle_view_season_summary(self):
         """View comprehensive season summary."""
@@ -598,65 +878,6 @@ class InteractiveFullSeasonSimulator:
 
         except Exception as e:
             print_error(f"Error fetching summary: {e}")
-
-        input("\nPress Enter to continue...")
-
-    def handle_view_champion(self):
-        """View Super Bowl champion."""
-        print_separator()
-        print_info("Fetching Super Bowl champion...")
-
-        try:
-            summary = self.controller.season_summary
-            if summary and summary.get('super_bowl_champion'):
-                champion_id = summary['super_bowl_champion']
-                # TODO: Convert team ID to name
-                print(f"\n{Colors.BOLD}{Colors.BRIGHT_YELLOW}🏆 Super Bowl Champion: Team {champion_id} 🏆{Colors.RESET}\n")
-            else:
-                print_warning("Champion information not available")
-
-        except Exception as e:
-            print_error(f"Error fetching champion: {e}")
-
-        input("\nPress Enter to continue...")
-
-    def handle_view_regular_stat_leaders(self):
-        """View regular season stat leaders."""
-        print_separator()
-        print_info("Fetching regular season stat leaders...")
-
-        try:
-            summary = self.controller.season_summary
-            if summary and summary.get('regular_season_leaders'):
-                leaders = summary['regular_season_leaders']
-                print(f"\n{Colors.BOLD}{Colors.GREEN}═══ REGULAR SEASON STAT LEADERS ═══{Colors.RESET}\n")
-                # TODO: Display stat leaders
-                print("Stat leaders display coming soon")
-            else:
-                print_warning("Regular season stats not available")
-
-        except Exception as e:
-            print_error(f"Error fetching stats: {e}")
-
-        input("\nPress Enter to continue...")
-
-    def handle_view_playoff_stat_leaders(self):
-        """View playoff stat leaders."""
-        print_separator()
-        print_info("Fetching playoff stat leaders...")
-
-        try:
-            summary = self.controller.season_summary
-            if summary and summary.get('playoff_leaders'):
-                leaders = summary['playoff_leaders']
-                print(f"\n{Colors.BOLD}{Colors.MAGENTA}═══ PLAYOFF STAT LEADERS ═══{Colors.RESET}\n")
-                # TODO: Display stat leaders
-                print("Stat leaders display coming soon")
-            else:
-                print_warning("Playoff stats not available")
-
-        except Exception as e:
-            print_error(f"Error fetching stats: {e}")
 
         input("\nPress Enter to continue...")
 

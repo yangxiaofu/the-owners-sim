@@ -8,7 +8,7 @@ Provides user-friendly output formatting for cap summaries, contracts,
 and compliance reports.
 """
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 from datetime import date
 
 

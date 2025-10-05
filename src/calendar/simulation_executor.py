@@ -1,17 +1,27 @@
 """
 Simulation Executor
 
-Executes daily NFL simulation by coordinating calendar, events, and game simulation.
+Executes daily NFL simulation by coordinating calendar, events, and simulation.
 
 This component orchestrates the daily simulation workflow by:
 1. Getting the current date from the calendar
 2. Retrieving scheduled events for that date from the events database
-3. Executing each event (simulating games)
+3. Executing each event (games, cap transactions, deadlines, etc.)
 4. Recording game completions for phase tracking
 5. Returning a summary of results
 
 This is the execution layer that sits between SeasonManager (high-level API)
-and the individual game simulation components.
+and the individual event simulation components.
+
+Supported Event Types:
+- GAME: NFL game simulations via FullGameSimulator
+- FRANCHISE_TAG: Franchise tag applications with cap validation
+- TRANSITION_TAG: Transition tag applications with cap validation
+- PLAYER_RELEASE: Player releases with dead cap calculations
+- CONTRACT_RESTRUCTURE: Contract restructures for cap space
+- UFA_SIGNING: Unrestricted free agent signings with cap validation
+- RFA_OFFER_SHEET: Restricted free agent offers with matching
+- DEADLINE: NFL deadline markers (cap compliance, tag deadlines, etc.)
 """
 
 from typing import List, Dict, Any, Optional
@@ -20,19 +30,27 @@ from calendar.calendar_component import CalendarComponent
 from calendar.season_phase_tracker import GameCompletionEvent, PhaseTransition
 from calendar.date_models import Date
 from events import EventDatabaseAPI, GameEvent, EventResult
+from events.contract_events import FranchiseTagEvent, TransitionTagEvent, PlayerReleaseEvent, ContractRestructureEvent
+from events.free_agency_events import UFASigningEvent, RFAOfferSheetEvent
+from events.deadline_event import DeadlineEvent
 from workflows import SimulationWorkflow
 
 
 class SimulationExecutor:
     """
-    Executes daily simulation workflow.
+    Executes daily simulation workflow for all event types.
 
     Orchestrates the interaction between:
     - CalendarComponent (date/time management)
     - EventDatabaseAPI (event storage/retrieval)
-    - GameEvent (individual game simulation)
+    - Event classes (GameEvent, cap events, deadlines, etc.)
     - SeasonPhaseTracker (phase management via calendar)
-    - SimulationWorkflow (3-stage simulation with persistence)
+    - SimulationWorkflow (3-stage simulation with persistence for games)
+
+    Event Handling:
+    - Game events use SimulationWorkflow for statistics persistence
+    - Cap events simulate directly with cap validation
+    - Deadline events execute cap compliance checks or act as markers
 
     This component is used by SeasonManager to execute scheduled events
     and can be used standalone for testing or demos.
@@ -92,8 +110,8 @@ class SimulationExecutor:
             Dictionary with simulation results:
             {
                 "date": str,
-                "games_count": int,
-                "games_played": List[Dict],
+                "events_count": int,
+                "events_completed": List[Dict],
                 "phase_transitions": List[Dict],
                 "current_phase": str,
                 "phase_info": Dict,
@@ -115,8 +133,8 @@ class SimulationExecutor:
         if not events_for_day:
             return {
                 "date": str(target_date),
-                "games_count": 0,
-                "games_played": [],
+                "events_count": 0,
+                "events_completed": [],
                 "phase_transitions": [],
                 "current_phase": self.calendar.get_current_phase().value,
                 "success": True,
@@ -126,7 +144,7 @@ class SimulationExecutor:
         print(f"\n📅 Found {len(events_for_day)} event(s) scheduled for {target_date}")
 
         # Simulate each event
-        games_played = []
+        events_completed = []
         phase_transitions = []
         errors = []
 
@@ -135,46 +153,48 @@ class SimulationExecutor:
                 print(f"\n{'─'*80}")
                 print(f"Event {i}/{len(events_for_day)}")
 
-                # Reconstruct GameEvent from database
-                game_event = GameEvent.from_database(event_data)
+                # Get event type to determine which class to use
+                event_type = event_data.get('event_type', 'GAME')
+                print(f"Event Type: {event_type}")
+
+                # Reconstruct appropriate event class based on type
+                event = self._reconstruct_event(event_data, event_type)
 
                 # Validate preconditions
-                is_valid, error_msg = game_event.validate_preconditions()
+                is_valid, error_msg = event.validate_preconditions()
                 if not is_valid:
-                    errors.append(f"Game {game_event.get_game_id()}: Validation failed - {error_msg}")
+                    errors.append(f"Event {event.get_game_id()}: Validation failed - {error_msg}")
                     continue
 
-                # Simulate the game using workflow (includes persistence)
-                workflow_result = self.workflow.execute(game_event)
-                result = workflow_result.simulation_result
+                # Execute event (different handling for games vs other events)
+                if event_type == "GAME":
+                    # Games use workflow for statistics persistence
+                    workflow_result = self.workflow.execute(event)
+                    result = workflow_result.simulation_result
+                else:
+                    # Other events simulate directly (no workflow needed)
+                    result = event.simulate()
 
-                # Record game completion in phase tracker
+                # Record completion and handle results
                 if result.success:
-                    transition = self._record_game_completion(game_event, result)
-                    if transition:
-                        phase_transitions.append(transition)
-                        print(f"\n🔄 PHASE TRANSITION: {transition.from_phase.value} → {transition.to_phase.value}")
+                    # Record game completion in phase tracker (games only)
+                    if event_type == "GAME":
+                        transition = self._record_game_completion(event, result)
+                        if transition:
+                            phase_transitions.append(transition)
+                            print(f"\n🔄 PHASE TRANSITION: {transition.from_phase.value} → {transition.to_phase.value}")
 
-                    # Store result summary
-                    games_played.append({
-                        "game_id": game_event.get_game_id(),
-                        "matchup": game_event.get_matchup_description(),
-                        "away_team_id": game_event.away_team_id,
-                        "home_team_id": game_event.home_team_id,
-                        "away_score": result.data.get("away_score", 0),
-                        "home_score": result.data.get("home_score", 0),
-                        "winner_id": result.data.get("winner_id"),
-                        "winner_name": result.data.get("winner_name"),
-                        "total_plays": result.data.get("total_plays", 0),
-                        "success": True
-                    })
+                    # Store result summary (generic for all event types)
+                    event_summary = self._create_event_summary(event, result, event_type)
+                    events_completed.append(event_summary)
 
                     # Update event in database with results
-                    self.event_db.update_event(game_event)
+                    self.event_db.update_event(event)
                 else:
-                    errors.append(f"Game {game_event.get_game_id()}: Simulation failed - {result.error_message}")
-                    games_played.append({
-                        "game_id": game_event.get_game_id(),
+                    errors.append(f"Event {event.get_game_id()}: Simulation failed - {result.error_message}")
+                    events_completed.append({
+                        "event_id": event.get_game_id(),
+                        "event_type": event_type,
                         "success": False,
                         "error": result.error_message
                     })
@@ -188,17 +208,22 @@ class SimulationExecutor:
         print(f"\n{'='*80}")
         print(f"DAY SIMULATION COMPLETE")
         print(f"{'='*80}")
-        print(f"Games Played: {len([g for g in games_played if g.get('success', False)])}/{len(events_for_day)}")
+        print(f"Events Completed: {len([e for e in events_completed if e.get('success', False)])}/{len(events_for_day)}")
         print(f"Current Phase: {self.calendar.get_current_phase().value}")
         if phase_transitions:
             print(f"Phase Transitions: {len(phase_transitions)}")
         if errors:
             print(f"Errors: {len(errors)}")
 
+        # Separate games from other events for backward compatibility
+        games_played = [e for e in events_completed if e.get('event_type') == 'GAME']
+
         return {
             "date": str(target_date),
-            "games_count": len(events_for_day),
-            "games_played": games_played,
+            "events_count": len(events_for_day),
+            "events_completed": events_completed,
+            "games_played": games_played,  # Backward compatibility with SeasonController
+            "events_executed": events_completed,  # Alternative name for offseason events
             "phase_transitions": [self._transition_to_dict(t) for t in phase_transitions],
             "current_phase": self.calendar.get_current_phase().value,
             "phase_info": self.calendar.get_phase_info(),
@@ -206,12 +231,119 @@ class SimulationExecutor:
             "errors": errors
         }
 
+    def _reconstruct_event(self, event_data: Dict[str, Any], event_type: str):
+        """
+        Reconstruct the appropriate event class from database data.
+
+        Args:
+            event_data: Event data from database
+            event_type: Type of event to reconstruct
+
+        Returns:
+            Reconstructed event instance
+
+        Raises:
+            ValueError: If event type is unknown
+        """
+        if event_type == "GAME":
+            return GameEvent.from_database(event_data)
+        elif event_type == "FRANCHISE_TAG":
+            return FranchiseTagEvent.from_database(event_data)
+        elif event_type == "TRANSITION_TAG":
+            return TransitionTagEvent.from_database(event_data)
+        elif event_type == "PLAYER_RELEASE":
+            return PlayerReleaseEvent.from_database(event_data)
+        elif event_type == "CONTRACT_RESTRUCTURE":
+            return ContractRestructureEvent.from_database(event_data)
+        elif event_type == "UFA_SIGNING":
+            return UFASigningEvent.from_database(event_data)
+        elif event_type == "RFA_OFFER_SHEET":
+            return RFAOfferSheetEvent.from_database(event_data)
+        elif event_type == "DEADLINE":
+            return DeadlineEvent.from_database(event_data)
+        else:
+            raise ValueError(f"Unknown event type: {event_type}")
+
+    def _create_event_summary(self, event, result: EventResult, event_type: str) -> Dict[str, Any]:
+        """
+        Create a summary dictionary for a completed event.
+
+        Args:
+            event: The event instance
+            result: The simulation result
+            event_type: Type of event
+
+        Returns:
+            Dictionary with event summary data
+        """
+        # Base summary for all events
+        summary = {
+            "event_id": event.get_game_id(),
+            "event_type": event_type,
+            "success": True
+        }
+
+        # Add type-specific details
+        if event_type == "GAME":
+            summary.update({
+                "matchup": event.get_matchup_description(),
+                "away_team_id": event.away_team_id,
+                "home_team_id": event.home_team_id,
+                "away_score": result.data.get("away_score", 0),
+                "home_score": result.data.get("home_score", 0),
+                "winner_id": result.data.get("winner_id"),
+                "winner_name": result.data.get("winner_name"),
+                "total_plays": result.data.get("total_plays", 0)
+            })
+        elif event_type in ["FRANCHISE_TAG", "TRANSITION_TAG"]:
+            summary.update({
+                "team_id": result.data.get("team_id"),
+                "player_id": result.data.get("player_id"),
+                "tag_salary": result.data.get("tag_salary"),
+                "message": result.data.get("message")
+            })
+        elif event_type == "PLAYER_RELEASE":
+            summary.update({
+                "team_id": result.data.get("team_id"),
+                "player_id": result.data.get("player_id"),
+                "dead_money": result.data.get("dead_money"),
+                "cap_savings": result.data.get("cap_savings"),
+                "message": result.data.get("message")
+            })
+        elif event_type == "CONTRACT_RESTRUCTURE":
+            summary.update({
+                "team_id": result.data.get("team_id"),
+                "player_id": result.data.get("player_id"),
+                "cap_savings": result.data.get("cap_savings"),
+                "message": result.data.get("message")
+            })
+        elif event_type in ["UFA_SIGNING", "RFA_OFFER_SHEET"]:
+            summary.update({
+                "team_id": result.data.get("team_id"),
+                "player_id": result.data.get("player_id"),
+                "contract_value": result.data.get("contract_value"),
+                "message": result.data.get("message")
+            })
+        elif event_type == "DEADLINE":
+            summary.update({
+                "deadline_type": result.data.get("deadline_type"),
+                "description": result.data.get("description"),
+                "message": result.data.get("message")
+            })
+        else:
+            # Generic handling for unknown event types
+            summary.update({
+                "message": result.data.get("message", "Event completed successfully")
+            })
+
+        return summary
+
     def _get_events_for_date(self, target_date: Date) -> List[Dict[str, Any]]:
         """
         Retrieve all events scheduled for a specific date.
 
-        Filters events by dynasty for playoff/preseason games while keeping
-        regular season games shared across all dynasties.
+        Filters events by dynasty for dynasty-specific events (playoff games, cap events)
+        while keeping regular season games shared across all dynasties.
 
         Args:
             target_date: Date to retrieve events for
@@ -219,19 +351,23 @@ class SimulationExecutor:
         Returns:
             List of event dictionaries from database
         """
-        # Get playoff events for this specific dynasty/season
+        all_events_for_dynasty = []
+
+        # Get playoff game events for this specific dynasty/season
         playoff_prefix = f"playoff_{self.dynasty_id}_{self.season_year}_"
         playoff_events = self.event_db.get_events_by_game_id_prefix(
             playoff_prefix,
             event_type="GAME"
         )
+        all_events_for_dynasty.extend(playoff_events)
 
-        # Get preseason events for this specific dynasty/season (future-proofing)
+        # Get preseason game events for this specific dynasty/season (future-proofing)
         preseason_prefix = f"preseason_{self.dynasty_id}_{self.season_year}_"
         preseason_events = self.event_db.get_events_by_game_id_prefix(
             preseason_prefix,
             event_type="GAME"
         )
+        all_events_for_dynasty.extend(preseason_events)
 
         # Get ALL game events to extract regular season games (shared across dynasties)
         all_game_events = self.event_db.get_events_by_type("GAME")
@@ -240,45 +376,67 @@ class SimulationExecutor:
             if not e.get('game_id', '').startswith('playoff_')
             and not e.get('game_id', '').startswith('preseason_')
         ]
+        all_events_for_dynasty.extend(regular_season_events)
 
-        # Combine dynasty-specific and shared events
-        all_events_for_dynasty = playoff_events + preseason_events + regular_season_events
+        # Get cap-related events (franchise tags, releases, restructures, signings)
+        cap_event_types = [
+            "FRANCHISE_TAG", "TRANSITION_TAG", "PLAYER_RELEASE",
+            "CONTRACT_RESTRUCTURE", "UFA_SIGNING", "RFA_OFFER_SHEET"
+        ]
+        for event_type in cap_event_types:
+            # Cap events are dynasty-specific
+            cap_events = self.event_db.get_events_by_type(event_type)
+            # Filter by dynasty_id in parameters
+            dynasty_cap_events = [
+                e for e in cap_events
+                if e['data'].get('parameters', {}).get('dynasty_id', 'default') == self.dynasty_id
+            ]
+            all_events_for_dynasty.extend(dynasty_cap_events)
+
+        # Get deadline events (dynasty-specific)
+        deadline_events = self.event_db.get_events_by_type("DEADLINE")
+        dynasty_deadline_events = [
+            e for e in deadline_events
+            if e['data'].get('parameters', {}).get('dynasty_id', 'default') == self.dynasty_id
+        ]
+        all_events_for_dynasty.extend(dynasty_deadline_events)
 
         # Filter by date
         events_for_date = []
         target_date_str = str(target_date)
 
         for event_data in all_events_for_dynasty:
-            # Check if game_date in parameters matches target date
+            # Check if event_date/game_date in parameters matches target date
             params = event_data['data'].get('parameters', event_data['data'])
-            game_date_str = params.get('game_date', '')
+            # Try both 'game_date' (for games) and 'event_date' (for other events)
+            date_str = params.get('game_date') or params.get('event_date', '')
 
             # Extract just the date part (YYYY-MM-DD) from ISO datetime string
-            if 'T' in game_date_str:
-                game_date_part = game_date_str.split('T')[0]
+            if 'T' in date_str:
+                date_part = date_str.split('T')[0]
             else:
-                game_date_part = game_date_str[:10] if len(game_date_str) >= 10 else game_date_str
+                date_part = date_str[:10] if len(date_str) >= 10 else date_str
 
-            if game_date_part == target_date_str:
+            if date_part == target_date_str:
                 events_for_date.append(event_data)
 
-        # DEDUPLICATION: Remove duplicate game_ids (keep first occurrence)
-        # This prevents the same game from being simulated multiple times if
+        # DEDUPLICATION: Remove duplicate event_ids (keep first occurrence)
+        # This prevents the same event from being simulated multiple times if
         # it was accidentally inserted into the events table more than once
-        seen_game_ids = set()
+        seen_event_ids = set()
         deduplicated_events = []
         duplicates_removed = 0
 
         for event_data in events_for_date:
-            game_id = event_data.get('game_id', '')
-            if game_id and game_id not in seen_game_ids:
-                seen_game_ids.add(game_id)
+            event_id = event_data.get('event_id', '') or event_data.get('game_id', '')
+            if event_id and event_id not in seen_event_ids:
+                seen_event_ids.add(event_id)
                 deduplicated_events.append(event_data)
-            elif game_id in seen_game_ids:
+            elif event_id in seen_event_ids:
                 duplicates_removed += 1
 
         if duplicates_removed > 0:
-            print(f"⚠️  Removed {duplicates_removed} duplicate game(s) for {target_date}")
+            print(f"⚠️  Removed {duplicates_removed} duplicate event(s) for {target_date}")
 
         return deduplicated_events
 

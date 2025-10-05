@@ -342,7 +342,24 @@ class DatabaseConnection:
                 UNIQUE(dynasty_id, season)
             )
         ''')
-        
+
+        # Dynasty state table - tracks current simulation state
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS dynasty_state (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dynasty_id TEXT NOT NULL,
+                season INTEGER NOT NULL,
+                current_date TEXT NOT NULL,
+                current_phase TEXT NOT NULL,
+                current_week INTEGER,
+                last_simulated_game_id TEXT,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id),
+                UNIQUE(dynasty_id, season)
+            )
+        ''')
+
         # Box scores table for detailed game information
         conn.execute('''
             CREATE TABLE IF NOT EXISTS box_scores (
@@ -466,15 +483,17 @@ class DatabaseConnection:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_games_teams ON games(home_team_id, away_team_id)")
 
         # Season type indexes for regular season/playoff separation (Phase 1 - Full Season Simulation)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_games_season_type ON games(dynasty_id, season, season_type)")
+        # NOTE: season_type column doesn't exist in current schema - using game_type instead
+        # conn.execute("CREATE INDEX IF NOT EXISTS idx_games_season_type ON games(dynasty_id, season, season_type)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_games_type ON games(game_type)")
 
         conn.execute("CREATE INDEX IF NOT EXISTS idx_player_stats_dynasty ON player_game_stats(dynasty_id, game_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_player_stats_player ON player_game_stats(player_id, dynasty_id)")
 
         # Player stats season type indexes for filtering regular season vs playoff stats
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_stats_season_type ON player_game_stats(dynasty_id, season_type)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_stats_player_type ON player_game_stats(player_id, season_type)")
+        # NOTE: season_type column doesn't exist in player_game_stats table - commented out
+        # conn.execute("CREATE INDEX IF NOT EXISTS idx_stats_season_type ON player_game_stats(dynasty_id, season_type)")
+        # conn.execute("CREATE INDEX IF NOT EXISTS idx_stats_player_type ON player_game_stats(player_id, season_type)")
 
         conn.execute("CREATE INDEX IF NOT EXISTS idx_standings_dynasty ON standings(dynasty_id, season)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_standings_team ON standings(team_id, season)")
@@ -493,6 +512,9 @@ class DatabaseConnection:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_events_game_id ON events(game_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)")
+
+        # Initialize standings for dynasties with games but missing standings
+        self._initialize_standings_if_empty(conn)
 
         self.logger.info("All tables and indexes created successfully")
     
@@ -625,6 +647,79 @@ class DatabaseConnection:
             return False
         finally:
             conn.close()
+
+    def _initialize_standings_if_empty(self, conn: sqlite3.Connection) -> None:
+        """
+        Initialize standings records for dynasties that have games but missing standings.
+
+        This ensures all 32 NFL teams have standings entries for each season with games.
+        Runs automatically on database connection to fix missing initialization data.
+
+        Args:
+            conn: Active database connection
+        """
+        try:
+            # Find all dynasties that have games
+            cursor = conn.cursor()
+            cursor.execute("SELECT DISTINCT dynasty_id FROM games")
+            dynasties_with_games = [row[0] for row in cursor.fetchall()]
+
+            if not dynasties_with_games:
+                return  # No games yet, nothing to initialize
+
+            # For each dynasty, get seasons with games
+            for dynasty_id in dynasties_with_games:
+                cursor.execute(
+                    "SELECT DISTINCT season FROM games WHERE dynasty_id = ?",
+                    (dynasty_id,)
+                )
+                seasons = [row[0] for row in cursor.fetchall()]
+
+                # For each season, check if standings exist
+                for season in seasons:
+                    cursor.execute(
+                        "SELECT COUNT(*) FROM standings WHERE dynasty_id = ? AND season = ?",
+                        (dynasty_id, season)
+                    )
+                    existing_count = cursor.fetchone()[0]
+
+                    # If missing standings (should be 32 teams)
+                    if existing_count < 32:
+                        # Get existing team IDs to avoid duplicates
+                        cursor.execute(
+                            "SELECT team_id FROM standings WHERE dynasty_id = ? AND season = ?",
+                            (dynasty_id, season)
+                        )
+                        existing_teams = {row[0] for row in cursor.fetchall()}
+
+                        # Insert missing teams (1-32)
+                        for team_id in range(1, 33):
+                            if team_id not in existing_teams:
+                                cursor.execute('''
+                                    INSERT INTO standings (
+                                        dynasty_id, team_id, season,
+                                        wins, losses, ties,
+                                        division_wins, division_losses, division_ties,
+                                        conference_wins, conference_losses, conference_ties,
+                                        home_wins, home_losses, home_ties,
+                                        away_wins, away_losses, away_ties,
+                                        points_for, points_against, point_differential
+                                    ) VALUES (?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+                                ''', (dynasty_id, team_id, season))
+
+                        conn.commit()
+
+                        # Log initialization for debugging
+                        teams_added = 32 - existing_count
+                        if teams_added > 0:
+                            self.logger.info(
+                                f"Initialized {teams_added} missing standings records for "
+                                f"dynasty '{dynasty_id}', season {season}"
+                            )
+
+        except Exception as e:
+            self.logger.error(f"Error initializing standings: {e}")
+            # Don't raise - this is a best-effort initialization
 
     def get_connection(self) -> sqlite3.Connection:
         """

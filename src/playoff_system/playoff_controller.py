@@ -211,6 +211,10 @@ class PlayoffController:
         # Simulate all games scheduled for TODAY (before advancing)
         simulation_result = self.simulation_executor.simulate_day(current_date)
 
+        if self.verbose_logging:
+            print(f"\n[DEBUG] simulation_result keys: {list(simulation_result.keys())}")
+            print(f"[DEBUG] simulation_result content: {simulation_result}")
+
         # NOW advance calendar by 1 day for next call
         advance_result = self.calendar.advance(1)
         self.total_days_simulated += 1
@@ -219,13 +223,26 @@ class PlayoffController:
         games_played = len([g for g in simulation_result.get('games_played', []) if g.get('success', False)])
         self.total_games_played += games_played
 
+        if self.verbose_logging:
+            print(f"[DEBUG] games_played count (from 'games_played' key): {games_played}")
+            print(f"[DEBUG] Raw games list length: {len(simulation_result.get('games_played', []))}")
+
         # Detect round transitions and track completed games
         round_transitioned = False
         if games_played > 0:
-            for game in simulation_result.get('games_played', []):
+            if self.verbose_logging:
+                print(f"\n[DEBUG] Processing {games_played} games for tracking...")
+
+            for i, game in enumerate(simulation_result.get('games_played', [])):
+                if self.verbose_logging:
+                    print(f"[DEBUG] Game {i+1}: event_id={game.get('event_id')}, success={game.get('success')}")
+
                 if game.get('success', False):
-                    # Detect which round this game belongs to by checking the game_id
-                    game_round = self._detect_game_round(game.get('game_id', ''))
+                    # Detect which round this game belongs to by checking the event_id
+                    game_round = self._detect_game_round(game.get('event_id', ''))
+
+                    if self.verbose_logging:
+                        print(f"[DEBUG]   Detected round: {game_round}, current_round: {self.current_round}")
 
                     # If game is from a different round, transition
                     if game_round and game_round != self.current_round:
@@ -235,20 +252,29 @@ class PlayoffController:
                         round_transitioned = True
 
                     # Track game in appropriate round (with duplicate detection)
-                    game_id = game.get('game_id', '')
-                    existing_game_ids = [g.get('game_id', '') for g in self.completed_games[self.current_round]]
+                    event_id = game.get('event_id', '')
+                    existing_event_ids = [g.get('event_id', '') for g in self.completed_games[self.current_round]]
 
-                    if game_id and game_id not in existing_game_ids:
+                    if self.verbose_logging:
+                        print(f"[DEBUG]   Existing event_ids in {self.current_round}: {len(existing_event_ids)}")
+                        print(f"[DEBUG]   Is duplicate? {event_id in existing_event_ids}")
+
+                    if event_id and event_id not in existing_event_ids:
                         self.completed_games[self.current_round].append(game)
-                    elif game_id in existing_game_ids:
+                        if self.verbose_logging:
+                            print(f"[DEBUG]   ✅ Game added to {self.current_round}! Total now: {len(self.completed_games[self.current_round])}")
+                    elif event_id in existing_event_ids:
                         # This should NEVER happen if dynasty isolation is working correctly
                         error_msg = (
-                            f"CRITICAL: Duplicate game detected: {game_id}. "
+                            f"CRITICAL: Duplicate game detected: {event_id}. "
                             f"This indicates a bug in dynasty isolation or event scheduling. "
                             f"Check that playoff events are properly filtered by dynasty_id."
                         )
                         self.logger.error(error_msg)
                         raise RuntimeError(error_msg)
+                else:
+                    if self.verbose_logging:
+                        print(f"[DEBUG]   ⚠️  Game marked as unsuccessful, not tracking")
 
         # Check if current round is complete
         round_complete = self._is_round_complete(self.current_round)
@@ -301,9 +327,20 @@ class PlayoffController:
 
             # Check if round completed and schedule next round
             if day_result['round_complete']:
+                if self.verbose_logging:
+                    print(f"\n[DEBUG] Day {day+1}: Round {self.current_round} is complete!")
+                    print(f"[DEBUG] Games played today: {day_result['games_played']}")
+
                 if self.current_round != 'super_bowl':
+                    if self.verbose_logging:
+                        print(f"[DEBUG] Calling _schedule_next_round() for {self.current_round}")
                     rounds_completed.append(self.current_round)
                     self._schedule_next_round()
+                    if self.verbose_logging:
+                        print(f"[DEBUG] _schedule_next_round() returned")
+                else:
+                    if self.verbose_logging:
+                        print(f"[DEBUG] Not scheduling next round (already at Super Bowl)")
 
         end_date = self.calendar.get_current_date()
 
@@ -843,14 +880,28 @@ class PlayoffController:
         Prevents duplicate scheduling by checking if round already exists.
         Finds the last completed round, then schedules the next one.
         """
+        if self.verbose_logging:
+            print(f"\n[DEBUG] _schedule_next_round() called")
+            print(f"[DEBUG] Current round: {self.current_round}")
+            print(f"[DEBUG] Completed games status:")
+            for round_name in self.ROUND_ORDER:
+                count = len(self.completed_games[round_name])
+                expected = self._get_expected_game_count(round_name)
+                print(f"  - {round_name}: {count}/{expected} games")
+
         # Find the last COMPLETED round (not the active/incomplete one)
         # The active round is the first incomplete round, so the completed round
         # is the one before it (or none if active_round is wild_card with 0 games)
         active_round = self.get_active_round()
         active_index = self.ROUND_ORDER.index(active_round)
 
+        if self.verbose_logging:
+            print(f"[DEBUG] Active round (from get_active_round()): {active_round} (index {active_index})")
+
         # If active round is first round AND has no games, there's no completed round yet
         if active_index == 0 and len(self.completed_games[active_round]) == 0:
+            if self.verbose_logging:
+                print(f"[DEBUG] Early return: No completed rounds yet (active={active_round}, games=0)")
             self.logger.warning("No completed rounds yet - cannot schedule next round")
             return
 
@@ -859,35 +910,53 @@ class PlayoffController:
         if len(self.completed_games[active_round]) >= self._get_expected_game_count(active_round):
             # Active round is complete, use it as completed round
             completed_round = active_round
+            if self.verbose_logging:
+                print(f"[DEBUG] Active round is complete, using as completed_round: {completed_round}")
         else:
             # Active round is incomplete, so the completed round is the previous one
             if active_index == 0:
+                if self.verbose_logging:
+                    print(f"[DEBUG] Early return: Active round is first round and incomplete")
                 self.logger.warning("Active round is first round and incomplete - cannot schedule next")
                 return
             completed_round = self.ROUND_ORDER[active_index - 1]
+            if self.verbose_logging:
+                print(f"[DEBUG] Active round incomplete, using previous round as completed_round: {completed_round}")
 
         # Find the next round after the completed one
         try:
             completed_index = self.ROUND_ORDER.index(completed_round)
         except ValueError:
+            if self.verbose_logging:
+                print(f"[DEBUG] Early return: Unknown round: {completed_round}")
             self.logger.error(f"Unknown round: {completed_round}")
             return
 
         if completed_index >= len(self.ROUND_ORDER) - 1:
+            if self.verbose_logging:
+                print(f"[DEBUG] Early return: Already at Super Bowl, no next round")
             self.logger.warning("Already at Super Bowl - no next round to schedule")
             return
 
         next_round = self.ROUND_ORDER[completed_index + 1]
 
+        if self.verbose_logging:
+            print(f"[DEBUG] Determined: completed_round={completed_round}, next_round={next_round}")
+
         # Check if next round already scheduled (prevent duplicates)
+        event_prefix = f"playoff_{self.dynasty_id}_{self.season_year}_{next_round}_"
         existing_events = self.event_db.get_events_by_game_id_prefix(
-            f"playoff_{self.dynasty_id}_{self.season_year}_{next_round}_",
+            event_prefix,
             event_type="GAME"
         )
 
+        if self.verbose_logging:
+            print(f"[DEBUG] Checking for existing {next_round} events with prefix: {event_prefix}")
+            print(f"[DEBUG] Found {len(existing_events)} existing events")
+
         if existing_events:
             if self.verbose_logging:
-                print(f"\n✅ {next_round.title()} round already scheduled ({len(existing_events)} games)")
+                print(f"[DEBUG] Early return: {next_round.title()} round already scheduled ({len(existing_events)} games)")
                 print(f"   Skipping duplicate scheduling")
             return
 
@@ -902,6 +971,7 @@ class PlayoffController:
         start_date = self.wild_card_start_date.add_days(offset)
 
         if self.verbose_logging:
+            print(f"[DEBUG] Date calculation: wild_card_start={self.wild_card_start_date}, offset={offset}, start_date={start_date}")
             print(f"\n{'='*80}")
             print(f"SCHEDULING {next_round.upper()} ROUND")
             print(f"{'='*80}")
@@ -936,14 +1006,19 @@ class PlayoffController:
             # self.current_round = next_round  # REMOVED - causes premature round transition
 
             if self.verbose_logging:
+                print(f"[DEBUG] Scheduling succeeded! Result: {result.get('games_scheduled')} games scheduled")
                 print(f"✅ {next_round.title()} round scheduled: {result['games_scheduled']} games")
                 print(f"  (Will transition to {next_round.title()} when games are simulated)")
+                print(f"[DEBUG] _schedule_next_round() completed successfully")
                 print(f"{'='*80}")
 
         except Exception as e:
             self.logger.error(f"Error scheduling {next_round} round: {e}")
             if self.verbose_logging:
+                print(f"[DEBUG] Exception caught in _schedule_next_round(): {e}")
                 print(f"❌ {next_round.title()} scheduling failed: {e}")
+                import traceback
+                traceback.print_exc()
             # Don't update current_round on error
             # Let the round stay where it is until games are actually ready
 

@@ -134,14 +134,17 @@ QTableView {
     selection-color: white;
     gridline-color: #e0e0e0;
     border: 1px solid #cccccc;
+    color: #333333;
 }
 
 QTableView::item {
     padding: 4px;
+    color: #333333;
 }
 
 QTableView::item:hover {
     background-color: #e8f4ff;
+    color: #333333;
 }
 
 QHeaderView::section {

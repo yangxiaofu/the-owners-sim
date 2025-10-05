@@ -10,7 +10,7 @@ from datetime import date, datetime, timedelta
 from typing import List, Optional, Dict, Any, Union
 import logging
 
-from calendar.calendar_manager import CalendarManager
+from calendar.calendar_component import CalendarComponent
 from calendar.simulation_executor import SimulationExecutor
 
 
@@ -33,17 +33,18 @@ class SeasonManager:
         self._database_path = database_path
         self._logger = logging.getLogger("SeasonManager")
 
-        # Initialize calendar manager
-        # TODO: Calendar manager needs a start date - this should be provided by dynasty
+        # Initialize calendar component
+        # TODO: Calendar component needs a start date - this should be provided by dynasty
         # For now, create with a default date that can be updated later
         try:
             from datetime import date
-            default_start_date = date(2024, 9, 1)  # Default NFL season start
-            self._calendar_manager = CalendarManager(
+            from calendar.date_models import Date
+            default_start_date = Date(2024, 9, 1)  # Default NFL season start
+            self._calendar_manager = CalendarComponent(
                 start_date=default_start_date,
-                database_path=database_path
+                season_year=2024
             )
-            self._logger.info("Calendar manager initialized with default date")
+            self._logger.info("Calendar component initialized with default date")
         except Exception as e:
             self._logger.error(f"Failed to initialize calendar manager: {e}")
             self._calendar_manager = None

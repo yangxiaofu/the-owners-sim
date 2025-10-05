@@ -10,7 +10,7 @@ Enforces NFL salary cap rules and compliance requirements including:
 Provides methods for both validation and enforcement.
 """
 
-from typing import Tuple, List, Dict, Any
+from typing import Tuple, List, Dict, Any, Optional
 from datetime import date
 import logging
 

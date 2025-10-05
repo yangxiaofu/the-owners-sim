@@ -37,7 +37,7 @@ Create a professional, cross-platform desktop application that:
 **Phase 1: Foundation & Basic Structure** (Completed: 2025-10-04)
 - ✅ Complete `ui/` folder structure created
 - ✅ PySide6 application shell working
-- ✅ 6 primary tabs (Season, Team, Player, Offseason, League, Game)
+- ✅ 7 primary tabs (Season, Calendar, Team, Player, Offseason, League, Game)
 - ✅ Complete menu bar with 7 menus
 - ✅ Toolbar with quick actions
 - ✅ Status bar with date/phase display
@@ -45,8 +45,17 @@ Create a professional, cross-platform desktop application that:
 - ✅ All view stubs created with placeholder content
 - ✅ Test script verifying imports
 - ✅ Documentation complete
+- ✅ Calendar tab with event display and month navigation
 
-**Files Created:** 20 files
+**Additional Completions:**
+- ✅ SeasonController with team data and standings access
+- ✅ CalendarController with event filtering and month navigation
+- ✅ CalendarModel (Qt table model) with color-coded event types
+- ✅ CalendarView with filters and event details panel
+- ✅ Team standings moved from Season tab to League tab
+- ✅ Fixed circular import issue in src/calendar module
+
+**Files Created:** 25 files
 **How to Run:** `pip install -r requirements-ui.txt && python main.py`
 **Test:** `python test_ui.py`
 
@@ -762,10 +771,15 @@ python test_ui.py
 - `requirements-ui.txt` - PySide6 dependencies
 - `test_ui.py` - Import verification
 - `PHASE_1_COMPLETE.md` - Summary document
-- `ui/main_window.py` - Main window implementation
-- `ui/views/*.py` - 6 view stub files
+- `ui/main_window.py` - Main window implementation (7 tabs)
+- `ui/views/*.py` - 7 view files (including calendar_view.py)
+- `ui/controllers/season_controller.py` - Season data controller
+- `ui/controllers/calendar_controller.py` - Calendar event controller
+- `ui/models/team_list_model.py` - Team standings model
+- `ui/models/calendar_model.py` - Calendar events model
 - `ui/resources/styles/main.qss` - OOTP-inspired stylesheet
 - `ui/README.md` - UI documentation
+- `docs/ui/calendar_tab_spec.md` - Calendar tab specification
 - All `ui/` package `__init__.py` files
 
 ---
@@ -1743,11 +1757,17 @@ class MainWindow(QMainWindow):
 - ✅ `main.py` - Application entry point
 - ✅ `requirements-ui.txt` - UI dependencies
 - ✅ `test_ui.py` - Import verification script
-- ✅ `ui/main_window.py` - Main window with tabs, menus, toolbar, status bar
-- ✅ `ui/views/*.py` - 6 view stubs (season, team, player, offseason, league, game)
+- ✅ `ui/main_window.py` - Main window with 7 tabs, menus, toolbar, status bar
+- ✅ `ui/views/*.py` - 7 view files (season, calendar, team, player, offseason, league, game)
+- ✅ `ui/controllers/season_controller.py` - Season data access controller
+- ✅ `ui/controllers/calendar_controller.py` - Calendar event controller with month navigation
+- ✅ `ui/models/team_list_model.py` - Qt model for team standings
+- ✅ `ui/models/calendar_model.py` - Qt model for calendar events (color-coded)
 - ✅ `ui/resources/styles/main.qss` - OOTP-inspired stylesheet
 - ✅ `ui/README.md` - UI documentation
+- ✅ `docs/ui/calendar_tab_spec.md` - Calendar tab specification document
 - ✅ `PHASE_1_COMPLETE.md` - Phase 1 summary
+- ✅ Fixed circular import in `src/calendar/__init__.py`
 
 **Related Documents:**
 - `docs/plans/offseason_plan.md` - Offseason system implementation

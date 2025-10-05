@@ -36,11 +36,11 @@ class DatabaseAPI:
     def get_standings(self, dynasty_id: str, season: int) -> Dict[str, Any]:
         """
         Get current standings from database.
-        
+
         Args:
             dynasty_id: Dynasty identifier
             season: Season year
-            
+
         Returns:
             Formatted standings data matching StandingsStore structure
         """
@@ -49,13 +49,13 @@ class DatabaseAPI:
                    conference_wins, conference_losses, home_wins, home_losses,
                    away_wins, away_losses, points_for, points_against,
                    current_streak, division_rank
-            FROM standings 
+            FROM standings
             WHERE dynasty_id = ? AND season = ?
             ORDER BY team_id
         '''
-        
+
         results = self.db_connection.execute_query(query, (dynasty_id, season))
-        
+
         if not results:
             self.logger.warning(f"No standings found for dynasty {dynasty_id}, season {season}")
             return self._get_empty_standings()
@@ -169,7 +169,7 @@ class DatabaseAPI:
             x['standing'].win_percentage,
             -x['standing'].losses
         ), reverse=True)
-        
+
         return {
             'divisions': standings_data,
             'conferences': conferences_data,

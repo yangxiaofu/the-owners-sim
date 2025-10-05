@@ -34,7 +34,8 @@ class DeadlineEvent(BaseEvent):
         season_year: int,
         event_date: Date,
         event_id: Optional[str] = None,
-        dynasty_id: str = "default"
+        dynasty_id: str = "default",
+        database_path: str = "data/database/nfl_simulation.db"
     ):
         """
         Initialize deadline event.
@@ -46,6 +47,7 @@ class DeadlineEvent(BaseEvent):
             event_date: Date when the deadline occurs
             event_id: Unique identifier (generated if not provided)
             dynasty_id: Dynasty context for this deadline
+            database_path: Path to database for cap validation (default: data/database/nfl_simulation.db)
         """
         # Convert Date to datetime for BaseEvent
         event_datetime = datetime.combine(
@@ -59,6 +61,7 @@ class DeadlineEvent(BaseEvent):
         self.season_year = season_year
         self.event_date = event_date
         self.dynasty_id = dynasty_id
+        self.database_path = database_path
 
     def get_event_type(self) -> str:
         """Return event type identifier."""
@@ -66,29 +69,125 @@ class DeadlineEvent(BaseEvent):
 
     def simulate(self) -> EventResult:
         """
-        Execute deadline event (marker only - no business logic).
+        Execute deadline event with cap compliance checks.
+
+        For SALARY_CAP_COMPLIANCE deadlines, performs full league-wide cap validation.
+        For other deadlines, acts as a marker only.
 
         Returns:
             EventResult with success=True and deadline metadata
         """
-        # Deadline events are just markers - no execution needed
-        # Business logic (if any) happens in response to the deadline
-        # (e.g., AI deciding whether to use franchise tag before deadline)
+        # Handle salary cap compliance deadline with full validation
+        if self.deadline_type == DeadlineType.SALARY_CAP_COMPLIANCE:
+            try:
+                # Import cap system components
+                from salary_cap.cap_validator import CapValidator
 
-        return EventResult(
-            event_id=self.event_id,
-            event_type=self.get_event_type(),
-            success=True,
-            timestamp=datetime.now(),
-            data={
-                "deadline_type": self.deadline_type,
-                "description": self.description,
-                "season_year": self.season_year,
-                "event_date": str(self.event_date),
-                "dynasty_id": self.dynasty_id,
-                "message": f"Deadline reached: {self.description}"
-            }
-        )
+                # Initialize validator with database path
+                validator = CapValidator(database_path=self.database_path)
+
+                # Check all teams for cap compliance
+                violations = []
+                for team_id in range(1, 33):
+                    is_compliant, message = validator.check_league_year_compliance(
+                        team_id=team_id,
+                        season=self.season_year,
+                        dynasty_id=self.dynasty_id
+                    )
+                    if not is_compliant:
+                        violations.append({
+                            "team_id": team_id,
+                            "violation": message
+                        })
+
+                compliant_teams = 32 - len(violations)
+
+                return EventResult(
+                    event_id=self.event_id,
+                    event_type=self.get_event_type(),
+                    success=True,
+                    timestamp=datetime.now(),
+                    data={
+                        "deadline_type": self.deadline_type,
+                        "description": self.description,
+                        "season_year": self.season_year,
+                        "event_date": str(self.event_date),
+                        "dynasty_id": self.dynasty_id,
+                        "violations": violations,
+                        "compliant_teams": compliant_teams,
+                        "total_teams": 32,
+                        "message": f"Cap compliance check: {compliant_teams}/32 teams compliant"
+                    }
+                )
+
+            except Exception as e:
+                # If cap validation fails, return error but don't fail event
+                return EventResult(
+                    event_id=self.event_id,
+                    event_type=self.get_event_type(),
+                    success=True,  # Event executes successfully even if validation has errors
+                    timestamp=datetime.now(),
+                    data={
+                        "deadline_type": self.deadline_type,
+                        "description": self.description,
+                        "season_year": self.season_year,
+                        "event_date": str(self.event_date),
+                        "dynasty_id": self.dynasty_id,
+                        "error": str(e),
+                        "message": f"Deadline reached but cap validation failed: {str(e)}"
+                    }
+                )
+
+        # Handle franchise tag deadline (marker only)
+        elif self.deadline_type == DeadlineType.FRANCHISE_TAG:
+            return EventResult(
+                event_id=self.event_id,
+                event_type=self.get_event_type(),
+                success=True,
+                timestamp=datetime.now(),
+                data={
+                    "deadline_type": self.deadline_type,
+                    "description": self.description,
+                    "season_year": self.season_year,
+                    "event_date": str(self.event_date),
+                    "dynasty_id": self.dynasty_id,
+                    "message": "Franchise tag deadline reached"
+                }
+            )
+
+        # Handle RFA tender deadline (marker only)
+        elif self.deadline_type == DeadlineType.RFA_TENDER:
+            return EventResult(
+                event_id=self.event_id,
+                event_type=self.get_event_type(),
+                success=True,
+                timestamp=datetime.now(),
+                data={
+                    "deadline_type": self.deadline_type,
+                    "description": self.description,
+                    "season_year": self.season_year,
+                    "event_date": str(self.event_date),
+                    "dynasty_id": self.dynasty_id,
+                    "message": "RFA tender deadline reached"
+                }
+            )
+
+        # Default handling for all other deadline types (marker only)
+        else:
+            return EventResult(
+                event_id=self.event_id,
+                event_type=self.get_event_type(),
+                success=True,
+                timestamp=datetime.now(),
+                data={
+                    "deadline_type": self.deadline_type,
+                    "description": self.description,
+                    "season_year": self.season_year,
+                    "event_date": str(self.event_date),
+                    "dynasty_id": self.dynasty_id,
+                    "message": f"Deadline reached: {self.description}"
+                }
+            )
 
     def _get_parameters(self) -> Dict[str, Any]:
         """Return parameters for event recreation."""
@@ -97,7 +196,8 @@ class DeadlineEvent(BaseEvent):
             "description": self.description,
             "season_year": self.season_year,
             "event_date": str(self.event_date),
-            "dynasty_id": self.dynasty_id
+            "dynasty_id": self.dynasty_id,
+            "database_path": self.database_path
         }
 
     def validate_preconditions(self) -> tuple[bool, Optional[str]]:
@@ -127,6 +227,35 @@ class DeadlineEvent(BaseEvent):
         return (
             f"DeadlineEvent(deadline_type='{self.deadline_type}', "
             f"event_date={self.event_date}, season_year={self.season_year})"
+        )
+
+    @classmethod
+    def from_database(cls, event_data: Dict[str, Any]) -> 'DeadlineEvent':
+        """
+        Reconstruct DeadlineEvent from database data.
+
+        Args:
+            event_data: Dictionary from EventDatabaseAPI.get_event_by_id()
+
+        Returns:
+            Reconstructed DeadlineEvent instance
+        """
+        data = event_data['data']
+
+        # Handle new three-part structure
+        if 'parameters' in data:
+            params = data['parameters']
+        else:
+            params = data
+
+        return cls(
+            deadline_type=params['deadline_type'],
+            description=params['description'],
+            season_year=params['season_year'],
+            event_date=Date.from_string(params['event_date']),
+            event_id=event_data['event_id'],
+            dynasty_id=params.get('dynasty_id', 'default'),
+            database_path=params.get('database_path', 'data/database/nfl_simulation.db')
         )
 
 

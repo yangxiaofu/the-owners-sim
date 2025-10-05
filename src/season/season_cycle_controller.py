@@ -170,15 +170,52 @@ class SeasonCycleController:
         """
         # Handle offseason case
         if self.current_phase == SeasonPhase.OFFSEASON:
-            return {
-                "date": str(self.calendar.get_current_date()),
-                "games_played": 0,
-                "results": [],
-                "current_phase": "offseason",
-                "phase_transition": None,
-                "success": True,
-                "message": "Season complete. No more games to simulate."
-            }
+            # Execute any scheduled offseason events for this day
+            try:
+                current_date = self.calendar.get_current_date()
+
+                # Import SimulationExecutor to trigger events
+                from calendar.simulation_executor import SimulationExecutor
+
+                executor = SimulationExecutor(
+                    database_path=self.database_path,
+                    calendar=self.calendar,
+                    dynasty_id=self.dynasty_id
+                )
+
+                # Simulate events for current day
+                event_results = executor.simulate_day(current_date)
+
+                # Advance calendar
+                self.calendar.advance_to_next_day()
+                self.total_days_simulated += 1
+
+                return {
+                    "date": str(current_date),
+                    "games_played": 0,
+                    "events_triggered": event_results.get('events_executed', []),
+                    "results": [],
+                    "current_phase": "offseason",
+                    "phase_transition": None,
+                    "success": True,
+                    "message": f"Offseason day complete. {len(event_results.get('events_executed', []))} events triggered."
+                }
+
+            except Exception as e:
+                self.logger.error(f"Error during offseason day advancement: {e}")
+                # Fallback to basic advancement
+                self.calendar.advance_to_next_day()
+                self.total_days_simulated += 1
+
+                return {
+                    "date": str(self.calendar.get_current_date()),
+                    "games_played": 0,
+                    "results": [],
+                    "current_phase": "offseason",
+                    "phase_transition": None,
+                    "success": True,
+                    "message": "Season complete. No more games to simulate."
+                }
 
         # Delegate to active controller
         result = self.active_controller.advance_day()
@@ -217,9 +254,17 @@ class SeasonCycleController:
         self.total_games_played += result.get('total_games_played', 0)
 
         # Check for phase transitions
+        if self.verbose_logging:
+            print(f"\n[DEBUG] advance_week(): Before phase transition check, phase = {self.current_phase.value}")
+
         phase_transition = self._check_phase_transition()
         if phase_transition:
             result['phase_transition'] = phase_transition
+            if self.verbose_logging:
+                print(f"[DEBUG] advance_week(): Phase transition occurred: {phase_transition}")
+
+        if self.verbose_logging:
+            print(f"[DEBUG] advance_week(): After phase transition check, phase = {self.current_phase.value}")
 
         result['current_phase'] = self.current_phase.value
 
@@ -311,6 +356,9 @@ class SeasonCycleController:
         Returns:
             Transition info if occurred, None otherwise
         """
+        if self.verbose_logging:
+            print(f"\n[DEBUG] Checking phase transition (current phase: {self.current_phase.value})")
+
         if self.current_phase == SeasonPhase.REGULAR_SEASON:
             if self._is_regular_season_complete():
                 self._transition_to_playoffs()
@@ -322,6 +370,8 @@ class SeasonCycleController:
 
         elif self.current_phase == SeasonPhase.PLAYOFFS:
             if self._is_super_bowl_complete():
+                if self.verbose_logging:
+                    print(f"[DEBUG] Super Bowl complete! Transitioning to offseason...")
                 self._transition_to_offseason()
                 return {
                     "from_phase": "playoffs",
@@ -394,10 +444,24 @@ class SeasonCycleController:
     def _is_super_bowl_complete(self) -> bool:
         """Check if Super Bowl has been played."""
         if not self.playoff_controller:
+            if self.verbose_logging:
+                print(f"\n[DEBUG] Checking Super Bowl completion: playoff_controller is None!")
             return False
 
         super_bowl_games = self.playoff_controller.get_round_games('super_bowl')
-        return len(super_bowl_games) > 0
+        is_complete = len(super_bowl_games) > 0
+
+        # Debug logging
+        if self.verbose_logging:
+            print(f"\n[DEBUG] _is_super_bowl_complete() called:")
+            print(f"  - playoff_controller exists: True")
+            print(f"  - Super Bowl games: {super_bowl_games}")
+            print(f"  - Super Bowl games count: {len(super_bowl_games)}")
+            print(f"  - Is complete: {is_complete}")
+            if super_bowl_games:
+                print(f"  - Super Bowl winner: {super_bowl_games[0].get('winner_id')}")
+
+        return is_complete
 
     def _transition_to_playoffs(self):
         """Execute transition from regular season to playoffs."""
@@ -499,6 +563,8 @@ class SeasonCycleController:
             print(f"\n{'='*80}")
             print(f"{'SEASON COMPLETE - ENTERING OFFSEASON'.center(80)}")
             print(f"{'='*80}")
+            print(f"[DEBUG] _transition_to_offseason() called")
+            print(f"[DEBUG] Current phase before transition: {self.current_phase.value}")
 
         try:
             # 1. Get Super Bowl result
@@ -510,8 +576,51 @@ class SeasonCycleController:
                 champion_id = super_bowl_result.get('winner_id')
 
             # 2. Update state
+            if self.verbose_logging:
+                print(f"[DEBUG] Setting current_phase to OFFSEASON...")
             self.current_phase = SeasonPhase.OFFSEASON
             self.active_controller = None  # No active controller in offseason
+            if self.verbose_logging:
+                print(f"[DEBUG] Current phase after setting: {self.current_phase.value}")
+
+            # Schedule offseason events
+            try:
+                from offseason.offseason_event_scheduler import OffseasonEventScheduler
+
+                scheduler = OffseasonEventScheduler()
+
+                # Get Super Bowl date from result
+                super_bowl_date = None
+                if super_bowl_result and super_bowl_result.get('game_date'):
+                    game_date_obj = super_bowl_result['game_date']
+                    # Convert to Date if it's a datetime
+                    if hasattr(game_date_obj, 'year'):
+                        from calendar.date_models import Date
+                        super_bowl_date = Date(game_date_obj.year, game_date_obj.month, game_date_obj.day)
+
+                # If no date in result, use current calendar date
+                if not super_bowl_date:
+                    super_bowl_date = self.calendar.get_current_date()
+
+                # Schedule all offseason events
+                scheduling_result = scheduler.schedule_offseason_events(
+                    super_bowl_date=super_bowl_date,
+                    season_year=self.season_year,
+                    dynasty_id=self.dynasty_id,
+                    event_db=self.season_controller.event_db
+                )
+
+                if self.verbose_logging:
+                    print(f"\n📅 Offseason Events Scheduled:")
+                    print(f"   Deadline Events: {scheduling_result['deadline_events']}")
+                    print(f"   Window Events: {scheduling_result['window_events']}")
+                    print(f"   Milestone Events: {scheduling_result['milestone_events']}")
+                    print(f"   Total Events: {scheduling_result['total_events']}")
+
+            except Exception as e:
+                self.logger.error(f"Error scheduling offseason events: {e}")
+                if self.verbose_logging:
+                    print(f"⚠️  Warning: Could not schedule offseason events: {e}")
 
             # 3. Generate season summary
             self.season_summary = self._generate_season_summary()

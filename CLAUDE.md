@@ -30,48 +30,32 @@ python test_ui.py
 
 ### Running Tests
 ```bash
+# Current test structure (organized by feature):
+# tests/calendar/ - Calendar system tests
+# tests/playoff_system/ - Playoff system tests
+# tests/salary_cap/ - Salary cap system tests
+# tests/conftest.py - Shared pytest fixtures
+
 # Run all tests with pytest
 python -m pytest tests/
 
-# Run a single test file
-python -m pytest tests/test_penalty_system.py
+# Run tests for specific modules
+python -m pytest tests/calendar/ -v         # Calendar system tests
+python -m pytest tests/playoff_system/ -v   # Playoff system tests
+python -m pytest tests/salary_cap/ -v       # Salary cap tests
 
 # Run tests with verbose output
 python -m pytest -v tests/
 
 # Run tests matching a pattern
-python -m pytest -k "penalty" tests/
+python -m pytest -k "calendar" tests/
+python -m pytest -k "playoff" tests/
 
-# Run specific test function
-python -m pytest tests/test_game_loop_controller.py::TestGameLoopController::test_full_game_simulation
+# Run specific test file
+python -m pytest tests/salary_cap/test_cap_calculator.py -v
 
-# Note: Many test files have been removed. Check test availability before running.
-# The following patterns show how to run tests if they exist:
-
-# Schedule generator tests (if available in tests/test_scheduling/)
-python -m pytest tests/test_scheduling/ -v
-
-# Playoff system tests (if available)
-python -m pytest tests/playoff_system/ -v
-
-# Core functionality tests (run if files exist)
-PYTHONPATH=src python tests/test_penalty_system.py
-PYTHONPATH=src python tests/test_game_state_manager.py
-PYTHONPATH=src python tests/test_drive_manager.py
-PYTHONPATH=src python tests/test_game_loop_controller.py
-
-# Integration tests (if available)
-PYTHONPATH=src python tests/test_phase_2_integration.py
-PYTHONPATH=src python tests/test_daily_persister.py
-
-# Validation scripts (if available)
-python tests/simple_penalty_validation.py
-
-# Diagnostic scripts (run from project root)
-PYTHONPATH=src python team_corruption_tracker.py
-PYTHONPATH=src python simple_stats_check.py
-PYTHONPATH=src python verify_player_stats_persistence.py
-PYTHONPATH=src python debug_touchdown_detection.py  # Debug touchdown scoring issues
+# Note: Legacy test files have been reorganized into feature-specific directories.
+# If you need to test core play engine or game management components, use demos instead.
 ```
 
 ### Running Demos
@@ -112,6 +96,10 @@ PYTHONPATH=src python demo/interactive_season_sim/schedule_generator_example.py 
 
 # Playoff System Demos
 PYTHONPATH=src python demo/playoff_seeder_demo/playoff_seeder_demo.py  # NFL playoff seeding and tiebreaker demonstration
+
+# Salary Cap Demos
+PYTHONPATH=src python demo/cap_calculator_demo/cap_calculator_demo.py  # Salary cap calculations and contract management
+# See demo/cap_calculator_demo/README.md for detailed usage
 
 # Play Demos (Individual Play Mechanics)
 PYTHONPATH=src python demo/play_demos/pass_play_demo.py  # Pass play mechanics with real NFL players
@@ -324,13 +312,31 @@ The simulation follows a layered architecture with clear separation of concerns:
 - `base_event.py`: Base event class and event result structures
 - `game_event.py`: GameEvent for NFL game simulation with metadata
 - `scouting_event.py`: Scouting and player evaluation events
-- `deadline_event.py`: NFL offseason deadline events (franchise tag, RFA tender, etc.)
+- `contract_events.py`: Contract-related events (franchise tags, releases, restructures) with full cap integration
+- `free_agency_events.py`: Free agency events (UFA signings, RFA offer sheets) with cap validation
+- `deadline_event.py`: NFL offseason deadline events with salary cap compliance checks
 - `window_event.py`: Time-bounded window events (legal tampering, OTAs, etc.)
 - `milestone_event.py`: Informational milestone events (schedule release, combine, etc.)
+- `draft_events.py`: Draft-related events
+- `roster_events.py`: Roster management events
 - `event_database_api.py`: Event storage and retrieval API
 - Complete event lifecycle management and execution framework with offseason support
+- **Cap Integration**: All contract/free agency events execute real salary cap operations through EventCapBridge
 
-**20. Desktop UI (`ui/`)**
+**20. Salary Cap System (`src/salary_cap/`)**
+- `cap_calculator.py`: Core mathematical operations for all cap calculations
+- `cap_validator.py`: Contract validation and compliance checking
+- `contract_manager.py`: Contract lifecycle management and modifications
+- `cap_database_api.py`: Database operations for contract and cap data
+- `cap_utils.py`: Utility functions for cap-related operations
+- `tag_manager.py`: Franchise tag, transition tag, and RFA tender management
+- `event_integration.py`: Event-cap bridge connecting event system to cap operations
+- Follows 2024-2025 NFL CBA rules (signing bonus proration, dead money, June 1 designations)
+- Supports top-51 roster (offseason) and 53-man roster (regular season) calculations
+- **Event Integration Complete**: All cap operations (franchise tags, UFA signings, releases, restructures) execute through event system
+- See `docs/plans/salary_cap_plan.md` for architecture details and `docs/architecture/event_cap_integration.md` for event integration
+
+**21. Desktop UI (`ui/`)**
 - **OOTP-inspired PySide6/Qt desktop application** (Phase 1 complete)
 - `main_window.py`: Main application window with tab-based navigation
 - `views/`: 6 primary view modules (Season, Team, Player, Offseason, League, Game)
@@ -436,7 +442,10 @@ The project uses multiple testing approaches:
 
 Comprehensive documentation is available in `docs/`:
 
-- **Architecture**: `docs/architecture/play_engine.md` - Core system architecture documentation
+- **Architecture**:
+  - `docs/architecture/play_engine.md` - Core system architecture documentation
+  - `docs/architecture/playoff_controller.md` - Playoff controller centralization and architecture
+  - `docs/architecture/event_cap_integration.md` - Event-salary cap integration bridge pattern
 - **Database Schema**: `docs/schema/database_schema.md` - Complete SQLite schema v2.0.0 documentation with table definitions, indexes, and query examples
 - **System Summaries**:
   - `docs/PENALTY_SYSTEM_SUMMARY.md` - Penalty system overview
@@ -590,6 +599,20 @@ sim1 = FullGameSimulator(..., dynasty_id="user1_dynasty", database_path="shared.
 sim2 = FullGameSimulator(..., dynasty_id="user2_dynasty", database_path="shared.db")
 ```
 
+### Salary Cap System Integration
+- **Event-Driven Operations**: All cap operations execute through event system via EventCapBridge pattern
+- **Supported Events**:
+  - FranchiseTagEvent/TransitionTagEvent: Create 1-year contracts with tag salaries
+  - UFASigningEvent: Validate cap space and create veteran contracts
+  - PlayerReleaseEvent: Calculate dead money (standard or June 1 designation)
+  - ContractRestructureEvent: Convert base salary to bonus for cap relief
+  - RFAOfferSheetEvent: Handle RFA tender matching and contract creation
+  - DeadlineEvent: Check salary cap compliance for all 32 teams at March 12 deadline
+- **Pre-execution Validation**: ValidationMiddleware checks cap space before all transactions
+- **Transaction Logging**: Complete audit trail of all cap operations in database
+- **Dynasty Isolation**: All cap operations respect dynasty context for multi-save support
+- **Database Flexibility**: Support for custom database paths and in-memory testing databases
+
 ### Interactive Season Simulation
 - Season simulation available through `src/demo/` components
 - **Daily Mode**: Day-by-day simulation with detailed control via `daily_simulation_controller.py`
@@ -644,6 +667,16 @@ Key architectural updates in the codebase:
    - Clean UI/engine separation via controller pattern
    - Phase 1 delivered: Foundation complete, Phase 2 (Season/Team views) ready to start
    - See `docs/plans/ui_development_plan.md` and `PHASE_1_COMPLETE.md` for details
+
+13. **Salary Cap System** (Oct 2025): NFL salary cap management system implementation
+   - New `src/salary_cap/` module with complete cap calculation engine
+   - Follows 2024-2025 NFL CBA rules (proration, dead money, June 1 designations)
+   - Support for top-51 (offseason) and 53-man (regular season) roster calculations
+   - Contract validation, cap compliance checking, and transaction management
+   - Franchise tags, transition tags, RFA tenders with consecutive tag escalators
+   - **Event Integration Complete**: All cap operations execute through event system via EventCapBridge
+   - Interactive demo available: `demo/cap_calculator_demo/`
+   - See `docs/plans/salary_cap_plan.md` for architecture and `docs/architecture/event_cap_integration.md` for event integration details
 
 ## Key Implementation Notes
 
