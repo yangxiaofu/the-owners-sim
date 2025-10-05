@@ -387,11 +387,26 @@ class MainWindow(QMainWindow):
 
     def _sim_week(self):
         """Simulate one week."""
-        QMessageBox.information(
-            self,
-            "Simulate Week",
-            "Week simulation coming in Phase 2!\n\nThis will advance the calendar by one week and simulate all games."
-        )
+        result = self.simulation_controller.advance_week()
+
+        if result.get('success', False):
+            # Show results
+            msg = result.get('message', 'Week simulated successfully')
+            games_played = result.get('games_played', 0)
+            if games_played > 0:
+                msg += f"\n\n{games_played} games simulated this week"
+
+            QMessageBox.information(self, "Week Simulation Complete", msg)
+
+            # Refresh calendar view
+            if hasattr(self, 'calendar_view'):
+                self.calendar_view.load_events()
+        else:
+            QMessageBox.warning(
+                self,
+                "Week Simulation Failed",
+                result.get('message', 'Unknown error')
+            )
 
     def _show_depth_chart(self):
         """Show depth chart."""
