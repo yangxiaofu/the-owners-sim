@@ -135,12 +135,21 @@ the-owners-sim/
 │   │   ├── transaction_model.py # Transaction log model
 │   │   └── filter_proxy_model.py # Filtering and sorting proxy
 │   │
-│   ├── controllers/             # UI controllers (mediators between views and engine)
+│   ├── controllers/             # UI controllers (thin orchestration, ≤10-20 lines per method)
 │   │   ├── __init__.py
-│   │   ├── season_controller.py # Season simulation control
+│   │   ├── calendar_controller.py # Calendar data access (delegates to CalendarDataModel)
+│   │   ├── season_controller.py # Season simulation control (delegates to SeasonDataModel)
+│   │   ├── simulation_controller.py # Simulation orchestration (Qt signals + delegates state to SimulationDataModel)
 │   │   ├── team_controller.py   # Team management control
 │   │   ├── offseason_controller.py # Offseason interaction control
 │   │   └── navigation_controller.py # App navigation and history
+│   │
+│   ├── domain_models/           # ✨ NEW: Domain models (business logic + data access)
+│   │   ├── __init__.py          # Package exports and pattern documentation
+│   │   ├── calendar_data_model.py # Calendar business logic (owns EventDatabaseAPI, DatabaseAPI, DynastyStateAPI)
+│   │   ├── season_data_model.py   # Season business logic (owns TeamDataLoader, DatabaseAPI, etc.)
+│   │   ├── simulation_data_model.py # Simulation state persistence (owns DynastyStateAPI)
+│   │   └── ...                  # Additional domain models for other features
 │   │
 │   ├── resources/               # UI resources
 │   │   ├── icons/               # Application icons (PNG, SVG)
@@ -172,29 +181,49 @@ the-owners-sim/
 
 ### Separation of Concerns
 
-**Core Principle: UI and Engine are Independent Layers**
+**Core Principle: UI and Engine are Independent Layers with Domain Model Mediation**
 
 ```
-┌─────────────────────────────────────────┐
-│         User Interface Layer (ui/)       │
-│   - PySide6/Qt widgets and views        │
-│   - User interactions and displays      │
-│   - Data formatting and presentation    │
-└─────────────────────────────────────────┘
-                    ↕ (clean interface)
-┌─────────────────────────────────────────┐
-│    Simulation Engine Layer (src/)       │
-│   - Game logic and calculations         │
-│   - Database operations                 │
-│   - Event system and workflows          │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│      User Interface Layer (ui/)              │
+│   - PySide6/Qt widgets and views             │
+│   - User interactions and displays           │
+│   - Qt view models (QAbstractTableModel)     │
+└──────────────────────────────────────────────┘
+                    ↓ calls thin controllers
+┌──────────────────────────────────────────────┐
+│      Controller Layer (ui/controllers/)      │
+│   - Thin orchestration (≤10-20 lines/method) │
+│   - NO database access, NO business logic    │
+│   - Delegates to domain models               │
+└──────────────────────────────────────────────┘
+                    ↓ uses domain models
+┌──────────────────────────────────────────────┐
+│   ✨ Domain Model Layer (ui/domain_models/)  │
+│   - Owns database API instances              │
+│   - ALL business logic + data access         │
+│   - NO Qt dependencies                       │
+│   - Returns clean DTOs/dicts                 │
+└──────────────────────────────────────────────┘
+                    ↓ queries
+┌──────────────────────────────────────────────┐
+│    Simulation Engine Layer (src/)            │
+│   - Game logic and calculations              │
+│   - Database operations (via APIs)           │
+│   - Event system and workflows               │
+└──────────────────────────────────────────────┘
 ```
 
 **Benefits:**
 - UI can be replaced/redesigned without touching simulation logic
 - Engine can be tested independently without UI dependencies
+- **Domain models provide reusable business logic layer**
+- **Controllers stay thin and maintainable (≤10-20 lines per method)**
+- **Clear MVC pattern: View → Controller → Domain Model → Database**
 - Multiple UIs possible (desktop, web, mobile) using same engine
-- Clear responsibility boundaries
+- Clear responsibility boundaries at every layer
+
+**See:** `docs/architecture/ui_layer_separation.md` for complete MVC architecture documentation
 
 ---
 

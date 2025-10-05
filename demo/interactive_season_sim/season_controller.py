@@ -86,7 +86,8 @@ class SeasonController:
 
         Args:
             database_path: Path to SQLite database for event and game storage
-            start_date: Starting date for the season (typically Week 1 Thursday)
+            start_date: Dynasty start date - should be ONE DAY BEFORE first game
+                       (e.g., Sept 4 if first game is Sept 5)
             season_year: NFL season year (e.g., 2024 for 2024-25 season)
             dynasty_id: Dynasty context for data isolation
             enable_persistence: Whether to persist game results to database
@@ -515,7 +516,7 @@ class SeasonController:
             )
 
             # Create schedule generator with event database
-            generator = RandomScheduleGenerator(event_db=self.event_db)
+            generator = RandomScheduleGenerator(event_db=self.event_db, dynasty_id=self.dynasty_id)
 
             # Generate 272 games (17 weeks × 16 games per week)
             # The generator will automatically store games in the event database

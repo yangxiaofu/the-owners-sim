@@ -66,7 +66,6 @@ class MainWindow(QMainWindow):
 
     def _create_controllers(self):
         """Initialize all controllers for data access."""
-
         # Season controller for season management and calendar operations
         self.season_controller = SeasonController(
             db_path=self.db_path,
@@ -467,9 +466,6 @@ class MainWindow(QMainWindow):
 
     def _on_tab_changed(self, index: int):
         """Handle tab change - refresh data when switching to certain tabs."""
-        print(f"[DEBUG MainWindow] Tab changed to index {index}")
-
         # League tab (index 5) - refresh standings
         if index == 5 and hasattr(self, 'league_view'):
-            print(f"[DEBUG MainWindow] Calling league_view.load_standings()")
             self.league_view.load_standings()

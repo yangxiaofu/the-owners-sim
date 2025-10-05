@@ -30,8 +30,8 @@ class FranchiseTagEvent(BaseEvent):
         tag_type: str,  # "FRANCHISE_EXCLUSIVE" or "FRANCHISE_NON_EXCLUSIVE"
         tag_amount: int,
         event_date: Date,
+        dynasty_id: str,
         event_id: Optional[str] = None,
-        dynasty_id: str = "default",
         database_path: str = "data/database/nfl_simulation.db"
     ):
         """
@@ -45,15 +45,15 @@ class FranchiseTagEvent(BaseEvent):
             tag_type: "FRANCHISE_EXCLUSIVE" or "FRANCHISE_NON_EXCLUSIVE"
             tag_amount: Salary for the tag (calculated from league data)
             event_date: Date when tag is applied
+            dynasty_id: Dynasty identifier for isolation (REQUIRED)
             event_id: Unique identifier
-            dynasty_id: Dynasty context
             database_path: Path to database
         """
         event_datetime = datetime.combine(
             event_date.to_python_date(),
             datetime.min.time()
         )
-        super().__init__(event_id=event_id, timestamp=event_datetime)
+        super().__init__(event_id=event_id, timestamp=event_datetime, dynasty_id=dynasty_id)
 
         self.team_id = team_id
         self.player_id = player_id
@@ -166,7 +166,7 @@ class FranchiseTagEvent(BaseEvent):
         return (True, None)
 
     def get_game_id(self) -> str:
-        return f"franchise_tag_{self.dynasty_id}_{self.team_id}_{self.player_id}_{self.event_date.year}"
+        return f"franchise_tag_{self.team_id}_{self.player_id}_{self.event_date.year}"
 
     @classmethod
     def from_database(cls, event_data: Dict[str, Any]) -> 'FranchiseTagEvent':
@@ -195,8 +195,8 @@ class FranchiseTagEvent(BaseEvent):
             tag_type=params['tag_type'],
             tag_amount=params.get('tag_amount', 0),
             event_date=Date.from_string(params['event_date']),
-            event_id=event_data['event_id'],
             dynasty_id=params.get('dynasty_id', 'default'),
+            event_id=event_data['event_id'],
             database_path=params.get('database_path', 'data/database/nfl_simulation.db')
         )
 
@@ -217,8 +217,8 @@ class TransitionTagEvent(BaseEvent):
         season: int,
         tag_amount: int,
         event_date: Date,
+        dynasty_id: str,
         event_id: Optional[str] = None,
-        dynasty_id: str = "default",
         database_path: str = "data/database/nfl_simulation.db"
     ):
         """
@@ -231,15 +231,15 @@ class TransitionTagEvent(BaseEvent):
             season: Season year
             tag_amount: Salary for the tag (average of top 10 at position)
             event_date: Date when tag is applied
+            dynasty_id: Dynasty identifier for isolation (REQUIRED)
             event_id: Unique identifier
-            dynasty_id: Dynasty context
             database_path: Path to database
         """
         event_datetime = datetime.combine(
             event_date.to_python_date(),
             datetime.min.time()
         )
-        super().__init__(event_id=event_id, timestamp=event_datetime)
+        super().__init__(event_id=event_id, timestamp=event_datetime, dynasty_id=dynasty_id)
 
         self.team_id = team_id
         self.player_id = player_id
@@ -341,7 +341,7 @@ class TransitionTagEvent(BaseEvent):
         return (True, None)
 
     def get_game_id(self) -> str:
-        return f"transition_tag_{self.dynasty_id}_{self.team_id}_{self.player_id}_{self.event_date.year}"
+        return f"transition_tag_{self.team_id}_{self.player_id}_{self.event_date.year}"
 
     @classmethod
     def from_database(cls, event_data: Dict[str, Any]) -> 'TransitionTagEvent':
@@ -369,8 +369,8 @@ class TransitionTagEvent(BaseEvent):
             season=params['season'],
             tag_amount=params.get('tag_amount', 0),
             event_date=Date.from_string(params['event_date']),
-            event_id=event_data['event_id'],
             dynasty_id=params.get('dynasty_id', 'default'),
+            event_id=event_data['event_id'],
             database_path=params.get('database_path', 'data/database/nfl_simulation.db')
         )
 
@@ -392,8 +392,8 @@ class PlayerReleaseEvent(BaseEvent):
         cap_savings: int,
         dead_cap: int,
         event_date: Date,
+        dynasty_id: str,
         event_id: Optional[str] = None,
-        dynasty_id: str = "default",
         database_path: str = "data/database/nfl_simulation.db"
     ):
         """
@@ -407,15 +407,15 @@ class PlayerReleaseEvent(BaseEvent):
             cap_savings: Cap space saved by release
             dead_cap: Dead cap hit from release
             event_date: Date of release
+            dynasty_id: Dynasty identifier for isolation (REQUIRED)
             event_id: Unique identifier
-            dynasty_id: Dynasty context
             database_path: Path to database
         """
         event_datetime = datetime.combine(
             event_date.to_python_date(),
             datetime.min.time()
         )
-        super().__init__(event_id=event_id, timestamp=event_datetime)
+        super().__init__(event_id=event_id, timestamp=event_datetime, dynasty_id=dynasty_id)
 
         self.team_id = team_id
         self.player_id = player_id
@@ -526,7 +526,7 @@ class PlayerReleaseEvent(BaseEvent):
         return (True, None)
 
     def get_game_id(self) -> str:
-        return f"release_{self.dynasty_id}_{self.team_id}_{self.player_id}_{self.event_date.year}"
+        return f"release_{self.team_id}_{self.player_id}_{self.event_date.year}"
 
     @classmethod
     def from_database(cls, event_data: Dict[str, Any]) -> 'PlayerReleaseEvent':
@@ -555,8 +555,8 @@ class PlayerReleaseEvent(BaseEvent):
             cap_savings=params.get('cap_savings', 0),
             dead_cap=params.get('dead_cap', 0),
             event_date=Date.from_string(params['event_date']),
-            event_id=event_data['event_id'],
             dynasty_id=params.get('dynasty_id', 'default'),
+            event_id=event_data['event_id'],
             database_path=params.get('database_path', 'data/database/nfl_simulation.db')
         )
 
@@ -577,8 +577,8 @@ class ContractRestructureEvent(BaseEvent):
         restructure_amount: int,
         cap_savings_current_year: int,
         event_date: Date,
+        dynasty_id: str,
         event_id: Optional[str] = None,
-        dynasty_id: str = "default",
         database_path: str = "data/database/nfl_simulation.db"
     ):
         """
@@ -592,15 +592,15 @@ class ContractRestructureEvent(BaseEvent):
             restructure_amount: Amount being converted to bonus
             cap_savings_current_year: Cap space created this year
             event_date: Date of restructure
+            dynasty_id: Dynasty identifier for isolation (REQUIRED)
             event_id: Unique identifier
-            dynasty_id: Dynasty context
             database_path: Path to database
         """
         event_datetime = datetime.combine(
             event_date.to_python_date(),
             datetime.min.time()
         )
-        super().__init__(event_id=event_id, timestamp=event_datetime)
+        super().__init__(event_id=event_id, timestamp=event_datetime, dynasty_id=dynasty_id)
 
         self.team_id = team_id
         self.player_id = player_id
@@ -710,7 +710,7 @@ class ContractRestructureEvent(BaseEvent):
         return (True, None)
 
     def get_game_id(self) -> str:
-        return f"restructure_{self.dynasty_id}_{self.team_id}_{self.player_id}_{self.event_date.year}"
+        return f"restructure_{self.team_id}_{self.player_id}_{self.event_date.year}"
 
     @classmethod
     def from_database(cls, event_data: Dict[str, Any]) -> 'ContractRestructureEvent':
@@ -739,7 +739,7 @@ class ContractRestructureEvent(BaseEvent):
             restructure_amount=params['restructure_amount'],
             cap_savings_current_year=params.get('cap_savings_current_year', 0),
             event_date=Date.from_string(params['event_date']),
-            event_id=event_data['event_id'],
             dynasty_id=params.get('dynasty_id', 'default'),
+            event_id=event_data['event_id'],
             database_path=params.get('database_path', 'data/database/nfl_simulation.db')
         )

@@ -61,7 +61,8 @@ class GamePersistenceOrchestrator:
         player_stats: Optional[List[Any]] = None,
         dynasty_id: str = "default",
         season: int = 2024,
-        week: int = 1
+        week: int = 1,
+        simulation_date: Optional[Any] = None
     ) -> CompositePersistenceResult:
         """
         Persist all game data in a single atomic transaction.
@@ -76,6 +77,7 @@ class GamePersistenceOrchestrator:
             dynasty_id: Dynasty context identifier
             season: Season year
             week: Week number
+            simulation_date: Simulation date for created_at timestamp (optional)
 
         Returns:
             CompositePersistenceResult with detailed operation outcomes
@@ -109,7 +111,7 @@ class GamePersistenceOrchestrator:
         try:
             # Step 1: Persist game result
             game_result_persistence = self.persister.persist_game_result(
-                game_id, game_data, dynasty_id
+                game_id, game_data, dynasty_id, simulation_date
             )
             composite_result.add_result("game_result", game_result_persistence)
 

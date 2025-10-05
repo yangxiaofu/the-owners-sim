@@ -301,8 +301,8 @@ class SimulationWorkflow:
             print(f"   Dynasty: {self.config.dynasty_id}")
 
         try:
-            # Generate unique game ID
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            # Generate unique game ID using simulation date
+            timestamp = game_event.game_date.strftime('%Y%m%d_%H%M%S')
             game_id = f"{game_event.away_team_id}_{game_event.home_team_id}_{timestamp}"
 
             # Prepare game result data structure
@@ -317,7 +317,8 @@ class SimulationWorkflow:
                 'season': getattr(game_event, 'season', 2024),
                 'week': getattr(game_event, 'week', 1),
                 'season_type': getattr(game_event, 'season_type', 'regular_season'),
-                'game_type': getattr(game_event, 'game_type', 'regular')
+                'game_type': getattr(game_event, 'game_type', 'regular'),
+                'game_date': game_event.game_date  # Include game date for calendar display
             }
 
             if self.config.verbose_logging:
@@ -331,7 +332,8 @@ class SimulationWorkflow:
                 player_stats=player_stats,
                 dynasty_id=self.config.dynasty_id,
                 season=game_result_data['season'],
-                week=game_result_data['week']
+                week=game_result_data['week'],
+                simulation_date=game_event.game_date
             )
 
             if self.config.verbose_logging:

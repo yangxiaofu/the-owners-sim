@@ -158,9 +158,10 @@ class DynastyController:
 
             # Safety check - prevent infinite loop
             if counter > 999:
-                # Fall back to timestamp-based unique ID
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                return f"{base_id}_{timestamp}"
+                # Fall back to large counter (highly unlikely to be reached)
+                import random
+                random_suffix = random.randint(10000, 99999)
+                return f"{base_id}_{random_suffix}"
 
     def create_dynasty(
         self,
@@ -213,6 +214,21 @@ class DynastyController:
                 ''', (dynasty_id, season, tid))
 
             conn.commit()
+
+            # Generate initial season schedule
+            from .season_controller import SeasonController
+            season_controller = SeasonController(
+                db_path=self.db_path,
+                dynasty_id=dynasty_id,
+                season=season
+            )
+
+            schedule_success, schedule_error = season_controller.generate_initial_schedule()
+            if not schedule_success:
+                print(f"[WARNING DynastyController] Schedule generation failed: {schedule_error}")
+                # Don't fail dynasty creation if schedule generation fails
+                # User can manually generate schedule later
+
             return (True, dynasty_id, None)
 
         except Exception as e:

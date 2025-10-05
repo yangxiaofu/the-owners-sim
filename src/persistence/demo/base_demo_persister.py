@@ -39,7 +39,8 @@ class DemoPersister(ABC):
         self,
         game_id: str,
         game_data: Dict[str, Any],
-        dynasty_id: str = "default"
+        dynasty_id: str = "default",
+        simulation_date: Optional[Any] = None
     ) -> PersistenceResult:
         """
         Persist game result to storage.

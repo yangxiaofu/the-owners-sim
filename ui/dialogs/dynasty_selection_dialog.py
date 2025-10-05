@@ -236,7 +236,7 @@ class DynastySelectionDialog(QDialog):
             if dynasty_info['team_id']:
                 team = self.team_loader.get_team_by_id(dynasty_info['team_id'])
                 if team:
-                    info_text += f"<b>Team:</b> {team.city} {team.name}<br>"
+                    info_text += f"<b>Team:</b> {team.city} {team.nickname}<br>"
 
             info_text += f"<b>Created:</b> {dynasty_info['created_at']}<br>"
             info_text += f"<b>Status:</b> {'Active' if dynasty_info['is_active'] else 'Inactive'}<br>"

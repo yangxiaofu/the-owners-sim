@@ -3,7 +3,7 @@
 **Project**: The Owners Sim - NFL Football Simulation Engine
 **Database**: SQLite3
 **File Location**: `data/database/nfl_simulation.db`
-**Schema Version**: 2.2.0 (with salary cap system)
+**Schema Version**: 2.3.0 (with dynasty-isolated events)
 
 ## Table of Contents
 
@@ -1306,11 +1306,14 @@ CREATE TABLE events (
     event_type TEXT NOT NULL,
     timestamp INTEGER NOT NULL,
     game_id TEXT NOT NULL,
-    data TEXT NOT NULL
+    dynasty_id TEXT NOT NULL,
+    data TEXT NOT NULL,
+    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id)
+        ON DELETE CASCADE
 );
 ```
 
-**Note**: This table is used by the calendar/event system and does NOT have dynasty isolation. Events are grouped by `game_id` which serves as a context identifier.
+**Note**: This table follows the dynasty isolation pattern. All events are scoped to a specific dynasty for complete data separation.
 
 **Columns**:
 
@@ -1319,7 +1322,8 @@ CREATE TABLE events (
 | `event_id` | TEXT | PRIMARY KEY | Unique event identifier (UUID) |
 | `event_type` | TEXT | NOT NULL | Event type: "GAME", "SCOUTING", "MEDIA", "TRADE", etc. |
 | `timestamp` | INTEGER | NOT NULL | Unix timestamp in milliseconds |
-| `game_id` | TEXT | NOT NULL | Context identifier (season, dynasty, timeline) |
+| `game_id` | TEXT | NOT NULL | Context identifier (season, timeline) |
+| `dynasty_id` | TEXT | NOT NULL, FK | Dynasty isolation key |
 | `data` | TEXT | NOT NULL | JSON with three-part structure (see below) |
 
 **JSON Data Structure**:
@@ -1344,9 +1348,15 @@ CREATE TABLE events (
 
 **Indexes**:
 ```sql
-CREATE INDEX idx_game_id ON events(game_id);
-CREATE INDEX idx_timestamp ON events(timestamp);
-CREATE INDEX idx_event_type ON events(event_type);
+-- Primary indexes for event retrieval
+CREATE INDEX idx_events_game_id ON events(game_id);
+CREATE INDEX idx_events_timestamp ON events(timestamp);
+CREATE INDEX idx_events_event_type ON events(event_type);
+
+-- Dynasty isolation indexes (v2.3.0+)
+CREATE INDEX idx_events_dynasty_id ON events(dynasty_id);
+CREATE INDEX idx_events_dynasty_timestamp ON events(dynasty_id, timestamp);
+CREATE INDEX idx_events_dynasty_type ON events(dynasty_id, event_type);
 ```
 
 **Event Types**:
@@ -1365,7 +1375,8 @@ INSERT INTO events VALUES (
     'event_550e8400-e29b-41d4-a716-446655440000',
     'GAME',
     1703509200000,  -- 2024-12-25 13:00:00 in milliseconds
-    'season_2024_week_17',
+    'game_20241225_22_at_23',
+    'eagles_rebuild_2024',  -- Dynasty ID now a column (v2.3.0+)
     '{
         "parameters": {
             "away_team_id": 22,
@@ -1383,8 +1394,7 @@ INSERT INTO events VALUES (
             "turnovers_home": 1
         },
         "metadata": {
-            "description": "Week 17: Lions @ Packers",
-            "dynasty_id": "eagles_rebuild_2024"
+            "description": "Week 17: Lions @ Packers"
         }
     }'
 );
@@ -1396,7 +1406,8 @@ INSERT INTO events VALUES (
     'event_650e8400-e29b-41d4-a716-446655440001',
     'SCOUTING',
     1703595600000,
-    'season_2024_week_17',
+    'scouting_mid_season_2024',
+    'eagles_rebuild_2024',  -- Dynasty ID now a column (v2.3.0+)
     '{
         "parameters": {
             "scout_type": "college",
@@ -1421,8 +1432,7 @@ INSERT INTO events VALUES (
             }
         },
         "metadata": {
-            "description": "Mid-season college scouting",
-            "dynasty_id": "eagles_rebuild_2024"
+            "description": "Mid-season college scouting"
         }
     }'
 );
@@ -1449,7 +1459,8 @@ dynasties (1) ──┬──→ (N) games
                 ├──→ (N) franchise_tags
                 ├──→ (N) rfa_tenders
                 ├──→ (N) dead_money
-                └──→ (N) cap_transactions
+                ├──→ (N) cap_transactions
+                └──→ (N) events (v2.3.0+)
 
 games (1) ──┬──→ (N) player_game_stats
             └──→ (1) box_scores
@@ -1483,6 +1494,7 @@ DELETE FROM dynasties WHERE dynasty_id = 'eagles_rebuild_2024';
 --   - All rfa_tenders
 --   - All dead_money records
 --   - All cap_transactions
+--   - All events (v2.3.0+)
 ```
 
 ### Unique Constraints
@@ -1547,6 +1559,9 @@ CREATE INDEX idx_playoff_seedings_dynasty ON playoff_seedings(dynasty_id, season
 CREATE INDEX idx_playoff_seedings_conference ON playoff_seedings(dynasty_id, season, conference);
 CREATE INDEX idx_tiebreaker_apps ON tiebreaker_applications(dynasty_id, season);
 CREATE INDEX idx_playoff_brackets ON playoff_brackets(dynasty_id, season, round_name);
+CREATE INDEX idx_events_dynasty_id ON events(dynasty_id);  -- v2.3.0+
+CREATE INDEX idx_events_dynasty_timestamp ON events(dynasty_id, timestamp);  -- v2.3.0+
+CREATE INDEX idx_events_dynasty_type ON events(dynasty_id, event_type);  -- v2.3.0+
 ```
 
 **Team lookups**:
@@ -1573,8 +1588,9 @@ CREATE INDEX idx_events_timestamp ON events(timestamp);
 
 **Events**:
 ```sql
-CREATE INDEX idx_game_id ON events(game_id);
-CREATE INDEX idx_event_type ON events(event_type);
+CREATE INDEX idx_events_game_id ON events(game_id);
+CREATE INDEX idx_events_timestamp ON events(timestamp);
+CREATE INDEX idx_events_event_type ON events(event_type);
 ```
 
 ### Query Optimization Tips
@@ -1693,14 +1709,14 @@ CREATE INDEX idx_event_type ON events(event_type);
 │brackets      │                   │─────────────│
 │──────────────│                   │ event_id    │
 │ bracket_id   │                   │ event_type  │
-│ dynasty_id   │                   │ timestamp   │
-│ season       │                   │ game_id     │
-│ conference   │                   │ data (JSON) │
-│ round        │                   │   └─ parameters
-│ matchup_num  │                   │      └─ results
-│ home_team_id │                   │      └─ metadata
-│ away_team_id │                   └─────────────┘
-│ winner_id    │
+│ dynasty_id   │◄──────────────────┤ dynasty_id  │ (v2.3.0+)
+│ season       │                   │ timestamp   │
+│ conference   │                   │ game_id     │
+│ round        │                   │ data (JSON) │
+│ matchup_num  │                   │   └─ parameters
+│ home_team_id │                   │      └─ results
+│ away_team_id │                   │      └─ metadata
+│ winner_id    │                   └─────────────┘
 │ game_id      │
 └──────────────┘
 
@@ -1812,26 +1828,35 @@ LIMIT 10;
 
 ### Event Queries
 
-**Get all events for a timeline (polymorphic retrieval)**:
+**Get all events for a dynasty (polymorphic retrieval with dynasty isolation)**:
 ```sql
 SELECT
     event_id,
     event_type,
     timestamp,
     game_id,
+    dynasty_id,
     json_extract(data, '$.parameters') AS parameters,
     json_extract(data, '$.results') AS results,
     json_extract(data, '$.metadata') AS metadata
 FROM events
-WHERE game_id = 'season_2024_week_17'
+WHERE dynasty_id = 'eagles_rebuild_2024'
 ORDER BY timestamp ASC;
 ```
 
-**Get specific event type**:
+**Get events for specific dynasty and time range**:
 ```sql
 SELECT * FROM events
-WHERE event_type = 'SCOUTING'
-  AND json_extract(data, '$.metadata.dynasty_id') = 'eagles_rebuild_2024'
+WHERE dynasty_id = 'eagles_rebuild_2024'
+  AND timestamp BETWEEN 1703509200000 AND 1704114000000
+ORDER BY timestamp ASC;
+```
+
+**Get specific event type for dynasty**:
+```sql
+SELECT * FROM events
+WHERE dynasty_id = 'eagles_rebuild_2024'
+  AND event_type = 'SCOUTING'
 ORDER BY timestamp DESC
 LIMIT 10;
 ```
@@ -2092,7 +2117,7 @@ WHERE dynasty_id = 'eagles_rebuild_2024'
 
 ### Schema Version
 
-Current version: **2.2.0** (with salary cap system)
+Current version: **2.3.0** (with dynasty-isolated events)
 
 Version history:
 - **1.0.0**: Initial schema with dynasty isolation
@@ -2100,6 +2125,7 @@ Version history:
 - **2.0.0**: Production schema update - simplified tables to match actual implementation, updated dynasties table with career tracking, streamlined player_game_stats, updated all indexes
 - **2.1.0**: Added season_type support for regular season/playoff separation
 - **2.2.0**: Added complete salary cap system - 8 new tables (player_contracts, contract_year_details, team_salary_cap, franchise_tags, rfa_tenders, dead_money, cap_transactions, league_salary_cap_history) with full dynasty isolation
+- **2.3.0**: Added dynasty_id column to events table with foreign key constraint and composite indexes for proper dynasty isolation (migration: 001_add_dynasty_id_to_events.py)
 
 ### Adding New Tables
 

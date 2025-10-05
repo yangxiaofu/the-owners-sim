@@ -7,6 +7,7 @@ Qt table model for displaying calendar events in table views.
 from PySide6.QtCore import QAbstractTableModel, Qt, QModelIndex
 from PySide6.QtGui import QColor
 from typing import List, Optional, Any, Dict
+from datetime import datetime
 import sys
 import os
 
@@ -14,6 +15,8 @@ import os
 src_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'src')
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
+
+from team_management.teams.team_loader import TeamDataLoader
 
 
 class CalendarModel(QAbstractTableModel):
@@ -44,6 +47,9 @@ class CalendarModel(QAbstractTableModel):
         # Column headers
         self._headers = ["Date", "Type", "Event", "Status"]
 
+        # Team data loader for team name lookups
+        self._team_loader = TeamDataLoader()
+
     def set_events(self, events: List[Dict[str, Any]]):
         """
         Set events data for display.
@@ -52,8 +58,35 @@ class CalendarModel(QAbstractTableModel):
             events: List of event dictionaries from calendar/event system
         """
         self.beginResetModel()
-        self._events = sorted(events, key=lambda e: e.get('timestamp', ''))
+        self._events = sorted(events, key=self._get_sort_key)
         self.endResetModel()
+
+    def _get_sort_key(self, event: Dict[str, Any]) -> float:
+        """
+        Get sortable key for event timestamp.
+
+        Handles both datetime objects and int/float milliseconds to ensure
+        consistent sorting across different timestamp formats.
+
+        Args:
+            event: Event dictionary
+
+        Returns:
+            Float timestamp in seconds for sorting
+        """
+        ts = event.get('timestamp')
+        if not ts:
+            return 0.0
+
+        if isinstance(ts, datetime):
+            # Convert datetime to float seconds
+            return ts.timestamp()
+        elif isinstance(ts, (int, float)):
+            # Convert milliseconds to seconds
+            return ts / 1000.0
+        else:
+            # Fallback for unexpected types
+            return 0.0
 
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
         """Return number of rows (events)."""
@@ -157,26 +190,40 @@ class CalendarModel(QAbstractTableModel):
         """
         Format event date for display.
 
+        Handles multiple timestamp formats:
+        - datetime objects
+        - int/float milliseconds
+        - string dates
+
         Args:
             event: Event dictionary
 
         Returns:
-            Formatted date string
+            Formatted date string (YYYY-MM-DD)
         """
         timestamp = event.get('timestamp')
         if not timestamp:
             return "N/A"
 
-        # Handle both string and datetime formats
+        # Handle string format
         if isinstance(timestamp, str):
             # Expected format: "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS"
             return timestamp.split(' ')[0]
 
-        # If it's a datetime object
-        try:
+        # Handle datetime object
+        if isinstance(timestamp, datetime):
             return timestamp.strftime('%Y-%m-%d')
-        except:
-            return str(timestamp)
+
+        # Handle int/float milliseconds
+        if isinstance(timestamp, (int, float)):
+            try:
+                dt = datetime.fromtimestamp(timestamp / 1000.0)
+                return dt.strftime('%Y-%m-%d')
+            except (ValueError, OSError):
+                return "Invalid Date"
+
+        # Fallback for unexpected types
+        return str(timestamp)
 
     def _format_event_description(self, event: Dict[str, Any]) -> str:
         """
@@ -196,11 +243,20 @@ class CalendarModel(QAbstractTableModel):
         parameters = data.get('parameters', {})
 
         if event_type == 'GAME':
-            # Format: "Team {away} @ Team {home}"
+            # Format: "Week X: City Nickname @ City Nickname"
             away_id = parameters.get('away_team_id', '?')
             home_id = parameters.get('home_team_id', '?')
             week = parameters.get('week', '?')
-            return f"Week {week}: Team {away_id} @ Team {home_id}"
+
+            # Look up team names from IDs
+            away_team = self._team_loader.get_team_by_id(away_id) if isinstance(away_id, int) else None
+            home_team = self._team_loader.get_team_by_id(home_id) if isinstance(home_id, int) else None
+
+            # Format team names (fallback to ID if team not found)
+            away_name = f"{away_team.city} {away_team.nickname}" if away_team else f"Team {away_id}"
+            home_name = f"{home_team.city} {home_team.nickname}" if home_team else f"Team {home_id}"
+
+            return f"Week {week}: {away_name} @ {home_name}"
 
         elif event_type == 'DEADLINE':
             # Use description field from parameters
@@ -223,6 +279,9 @@ class CalendarModel(QAbstractTableModel):
         """
         Format event status based on results.
 
+        Shows winning team name with score for completed games.
+        Format: "Team Name score-score" (e.g., "Cleveland Browns 45-49")
+
         Args:
             event: Event dictionary
 
@@ -239,12 +298,30 @@ class CalendarModel(QAbstractTableModel):
         event_type = event.get('event_type', '').upper()
 
         if event_type == 'GAME':
-            # Show score if available
+            # Show score with winning team name if available
             away_score = results.get('away_score')
             home_score = results.get('home_score')
 
             if away_score is not None and home_score is not None:
-                return f"{away_score}-{home_score}"
+                # Get team IDs from parameters
+                parameters = data.get('parameters', {})
+                away_id = parameters.get('away_team_id')
+                home_id = parameters.get('home_team_id')
+
+                # Determine winner and format status
+                if away_score > home_score:
+                    # Away team won
+                    winner_team = self._team_loader.get_team_by_id(away_id) if isinstance(away_id, int) else None
+                    winner_name = f"{winner_team.city} {winner_team.nickname}" if winner_team else "Away"
+                    return f"{winner_name} {away_score}-{home_score}"
+                elif home_score > away_score:
+                    # Home team won
+                    winner_team = self._team_loader.get_team_by_id(home_id) if isinstance(home_id, int) else None
+                    winner_name = f"{winner_team.city} {winner_team.nickname}" if winner_team else "Home"
+                    return f"{winner_name} {home_score}-{away_score}"
+                else:
+                    # Tie game
+                    return f"Tie {away_score}-{home_score}"
             else:
                 return "Completed"
 

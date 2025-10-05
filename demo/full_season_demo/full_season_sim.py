@@ -91,7 +91,7 @@ class InteractiveFullSeasonSimulator:
                 database_path=database_path,
                 dynasty_id=dynasty_id,
                 season_year=2024,
-                start_date=Date(2024, 9, 5),  # September 5, 2024 (Thursday)
+                start_date=Date(2024, 9, 4),  # September 4, 2024 (Wednesday - day before first game)
                 enable_persistence=True,
                 verbose_logging=True
             )

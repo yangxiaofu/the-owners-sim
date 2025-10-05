@@ -217,7 +217,52 @@ class DatabaseAPI:
             game_list.append(game_data)
         
         return game_list
-    
+
+    def get_games_by_date_range(
+        self,
+        dynasty_id: str,
+        start_timestamp_ms: int,
+        end_timestamp_ms: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all completed games within a date range (for calendar display).
+
+        Args:
+            dynasty_id: Dynasty identifier
+            start_timestamp_ms: Start of range (milliseconds since epoch)
+            end_timestamp_ms: End of range (milliseconds since epoch)
+
+        Returns:
+            List of game dictionaries with date, teams, scores, etc.
+        """
+        query = '''
+            SELECT
+                game_id,
+                game_date,
+                season,
+                week,
+                season_type,
+                game_type,
+                home_team_id,
+                away_team_id,
+                home_score,
+                away_score,
+                total_plays,
+                game_duration_minutes,
+                overtime_periods
+            FROM games
+            WHERE dynasty_id = ?
+            AND game_date >= ?
+            AND game_date <= ?
+            ORDER BY game_date ASC
+        '''
+
+        results = self.db_connection.execute_query(
+            query,
+            (dynasty_id, start_timestamp_ms, end_timestamp_ms)
+        )
+        return results if results else []
+
     def get_team_standing(self, dynasty_id: str, team_id: int, season: int) -> Optional[EnhancedTeamStanding]:
         """
         Get standing for a specific team.

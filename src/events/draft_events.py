@@ -45,13 +45,13 @@ class DraftPickEvent(BaseEvent):
             college: Player's college
             event_date: Date of selection
             event_id: Unique identifier
-            dynasty_id: Dynasty context
+            dynasty_id: Dynasty context for isolation
         """
         event_datetime = datetime.combine(
             event_date.to_python_date(),
             datetime.min.time()
         )
-        super().__init__(event_id=event_id, timestamp=event_datetime)
+        super().__init__(event_id=event_id, timestamp=event_datetime, dynasty_id=dynasty_id)
 
         self.team_id = team_id
         self.round_number = round_number
@@ -106,7 +106,7 @@ class DraftPickEvent(BaseEvent):
         return (True, None)
 
     def get_game_id(self) -> str:
-        return f"draft_pick_{self.dynasty_id}_{self.team_id}_round{self.round_number}_pick{self.pick_number}_{self.event_date.year}"
+        return f"draft_pick_{self.team_id}_round{self.round_number}_pick{self.pick_number}_{self.event_date.year}"
 
 
 class UDFASigningEvent(BaseEvent):
@@ -140,13 +140,13 @@ class UDFASigningEvent(BaseEvent):
             signing_bonus: Signing bonus amount (typically small)
             event_date: Date of signing
             event_id: Unique identifier
-            dynasty_id: Dynasty context
+            dynasty_id: Dynasty context for isolation
         """
         event_datetime = datetime.combine(
             event_date.to_python_date(),
             datetime.min.time()
         )
-        super().__init__(event_id=event_id, timestamp=event_datetime)
+        super().__init__(event_id=event_id, timestamp=event_datetime, dynasty_id=dynasty_id)
 
         self.team_id = team_id
         self.player_id = player_id
@@ -198,7 +198,7 @@ class UDFASigningEvent(BaseEvent):
         return (True, None)
 
     def get_game_id(self) -> str:
-        return f"udfa_signing_{self.dynasty_id}_{self.team_id}_{self.player_id}_{self.event_date.year}"
+        return f"udfa_signing_{self.team_id}_{self.player_id}_{self.event_date.year}"
 
 
 class DraftTradeEvent(BaseEvent):
@@ -232,13 +232,13 @@ class DraftTradeEvent(BaseEvent):
             team2_gives_players: Players team2 trades away (optional)
             event_date: Date of trade
             event_id: Unique identifier
-            dynasty_id: Dynasty context
+            dynasty_id: Dynasty context for isolation
         """
         event_datetime = datetime.combine(
             event_date.to_python_date(),
             datetime.min.time()
         )
-        super().__init__(event_id=event_id, timestamp=event_datetime)
+        super().__init__(event_id=event_id, timestamp=event_datetime, dynasty_id=dynasty_id)
 
         self.team1_id = team1_id
         self.team2_id = team2_id
@@ -298,4 +298,4 @@ class DraftTradeEvent(BaseEvent):
         return (True, None)
 
     def get_game_id(self) -> str:
-        return f"draft_trade_{self.dynasty_id}_{self.team1_id}_{self.team2_id}_{self.event_date.year}"
+        return f"draft_trade_{self.team1_id}_{self.team2_id}_{self.event_date.year}"

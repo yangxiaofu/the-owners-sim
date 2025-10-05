@@ -31,6 +31,7 @@ class GameEvent(BaseEvent):
         home_team_id: int,
         game_date: datetime,
         week: int,
+        dynasty_id: str,
         game_id: Optional[str] = None,
         event_id: Optional[str] = None,
         overtime_type: str = "regular_season",
@@ -46,6 +47,7 @@ class GameEvent(BaseEvent):
             home_team_id: Home team ID (1-32)
             game_date: When game is scheduled
             week: Week number in season
+            dynasty_id: Dynasty identifier for isolation (REQUIRED)
             game_id: Optional game identifier (auto-generated if not provided)
             event_id: Optional event identifier (auto-generated if not provided)
             overtime_type: Overtime rules ("regular_season" or "playoffs")
@@ -53,7 +55,7 @@ class GameEvent(BaseEvent):
             season_type: Type of season ("preseason", "regular_season", "playoffs")
             game_type: Specific game type ("regular", "wildcard", "divisional", "conference", "super_bowl")
         """
-        super().__init__(event_id=event_id, timestamp=game_date)
+        super().__init__(event_id=event_id, timestamp=game_date, dynasty_id=dynasty_id)
 
         # Validate team IDs
         if not (1 <= away_team_id <= 32):
@@ -151,7 +153,7 @@ class GameEvent(BaseEvent):
                 event_id=self.event_id,
                 event_type="GAME",
                 success=True,
-                timestamp=datetime.now(),
+                timestamp=self.game_date,
                 data=result_data
             )
 
@@ -168,7 +170,7 @@ class GameEvent(BaseEvent):
                 event_id=self.event_id,
                 event_type="GAME",
                 success=False,
-                timestamp=datetime.now(),
+                timestamp=self.game_date,
                 data={
                     "game_id": self._game_id,
                     "away_team_id": self.away_team_id,
@@ -335,6 +337,7 @@ class GameEvent(BaseEvent):
             home_team_id=params['home_team_id'],
             game_date=datetime.fromisoformat(params['game_date']),
             week=params['week'],
+            dynasty_id=params.get('dynasty_id', 'default'),
             game_id=event_data['game_id'],
             event_id=event_data['event_id'],
             overtime_type=params.get('overtime_type', 'regular_season'),

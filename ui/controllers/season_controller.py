@@ -5,17 +5,11 @@ Mediates between Season View and simulation engine components.
 Provides access to team data, standings, and season management.
 """
 
-from typing import List, Dict, Any, Optional
-import sys
-import os
+from typing import List, Dict, Any, Optional, Tuple
+from datetime import datetime
 
-# Add src to path for imports
-src_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'src')
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
-
-from team_management.teams.team_loader import TeamDataLoader, Team
-from database.api import DatabaseAPI
+from ui.domain_models.season_data_model import SeasonDataModel
+from team_management.teams.team_loader import Team
 
 
 class SeasonController:
@@ -35,13 +29,7 @@ class SeasonController:
             dynasty_id: Dynasty identifier for data isolation
             season: Current season year (default: 2025)
         """
-        self.db_path = db_path
-        self.dynasty_id = dynasty_id
-        self.season = season
-
-        # Initialize data access components
-        self.team_loader = TeamDataLoader()
-        self.db_api = DatabaseAPI(db_path)
+        self.data_model = SeasonDataModel(db_path, dynasty_id, season)
 
     def get_all_teams(self) -> List[Team]:
         """
@@ -50,7 +38,7 @@ class SeasonController:
         Returns:
             List of Team objects with city, nickname, division, conference, etc.
         """
-        return self.team_loader.get_all_teams()
+        return self.data_model.get_all_teams()
 
     def get_team_by_id(self, team_id: int) -> Optional[Team]:
         """
@@ -62,7 +50,7 @@ class SeasonController:
         Returns:
             Team object or None if not found
         """
-        return self.team_loader.get_team_by_id(team_id)
+        return self.data_model.get_team_by_id(team_id)
 
     def get_teams_by_division(self, conference: str, division: str) -> List[Team]:
         """
@@ -75,7 +63,7 @@ class SeasonController:
         Returns:
             List of Team objects in the division
         """
-        return self.team_loader.get_teams_by_division(conference, division)
+        return self.data_model.get_teams_by_division(conference, division)
 
     def get_teams_by_conference(self, conference: str) -> List[Team]:
         """
@@ -87,7 +75,7 @@ class SeasonController:
         Returns:
             List of Team objects in the conference
         """
-        return self.team_loader.get_teams_by_conference(conference)
+        return self.data_model.get_teams_by_conference(conference)
 
     def get_team_standings(self) -> Dict[str, Any]:
         """
@@ -97,23 +85,7 @@ class SeasonController:
             Standings data structure with division/conference standings.
             Returns empty dict if no season initialized in database.
         """
-        print(f"[DEBUG SeasonController] get_team_standings() called")
-        print(f"[DEBUG SeasonController] Dynasty: {self.dynasty_id}, Season: {self.season}")
-
-        try:
-            print(f"[DEBUG SeasonController] Calling db_api.get_standings()")
-            standings = self.db_api.get_standings(
-                dynasty_id=self.dynasty_id,
-                season=self.season
-            )
-            print(f"[DEBUG SeasonController] Standings returned: type={type(standings)}, keys={standings.keys() if standings else 'None'}")
-            return standings
-        except Exception as e:
-            # Gracefully handle missing data - season might not be initialized yet
-            print(f"[ERROR SeasonController] No standings data available: {e}")
-            import traceback
-            traceback.print_exc()
-            return {}
+        return self.data_model.get_team_standings()
 
     def get_team_record(self, team_id: int) -> Optional[Dict[str, int]]:
         """
@@ -125,23 +97,7 @@ class SeasonController:
         Returns:
             Dict with 'wins', 'losses', 'ties' or None if no data available
         """
-        standings = self.get_team_standings()
-
-        if not standings:
-            return None
-
-        # Search through divisions for this team
-        for division_name, division_data in standings.items():
-            if isinstance(division_data, dict) and 'teams' in division_data:
-                for team_standing in division_data['teams']:
-                    if team_standing.team_id == team_id:
-                        return {
-                            'wins': team_standing.wins,
-                            'losses': team_standing.losses,
-                            'ties': team_standing.ties
-                        }
-
-        return None
+        return self.data_model.get_team_record(team_id)
 
     def has_season_data(self) -> bool:
         """
@@ -150,8 +106,7 @@ class SeasonController:
         Returns:
             True if standings data exists, False otherwise
         """
-        standings = self.get_team_standings()
-        return bool(standings)
+        return self.data_model.has_season_data()
 
     def get_dynasty_info(self) -> Dict[str, str]:
         """
@@ -160,7 +115,21 @@ class SeasonController:
         Returns:
             Dict with dynasty_id and season
         """
-        return {
-            'dynasty_id': self.dynasty_id,
-            'season': str(self.season)
-        }
+        return self.data_model.get_dynasty_info()
+
+    def generate_initial_schedule(self, season_start_date: Optional[datetime] = None) -> Tuple[bool, Optional[str]]:
+        """
+        Generate initial season schedule for a new dynasty.
+
+        Creates a complete 272-game NFL season schedule and initializes dynasty state.
+        Should be called once when creating a new dynasty.
+
+        Args:
+            season_start_date: Season start datetime (defaults to Sept 5, 8:00 PM)
+
+        Returns:
+            Tuple of (success, error_message)
+            - (True, None) if successful
+            - (False, "error message") if failed
+        """
+        return self.data_model.generate_initial_schedule(season_start_date)

@@ -33,8 +33,8 @@ class WindowEvent(BaseEvent):
         description: str,
         season_year: int,
         event_date: Date,
-        event_id: Optional[str] = None,
-        dynasty_id: str = "default"
+        dynasty_id: str,
+        event_id: Optional[str] = None
     ):
         """
         Initialize window event.
@@ -45,15 +45,15 @@ class WindowEvent(BaseEvent):
             description: Human-readable description
             season_year: NFL season year
             event_date: Date when window starts/ends
+            dynasty_id: Dynasty context for isolation (REQUIRED)
             event_id: Unique identifier (generated if not provided)
-            dynasty_id: Dynasty context
         """
         # Convert Date to datetime for BaseEvent
         event_datetime = datetime.combine(
             event_date.to_python_date(),
             datetime.min.time()
         )
-        super().__init__(event_id=event_id, timestamp=event_datetime)
+        super().__init__(event_id=event_id, timestamp=event_datetime, dynasty_id=dynasty_id)
 
         self.window_name = window_name
         self.window_type = window_type
@@ -125,9 +125,10 @@ class WindowEvent(BaseEvent):
         """
         Return unique identifier for this window event.
 
-        Format: window_{dynasty_id}_{season_year}_{window_name}_{START|END}
+        Format: window_{season_year}_{window_name}_{START|END}
+        Note: dynasty_id is now a separate column, not encoded in game_id
         """
-        return f"window_{self.dynasty_id}_{self.season_year}_{self.window_name}_{self.window_type}"
+        return f"window_{self.season_year}_{self.window_name}_{self.window_type}"
 
     def __str__(self) -> str:
         """String representation."""

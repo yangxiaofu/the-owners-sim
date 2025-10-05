@@ -33,8 +33,8 @@ class DeadlineEvent(BaseEvent):
         description: str,
         season_year: int,
         event_date: Date,
+        dynasty_id: str,
         event_id: Optional[str] = None,
-        dynasty_id: str = "default",
         database_path: str = "data/database/nfl_simulation.db"
     ):
         """
@@ -45,8 +45,8 @@ class DeadlineEvent(BaseEvent):
             description: Human-readable description of the deadline
             season_year: NFL season year this deadline applies to
             event_date: Date when the deadline occurs
+            dynasty_id: Dynasty context for isolation (REQUIRED)
             event_id: Unique identifier (generated if not provided)
-            dynasty_id: Dynasty context for this deadline
             database_path: Path to database for cap validation (default: data/database/nfl_simulation.db)
         """
         # Convert Date to datetime for BaseEvent
@@ -54,7 +54,7 @@ class DeadlineEvent(BaseEvent):
             event_date.to_python_date(),
             datetime.min.time()
         )
-        super().__init__(event_id=event_id, timestamp=event_datetime)
+        super().__init__(event_id=event_id, timestamp=event_datetime, dynasty_id=dynasty_id)
 
         self.deadline_type = deadline_type
         self.description = description
@@ -214,9 +214,10 @@ class DeadlineEvent(BaseEvent):
         """
         Return unique identifier for this deadline.
 
-        Format: deadline_{dynasty_id}_{season_year}_{deadline_type}
+        Format: deadline_{season_year}_{deadline_type}
+        Note: dynasty_id is now a separate column, not encoded in game_id
         """
-        return f"deadline_{self.dynasty_id}_{self.season_year}_{self.deadline_type}"
+        return f"deadline_{self.season_year}_{self.deadline_type}"
 
     def __str__(self) -> str:
         """String representation."""
@@ -236,6 +237,7 @@ class DeadlineEvent(BaseEvent):
 
         Args:
             event_data: Dictionary from EventDatabaseAPI.get_event_by_id()
+                Must contain 'dynasty_id' at top level (from events table column)
 
         Returns:
             Reconstructed DeadlineEvent instance
@@ -248,13 +250,16 @@ class DeadlineEvent(BaseEvent):
         else:
             params = data
 
+        # Dynasty ID comes from top-level event_data (events.dynasty_id column)
+        dynasty_id = event_data.get('dynasty_id', params.get('dynasty_id', 'default'))
+
         return cls(
             deadline_type=params['deadline_type'],
             description=params['description'],
             season_year=params['season_year'],
             event_date=Date.from_string(params['event_date']),
+            dynasty_id=dynasty_id,
             event_id=event_data['event_id'],
-            dynasty_id=params.get('dynasty_id', 'default'),
             database_path=params.get('database_path', 'data/database/nfl_simulation.db')
         )
 

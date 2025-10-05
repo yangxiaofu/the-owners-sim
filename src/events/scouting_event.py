@@ -36,7 +36,7 @@ class ScoutingEvent(BaseEvent):
         num_players: int = 5,
         event_id: Optional[str] = None,
         timestamp: Optional[datetime] = None,
-        game_id: str = "scouting_general"
+        dynasty_id: str = "default"
     ):
         """
         Initialize scouting event.
@@ -47,14 +47,13 @@ class ScoutingEvent(BaseEvent):
             num_players: Number of players to evaluate
             event_id: Optional event identifier
             timestamp: Optional event timestamp
-            game_id: Context identifier for grouping (default: "scouting_general")
+            dynasty_id: Dynasty context for isolation
         """
-        super().__init__(event_id=event_id, timestamp=timestamp or datetime.now())
+        super().__init__(event_id=event_id, timestamp=timestamp or datetime.now(), dynasty_id=dynasty_id)
 
         self.scout_type = scout_type
         self.target_positions = target_positions or ["QB", "RB", "WR", "TE"]
         self.num_players = num_players
-        self._game_id = game_id
 
         # Results stored after execution
         self._scouting_reports = None
@@ -66,7 +65,7 @@ class ScoutingEvent(BaseEvent):
 
     def get_game_id(self) -> str:
         """Return game/context identifier"""
-        return self._game_id
+        return f"scouting_{self.scout_type}"
 
     def _get_parameters(self) -> Dict[str, Any]:
         """
@@ -301,7 +300,7 @@ class ScoutingEvent(BaseEvent):
             target_positions=params.get('target_positions', []),
             num_players=params.get('num_players', 5),
             event_id=event_data['event_id'],
-            game_id=event_data['game_id']
+            dynasty_id=event_data.get('dynasty_id', 'default')
         )
 
         # Load historical scouting reports (don't regenerate)

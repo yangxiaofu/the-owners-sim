@@ -60,7 +60,8 @@ class DatabaseDemoPersister(DemoPersister):
         self,
         game_id: str,
         game_data: Dict[str, Any],
-        dynasty_id: str = "default"
+        dynasty_id: str = "default",
+        simulation_date: Optional[datetime] = None
     ) -> PersistenceResult:
         """
         Persist game result to database.
@@ -69,6 +70,7 @@ class DatabaseDemoPersister(DemoPersister):
             game_id: Unique game identifier
             game_data: Game result data
             dynasty_id: Dynasty context
+            simulation_date: Simulation date for created_at timestamp (uses real-time if None)
 
         Returns:
             PersistenceResult with operation outcome
@@ -90,13 +92,24 @@ class DatabaseDemoPersister(DemoPersister):
         try:
             conn = self._get_connection()
 
+            # Convert game_date to milliseconds timestamp if present
+            game_date_ms = None
+            if 'game_date' in game_data and game_data['game_date']:
+                game_date = game_data['game_date']
+                if hasattr(game_date, 'timestamp'):
+                    # datetime object
+                    game_date_ms = int(game_date.timestamp() * 1000)
+                elif isinstance(game_date, (int, float)):
+                    # Already in milliseconds or seconds
+                    game_date_ms = int(game_date) if game_date > 1000000000000 else int(game_date * 1000)
+
             # Insert game record
             query = """
                 INSERT OR REPLACE INTO games (
                     game_id, dynasty_id, season, week, game_type,
                     away_team_id, home_team_id, away_score, home_score,
-                    total_plays, game_duration_minutes, overtime_periods, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    total_plays, game_duration_minutes, overtime_periods, game_date, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
 
             params = (
@@ -112,7 +125,8 @@ class DatabaseDemoPersister(DemoPersister):
                 game_data.get('total_plays', 0),
                 game_data.get('game_duration_minutes', 180),
                 game_data.get('overtime_periods', 0),
-                datetime.now().isoformat()
+                game_date_ms,
+                simulation_date.isoformat() if simulation_date else datetime.now().isoformat()
             )
 
             conn.execute(query, params)

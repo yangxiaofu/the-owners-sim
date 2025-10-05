@@ -65,6 +65,7 @@ class EventDatabaseAPI:
         - event_type: Event type label (VARCHAR)
         - timestamp: Unix timestamp in milliseconds (BIGINT)
         - game_id: Game identifier for filtering (VARCHAR)
+        - dynasty_id: Dynasty identifier for isolation (VARCHAR, NOT NULL)
         - data: JSON event data (TEXT)
         """
         conn = sqlite3.connect(self.db_path)
@@ -77,7 +78,9 @@ class EventDatabaseAPI:
                     event_type TEXT NOT NULL,
                     timestamp INTEGER NOT NULL,
                     game_id TEXT NOT NULL,
-                    data TEXT NOT NULL
+                    dynasty_id TEXT NOT NULL,
+                    data TEXT NOT NULL,
+                    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE
                 )
             ''')
 
@@ -85,6 +88,10 @@ class EventDatabaseAPI:
             conn.execute('CREATE INDEX IF NOT EXISTS idx_game_id ON events(game_id)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON events(timestamp)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_event_type ON events(event_type)')
+
+            # Create new composite indexes for dynasty-filtered queries
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_events_dynasty_timestamp ON events(dynasty_id, timestamp)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_events_dynasty_type ON events(dynasty_id, event_type)')
 
             conn.commit()
             self.logger.debug("Events table and indexes created successfully")
@@ -121,13 +128,14 @@ class EventDatabaseAPI:
             conn = sqlite3.connect(self.db_path)
 
             conn.execute('''
-                INSERT INTO events (event_id, event_type, timestamp, game_id, data)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO events (event_id, event_type, timestamp, game_id, dynasty_id, data)
+                VALUES (?, ?, ?, ?, ?, ?)
             ''', (
                 event_data['event_id'],
                 event_data['event_type'],
                 int(event_data['timestamp'].timestamp() * 1000),  # Convert to milliseconds
                 event_data['game_id'],
+                event_data['dynasty_id'],
                 json.dumps(event_data['data'])
             ))
 
@@ -174,13 +182,14 @@ class EventDatabaseAPI:
                 self._validate_event_data(event_data)
 
                 conn.execute('''
-                    INSERT INTO events (event_id, event_type, timestamp, game_id, data)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO events (event_id, event_type, timestamp, game_id, dynasty_id, data)
+                    VALUES (?, ?, ?, ?, ?, ?)
                 ''', (
                     event_data['event_id'],
                     event_data['event_type'],
                     int(event_data['timestamp'].timestamp() * 1000),
                     event_data['game_id'],
+                    event_data['dynasty_id'],
                     json.dumps(event_data['data'])
                 ))
 
@@ -307,12 +316,115 @@ class EventDatabaseAPI:
         finally:
             conn.close()
 
+    def get_events_by_dynasty(
+        self,
+        dynasty_id: str,
+        event_type: Optional[str] = None,
+        limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve all events for a specific dynasty.
+
+        Primary query method for dynasty-isolated event retrieval.
+        Uses indexed equality for fast performance.
+
+        Args:
+            dynasty_id: Dynasty identifier
+            event_type: Optional filter by event type
+            limit: Optional limit on results
+
+        Returns:
+            List of event dictionaries, ordered by timestamp DESC
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        try:
+            if event_type:
+                query = '''
+                    SELECT * FROM events
+                    WHERE dynasty_id = ? AND event_type = ?
+                    ORDER BY timestamp DESC
+                '''
+                params = (dynasty_id, event_type)
+            else:
+                query = '''
+                    SELECT * FROM events
+                    WHERE dynasty_id = ?
+                    ORDER BY timestamp DESC
+                '''
+                params = (dynasty_id,)
+
+            if limit:
+                query += f' LIMIT {limit}'
+
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            return [self._row_to_dict(row) for row in rows]
+
+        finally:
+            conn.close()
+
+    def get_events_by_dynasty_and_timestamp(
+        self,
+        dynasty_id: str,
+        start_timestamp_ms: int,
+        end_timestamp_ms: int,
+        event_type: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve events for dynasty within timestamp range.
+
+        Optimized for calendar queries with composite index on (dynasty_id, timestamp).
+
+        Args:
+            dynasty_id: Dynasty identifier
+            start_timestamp_ms: Start of range (Unix ms)
+            end_timestamp_ms: End of range (Unix ms)
+            event_type: Optional filter by event type
+
+        Returns:
+            List of event dictionaries, ordered by timestamp ASC
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        try:
+            if event_type:
+                cursor.execute('''
+                    SELECT * FROM events
+                    WHERE dynasty_id = ?
+                      AND timestamp BETWEEN ? AND ?
+                      AND event_type = ?
+                    ORDER BY timestamp ASC
+                ''', (dynasty_id, start_timestamp_ms, end_timestamp_ms, event_type))
+            else:
+                cursor.execute('''
+                    SELECT * FROM events
+                    WHERE dynasty_id = ?
+                      AND timestamp BETWEEN ? AND ?
+                    ORDER BY timestamp ASC
+                ''', (dynasty_id, start_timestamp_ms, end_timestamp_ms))
+
+            rows = cursor.fetchall()
+            return [self._row_to_dict(row) for row in rows]
+
+        finally:
+            conn.close()
+
     def get_events_by_game_id_prefix(
         self,
         prefix: str,
         event_type: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
+        DEPRECATED: Use get_events_by_dynasty() instead.
+
+        This method is kept for backward compatibility but should not be used
+        in new code. Dynasty isolation is now handled via the dynasty_id column.
+
         Retrieve events where game_id starts with the specified prefix.
 
         Efficient database-level filtering for dynasty-specific queries.
@@ -341,6 +453,13 @@ class EventDatabaseAPI:
             - Leverages game_id index for fast lookups
             - More efficient than loading all events and filtering in Python
         """
+        import warnings
+        warnings.warn(
+            "get_events_by_game_id_prefix() is deprecated. Use get_events_by_dynasty() instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
@@ -355,6 +474,64 @@ class EventDatabaseAPI:
                 cursor.execute(
                     'SELECT * FROM events WHERE game_id LIKE ? ORDER BY timestamp DESC',
                     (f"{prefix}%",)
+                )
+
+            rows = cursor.fetchall()
+            return [self._row_to_dict(row) for row in rows]
+
+        finally:
+            conn.close()
+
+    def get_events_by_timestamp_range(
+        self,
+        start_timestamp_ms: int,
+        end_timestamp_ms: int,
+        event_type: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve events within a specific timestamp range.
+
+        Efficient database-level filtering for calendar and date-based queries.
+        Useful for retrieving events for a specific month, week, or custom date range.
+
+        Examples:
+            # Get all events in September 2025
+            start = int(datetime(2025, 9, 1).timestamp() * 1000)
+            end = int(datetime(2025, 10, 1).timestamp() * 1000)
+            events = api.get_events_by_timestamp_range(start, end)
+
+            # Get only game events in a date range
+            events = api.get_events_by_timestamp_range(start, end, "GAME")
+
+        Args:
+            start_timestamp_ms: Start of range in Unix milliseconds (inclusive)
+            end_timestamp_ms: End of range in Unix milliseconds (inclusive)
+            event_type: Optional filter by event type (e.g., "GAME", "DEADLINE")
+                       If None, returns events of all types in the range
+
+        Returns:
+            List of event dictionaries matching the criteria, ordered by timestamp ASC
+            Empty list if no events found in range
+
+        Performance:
+            - Uses SQL BETWEEN for efficient range queries
+            - Leverages timestamp index for fast lookups
+            - More efficient than loading all events and filtering in Python
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        try:
+            if event_type:
+                cursor.execute(
+                    'SELECT * FROM events WHERE timestamp BETWEEN ? AND ? AND event_type = ? ORDER BY timestamp ASC',
+                    (start_timestamp_ms, end_timestamp_ms, event_type)
+                )
+            else:
+                cursor.execute(
+                    'SELECT * FROM events WHERE timestamp BETWEEN ? AND ? ORDER BY timestamp ASC',
+                    (start_timestamp_ms, end_timestamp_ms)
                 )
 
             rows = cursor.fetchall()
@@ -414,12 +591,14 @@ class EventDatabaseAPI:
                 SET event_type = ?,
                     timestamp = ?,
                     game_id = ?,
+                    dynasty_id = ?,
                     data = ?
                 WHERE event_id = ?
             ''', (
                 event_data['event_type'],
                 int(event_data['timestamp'].timestamp() * 1000),
                 event_data['game_id'],
+                event_data['dynasty_id'],
                 json.dumps(event_data['data']),
                 event_data['event_id']
             ))
@@ -487,6 +666,7 @@ class EventDatabaseAPI:
             'event_type': row['event_type'],
             'timestamp': datetime.fromtimestamp(row['timestamp'] / 1000),  # Convert from milliseconds
             'game_id': row['game_id'],
+            'dynasty_id': row['dynasty_id'],
             'data': json.loads(row['data'])
         }
 
@@ -500,7 +680,7 @@ class EventDatabaseAPI:
         Raises:
             ValueError: If required fields are missing
         """
-        required_fields = ['event_id', 'event_type', 'timestamp', 'game_id', 'data']
+        required_fields = ['event_id', 'event_type', 'timestamp', 'game_id', 'dynasty_id', 'data']
 
         for field in required_fields:
             if field not in event_data:

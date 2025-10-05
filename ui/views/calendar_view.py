@@ -43,8 +43,8 @@ class CalendarView(QWidget):
         self.main_window = parent
         self.controller = controller
 
-        # Current month state
-        self.current_date = datetime.now()
+        # Current month state - sync to simulation date if available
+        self.current_date = self._get_initial_date()
 
         # Track active filters
         self.active_filters: Set[str] = {"GAME", "DEADLINE", "WINDOW", "MILESTONE"}
@@ -55,6 +55,49 @@ class CalendarView(QWidget):
         # Load initial data
         if self.controller:
             self.load_events()
+
+    def _get_initial_date(self) -> datetime:
+        """
+        Get initial date for calendar view.
+
+        Tries to sync to simulation date first. If no simulation date exists,
+        defaults to September (season start) instead of current real-world month.
+
+        Returns:
+            datetime for initial calendar view
+        """
+        print(f"[DEBUG CalendarView] _get_initial_date() called")
+        print(f"[DEBUG CalendarView] Controller exists: {self.controller is not None}")
+
+        if not self.controller:
+            print(f"[DEBUG CalendarView] NO CONTROLLER - returning datetime.now() = {datetime.now()}")
+            return datetime.now()
+
+        # Try to get simulation date from dynasty state
+        sim_date_str = self.controller.get_current_simulation_date()
+        print(f"[DEBUG CalendarView] get_current_simulation_date() returned: '{sim_date_str}'")
+
+        if sim_date_str:
+            # Parse YYYY-MM-DD format
+            parts = sim_date_str.split('-')
+            if len(parts) == 3:
+                try:
+                    year = int(parts[0])
+                    month = int(parts[1])
+                    result = datetime(year, month, 1)
+                    print(f"[DEBUG CalendarView] Parsed simulation date: {result}")
+                    return result
+                except (ValueError, IndexError) as e:
+                    print(f"[DEBUG CalendarView] Failed to parse date '{sim_date_str}': {e}")
+                    pass
+
+        # Fall back to September (NFL season start) of current dynasty season
+        # This is better than datetime.now() because new dynasties start in September
+        dynasty_info = self.controller.get_dynasty_info()
+        season = int(dynasty_info.get('season', 2025))
+        fallback_date = datetime(season, 9, 1)  # September 1st of dynasty season
+        print(f"[DEBUG CalendarView] Falling back to September: {fallback_date}")
+        return fallback_date
 
     def _setup_ui(self):
         """Build the user interface."""
@@ -155,30 +198,34 @@ class CalendarView(QWidget):
 
         # Filter label
         filter_label = QLabel("Show:")
-        filter_label.setStyleSheet("font-weight: bold;")
+        filter_label.setStyleSheet("font-weight: bold; color: #333333;")
         filter_bar.addWidget(filter_label)
 
         # Games filter
         self.games_checkbox = QCheckBox("Games")
         self.games_checkbox.setChecked(True)
+        self.games_checkbox.setStyleSheet("color: #333333; font-weight: 500;")
         self.games_checkbox.stateChanged.connect(self.handle_filter_change)
         filter_bar.addWidget(self.games_checkbox)
 
         # Deadlines filter
         self.deadlines_checkbox = QCheckBox("Deadlines")
         self.deadlines_checkbox.setChecked(True)
+        self.deadlines_checkbox.setStyleSheet("color: #333333; font-weight: 500;")
         self.deadlines_checkbox.stateChanged.connect(self.handle_filter_change)
         filter_bar.addWidget(self.deadlines_checkbox)
 
         # Windows filter
         self.windows_checkbox = QCheckBox("Windows")
         self.windows_checkbox.setChecked(True)
+        self.windows_checkbox.setStyleSheet("color: #333333; font-weight: 500;")
         self.windows_checkbox.stateChanged.connect(self.handle_filter_change)
         filter_bar.addWidget(self.windows_checkbox)
 
         # Milestones filter
         self.milestones_checkbox = QCheckBox("Milestones")
         self.milestones_checkbox.setChecked(True)
+        self.milestones_checkbox.setStyleSheet("color: #333333; font-weight: 500;")
         self.milestones_checkbox.stateChanged.connect(self.handle_filter_change)
         filter_bar.addWidget(self.milestones_checkbox)
 
@@ -212,10 +259,16 @@ class CalendarView(QWidget):
         if selection_model:
             selection_model.selectionChanged.connect(self._on_selection_changed)
 
-        # Adjust column widths
+        # Adjust column widths for optimal readability
         header = self.event_table.horizontalHeader()
         if header:
             header.setStretchLastSection(True)
+            # Set fixed widths for Date, Type, and Event columns
+            # CalendarModel column indices: COL_DATE=0, COL_TYPE=1, COL_EVENT=2, COL_STATUS=3
+            self.event_table.setColumnWidth(0, 100)    # Date
+            self.event_table.setColumnWidth(1, 80)     # Type
+            self.event_table.setColumnWidth(2, 450)    # Event (wide for full team names)
+            # Status column (3) stretches to fill remaining space
 
         return self.event_table
 
@@ -308,8 +361,9 @@ class CalendarView(QWidget):
         self.load_events()
 
     def handle_jump_today(self):
-        """Jump to today's month."""
-        self.current_date = datetime.now()
+        """Jump to current simulation date (in-game 'today')."""
+        # Use same logic as initial date - get simulation date from dynasty state
+        self.current_date = self._get_initial_date()
         self.load_events()
 
     def handle_filter_change(self):

@@ -55,15 +55,17 @@ class RandomScheduleGenerator:
         'monday_night_2': {'day_offset': 4, 'hour': 20, 'minute': 15, 'count': 1},
     }
 
-    def __init__(self, event_db: EventDatabaseAPI, logger: logging.Logger = None):
+    def __init__(self, event_db: EventDatabaseAPI, dynasty_id: str = "default", logger: logging.Logger = None):
         """
         Initialize random schedule generator.
 
         Args:
             event_db: Event database API for storing generated games
+            dynasty_id: Dynasty context for game event isolation
             logger: Optional logger for tracking generation progress
         """
         self.event_db = event_db
+        self.dynasty_id = dynasty_id
         self.logger = logger or logging.getLogger(__name__)
 
         # Get all team IDs and remove duplicates (work around any potential bugs)
@@ -295,6 +297,7 @@ class RandomScheduleGenerator:
                     home_team_id=home_team,
                     game_date=game_date,
                     week=week_number,
+                    dynasty_id=self.dynasty_id,
                     season=season_year,
                     season_type="regular_season",
                     game_type="regular",

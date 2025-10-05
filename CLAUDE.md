@@ -136,10 +136,10 @@ source .venv/bin/activate  # macOS/Linux
 # Note: If Python 3.13 path error occurs, reconfigure venv:
 # python3.13 -m venv .venv --clear
 
-# Install Node.js dependencies (for SQLite3 bindings)
-npm install  # Installs better-sqlite3 and @types/better-sqlite3
+# Install UI dependencies (for desktop application)
+pip install -r requirements-ui.txt  # Installs PySide6, matplotlib, pyqtgraph
 
-# Install Python dependencies (minimal required)
+# Install core Python dependencies (minimal required)
 pip install pytest  # Core testing framework
 
 # Optional development tools (install as needed):
@@ -239,6 +239,8 @@ The simulation follows a layered architecture with clear separation of concerns:
 **9. Data Management (`src/database/`, `src/stores/`, `src/persistence/`)**
 - `database/api.py`: Clean database API for data retrieval (single source of truth)
 - `database/connection.py`: SQLite database connection management
+- `database/dynasty_state_api.py`: Dynasty state management and persistence
+- `database/migrations/`: Database schema migrations (dynasty_id to events, game_date to games)
 - `stores/base_store.py`: In-memory data store abstraction
 - `stores/standings_store.py`: NFL standings and team performance tracking
 - `persistence/daily_persister.py`: Daily simulation data persistence
@@ -247,20 +249,7 @@ The simulation follows a layered architecture with clear separation of concerns:
 - Common utilities and shared data structures
 - Cross-system interfaces and abstractions
 
-**11. Team Registry (`src/team_registry/`)**
-- Enhanced team management and metadata system
-- Team attribute and characteristic management
-
-**12. Schedule Generator (`src/scheduling/`)**
-- `data/division_structure.py`: NFL organizational structure with 32 teams
-- `data/schedule_models.py`: ScheduledGame, WeekSchedule, SeasonSchedule models
-- `config.py`: Comprehensive configuration for schedule generation
-- `utils/date_utils.py`: NFL season date calculations and utilities
-- `validators/`: Schedule validation and constraint checking (future)
-- `generator/`: Schedule generation algorithms (future phases)
-- `converters/`: Schedule to event conversion utilities
-
-**13. Playoff System (`src/playoff_system/`)**
+**11. Playoff System (`src/playoff_system/`)**
 - `playoff_controller.py`: **Centralized playoff orchestration** (moved from demo/)
   - Calendar advancement, bracket management, round progression
   - Supports random OR real seeding from regular season standings
@@ -273,7 +262,7 @@ The simulation follows a layered architecture with clear separation of concerns:
 - `validation/`: Playoff bracket validation and integrity checks
 - `utils/`: Playoff calculation utilities and helper functions
 
-**14. Calendar System (`src/calendar/`)**
+**12. Calendar System (`src/calendar/`)**
 - `calendar_manager.py`: Database-backed calendar system for event scheduling
 - `event_manager.py`: Event creation, modification, and lifecycle management
 - `calendar_database_api.py`: Calendar-specific database operations and queries
@@ -283,11 +272,7 @@ The simulation follows a layered architecture with clear separation of concerns:
 - `simulation_executor.py`: Executes game simulations from calendar events
 - `migration_helper.py`: Database migration utilities for calendar system
 
-**15. User Team Management (`src/user_team/`)**
-- `user_team_manager.py`: User team selection, preferences, and management
-- Dynasty mode user interaction and team ownership simulation
-
-**16. Season Management (`src/season/`)**
+**13. Season Management (`src/season/`)**
 - `season_manager.py`: Basic API layer for season management (legacy)
 - `season_cycle_controller.py`: **Production-ready complete season cycle orchestrator**
   - Manages all 3 phases: Regular Season → Playoffs → Offseason
@@ -297,18 +282,18 @@ The simulation follows a layered architecture with clear separation of concerns:
   - Dynasty isolation and flexible persistence control
   - **Recommended for full season simulations**
 
-**17. Dynasty System (`src/dynasty/`)**
-- `dynasty_manager.py`: Dynasty lifecycle management, configuration, and metadata operations
-- Provides separation between dynasty management and season progression
-- Manages dynasty creation, team registry coordination, and validation
+**14. Offseason System (`src/offseason/`)**
+- Offseason event scheduling and management
+- Integration with calendar system for offseason timeline
+- Support for NFL offseason phases and deadlines
 
-**18. Workflow System (`src/workflows/`)**
+**15. Workflow System (`src/workflows/`)**
 - `simulation_workflow.py`: Reusable 3-stage workflow orchestrator (Simulation → Statistics → Persistence)
 - `workflow_result.py`: Standardized result objects for consistent API
 - Toggleable persistence, flexible configuration, and dynasty isolation support
 - Used across demos, testing, and production season simulation
 
-**19. Events System (`src/events/`)**
+**16. Events System (`src/events/`)**
 - `base_event.py`: Base event class and event result structures
 - `game_event.py`: GameEvent for NFL game simulation with metadata
 - `scouting_event.py`: Scouting and player evaluation events
@@ -323,7 +308,7 @@ The simulation follows a layered architecture with clear separation of concerns:
 - Complete event lifecycle management and execution framework with offseason support
 - **Cap Integration**: All contract/free agency events execute real salary cap operations through EventCapBridge
 
-**20. Salary Cap System (`src/salary_cap/`)**
+**17. Salary Cap System (`src/salary_cap/`)**
 - `cap_calculator.py`: Core mathematical operations for all cap calculations
 - `cap_validator.py`: Contract validation and compliance checking
 - `contract_manager.py`: Contract lifecycle management and modifications
@@ -336,17 +321,23 @@ The simulation follows a layered architecture with clear separation of concerns:
 - **Event Integration Complete**: All cap operations (franchise tags, UFA signings, releases, restructures) execute through event system
 - See `docs/plans/salary_cap_plan.md` for architecture details and `docs/architecture/event_cap_integration.md` for event integration
 
-**21. Desktop UI (`ui/`)**
+**18. Desktop UI (`ui/`)**
 - **OOTP-inspired PySide6/Qt desktop application** (Phase 1 complete)
 - `main_window.py`: Main application window with tab-based navigation
 - `views/`: 6 primary view modules (Season, Team, Player, Offseason, League, Game)
 - `widgets/`: Reusable custom widgets (stats tables, depth charts, calendars)
 - `dialogs/`: Modal dialogs for user interactions (franchise tag, free agency, draft)
-- `models/`: Qt Model/View data models for efficient data display
-- `controllers/`: UI controllers mediating between views and simulation engine
+- `models/`: Qt Model/View data models for efficient data display (QAbstractTableModel adapters)
+- `controllers/`: **Thin** UI controllers (≤10-20 lines per method, pure orchestration)
+- `domain_models/`: **NEW** Domain model layer for business logic and data access
+  - CalendarDataModel, SeasonDataModel, SimulationDataModel
+  - Owns database API instances (EventDatabaseAPI, DatabaseAPI, DynastyStateAPI, etc.)
+  - Controllers delegate ALL business logic to domain models
+  - Follows proper MVC pattern: View → Controller → Domain Model → Database API
 - `resources/styles/`: QSS stylesheets (OOTP-inspired professional theme)
 - **Clean separation**: UI layer completely independent of simulation engine
-- See `docs/plans/ui_development_plan.md` for complete architecture
+- **Proper MVC**: Controllers are thin orchestrators, domain models own data access
+- See `docs/plans/ui_development_plan.md` and `docs/architecture/ui_layer_separation.md`
 
 ### Key Design Patterns
 
@@ -434,6 +425,11 @@ class UnifiedDefensiveFormation(Enum):
 The project uses multiple testing approaches:
 
 1. **Unit Tests** (`tests/`): Traditional pytest-based unit testing
+   - `tests/calendar/` - Calendar system tests
+   - `tests/playoff_system/` - Playoff system tests
+   - `tests/salary_cap/` - Salary cap system tests
+   - `tests/event_system/` - Event system tests
+   - `tests/conftest.py` - Shared pytest fixtures
 2. **Interactive Testing**: Menu-driven play-by-play testing and validation scripts
 3. **Validation Scripts** (`quick_test.py`, `simple_penalty_validation.py`): Automated validation
 4. **Demo Scripts**: Full system demonstrations with realistic scenarios
@@ -446,6 +442,7 @@ Comprehensive documentation is available in `docs/`:
   - `docs/architecture/play_engine.md` - Core system architecture documentation
   - `docs/architecture/playoff_controller.md` - Playoff controller centralization and architecture
   - `docs/architecture/event_cap_integration.md` - Event-salary cap integration bridge pattern
+  - `docs/architecture/ui_layer_separation.md` - **UI MVC architecture with domain model layer** (View → Controller → Domain Model → Database API)
 - **Database Schema**: `docs/schema/database_schema.md` - Complete SQLite schema v2.0.0 documentation with table definitions, indexes, and query examples
 - **System Summaries**:
   - `docs/PENALTY_SYSTEM_SUMMARY.md` - Penalty system overview
@@ -458,10 +455,13 @@ Comprehensive documentation is available in `docs/`:
 - **Planning Documents**:
   - `docs/plans/full_season_simulation_plan.md` - **ACTIVE**: Unified season simulation (regular season → playoffs → offseason)
   - `docs/plans/ui_development_plan.md` - **ACTIVE**: Desktop UI development roadmap (Phase 1 complete, Phase 2 in progress)
+  - `docs/plans/events_dynasty_isolation_plan.md` - **PENDING**: Migration plan for adding dynasty_id column to events table
   - `docs/plans/offseason_plan.md` - Offseason system implementation (complete)
   - `docs/plans/salary_cap_plan.md` - Salary cap system design
   - `docs/plans/playoff_manager_plan.md` - Playoff system architecture and design
   - `docs/plans/calendar_manager_plan.md` - Calendar system design
+- **Specifications**:
+  - `docs/specifications/player_generator_system.md` - Player generation system design
 - **Interactive Demos**:
   - `demo/interactive_season_sim/QUICK_START.md` - Quick start guide for interactive season simulation
   - `demo/interactive_playoff_sim/` - Interactive playoff simulator documentation
@@ -640,27 +640,25 @@ Key architectural updates in the codebase:
    - `SimulationWorkflow`: 3-stage orchestrator (Simulation → Statistics → Persistence)
    - Toggleable persistence, flexible configuration, standardized results
 
-4. **Dynasty System Addition**: New `src/dynasty/` module with `DynastyManager` for dynasty lifecycle management
+4. **Test Suite Reorganization**: Many test files have been removed or relocated - verify test file existence before running
 
-5. **Test Suite Reorganization**: Many test files have been removed or relocated - verify test file existence before running
+5. **Player Data Structure**: Team-based player files in `src/data/players/team_XX_team_name.json` format
 
-6. **Player Data Structure**: Team-based player files in `src/data/players/team_XX_team_name.json` format
+6. **Database Flexibility**: Support for custom database paths and dynasty isolation in `FullGameSimulator`
 
-7. **Database Flexibility**: Support for custom database paths and dynasty isolation in `FullGameSimulator`
+7. **Persistence Control**: Optional statistics persistence via `enable_persistence` parameter
 
-8. **Persistence Control**: Optional statistics persistence via `enable_persistence` parameter
+8. **Calendar System**: Database-backed calendar for event scheduling
 
-9. **Calendar System**: Database-backed calendar for event scheduling
+9. **Coaching Staff Integration**: All 32 NFL teams mapped to coaching philosophies in `team_coaching_styles.json`
 
-10. **Coaching Staff Integration**: All 32 NFL teams mapped to coaching philosophies in `team_coaching_styles.json`
-
-11. **Offseason Event System** (Oct 2025): Complete offseason event infrastructure implemented
+10. **Offseason Event System** (Oct 2025): Complete offseason event infrastructure implemented
    - New event types: `DeadlineEvent`, `WindowEvent`, `MilestoneEvent` in `src/events/`
    - Support for NFL offseason timeline (franchise tags, free agency, draft, roster cuts)
    - Date-driven event triggering via existing `SimulationExecutor`
    - See `docs/plans/offseason_plan.md` for complete architecture and implementation details
 
-12. **Desktop UI Development** (Oct 2025): OOTP-inspired PySide6/Qt desktop application (Phase 1 complete)
+11. **Desktop UI Development** (Oct 2025): OOTP-inspired PySide6/Qt desktop application (Phase 1 complete)
    - Complete `ui/` package with tab-based navigation (6 primary tabs)
    - Main window with menu bar, toolbar, and status bar
    - OOTP-inspired QSS stylesheet with professional theme
@@ -668,7 +666,7 @@ Key architectural updates in the codebase:
    - Phase 1 delivered: Foundation complete, Phase 2 (Season/Team views) ready to start
    - See `docs/plans/ui_development_plan.md` and `PHASE_1_COMPLETE.md` for details
 
-13. **Salary Cap System** (Oct 2025): NFL salary cap management system implementation
+12. **Salary Cap System** (Oct 2025): NFL salary cap management system implementation
    - New `src/salary_cap/` module with complete cap calculation engine
    - Follows 2024-2025 NFL CBA rules (proration, dead money, June 1 designations)
    - Support for top-51 (offseason) and 53-man (regular season) roster calculations
@@ -684,4 +682,4 @@ Key architectural updates in the codebase:
 - **Python Version**: Requires Python 3.13.5 (venv may need reconfiguration if path errors occur)
 - **Testing**: Use `PYTHONPATH=src` prefix for most test runs
 - **Database**: SQLite with dynasty-based isolation support
-- **Node Dependencies**: `better-sqlite3` provides SQLite bindings for Python integration
+- **UI Dependencies**: PySide6 (Qt for Python) installed via `requirements-ui.txt` for desktop application

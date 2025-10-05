@@ -34,8 +34,8 @@ class MilestoneEvent(BaseEvent):
         description: str,
         season_year: int,
         event_date: Date,
+        dynasty_id: str,
         event_id: Optional[str] = None,
-        dynasty_id: str = "default",
         metadata: Optional[Dict[str, Any]] = None
     ):
         """
@@ -46,8 +46,8 @@ class MilestoneEvent(BaseEvent):
             description: Human-readable description
             season_year: NFL season year
             event_date: Date when milestone occurs
+            dynasty_id: Dynasty context for isolation (REQUIRED)
             event_id: Unique identifier (generated if not provided)
-            dynasty_id: Dynasty context
             metadata: Optional additional context (e.g., Super Bowl winner)
         """
         # Convert Date to datetime for BaseEvent
@@ -55,7 +55,7 @@ class MilestoneEvent(BaseEvent):
             event_date.to_python_date(),
             datetime.min.time()
         )
-        super().__init__(event_id=event_id, timestamp=event_datetime)
+        super().__init__(event_id=event_id, timestamp=event_datetime, dynasty_id=dynasty_id)
 
         self.milestone_type = milestone_type
         self.description = description
@@ -123,9 +123,10 @@ class MilestoneEvent(BaseEvent):
         """
         Return unique identifier for this milestone.
 
-        Format: milestone_{dynasty_id}_{season_year}_{milestone_type}
+        Format: milestone_{season_year}_{milestone_type}
+        Note: dynasty_id is now a separate column, not encoded in game_id
         """
-        return f"milestone_{self.dynasty_id}_{self.season_year}_{self.milestone_type}"
+        return f"milestone_{self.season_year}_{self.milestone_type}"
 
     def __str__(self) -> str:
         """String representation."""

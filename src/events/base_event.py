@@ -52,16 +52,23 @@ class BaseEvent(ABC):
     - Strategy: Each event type implements its own simulation behavior
     """
 
-    def __init__(self, event_id: Optional[str] = None, timestamp: Optional[datetime] = None):
+    def __init__(
+        self,
+        event_id: Optional[str] = None,
+        timestamp: Optional[datetime] = None,
+        dynasty_id: Optional[str] = None
+    ):
         """
         Initialize base event properties.
 
         Args:
             event_id: Unique identifier (generated if not provided)
             timestamp: Event timestamp (defaults to now)
+            dynasty_id: Dynasty identifier for isolation (REQUIRED for persistence)
         """
         self.event_id = event_id or str(uuid.uuid4())
         self.timestamp = timestamp or datetime.now()
+        self.dynasty_id = dynasty_id
 
     @abstractmethod
     def get_event_type(self) -> str:
@@ -169,18 +176,26 @@ class BaseEvent(ABC):
                 "event_type": str,
                 "timestamp": datetime,
                 "game_id": str,
+                "dynasty_id": str,
                 "data": {
                     "parameters": dict,
                     "results": dict | None,
                     "metadata": dict
                 }
             }
+
+        Raises:
+            ValueError: If dynasty_id is not set (required for persistence)
         """
+        if not self.dynasty_id:
+            raise ValueError("dynasty_id is required for event persistence")
+
         return {
             "event_id": self.event_id,
             "event_type": self.get_event_type(),
             "timestamp": self.timestamp,
             "game_id": self.get_game_id(),
+            "dynasty_id": self.dynasty_id,
             "data": {
                 "parameters": self._get_parameters(),
                 "results": self._get_results(),

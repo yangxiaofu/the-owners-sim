@@ -1,8 +1,14 @@
 # Event-Cap System Integration Architecture
 
-**Version:** 1.0.0
-**Last Updated:** 2025-10-04
+**Version:** 1.0.1
+**Last Updated:** 2025-10-05
 **Status:** Phase 3 Week 7 Complete - Event System Integration Implemented
+
+**Recent Updates**:
+- **2025-10-05**: Events table now has `dynasty_id` column with foreign key constraint (Schema v2.3.0)
+  - Migration: `src/database/migrations/001_add_dynasty_id_to_events.py`
+  - See `docs/schema/database_schema.md` for complete schema details
+  - All event classes now require `dynasty_id` as constructor parameter
 
 ## Overview
 

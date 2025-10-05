@@ -19,7 +19,7 @@ if src_path not in sys.path:
 from season.season_cycle_controller import SeasonCycleController
 from calendar.date_models import Date
 from calendar.season_phase_tracker import SeasonPhase
-from database.connection import DatabaseConnection
+from ui.domain_models.simulation_data_model import SimulationDataModel
 
 
 class SimulationController(QObject):
@@ -58,8 +58,8 @@ class SimulationController(QObject):
         self.dynasty_id = dynasty_id
         self.season = season
 
-        # Database connection for state tracking
-        self.db = DatabaseConnection(db_path)
+        # Domain model for state persistence and retrieval
+        self.state_model = SimulationDataModel(db_path, dynasty_id, season)
 
         # Initialize season cycle controller
         self._init_season_controller()
@@ -69,8 +69,8 @@ class SimulationController(QObject):
 
     def _init_season_controller(self):
         """Initialize or restore SeasonCycleController."""
-        # Get current state from database
-        state = self._get_state_from_db()
+        # Get current state from database via model
+        state = self.state_model.get_state()
 
         if state:
             # Restore from saved state
@@ -95,24 +95,7 @@ class SimulationController(QObject):
         Returns:
             Dict with current_date, current_phase, current_week or None
         """
-        query = """
-            SELECT current_date, current_phase, current_week, last_simulated_game_id
-            FROM dynasty_state
-            WHERE dynasty_id = ? AND season = ?
-        """
-
-        result = self.db.execute_query(query, (self.dynasty_id, self.season))
-
-        if result:
-            row = result[0]
-            return {
-                'current_date': row['current_date'],
-                'current_phase': row['current_phase'],
-                'current_week': row['current_week'],
-                'last_simulated_game_id': row['last_simulated_game_id']
-            }
-
-        return None
+        return self.state_model.get_state()
 
     def _save_state_to_db(self, current_date: str, current_phase: str, current_week: Optional[int] = None):
         """
@@ -123,34 +106,29 @@ class SimulationController(QObject):
             current_phase: REGULAR_SEASON, PLAYOFFS, or OFFSEASON
             current_week: Current week number (optional)
         """
-        query = """
-            INSERT OR REPLACE INTO dynasty_state
-            (dynasty_id, season, current_date, current_phase, current_week, updated_at)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        """
+        success = self.state_model.save_state(
+            current_date=current_date,
+            current_phase=current_phase,
+            current_week=current_week
+        )
 
-        self.db.execute_update(query, (
-            self.dynasty_id,
-            self.season,
-            current_date,
-            current_phase,
-            current_week
-        ))
+        if not success:
+            print(f"[ERROR SimulationController] Failed to write dynasty_state!")
 
     def _load_state(self):
         """Load and cache current state."""
-        state = self._get_state_from_db()
+        # Use model's initialize_state which handles validation and defaults
+        state_info = self.state_model.initialize_state()
 
-        if state:
-            self.current_date_str = state['current_date']
-            self.current_phase = state['current_phase']
-            self.current_week = state['current_week']
-        else:
-            # Default to season start
-            self.current_date_str = f"{self.season}-09-05"
-            self.current_phase = "REGULAR_SEASON"
-            self.current_week = 1
-            self._save_state_to_db(self.current_date_str, self.current_phase, self.current_week)
+        # Cache state values for quick access
+        self.current_date_str = state_info['current_date']
+        self.current_phase = state_info['current_phase']
+        self.current_week = state_info['current_week']
+
+        # Print any validation warnings from model
+        if state_info['warnings']:
+            for warning in state_info['warnings']:
+                print(f"[WARNING SimulationController] {warning}")
 
     def advance_day(self) -> Dict[str, Any]:
         """

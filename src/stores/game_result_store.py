@@ -450,6 +450,18 @@ class GameResultStore(BaseStore[GameResult]):
             return
         
         try:
+            # Convert game date to milliseconds timestamp for database
+            game_date_ms = None
+            if result.date:
+                if hasattr(result.date, 'timestamp'):
+                    # datetime object
+                    game_date_ms = int(result.date.timestamp() * 1000)
+                elif hasattr(result.date, 'to_python_date'):
+                    # Date object with to_python_date method
+                    from datetime import datetime
+                    py_date = result.date.to_python_date()
+                    game_date_ms = int(datetime.combine(py_date, datetime.min.time()).timestamp() * 1000)
+
             query = '''
                 INSERT OR REPLACE INTO games (
                     game_id, dynasty_id, season, week, game_type,
@@ -458,10 +470,10 @@ class GameResultStore(BaseStore[GameResult]):
                     turnovers_home, turnovers_away,
                     time_of_possession_home, time_of_possession_away,
                     game_duration_minutes, overtime_periods,
-                    weather_conditions, attendance, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    game_date, weather_conditions, attendance, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             '''
-            
+
             params = (
                 game_id, self.dynasty_id, self.current_season, result.week,
                 result.season_type, result.home_team.team_id, result.away_team.team_id,
@@ -473,7 +485,7 @@ class GameResultStore(BaseStore[GameResult]):
                 getattr(result.home_team_stats, 'time_of_possession', 0) if result.home_team_stats else 0,
                 getattr(result.away_team_stats, 'time_of_possession', 0) if result.away_team_stats else 0,
                 result.game_duration_minutes, result.overtime_periods,
-                result.weather_conditions, 0  # attendance - placeholder
+                game_date_ms, result.weather_conditions, 0  # attendance - placeholder
             )
             
             self.db_connection.execute_update(query, params)

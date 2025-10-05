@@ -31,8 +31,8 @@ class UFASigningEvent(BaseEvent):
         guaranteed_amounts: list,
         season: int,
         event_date: Date,
+        dynasty_id: str,
         event_id: Optional[str] = None,
-        dynasty_id: str = "default",
         database_path: str = "data/database/nfl_simulation.db"
     ):
         """
@@ -48,15 +48,15 @@ class UFASigningEvent(BaseEvent):
             guaranteed_amounts: Year-by-year guaranteed amounts
             season: Season year
             event_date: Date of signing
+            dynasty_id: Dynasty context for isolation (REQUIRED)
             event_id: Unique identifier
-            dynasty_id: Dynasty context
             database_path: Path to database
         """
         event_datetime = datetime.combine(
             event_date.to_python_date(),
             datetime.min.time()
         )
-        super().__init__(event_id=event_id, timestamp=event_datetime)
+        super().__init__(event_id=event_id, timestamp=event_datetime, dynasty_id=dynasty_id)
 
         self.team_id = team_id
         self.player_id = player_id
@@ -173,7 +173,13 @@ class UFASigningEvent(BaseEvent):
         return (True, None)
 
     def get_game_id(self) -> str:
-        return f"ufa_signing_{self.dynasty_id}_{self.team_id}_{self.player_id}_{self.event_date.year}"
+        """
+        Return unique identifier for this UFA signing.
+
+        Format: ufa_signing_{team_id}_{player_id}_{year}
+        Note: dynasty_id is now a separate column, not encoded in game_id
+        """
+        return f"ufa_signing_{self.team_id}_{self.player_id}_{self.event_date.year}"
 
     @classmethod
     def from_database(cls, event_data: Dict[str, Any]) -> 'UFASigningEvent':
@@ -182,6 +188,7 @@ class UFASigningEvent(BaseEvent):
 
         Args:
             event_data: Dictionary from EventDatabaseAPI.get_event_by_id()
+                Must contain 'dynasty_id' at top level (from events table column)
 
         Returns:
             Reconstructed UFASigningEvent instance
@@ -194,6 +201,9 @@ class UFASigningEvent(BaseEvent):
         else:
             params = data
 
+        # Dynasty ID comes from top-level event_data (events.dynasty_id column)
+        dynasty_id = event_data.get('dynasty_id', params.get('dynasty_id', 'default'))
+
         return cls(
             team_id=params['team_id'],
             player_id=params['player_id'],
@@ -204,8 +214,8 @@ class UFASigningEvent(BaseEvent):
             guaranteed_amounts=params['guaranteed_amounts'],
             season=params['season'],
             event_date=Date.from_string(params['event_date']),
+            dynasty_id=dynasty_id,
             event_id=event_data['event_id'],
-            dynasty_id=params.get('dynasty_id', 'default'),
             database_path=params.get('database_path', 'data/database/nfl_simulation.db')
         )
 
@@ -231,8 +241,8 @@ class RFAOfferSheetEvent(BaseEvent):
         matched: bool,
         season: int,
         event_date: Date,
+        dynasty_id: str,
         event_id: Optional[str] = None,
-        dynasty_id: str = "default",
         database_path: str = "data/database/nfl_simulation.db"
     ):
         """
@@ -250,15 +260,15 @@ class RFAOfferSheetEvent(BaseEvent):
             matched: Whether original team matched the offer
             season: Season year
             event_date: Date of offer/match decision
+            dynasty_id: Dynasty context for isolation (REQUIRED)
             event_id: Unique identifier
-            dynasty_id: Dynasty context
             database_path: Path to database
         """
         event_datetime = datetime.combine(
             event_date.to_python_date(),
             datetime.min.time()
         )
-        super().__init__(event_id=event_id, timestamp=event_datetime)
+        super().__init__(event_id=event_id, timestamp=event_datetime, dynasty_id=dynasty_id)
 
         self.original_team_id = original_team_id
         self.signing_team_id = signing_team_id
@@ -386,7 +396,13 @@ class RFAOfferSheetEvent(BaseEvent):
         return (True, None)
 
     def get_game_id(self) -> str:
-        return f"rfa_offer_{self.dynasty_id}_{self.signing_team_id}_{self.player_id}_{self.event_date.year}"
+        """
+        Return unique identifier for this RFA offer sheet.
+
+        Format: rfa_offer_{signing_team_id}_{player_id}_{year}
+        Note: dynasty_id is now a separate column, not encoded in game_id
+        """
+        return f"rfa_offer_{self.signing_team_id}_{self.player_id}_{self.event_date.year}"
 
     @classmethod
     def from_database(cls, event_data: Dict[str, Any]) -> 'RFAOfferSheetEvent':
@@ -395,6 +411,7 @@ class RFAOfferSheetEvent(BaseEvent):
 
         Args:
             event_data: Dictionary from EventDatabaseAPI.get_event_by_id()
+                Must contain 'dynasty_id' at top level (from events table column)
 
         Returns:
             Reconstructed RFAOfferSheetEvent instance
@@ -406,6 +423,9 @@ class RFAOfferSheetEvent(BaseEvent):
             params = data['parameters']
         else:
             params = data
+
+        # Dynasty ID comes from top-level event_data (events.dynasty_id column)
+        dynasty_id = event_data.get('dynasty_id', params.get('dynasty_id', 'default'))
 
         return cls(
             original_team_id=params['original_team_id'],
@@ -419,8 +439,8 @@ class RFAOfferSheetEvent(BaseEvent):
             matched=params['matched'],
             season=params['season'],
             event_date=Date.from_string(params['event_date']),
+            dynasty_id=dynasty_id,
             event_id=event_data['event_id'],
-            dynasty_id=params.get('dynasty_id', 'default'),
             database_path=params.get('database_path', 'data/database/nfl_simulation.db')
         )
 
@@ -440,8 +460,8 @@ class CompensatoryPickEvent(BaseEvent):
         pick_number: int,
         reason: str,  # Description of what triggered the comp pick
         event_date: Date,
-        event_id: Optional[str] = None,
-        dynasty_id: str = "default"
+        dynasty_id: str,
+        event_id: Optional[str] = None
     ):
         """
         Initialize compensatory pick award event.
@@ -452,14 +472,14 @@ class CompensatoryPickEvent(BaseEvent):
             pick_number: Overall pick number in draft
             reason: Explanation (e.g., "Lost QB John Doe to Team 5")
             event_date: Date pick is awarded
+            dynasty_id: Dynasty context for isolation (REQUIRED)
             event_id: Unique identifier
-            dynasty_id: Dynasty context
         """
         event_datetime = datetime.combine(
             event_date.to_python_date(),
             datetime.min.time()
         )
-        super().__init__(event_id=event_id, timestamp=event_datetime)
+        super().__init__(event_id=event_id, timestamp=event_datetime, dynasty_id=dynasty_id)
 
         self.team_id = team_id
         self.pick_round = pick_round
@@ -505,4 +525,10 @@ class CompensatoryPickEvent(BaseEvent):
         return (True, None)
 
     def get_game_id(self) -> str:
-        return f"comp_pick_{self.dynasty_id}_{self.team_id}_round{self.pick_round}_{self.event_date.year}"
+        """
+        Return unique identifier for this compensatory pick award.
+
+        Format: comp_pick_{team_id}_round{pick_round}_{year}
+        Note: dynasty_id is now a separate column, not encoded in game_id
+        """
+        return f"comp_pick_{self.team_id}_round{self.pick_round}_{self.event_date.year}"

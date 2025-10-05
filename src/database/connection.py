@@ -114,6 +114,7 @@ class DatabaseConnection:
                 time_of_possession_away INTEGER,
                 game_duration_minutes INTEGER,
                 overtime_periods INTEGER DEFAULT 0,
+                game_date INTEGER,  -- Game date/time in milliseconds (for calendar)
                 weather_conditions TEXT,
                 attendance INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -474,13 +475,16 @@ class DatabaseConnection:
                 event_type TEXT NOT NULL,       -- 'GAME', 'MEDIA', 'TRADE', 'INJURY', etc.
                 timestamp INTEGER NOT NULL,     -- Unix timestamp in milliseconds
                 game_id TEXT NOT NULL,          -- Game/context identifier for grouping
-                data TEXT NOT NULL              -- JSON event data
+                dynasty_id TEXT NOT NULL,       -- Dynasty isolation (FK to dynasties)
+                data TEXT NOT NULL,             -- JSON event data
+                FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE
             )
         ''')
 
         # Create indexes for performance
         conn.execute("CREATE INDEX IF NOT EXISTS idx_games_dynasty_season ON games(dynasty_id, season, week)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_games_teams ON games(home_team_id, away_team_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_games_dynasty_date ON games(dynasty_id, game_date)")
 
         # Season type indexes for regular season/playoff separation (Phase 1 - Full Season Simulation)
         # NOTE: season_type column doesn't exist in current schema - using game_type instead
@@ -512,6 +516,9 @@ class DatabaseConnection:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_events_game_id ON events(game_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)")
+        # Dynasty-aware composite indexes for efficient dynasty-filtered queries
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_events_dynasty_timestamp ON events(dynasty_id, timestamp)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_events_dynasty_type ON events(dynasty_id, event_type)")
 
         # Initialize standings for dynasties with games but missing standings
         self._initialize_standings_if_empty(conn)

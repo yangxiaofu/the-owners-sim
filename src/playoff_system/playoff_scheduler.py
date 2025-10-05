@@ -218,6 +218,7 @@ class PlayoffScheduler:
                 home_team_id=game.home_team_id,
                 game_date=game_datetime,
                 week=game.week,
+                dynasty_id=dynasty_id,
                 season_type="playoffs",
                 game_type=game.round_name,  # 'wildcard', 'divisional', 'conference', 'super_bowl'
                 overtime_type="playoffs",
@@ -242,16 +243,19 @@ class PlayoffScheduler:
         """
         Generate unique playoff game identifier.
 
-        Format: playoff_{dynasty_id}_{season}_{round}_{game_number}
+        Format: playoff_{season}_{round}_{game_number}
+
+        Note: dynasty_id is no longer encoded in game_id since it's now
+        stored as a separate column in the events table.
 
         Args:
             game: PlayoffGame to generate ID for
-            dynasty_id: Dynasty context
+            dynasty_id: Dynasty context (kept for API compatibility but not used in ID)
 
         Returns:
             Unique game ID string
         """
-        return f"playoff_{dynasty_id}_{game.season}_{game.round_name}_{game.game_number}"
+        return f"playoff_{game.season}_{game.round_name}_{game.game_number}"
 
     def get_scheduled_round_info(
         self,

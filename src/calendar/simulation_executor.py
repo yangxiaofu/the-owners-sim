@@ -369,12 +369,13 @@ class SimulationExecutor:
         )
         all_events_for_dynasty.extend(preseason_events)
 
-        # Get ALL game events to extract regular season games (shared across dynasties)
+        # Get regular season game events for this specific dynasty
         all_game_events = self.event_db.get_events_by_type("GAME")
         regular_season_events = [
             e for e in all_game_events
             if not e.get('game_id', '').startswith('playoff_')
             and not e.get('game_id', '').startswith('preseason_')
+            and e.get('dynasty_id') == self.dynasty_id
         ]
         all_events_for_dynasty.extend(regular_season_events)
 
@@ -457,7 +458,7 @@ class SimulationExecutor:
             home_team_id=game_event.home_team_id,
             away_team_id=game_event.away_team_id,
             completion_date=self.calendar.get_current_date(),
-            completion_time=datetime.now(),
+            completion_time=game_event.game_date,
             week=game_event.week,
             game_type=self._map_season_type_to_game_type(game_event.season_type),
             season_year=game_event.season

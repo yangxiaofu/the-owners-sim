@@ -40,13 +40,13 @@ class RosterCutEvent(BaseEvent):
             reason: Explanation (e.g., "Failed to make roster", "Injured")
             event_date: Date of cut
             event_id: Unique identifier
-            dynasty_id: Dynasty context
+            dynasty_id: Dynasty context for isolation
         """
         event_datetime = datetime.combine(
             event_date.to_python_date(),
             datetime.min.time()
         )
-        super().__init__(event_id=event_id, timestamp=event_datetime)
+        super().__init__(event_id=event_id, timestamp=event_datetime, dynasty_id=dynasty_id)
 
         self.team_id = team_id
         self.player_id = player_id
@@ -92,7 +92,7 @@ class RosterCutEvent(BaseEvent):
         return (True, None)
 
     def get_game_id(self) -> str:
-        return f"roster_cut_{self.dynasty_id}_{self.team_id}_{self.player_id}_{self.event_date.year}"
+        return f"roster_cut_{self.team_id}_{self.player_id}_{self.event_date.year}"
 
 
 class WaiverClaimEvent(BaseEvent):
@@ -125,13 +125,13 @@ class WaiverClaimEvent(BaseEvent):
             claim_successful: Whether claim was successful (highest priority wins)
             event_date: Date of claim
             event_id: Unique identifier
-            dynasty_id: Dynasty context
+            dynasty_id: Dynasty context for isolation
         """
         event_datetime = datetime.combine(
             event_date.to_python_date(),
             datetime.min.time()
         )
-        super().__init__(event_id=event_id, timestamp=event_datetime)
+        super().__init__(event_id=event_id, timestamp=event_datetime, dynasty_id=dynasty_id)
 
         self.claiming_team_id = claiming_team_id
         self.releasing_team_id = releasing_team_id
@@ -183,7 +183,7 @@ class WaiverClaimEvent(BaseEvent):
         return (True, None)
 
     def get_game_id(self) -> str:
-        return f"waiver_claim_{self.dynasty_id}_{self.claiming_team_id}_{self.player_id}_{self.event_date.year}"
+        return f"waiver_claim_{self.claiming_team_id}_{self.player_id}_{self.event_date.year}"
 
 
 class PracticeSquadEvent(BaseEvent):
@@ -214,13 +214,13 @@ class PracticeSquadEvent(BaseEvent):
             reason: Explanation
             event_date: Date of action
             event_id: Unique identifier
-            dynasty_id: Dynasty context
+            dynasty_id: Dynasty context for isolation
         """
         event_datetime = datetime.combine(
             event_date.to_python_date(),
             datetime.min.time()
         )
-        super().__init__(event_id=event_id, timestamp=event_datetime)
+        super().__init__(event_id=event_id, timestamp=event_datetime, dynasty_id=dynasty_id)
 
         self.team_id = team_id
         self.player_id = player_id
@@ -273,4 +273,4 @@ class PracticeSquadEvent(BaseEvent):
         return (True, None)
 
     def get_game_id(self) -> str:
-        return f"practice_squad_{self.dynasty_id}_{self.team_id}_{self.player_id}_{self.action}_{self.event_date.year}"
+        return f"practice_squad_{self.team_id}_{self.player_id}_{self.action}_{self.event_date.year}"

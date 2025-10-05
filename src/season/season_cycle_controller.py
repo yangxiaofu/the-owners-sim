@@ -77,7 +77,8 @@ class SeasonCycleController:
             database_path: Path to SQLite database
             dynasty_id: Unique dynasty identifier
             season_year: NFL season year (e.g., 2024)
-            start_date: Season start date (defaults to Week 1 Thursday)
+            start_date: Dynasty start date - should be ONE DAY BEFORE first game
+                       (defaults to Sept 4 for first game on Sept 5)
             enable_persistence: Whether to save stats to database
             verbose_logging: Whether to print progress messages
         """
@@ -89,9 +90,9 @@ class SeasonCycleController:
 
         self.logger = logging.getLogger(self.__class__.__name__)
 
-        # Default to first Thursday in September
+        # Default to day before first game (first game is Thursday Sept 5, dynasty starts Wednesday Sept 4)
         if start_date is None:
-            start_date = Date(season_year, 9, 5)
+            start_date = Date(season_year, 9, 4)
 
         self.start_date = start_date
 
