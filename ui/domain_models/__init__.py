@@ -41,14 +41,17 @@ Available Domain Models:
     - CalendarDataModel: Calendar event data access and filtering
     - SeasonDataModel: Season, team, and standings data access
     - SimulationDataModel: Simulation state management and persistence
+    - TeamDataModel: Team roster, salary cap, depth chart, and coaching staff data access
 """
 
 from ui.domain_models.calendar_data_model import CalendarDataModel
 from ui.domain_models.season_data_model import SeasonDataModel
 from ui.domain_models.simulation_data_model import SimulationDataModel
+from ui.domain_models.team_data_model import TeamDataModel
 
 __all__ = [
     'CalendarDataModel',
     'SeasonDataModel',
     'SimulationDataModel',
+    'TeamDataModel',
 ]

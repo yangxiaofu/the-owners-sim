@@ -4,6 +4,8 @@ Roster Tab Widget for The Owner's Sim UI
 Sub-tab widget for Team View showing team roster with filtering, sorting, and player actions.
 """
 
+from typing import List, Dict, Any
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableView,
     QComboBox, QLineEdit, QMenu
@@ -186,14 +188,31 @@ class RosterTabWidget(QWidget):
         # Show menu at cursor position
         menu.exec(self.roster_table.viewport().mapToGlobal(position))
 
-    def set_roster_data(self, roster_data: list):
+    def set_roster_data(self, roster: List[Dict]):
         """
-        Set roster data to display.
+        Load roster data from API and display in table.
 
         Args:
-            roster_data: List of player dictionaries
+            roster: List of player dicts from TeamDataModel
+
+        Format expected:
+        {
+            'player_id': int,
+            'number': int,
+            'name': str,
+            'position': str,
+            'age': int,
+            'overall': int,
+            'contract': str,  # "2yr/$45M"
+            'salary': str,  # "$22.5M"
+            'status': str  # 'ACT', 'IR', etc.
+        }
         """
-        self.roster_model.set_roster(roster_data)
+        # Update the model with new data
+        self.roster_model.set_roster(roster)
+
+        # Refresh table display
+        self.roster_table.viewport().update()
 
     def clear_roster(self):
         """Clear all roster data."""

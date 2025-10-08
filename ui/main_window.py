@@ -108,7 +108,12 @@ class MainWindow(QMainWindow):
         # Create views with controllers
         self.season_view = SeasonView(self, controller=self.season_controller)
         self.calendar_view = CalendarView(self, controller=self.calendar_controller)
-        self.team_view = TeamView(self)
+        self.team_view = TeamView(
+            self,
+            db_path=self.db_path,
+            dynasty_id=self.dynasty_id,
+            season=self.season
+        )
         self.player_view = PlayerView(self)
         self.offseason_view = OffseasonView(self)
         self.league_view = LeagueView(self, controller=self.league_controller)

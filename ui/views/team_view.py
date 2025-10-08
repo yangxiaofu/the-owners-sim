@@ -26,8 +26,9 @@ from widgets.finances_tab_widget import FinancesTabWidget
 from widgets.depth_chart_widget import DepthChartWidget
 from widgets.staff_tab_widget import StaffTabWidget
 from widgets.strategy_tab_widget import StrategyTabWidget
+from controllers.team_controller import TeamController
 from constants.team_ids import TeamIDs
-from team_management.teams.team_loader import load_all_teams
+from team_management.teams.team_loader import get_all_teams
 
 
 class TeamView(QWidget):
@@ -46,9 +47,15 @@ class TeamView(QWidget):
         self.dynasty_id = dynasty_id
         self.season = season
 
+        # Initialize controller (follows MVC pattern)
+        self.controller = TeamController(db_path, dynasty_id, season)
+
         # Load all NFL teams for selector
-        self.teams = load_all_teams()
-        self.current_team_id = TeamIDs.DETROIT_LIONS  # Default to Detroit
+        self.teams = get_all_teams()
+
+        # Get user's team from dynasty (defaults to Detroit if not set)
+        dynasty_team_id = self.controller.get_dynasty_team_id()
+        self.current_team_id = dynasty_team_id if dynasty_team_id else TeamIDs.DETROIT_LIONS
 
         # Main layout
         layout = QVBoxLayout()
@@ -69,6 +76,9 @@ class TeamView(QWidget):
 
         self.setLayout(layout)
 
+        # Load initial roster for dynasty's team
+        self._load_initial_roster()
+
     def _create_top_bar(self) -> QHBoxLayout:
         """Create top bar with team selector and dynasty info."""
         top_bar = QHBoxLayout()
@@ -87,12 +97,12 @@ class TeamView(QWidget):
         for team in sorted_teams:
             self.team_selector.addItem(team.full_name, team.team_id)
 
-        # Set default selection to Detroit Lions
-        detroit_index = next(
-            (i for i, team in enumerate(sorted_teams) if team.team_id == TeamIDs.DETROIT_LIONS),
+        # Set default selection to dynasty's team (or Detroit as fallback)
+        default_index = next(
+            (i for i, team in enumerate(sorted_teams) if team.team_id == self.current_team_id),
             0
         )
-        self.team_selector.setCurrentIndex(detroit_index)
+        self.team_selector.setCurrentIndex(default_index)
 
         # Connect signal (no functionality yet, just UI)
         self.team_selector.currentIndexChanged.connect(self._on_team_changed)
@@ -170,17 +180,32 @@ class TeamView(QWidget):
 
     def _on_team_changed(self, index: int):
         """
-        Handle team selector change.
+        Handle team selector change - loads real data from database.
 
-        Phase 1 (Mock): No functionality - just updates current_team_id
-        Phase 2: Will reload roster/depth chart/finances/staff for new team
+        Follows MVC pattern: View → Controller → Domain Model → Database APIs
         """
         team_id = self.team_selector.currentData()
         if team_id:
             self.current_team_id = team_id
-            # In Phase 2, we would call:
-            # self.load_team_data(team_id)
-            # self.roster_tab.load_roster(team_id)
+
+            # Load roster data from controller
+            try:
+                roster_data = self.controller.get_team_roster(team_id)
+                self.roster_tab.set_roster_data(roster_data)
+            except Exception as e:
+                print(f"[ERROR TeamView] Failed to load roster for team {team_id}: {e}")
+                # Keep mock data on error
+
+            # TODO Phase 3: Load other tabs
             # self.finances_tab.load_contracts(team_id)
             # self.depth_chart_tab.load_depth_chart(team_id)
             # self.staff_tab.load_staff(team_id)
+
+    def _load_initial_roster(self):
+        """Load roster for dynasty's team on initialization."""
+        try:
+            roster_data = self.controller.get_team_roster(self.current_team_id)
+            self.roster_tab.set_roster_data(roster_data)
+        except Exception as e:
+            print(f"[ERROR TeamView] Failed to load initial roster for team {self.current_team_id}: {e}")
+            # Keep mock data on error

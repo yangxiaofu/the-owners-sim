@@ -300,8 +300,18 @@ class RosterTableModel(QAbstractTableModel):
         reverse = (order == Qt.DescendingOrder)
 
         if column == self.COL_SEL:
-            # Sort by checked state
-            self._roster_data.sort(key=lambda p: self._roster_data.index(p) in self._checked_rows, reverse=reverse)
+            # Sort by checked state - checked items first (or last if descending)
+            # Use enumerate to get row indices during sort
+            indexed_data = list(enumerate(self._roster_data))
+            indexed_data.sort(key=lambda x: x[0] in self._checked_rows, reverse=reverse)
+            self._roster_data = [p for _, p in indexed_data]
+
+            # Rebuild checked_rows set with new indices
+            old_checked_players = [self._roster_data[i] for i in self._checked_rows if i < len(self._roster_data)]
+            self._checked_rows.clear()
+            for i, player in enumerate(self._roster_data):
+                if player in old_checked_players:
+                    self._checked_rows.add(i)
 
         elif column == self.COL_NUMBER:
             self._roster_data.sort(key=lambda p: p.get('number', 0), reverse=reverse)
