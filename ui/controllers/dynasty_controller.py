@@ -252,6 +252,33 @@ class DynastyController:
                 print(f"[WARNING DynastyController] Schedule generation error: {schedule_ex}")
                 # Non-critical - dynasty is already committed
 
+            # Step 6: CRITICAL - Verify dynasty_state was created by schedule generation
+            # This ensures next load will have proper state
+            from database.dynasty_state_api import DynastyStateAPI
+            dynasty_state_api = DynastyStateAPI(self.db_path)
+
+            state = dynasty_state_api.get_current_state(dynasty_id, season)
+            if not state:
+                print(f"[WARNING DynastyController] Dynasty state missing after schedule generation!")
+                print(f"[INFO DynastyController] Creating fallback dynasty_state...")
+
+                # Create dynasty_state as fallback (Sept 4 - one day before first games)
+                fallback_success = dynasty_state_api.initialize_state(
+                    dynasty_id=dynasty_id,
+                    season=season,
+                    start_date=f"{season}-09-04",
+                    start_week=1,
+                    start_phase='regular_season'
+                )
+
+                if fallback_success:
+                    print(f"✅ Fallback dynasty_state created successfully")
+                else:
+                    print(f"[ERROR DynastyController] CRITICAL: Failed to create dynasty_state!")
+                    print(f"Dynasty '{dynasty_id}' may have persistence issues on next load")
+            else:
+                print(f"✅ Dynasty state verified: {state['current_date']}")
+
             return (True, dynasty_id, None)
 
         except Exception as e:

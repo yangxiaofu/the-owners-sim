@@ -25,6 +25,153 @@ from player_generation.generators.attribute_generator import AttributeGenerator
 from player_generation.generators.name_generator import NameGenerator
 from player_generation.core.generation_context import GenerationConfig, GenerationContext
 from player_generation.archetypes.base_archetype import PlayerArchetype, Position, AttributeRange
+from player_generation.archetypes.archetype_registry import ArchetypeRegistry
+
+
+def create_demo_archetypes():
+    """Create test archetypes for demo (Sprint 3 will add JSON configuration)."""
+    registry = ArchetypeRegistry()
+
+    # QB Archetype
+    qb_archetype = PlayerArchetype(
+        archetype_id="demo_qb",
+        position=Position.QB,
+        name="Balanced QB",
+        description="Well-rounded quarterback",
+        physical_attributes={
+            "speed": AttributeRange(min=65, max=80, mean=72, std_dev=5),
+            "strength": AttributeRange(min=70, max=85, mean=77, std_dev=5),
+            "agility": AttributeRange(min=70, max=85, mean=77, std_dev=5)
+        },
+        mental_attributes={
+            "awareness": AttributeRange(min=75, max=95, mean=85, std_dev=5)
+        },
+        position_attributes={
+            "accuracy": AttributeRange(min=80, max=99, mean=90, std_dev=5),
+            "arm_strength": AttributeRange(min=75, max=92, mean=83, std_dev=6)
+        },
+        overall_range=AttributeRange(min=70, max=95, mean=82, std_dev=8),
+        frequency=1.0,
+        peak_age_range=(28, 32),
+        development_curve="normal"
+    )
+
+    # RB Archetype
+    rb_archetype = PlayerArchetype(
+        archetype_id="demo_rb",
+        position=Position.RB,
+        name="Balanced RB",
+        description="All-purpose running back",
+        physical_attributes={
+            "speed": AttributeRange(min=85, max=96, mean=90, std_dev=4),
+            "strength": AttributeRange(min=70, max=88, mean=79, std_dev=6),
+            "agility": AttributeRange(min=82, max=95, mean=88, std_dev=4)
+        },
+        mental_attributes={
+            "awareness": AttributeRange(min=70, max=88, mean=79, std_dev=6),
+            "vision": AttributeRange(min=75, max=92, mean=83, std_dev=5)
+        },
+        position_attributes={
+            "carrying": AttributeRange(min=75, max=92, mean=83, std_dev=5),
+            "elusiveness": AttributeRange(min=78, max=94, mean=86, std_dev=5)
+        },
+        overall_range=AttributeRange(min=68, max=92, mean=80, std_dev=7),
+        frequency=1.0,
+        peak_age_range=(25, 29),
+        development_curve="early"
+    )
+
+    # WR Archetype
+    wr_archetype = PlayerArchetype(
+        archetype_id="demo_wr",
+        position=Position.WR,
+        name="Balanced WR",
+        description="Complete receiver",
+        physical_attributes={
+            "speed": AttributeRange(min=85, max=97, mean=91, std_dev=4),
+            "strength": AttributeRange(min=65, max=82, mean=73, std_dev=5),
+            "agility": AttributeRange(min=80, max=95, mean=87, std_dev=5)
+        },
+        mental_attributes={
+            "awareness": AttributeRange(min=72, max=90, mean=81, std_dev=5)
+        },
+        position_attributes={
+            "catching": AttributeRange(min=80, max=96, mean=88, std_dev=5),
+            "route_running": AttributeRange(min=75, max=92, mean=83, std_dev=5)
+        },
+        overall_range=AttributeRange(min=68, max=93, mean=80, std_dev=7),
+        frequency=1.0,
+        peak_age_range=(26, 30),
+        development_curve="normal"
+    )
+
+    # EDGE Archetype
+    edge_archetype = PlayerArchetype(
+        archetype_id="demo_edge",
+        position=Position.EDGE,
+        name="Speed Rusher",
+        description="Edge rusher with elite speed",
+        physical_attributes={
+            "speed": AttributeRange(min=85, max=97, mean=91, std_dev=4),
+            "strength": AttributeRange(min=75, max=90, mean=82, std_dev=5),
+            "agility": AttributeRange(min=82, max=95, mean=88, std_dev=4)
+        },
+        mental_attributes={
+            "awareness": AttributeRange(min=70, max=88, mean=79, std_dev=5)
+        },
+        position_attributes={
+            "pass_rush": AttributeRange(min=80, max=96, mean=88, std_dev=5),
+            "run_defense": AttributeRange(min=68, max=85, mean=76, std_dev=5)
+        },
+        overall_range=AttributeRange(min=70, max=93, mean=81, std_dev=7),
+        frequency=1.0,
+        peak_age_range=(26, 30),
+        development_curve="normal"
+    )
+
+    # Additional positions for draft class generation
+    positions_data = [
+        ("TE", Position.TE),
+        ("OT", Position.OT),
+        ("OG", Position.OG),
+        ("C", Position.C),
+        ("DT", Position.DT),
+        ("LB", Position.LB),
+        ("CB", Position.CB),
+        ("S", Position.S)
+    ]
+
+    for pos_str, pos_enum in positions_data:
+        archetype = PlayerArchetype(
+            archetype_id=f"demo_{pos_str.lower()}",
+            position=pos_enum,
+            name=f"Balanced {pos_str}",
+            description=f"Complete {pos_str} player",
+            physical_attributes={
+                "speed": AttributeRange(min=70, max=90, mean=80, std_dev=6),
+                "strength": AttributeRange(min=70, max=90, mean=80, std_dev=6),
+                "agility": AttributeRange(min=70, max=90, mean=80, std_dev=6)
+            },
+            mental_attributes={
+                "awareness": AttributeRange(min=70, max=90, mean=80, std_dev=6)
+            },
+            position_attributes={
+                "technique": AttributeRange(min=70, max=90, mean=80, std_dev=6)
+            },
+            overall_range=AttributeRange(min=65, max=92, mean=78, std_dev=8),
+            frequency=1.0,
+            peak_age_range=(26, 30),
+            development_curve="normal"
+        )
+        registry.archetypes[archetype.archetype_id] = archetype
+
+    # Register main archetypes
+    registry.archetypes[qb_archetype.archetype_id] = qb_archetype
+    registry.archetypes[rb_archetype.archetype_id] = rb_archetype
+    registry.archetypes[wr_archetype.archetype_id] = wr_archetype
+    registry.archetypes[edge_archetype.archetype_id] = edge_archetype
+
+    return registry
 
 
 def print_header(title: str):
@@ -54,13 +201,25 @@ def print_player_card(player, show_ratings: bool = True):
     print("└" + "─" * 78 + "┘")
 
 
+# Global registry for all demos
+DEMO_REGISTRY = None
+
+def get_demo_registry():
+    """Get or create the demo archetype registry."""
+    global DEMO_REGISTRY
+    if DEMO_REGISTRY is None:
+        DEMO_REGISTRY = create_demo_archetypes()
+    return DEMO_REGISTRY
+
+
 def demo_single_player_generation():
     """Demonstrate generating a single player."""
     print_header("DEMO 1: Single Player Generation")
 
     print("Generating a first-round QB prospect...\n")
 
-    generator = PlayerGenerator()
+    registry = get_demo_registry()
+    generator = PlayerGenerator(registry=registry)
     config = GenerationConfig(
         context=GenerationContext.NFL_DRAFT,
         position="QB",
@@ -85,7 +244,8 @@ def demo_position_comparison():
 
     print("Generating one player at each position to show attribute differences...\n")
 
-    generator = PlayerGenerator()
+    registry = get_demo_registry()
+    generator = PlayerGenerator(registry=registry)
 
     for pos in positions:
         config = GenerationConfig(
@@ -112,7 +272,8 @@ def demo_draft_round_ranges():
 
     print("Generating players in each round to show overall progression...\n")
 
-    generator = PlayerGenerator()
+    registry = get_demo_registry()
+    generator = PlayerGenerator(registry=registry)
 
     round_ranges = {
         1: (75, 95),
@@ -144,7 +305,8 @@ def demo_complete_draft_class():
 
     print("Generating complete 7-round NFL draft class (224 players)...\n")
 
-    generator = PlayerGenerator()
+    registry = get_demo_registry()
+    generator = PlayerGenerator(registry=registry)
     class_gen = DraftClassGenerator(generator)
 
     print("⏳ Generating draft class...")
@@ -263,7 +425,8 @@ def demo_generation_contexts():
 
     print("Generating players in different contexts...\n")
 
-    generator = PlayerGenerator()
+    registry = get_demo_registry()
+    generator = PlayerGenerator(registry=registry)
 
     # NFL Draft
     draft_config = GenerationConfig(

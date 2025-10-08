@@ -61,23 +61,24 @@ class SimulationController(QObject):
         # Domain model for state persistence and retrieval
         self.state_model = SimulationDataModel(db_path, dynasty_id, season)
 
-        # Initialize season cycle controller
-        self._init_season_controller()
-
-        # Load current state from database
+        # Load current state from database FIRST (establishes current_date_str, current_phase, current_week)
         self._load_state()
 
-    def _init_season_controller(self):
-        """Initialize or restore SeasonCycleController."""
-        # Get current state from database via model
-        state = self.state_model.get_state()
+        print(f"[DEBUG SimulationController] After _load_state():")
+        print(f"  current_date_str: {self.current_date_str}")
+        print(f"  current_phase: {self.current_phase}")
+        print(f"  current_week: {self.current_week}")
 
-        if state:
-            # Restore from saved state
-            start_date = Date.from_string(state['current_date'])
-        else:
-            # Start new season
-            start_date = Date(self.season, 9, 5)  # First Thursday in September
+        # Initialize season cycle controller with the loaded state
+        self._init_season_controller()
+
+    def _init_season_controller(self):
+        """Initialize or restore SeasonCycleController using already-loaded state."""
+        # Use the current_date_str that was already loaded by _load_state()
+        # This ensures calendar and controller state are synchronized
+        start_date = Date.from_string(self.current_date_str)
+
+        print(f"[DEBUG SimulationController] Creating SeasonCycleController with start_date: {start_date}")
 
         self.season_controller = SeasonCycleController(
             database_path=self.db_path,

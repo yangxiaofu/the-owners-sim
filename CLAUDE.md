@@ -102,6 +102,11 @@ PYTHONPATH=src python demo/playoff_seeder_demo/playoff_seeder_demo.py  # NFL pla
 PYTHONPATH=src python demo/cap_calculator_demo/cap_calculator_demo.py  # Salary cap calculations and contract management
 # See demo/cap_calculator_demo/README.md for detailed usage
 
+# Player Generation Demos
+PYTHONPATH=src python demo/player_generator_demo/player_generator_demo.py  # Interactive player generation system demo
+# See demo/player_generator_demo/README.md for detailed usage
+# Demonstrates: archetype-based generation, position-specific attributes, draft class generation
+
 # Play Demos (Individual Play Mechanics)
 PYTHONPATH=src python demo/play_demos/pass_play_demo.py  # Pass play mechanics with real NFL players
 PYTHONPATH=src python demo/play_demos/run_play_demo.py  # Run play mechanics with formation matchups

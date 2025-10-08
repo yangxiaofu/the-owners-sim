@@ -133,6 +133,8 @@ class SimulationDataModel:
                 - is_new: bool (True if newly initialized)
                 - warnings: List[str] (any validation warnings)
         """
+        print(f"[DEBUG SimulationDataModel] initialize_state() called for dynasty '{self.dynasty_id}', season {self.season}")
+
         # Try to load existing state
         state = self.get_state()
         warnings = []
@@ -142,6 +144,11 @@ class SimulationDataModel:
             current_date_str = state['current_date']
             current_phase = state['current_phase']
             current_week = state['current_week']
+
+            print(f"[DEBUG SimulationDataModel] Found existing state:")
+            print(f"  current_date: {current_date_str}")
+            print(f"  current_phase: {current_phase}")
+            print(f"  current_week: {current_week}")
 
             # Perform date validation
             date_warnings = self._validate_date(current_date_str)
@@ -160,8 +167,16 @@ class SimulationDataModel:
                 # Default to first Thursday in September
                 start_date = f"{self.season}-09-05"
 
+            print(f"[DEBUG SimulationDataModel] NO existing state found, creating new state:")
+            print(f"  start_date: {start_date}")
+            print(f"  start_phase: {start_phase}")
+            print(f"  start_week: {start_week}")
+
             # Save initial state
-            self.save_state(start_date, start_phase, start_week)
+            success = self.save_state(start_date, start_phase, start_week)
+            if not success:
+                print(f"[ERROR SimulationDataModel] Failed to save initial state!")
+                warnings.append("Failed to save initial dynasty state to database")
 
             return {
                 'current_date': start_date,
