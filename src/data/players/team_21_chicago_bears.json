@@ -8,6 +8,7 @@
       "first_name": "Caleb",
       "last_name": "Williams",
       "number": 18,
+      "birthdate": "2002-01-04",
       "positions": [
         "quarterback"
       ],
@@ -40,7 +41,10 @@
       "first_name": "Tyson",
       "last_name": "Bagent",
       "number": 17,
-      "positions": ["quarterback"],
+      "birthdate": "2002-05-24",
+      "positions": [
+        "quarterback"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 75,
@@ -70,7 +74,10 @@
       "first_name": "Case",
       "last_name": "Keenum",
       "number": 11,
-      "positions": ["quarterback"],
+      "birthdate": "1988-12-03",
+      "positions": [
+        "quarterback"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 78,
@@ -99,6 +106,7 @@
       "first_name": "D'Andre",
       "last_name": "Swift",
       "number": 4,
+      "birthdate": "1998-02-11",
       "positions": [
         "running_back"
       ],
@@ -132,7 +140,10 @@
       "first_name": "Roschon",
       "last_name": "Johnson",
       "number": 23,
-      "positions": ["running_back"],
+      "birthdate": "1999-03-19",
+      "positions": [
+        "running_back"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 76,
@@ -163,7 +174,10 @@
       "first_name": "Travis",
       "last_name": "Homer",
       "number": 21,
-      "positions": ["running_back"],
+      "birthdate": "1999-09-13",
+      "positions": [
+        "running_back"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 73,
@@ -194,7 +208,10 @@
       "first_name": "Kyle",
       "last_name": "Monangai",
       "number": 25,
-      "positions": ["running_back"],
+      "birthdate": "2004-01-14",
+      "positions": [
+        "running_back"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 70,
@@ -225,6 +242,7 @@
       "first_name": "DJ",
       "last_name": "Moore",
       "number": 2,
+      "birthdate": "1995-02-09",
       "positions": [
         "wide_receiver"
       ],
@@ -258,7 +276,10 @@
       "first_name": "Rome",
       "last_name": "Odunze",
       "number": 15,
-      "positions": ["wide_receiver"],
+      "birthdate": "2002-07-21",
+      "positions": [
+        "wide_receiver"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 82,
@@ -290,7 +311,10 @@
       "first_name": "Luther",
       "last_name": "Burden III",
       "number": 10,
-      "positions": ["wide_receiver"],
+      "birthdate": "2002-12-06",
+      "positions": [
+        "wide_receiver"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 78,
@@ -322,7 +346,10 @@
       "first_name": "Devin",
       "last_name": "Duvernay",
       "number": 12,
-      "positions": ["wide_receiver"],
+      "birthdate": "2001-12-22",
+      "positions": [
+        "wide_receiver"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 76,
@@ -353,7 +380,10 @@
       "first_name": "Olamide",
       "last_name": "Zaccheaus",
       "number": 14,
-      "positions": ["wide_receiver"],
+      "birthdate": "2002-07-06",
+      "positions": [
+        "wide_receiver"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 74,
@@ -384,7 +414,10 @@
       "first_name": "Jahdae",
       "last_name": "Walker",
       "number": 20,
-      "positions": ["wide_receiver"],
+      "birthdate": "2003-01-25",
+      "positions": [
+        "wide_receiver"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 71,
@@ -416,6 +449,7 @@
       "first_name": "Cole",
       "last_name": "Kmet",
       "number": 85,
+      "birthdate": "1999-01-02",
       "positions": [
         "tight_end"
       ],
@@ -449,7 +483,10 @@
       "first_name": "Durham",
       "last_name": "Smythe",
       "number": 81,
-      "positions": ["tight_end"],
+      "birthdate": "1998-10-09",
+      "positions": [
+        "tight_end"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 75,
@@ -480,7 +517,10 @@
       "first_name": "Colston",
       "last_name": "Loveland",
       "number": 84,
-      "positions": ["tight_end"],
+      "birthdate": "2004-02-11",
+      "positions": [
+        "tight_end"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 74,
@@ -512,7 +552,10 @@
       "first_name": "Darnell",
       "last_name": "Wright",
       "number": 58,
-      "positions": ["right_tackle"],
+      "birthdate": "2001-02-20",
+      "positions": [
+        "right_tackle"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 80,
@@ -542,6 +585,7 @@
       "first_name": "Braxton",
       "last_name": "Jones",
       "number": 70,
+      "birthdate": "2000-12-27",
       "positions": [
         "left_tackle"
       ],
@@ -574,7 +618,10 @@
       "first_name": "Joe",
       "last_name": "Thuney",
       "number": 62,
-      "positions": ["left_guard"],
+      "birthdate": "1994-04-01",
+      "positions": [
+        "left_guard"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 85,
@@ -604,7 +651,10 @@
       "first_name": "Jonah",
       "last_name": "Jackson",
       "number": 73,
-      "positions": ["right_guard"],
+      "birthdate": "2000-12-11",
+      "positions": [
+        "right_guard"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 78,
@@ -634,7 +684,10 @@
       "first_name": "Drew",
       "last_name": "Dalman",
       "number": 52,
-      "positions": ["center"],
+      "birthdate": "2002-08-03",
+      "positions": [
+        "center"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 76,
@@ -664,7 +717,10 @@
       "first_name": "Ryan",
       "last_name": "Bates",
       "number": 71,
-      "positions": ["guard"],
+      "birthdate": "2000-06-15",
+      "positions": [
+        "guard"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 76,
@@ -694,7 +750,10 @@
       "first_name": "Ozzy",
       "last_name": "Trapilo",
       "number": 75,
-      "positions": ["tackle"],
+      "birthdate": "2003-06-15",
+      "positions": [
+        "tackle"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 72,
@@ -725,6 +784,7 @@
       "first_name": "Montez",
       "last_name": "Sweat",
       "number": 98,
+      "birthdate": "1995-07-21",
       "positions": [
         "defensive_end"
       ],
@@ -758,7 +818,10 @@
       "first_name": "Gervon",
       "last_name": "Dexter Sr.",
       "number": 99,
-      "positions": ["defensive_tackle"],
+      "birthdate": "1999-05-06",
+      "positions": [
+        "defensive_tackle"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 78,
@@ -789,7 +852,10 @@
       "first_name": "Andrew",
       "last_name": "Billings",
       "number": 97,
-      "positions": ["defensive_tackle"],
+      "birthdate": "1996-03-07",
+      "positions": [
+        "defensive_tackle"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 80,
@@ -820,7 +886,10 @@
       "first_name": "Grady",
       "last_name": "Jarrett",
       "number": 50,
-      "positions": ["defensive_tackle"],
+      "birthdate": "1991-07-25",
+      "positions": [
+        "defensive_tackle"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 84,
@@ -851,7 +920,10 @@
       "first_name": "Dayo",
       "last_name": "Odeyingbo",
       "number": 55,
-      "positions": ["defensive_end"],
+      "birthdate": "1999-05-20",
+      "positions": [
+        "defensive_end"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 76,
@@ -882,7 +954,10 @@
       "first_name": "Chris",
       "last_name": "Williams",
       "number": 91,
-      "positions": ["defensive_end"],
+      "birthdate": "2002-03-20",
+      "positions": [
+        "defensive_end"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 74,
@@ -913,7 +988,10 @@
       "first_name": "Tanoh",
       "last_name": "Kpassagnon",
       "number": 69,
-      "positions": ["defensive_end"],
+      "birthdate": "1999-08-22",
+      "positions": [
+        "defensive_end"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 73,
@@ -944,7 +1022,10 @@
       "first_name": "Shemar",
       "last_name": "Turner",
       "number": 95,
-      "positions": ["defensive_tackle"],
+      "birthdate": "2003-01-11",
+      "positions": [
+        "defensive_tackle"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 71,
@@ -975,6 +1056,7 @@
       "first_name": "T.J.",
       "last_name": "Edwards",
       "number": 53,
+      "birthdate": "1998-11-27",
       "positions": [
         "linebacker"
       ],
@@ -1008,7 +1090,10 @@
       "first_name": "Tremaine",
       "last_name": "Edmunds",
       "number": 49,
-      "positions": ["linebacker"],
+      "birthdate": "1996-02-28",
+      "positions": [
+        "linebacker"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 82,
@@ -1040,7 +1125,10 @@
       "first_name": "Noah",
       "last_name": "Sewell",
       "number": 44,
-      "positions": ["linebacker"],
+      "birthdate": "2000-07-01",
+      "positions": [
+        "linebacker"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 75,
@@ -1072,7 +1160,10 @@
       "first_name": "D'Marco",
       "last_name": "Jackson",
       "number": 48,
-      "positions": ["linebacker"],
+      "birthdate": "2002-05-10",
+      "positions": [
+        "linebacker"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 72,
@@ -1104,7 +1195,10 @@
       "first_name": "Ruben",
       "last_name": "Hyppolite II",
       "number": 47,
-      "positions": ["linebacker"],
+      "birthdate": "2003-07-18",
+      "positions": [
+        "linebacker"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 70,
@@ -1136,6 +1230,7 @@
       "first_name": "Jaylon",
       "last_name": "Johnson",
       "number": 1,
+      "birthdate": "1998-12-21",
       "positions": [
         "cornerback"
       ],
@@ -1169,7 +1264,10 @@
       "first_name": "Kyler",
       "last_name": "Gordon",
       "number": 6,
-      "positions": ["cornerback"],
+      "birthdate": "1999-11-08",
+      "positions": [
+        "cornerback"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 80,
@@ -1200,7 +1298,10 @@
       "first_name": "Tyrique",
       "last_name": "Stevenson",
       "number": 29,
-      "positions": ["cornerback"],
+      "birthdate": "2001-10-27",
+      "positions": [
+        "cornerback"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 77,
@@ -1232,7 +1333,10 @@
       "first_name": "Nick",
       "last_name": "McCloud",
       "number": 24,
-      "positions": ["cornerback"],
+      "birthdate": "2001-11-01",
+      "positions": [
+        "cornerback"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 74,
@@ -1264,7 +1368,10 @@
       "first_name": "Josh",
       "last_name": "Blackwell",
       "number": 39,
-      "positions": ["cornerback"],
+      "birthdate": "2002-06-11",
+      "positions": [
+        "cornerback"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 71,
@@ -1296,7 +1403,10 @@
       "first_name": "Jaylon",
       "last_name": "Jones",
       "number": 33,
-      "positions": ["cornerback"],
+      "birthdate": "2003-09-17",
+      "positions": [
+        "cornerback"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 70,
@@ -1328,6 +1438,7 @@
       "first_name": "Kevin",
       "last_name": "Byard III",
       "number": 31,
+      "birthdate": "1993-09-22",
       "positions": [
         "safety"
       ],
@@ -1363,7 +1474,10 @@
       "first_name": "Jaquan",
       "last_name": "Brisker",
       "number": 9,
-      "positions": ["safety"],
+      "birthdate": "2001-05-20",
+      "positions": [
+        "safety"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 80,
@@ -1395,7 +1509,10 @@
       "first_name": "Jonathan",
       "last_name": "Owens",
       "number": 36,
-      "positions": ["safety"],
+      "birthdate": "2001-01-11",
+      "positions": [
+        "safety"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 77,
@@ -1427,7 +1544,10 @@
       "first_name": "Elijah",
       "last_name": "Hicks",
       "number": 22,
-      "positions": ["safety"],
+      "birthdate": "2002-07-24",
+      "positions": [
+        "safety"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 73,
@@ -1459,6 +1579,7 @@
       "first_name": "Cairo",
       "last_name": "Santos",
       "number": 8,
+      "birthdate": "1995-12-07",
       "positions": [
         "kicker"
       ],
@@ -1492,7 +1613,10 @@
       "first_name": "Tory",
       "last_name": "Taylor",
       "number": 19,
-      "positions": ["punter"],
+      "birthdate": "2000-12-06",
+      "positions": [
+        "punter"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 80,
@@ -1524,7 +1648,10 @@
       "first_name": "Scott",
       "last_name": "Daly",
       "number": 46,
-      "positions": ["long_snapper"],
+      "birthdate": "2002-02-22",
+      "positions": [
+        "long_snapper"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 76,
@@ -1555,7 +1682,10 @@
       "first_name": "Stephen",
       "last_name": "Carlson",
       "number": 88,
-      "positions": ["tight_end"],
+      "birthdate": "1999-12-23",
+      "positions": [
+        "tight_end"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 71,
@@ -1587,7 +1717,10 @@
       "first_name": "Miles",
       "last_name": "Boykin",
       "number": 80,
-      "positions": ["wide_receiver"],
+      "birthdate": "2002-07-14",
+      "positions": [
+        "wide_receiver"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 72,
@@ -1620,7 +1753,10 @@
       "first_name": "Maurice",
       "last_name": "Alexander",
       "number": 13,
-      "positions": ["wide_receiver"],
+      "birthdate": "2002-01-17",
+      "positions": [
+        "wide_receiver"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 69,
@@ -1653,7 +1789,10 @@
       "first_name": "JP",
       "last_name": "Richardson",
       "number": 26,
-      "positions": ["wide_receiver"],
+      "birthdate": "2004-08-06",
+      "positions": [
+        "wide_receiver"
+      ],
       "team_id": 21,
       "attributes": {
         "overall": 68,

@@ -41,6 +41,18 @@ class TeamController:
         """
         return self.data_model.get_team_roster(team_id)
 
+    def get_team_contracts(self, team_id: int) -> List[Dict[str, Any]]:
+        """
+        Get team contracts with player information.
+
+        Args:
+            team_id: Team ID (1-32)
+
+        Returns:
+            List of contract dictionaries formatted for finances display
+        """
+        return self.data_model.get_team_contracts(team_id)
+
     def get_cap_summary(self, team_id: int) -> Dict[str, Any]:
         """
         Get salary cap summary for team.
@@ -49,21 +61,64 @@ class TeamController:
             team_id: Team ID (1-32)
 
         Returns:
-            Dict with cap_total, cap_used, cap_available, top_51_status
+            Dict with cap_total, cap_used, cap_available, top_51_status, roster_count, etc.
         """
         return self.data_model.get_cap_summary(team_id)
 
     def get_depth_chart(self, team_id: int) -> Dict[str, Any]:
         """
-        Get depth chart for team.
+        Get complete depth chart for team.
 
         Args:
             team_id: Team ID (1-32)
 
         Returns:
-            Dict with position-grouped player depth chart (empty dict for now)
+            Dict mapping position to sorted player list:
+            {
+                'quarterback': [player1, player2, ...],
+                'running_back': [...],
+                ...
+            }
         """
-        return self.data_model.get_depth_chart(team_id)
+        return self.data_model.get_full_depth_chart(team_id)
+
+    def reorder_depth_chart(self, team_id: int, position: str, ordered_player_ids: List[int]) -> bool:
+        """
+        Reorder depth chart for a specific position.
+
+        Args:
+            team_id: Team ID (1-32)
+            position: Position name (e.g., "quarterback", "running_back")
+            ordered_player_ids: List of player IDs in desired depth chart order
+
+        Returns:
+            True if reorder succeeded, False otherwise
+        """
+        return self.data_model.reorder_position_depth_chart(team_id, position, ordered_player_ids)
+
+    def swap_starter_with_bench(
+        self,
+        team_id: int,
+        position: str,
+        starter_id: int,
+        bench_id: int
+    ) -> bool:
+        """
+        Swap starter with bench player at same position.
+
+        This performs a pure swap - the two players exchange their exact
+        depth chart positions. The starter moves to bench, bench moves to starter.
+
+        Args:
+            team_id: Team ID (1-32)
+            position: Position name (e.g., "quarterback", "running_back")
+            starter_id: Current starter's player ID
+            bench_id: Bench player's player ID
+
+        Returns:
+            True if swap succeeded, False otherwise
+        """
+        return self.data_model.swap_player_depths(team_id, starter_id, bench_id)
 
     def get_coaching_staff(self, team_id: int) -> Dict[str, Any]:
         """

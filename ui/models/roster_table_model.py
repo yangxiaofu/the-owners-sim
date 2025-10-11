@@ -228,19 +228,12 @@ class RosterTableModel(QAbstractTableModel):
                 return str(player.get('overall', ''))
 
             elif col == self.COL_CONTRACT:
-                years = player.get('contract_years', 0)
-                value = player.get('contract_value', 0)
-                if years > 0 and value > 0:
-                    value_m = value / 1_000_000
-                    return f"{years}yr/${value_m:.1f}M"
-                return "N/A"
+                # Use pre-formatted contract string from TeamDataModel
+                return player.get('contract', 'N/A')
 
             elif col == self.COL_SALARY:
-                cap_hit = player.get('cap_hit', 0)
-                if cap_hit > 0:
-                    cap_hit_m = cap_hit / 1_000_000
-                    return f"${cap_hit_m:.1f}M"
-                return "$0.0M"
+                # Use pre-formatted salary string from TeamDataModel
+                return player.get('salary', '$0.0M')
 
             elif col == self.COL_STATUS:
                 return player.get('status', 'ACT')
@@ -332,13 +325,30 @@ class RosterTableModel(QAbstractTableModel):
             self._roster_data.sort(key=lambda p: p.get('overall', 0), reverse=reverse)
 
         elif column == self.COL_CONTRACT:
-            self._roster_data.sort(
-                key=lambda p: p.get('contract_value', 0),
-                reverse=reverse
-            )
+            # Extract numeric value from "4yr/$160.0M" format for sorting
+            def contract_sort_key(p):
+                contract_str = p.get('contract', 'N/A')
+                if contract_str == 'N/A':
+                    return 0
+                # Extract value from format "4yr/$160.0M"
+                try:
+                    value_str = contract_str.split('$')[1].rstrip('M')
+                    return float(value_str)
+                except:
+                    return 0
+            self._roster_data.sort(key=contract_sort_key, reverse=reverse)
 
         elif column == self.COL_SALARY:
-            self._roster_data.sort(key=lambda p: p.get('cap_hit', 0), reverse=reverse)
+            # Extract numeric value from "$22.9M" format for sorting
+            def salary_sort_key(p):
+                salary_str = p.get('salary', '$0')
+                # Extract value from format "$22.9M"
+                try:
+                    value_str = salary_str.lstrip('$').rstrip('M')
+                    return float(value_str)
+                except:
+                    return 0
+            self._roster_data.sort(key=salary_sort_key, reverse=reverse)
 
         elif column == self.COL_STATUS:
             # Sort by status priority: ACT, PUP, IR
@@ -382,3 +392,75 @@ class RosterTableModel(QAbstractTableModel):
         self._roster_data = []
         self._checked_rows.clear()
         self.endResetModel()
+
+    # ==================== Position Group Helper Methods ====================
+
+    def get_player_position(self, row: int) -> str:
+        """
+        Get position abbreviation for player at given row.
+
+        Args:
+            row: Row index
+
+        Returns:
+            Position abbreviation (e.g., "QB", "RB", "WR") or empty string if invalid
+        """
+        if 0 <= row < len(self._roster_data):
+            return self._roster_data[row].get('position', '')
+        return ''
+
+    def get_player_name(self, row: int) -> str:
+        """
+        Get player name for player at given row.
+
+        Args:
+            row: Row index
+
+        Returns:
+            Player name (e.g., "Last, First" or "M. Stafford") or empty string if invalid
+        """
+        if 0 <= row < len(self._roster_data):
+            return self._roster_data[row].get('name', '')
+        return ''
+
+    @staticmethod
+    def is_offense_position(position: str) -> bool:
+        """
+        Check if position is an offensive position.
+
+        Args:
+            position: Position abbreviation (e.g., "QB", "RB")
+
+        Returns:
+            True if position is offense (QB, RB, FB, WR, TE, OT, OG, C)
+        """
+        offensive_positions = {'QB', 'RB', 'FB', 'WR', 'TE', 'OT', 'OG', 'C', 'OL'}
+        return position.upper() in offensive_positions
+
+    @staticmethod
+    def is_defense_position(position: str) -> bool:
+        """
+        Check if position is a defensive position.
+
+        Args:
+            position: Position abbreviation (e.g., "DE", "LB")
+
+        Returns:
+            True if position is defense (DE, DT, LB, CB, S, DL, DB)
+        """
+        defensive_positions = {'DE', 'DT', 'DL', 'LB', 'CB', 'S', 'DB', 'FS', 'SS'}
+        return position.upper() in defensive_positions
+
+    @staticmethod
+    def is_special_teams_position(position: str) -> bool:
+        """
+        Check if position is a special teams position.
+
+        Args:
+            position: Position abbreviation (e.g., "K", "P")
+
+        Returns:
+            True if position is special teams (K, P, KR, PR, LS)
+        """
+        special_teams_positions = {'K', 'P', 'KR', 'PR', 'LS'}
+        return position.upper() in special_teams_positions

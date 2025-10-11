@@ -65,16 +65,17 @@ class PlayerRosterAPI:
         self._player_id_counter[dynasty_id] += 1
         return player_id
 
-    def initialize_dynasty_rosters(self, dynasty_id: str) -> int:
+    def initialize_dynasty_rosters(self, dynasty_id: str, season: int = 2025) -> int:
         """
-        Load all 32 NFL team rosters from JSON → Database.
+        Load all 32 NFL team rosters + free agents from JSON → Database.
         Called ONLY when creating a new dynasty.
 
         Args:
             dynasty_id: Dynasty to initialize
+            season: Starting season year for contract initialization (default: 2025)
 
         Returns:
-            Total number of players loaded
+            Total number of players loaded (team rosters + free agents)
 
         Raises:
             ValueError: If dynasty already has rosters
@@ -99,6 +100,7 @@ class PlayerRosterAPI:
 
         players_inserted = 0
         teams_processed = 0
+        players_with_contracts = []  # Collect players with contract data
 
         # Bulk insert all 32 teams
         for team_id in range(1, 33):
@@ -124,7 +126,8 @@ class PlayerRosterAPI:
                         number=real_player.number,
                         team_id=team_id,
                         positions=real_player.positions,
-                        attributes=real_player.attributes
+                        attributes=real_player.attributes,
+                        birthdate=real_player.birthdate
                     )
 
                     # Add to roster with new player_id
@@ -133,6 +136,14 @@ class PlayerRosterAPI:
                         team_id=team_id,
                         player_id=new_player_id
                     )
+
+                    # Collect contract data for later initialization
+                    if real_player.contract:
+                        players_with_contracts.append({
+                            'player_id': new_player_id,
+                            'team_id': team_id,
+                            'contract': real_player.contract
+                        })
 
                     players_inserted += 1
 
@@ -144,9 +155,66 @@ class PlayerRosterAPI:
                 raise RuntimeError(f"Roster initialization failed at team {team_id}: {e}")
 
         self.logger.info(
-            f"✅ Roster initialization complete: "
+            f"✅ Team roster initialization complete: "
             f"{players_inserted} players loaded across {teams_processed} teams"
         )
+
+        # Load free agents (team_id = 0 in database)
+        self.logger.info("📥 Loading free agents from free_agents.json...")
+        try:
+            free_agents = loader.get_free_agents()
+
+            if free_agents:
+                for free_agent in free_agents:
+                    # Generate new unique player_id
+                    new_player_id = self._get_next_player_id(dynasty_id)
+
+                    # Insert free agent with team_id = 0 (no team)
+                    self._insert_player(
+                        dynasty_id=dynasty_id,
+                        player_id=new_player_id,
+                        source_player_id=str(free_agent.player_id),
+                        first_name=free_agent.first_name,
+                        last_name=free_agent.last_name,
+                        number=free_agent.number if free_agent.number else 0,  # Use 0 if no number
+                        team_id=0,  # Free agents have team_id = 0
+                        positions=free_agent.positions,
+                        attributes=free_agent.attributes,
+                        birthdate=free_agent.birthdate
+                    )
+
+                    # NOTE: Do NOT add to team_rosters table - free agents aren't on any team
+
+                    # Collect contract data if present (though free agents typically have null contracts)
+                    if free_agent.contract:
+                        players_with_contracts.append({
+                            'player_id': new_player_id,
+                            'team_id': 0,  # Free agents use team_id = 0
+                            'contract': free_agent.contract
+                        })
+
+                    players_inserted += 1
+
+                self.logger.info(f"✅ Free agent loading complete: {len(free_agents)} free agents loaded")
+            else:
+                self.logger.warning("⚠️  No free agents found in free_agents.json")
+
+        except Exception as e:
+            self.logger.error(f"Failed to load free agents: {e}")
+            # Non-critical - continue with team rosters only
+
+        self.logger.info(
+            f"✅ Roster initialization complete: "
+            f"{players_inserted} total players loaded ({teams_processed} teams + free agents)"
+        )
+
+        # Initialize contracts for all players
+        if players_with_contracts:
+            self._initialize_contracts(
+                dynasty_id=dynasty_id,
+                season=season,
+                players_with_contracts=players_with_contracts
+            )
 
         return players_inserted
 
@@ -189,6 +257,7 @@ class PlayerRosterAPI:
                 p.attributes,
                 p.status,
                 p.years_pro,
+                p.birthdate,
                 tr.depth_chart_order,
                 tr.roster_status
             FROM players p
@@ -210,6 +279,38 @@ class PlayerRosterAPI:
             )
 
         return roster
+
+    def get_free_agents(self, dynasty_id: str) -> List[Dict[str, Any]]:
+        """
+        Get all free agent players (players not on any team).
+
+        Args:
+            dynasty_id: Dynasty context
+
+        Returns:
+            List of player dictionaries for free agents (team_id = 0)
+        """
+        query = """
+            SELECT
+                p.player_id,
+                p.source_player_id,
+                p.first_name,
+                p.last_name,
+                p.number,
+                p.team_id,
+                p.positions,
+                p.attributes,
+                p.status,
+                p.years_pro,
+                p.birthdate
+            FROM players p
+            WHERE p.dynasty_id = ?
+                AND p.team_id = 0
+            ORDER BY p.last_name, p.first_name
+        """
+
+        free_agents = self.db_connection.execute_query(query, (dynasty_id,))
+        return free_agents
 
     def get_player_by_id(self, dynasty_id: str, player_id: int) -> Optional[Dict[str, Any]]:
         """
@@ -337,7 +438,8 @@ class PlayerRosterAPI:
             number=player_data['number'],
             team_id=team_id,
             positions=player_data['positions'],
-            attributes=player_data['attributes']
+            attributes=player_data['attributes'],
+            birthdate=player_data.get('birthdate')  # Optional birthdate
         )
 
         # Add to roster if on a team
@@ -348,7 +450,8 @@ class PlayerRosterAPI:
 
     def _insert_player(self, dynasty_id: str, player_id: int,
                       source_player_id: str, first_name: str, last_name: str, number: int,
-                      team_id: int, positions: List[str], attributes: Dict) -> None:
+                      team_id: int, positions: List[str], attributes: Dict,
+                      birthdate: Optional[str] = None) -> None:
         """
         Insert player into database (private method).
 
@@ -362,12 +465,13 @@ class PlayerRosterAPI:
             team_id: Team ID (0-32)
             positions: List of positions player can play
             attributes: Dict of player attributes/ratings
+            birthdate: Optional birthdate in YYYY-MM-DD format
         """
         query = """
             INSERT INTO players
                 (dynasty_id, player_id, source_player_id, first_name, last_name, number,
-                 team_id, positions, attributes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 team_id, positions, attributes, birthdate)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
 
         params = (
@@ -379,7 +483,8 @@ class PlayerRosterAPI:
             number,
             team_id,
             json.dumps(positions),
-            json.dumps(attributes)
+            json.dumps(attributes),
+            birthdate
         )
 
         # Use shared connection if in transaction mode, otherwise create own
@@ -414,3 +519,43 @@ class PlayerRosterAPI:
             cursor.execute(query, params)
         else:
             self.db_connection.execute_update(query, params)
+
+    def _initialize_contracts(
+        self,
+        dynasty_id: str,
+        season: int,
+        players_with_contracts: List[Dict[str, Any]]
+    ):
+        """
+        Initialize player contracts from JSON data (private method).
+
+        Args:
+            dynasty_id: Dynasty context
+            season: Starting season year for contract initialization
+            players_with_contracts: List of dicts with player_id, team_id, contract data
+        """
+        from salary_cap.contract_initializer import ContractInitializer
+
+        # Use shared connection if in transaction mode, otherwise create own
+        conn = self.shared_conn if self.shared_conn else self.db_connection.get_connection()
+
+        try:
+            contract_initializer = ContractInitializer(conn)
+
+            # Create all contracts from JSON data
+            contract_map = contract_initializer.initialize_contracts_from_json(
+                dynasty_id=dynasty_id,
+                season=season,
+                players_with_contracts=players_with_contracts
+            )
+
+            # Link contract_id to players table
+            contract_initializer.link_contracts_to_players(contract_map)
+
+            self.logger.info(
+                f"✅ Contract initialization complete: {len(contract_map)} contracts created"
+            )
+
+        except Exception as e:
+            self.logger.error(f"Contract initialization failed: {e}")
+            raise RuntimeError(f"Failed to initialize contracts: {e}")

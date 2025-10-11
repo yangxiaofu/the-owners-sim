@@ -4,7 +4,8 @@ League View for The Owner's Sim
 Displays league-wide statistics, standings, and team comparisons.
 """
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableView, QPushButton, QHeaderView
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableView, QPushButton,
+    QHeaderView, QTabWidget
 )
 from PySide6.QtCore import Qt
 
@@ -17,7 +18,9 @@ if ui_path not in sys.path:
     sys.path.insert(0, ui_path)
 
 from models.team_list_model import TeamListModel
+from models.roster_table_model import RosterTableModel
 from controllers.league_controller import LeagueController
+from controllers.player_controller import PlayerController
 
 
 class LeagueView(QWidget):
@@ -32,15 +35,26 @@ class LeagueView(QWidget):
         self.main_window = parent
         self.controller = controller
 
+        # Initialize player controller for free agents
+        if controller:
+            dynasty_info = controller.get_dynasty_info()
+            self.player_controller = PlayerController(
+                controller.db_path,  # Direct access - LeagueController has db_path attribute
+                dynasty_info['dynasty_id'],
+                season=int(dynasty_info['season'])  # Pass season for accurate age calculation
+            )
+        else:
+            self.player_controller = None
+
         # Create layout
-        layout = QVBoxLayout()
+        layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 20, 20, 20)
         layout.setSpacing(15)
 
         # Title with dynasty info
         title_layout = QHBoxLayout()
 
-        title = QLabel("NFL League Standings")
+        title = QLabel("NFL League Information")
         title.setStyleSheet("font-size: 24px; font-weight: bold;")
         title_layout.addWidget(title)
 
@@ -54,6 +68,23 @@ class LeagueView(QWidget):
             title_layout.addWidget(dynasty_label)
 
         layout.addLayout(title_layout)
+
+        # Tab widget for sub-sections
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self._create_standings_tab(), "Standings")
+        self.tabs.addTab(self._create_free_agents_tab(), "Free Agents")
+
+        layout.addWidget(self.tabs)
+
+        # Load initial data
+        if self.controller:
+            self.load_standings()
+
+    def _create_standings_tab(self) -> QWidget:
+        """Create standings tab."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(10, 10, 10, 10)
 
         # Standings table
         self.standings_table = QTableView()
@@ -86,11 +117,54 @@ class LeagueView(QWidget):
 
         layout.addLayout(button_layout)
 
-        self.setLayout(layout)
+        return widget
 
-        # Load initial data
-        if self.controller:
-            self.load_standings()
+    def _create_free_agents_tab(self) -> QWidget:
+        """Create free agents tab (read-only, informational)."""
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(10, 10, 10, 10)
+
+        # Info label
+        info_label = QLabel("League-Wide Free Agent Pool (Read-Only)")
+        info_label.setStyleSheet("font-weight: bold; color: #0066cc;")
+        layout.addWidget(info_label)
+
+        # Free agents table
+        self.fa_table = QTableView()
+        self.fa_model = RosterTableModel(self)
+        self.fa_table.setModel(self.fa_model)
+        self.fa_table.setAlternatingRowColors(True)
+        self.fa_table.setSelectionBehavior(QTableView.SelectRows)
+        self.fa_table.setSortingEnabled(True)
+
+        layout.addWidget(self.fa_table)
+
+        # Status label
+        self.fa_status_label = QLabel("")
+        self.fa_status_label.setStyleSheet("color: #666;")
+        layout.addWidget(self.fa_status_label)
+
+        # Load free agents
+        self._load_free_agents()
+
+        return widget
+
+    def _load_free_agents(self):
+        """Load free agents from database."""
+        if not self.player_controller:
+            return
+
+        try:
+            free_agents = self.player_controller.get_free_agents()
+            self.fa_model.set_roster(free_agents)
+            self.fa_table.viewport().update()
+            self.fa_status_label.setText(
+                f"{len(free_agents)} free agents available league-wide"
+            )
+        except Exception as e:
+            print(f"Error loading free agents: {e}")
+            self.fa_status_label.setText("Error loading free agents")
 
     def load_standings(self):
         """Load standings data from controller and display in table."""

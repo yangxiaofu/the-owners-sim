@@ -23,12 +23,12 @@ if src_path not in sys.path:
 
 from widgets.roster_tab_widget import RosterTabWidget
 from widgets.finances_tab_widget import FinancesTabWidget
-from widgets.depth_chart_widget import DepthChartWidget
+from widgets.depth_chart_split_view import DepthChartSplitView
 from widgets.staff_tab_widget import StaffTabWidget
 from widgets.strategy_tab_widget import StrategyTabWidget
 from controllers.team_controller import TeamController
 from constants.team_ids import TeamIDs
-from team_management.teams.team_loader import get_all_teams
+from team_management.teams.team_loader import get_all_teams, get_team_by_id
 
 
 class TeamView(QWidget):
@@ -128,10 +128,13 @@ class TeamView(QWidget):
 
         # Create all sub-tab widgets
         self.roster_tab = RosterTabWidget()
-        self.depth_chart_tab = DepthChartWidget()
+        self.depth_chart_tab = DepthChartSplitView()
         self.finances_tab = FinancesTabWidget()
         self.staff_tab = StaffTabWidget()
         self.strategy_tab = StrategyTabWidget()
+
+        # Connect depth chart signal for persistence
+        self.depth_chart_tab.swap_requested.connect(self._on_swap_requested)
 
         # Add tabs in order
         sub_tabs.addTab(self.roster_tab, "Roster")
@@ -196,16 +199,107 @@ class TeamView(QWidget):
                 print(f"[ERROR TeamView] Failed to load roster for team {team_id}: {e}")
                 # Keep mock data on error
 
+            # Load finances data from controller
+            try:
+                self.finances_tab.load_finances_data(self.controller, team_id)
+            except Exception as e:
+                print(f"[ERROR TeamView] Failed to load finances for team {team_id}: {e}")
+                # Keep existing data on error
+
+            # Load depth chart data from controller
+            try:
+                team = get_team_by_id(team_id)
+                team_name = team.full_name if team else f"Team {team_id}"
+                depth_chart_data = self.controller.get_depth_chart(team_id)
+                self.depth_chart_tab.load_depth_chart(team_name, depth_chart_data)
+            except Exception as e:
+                print(f"[ERROR TeamView] Failed to load depth chart for team {team_id}: {e}")
+                import traceback
+                traceback.print_exc()
+                # Keep existing data on error
+
             # TODO Phase 3: Load other tabs
-            # self.finances_tab.load_contracts(team_id)
-            # self.depth_chart_tab.load_depth_chart(team_id)
             # self.staff_tab.load_staff(team_id)
 
-    def _load_initial_roster(self):
-        """Load roster for dynasty's team on initialization."""
+    def _on_swap_requested(self, position: str, old_starter_id: int, new_starter_id: int):
+        """
+        Handle swap request from depth chart split view.
+
+        When a bench player is dragged onto a starter slot, this method
+        persists the swap to database and refreshes the display.
+
+        Args:
+            position: Position being swapped (e.g., "quarterback")
+            old_starter_id: Current starter's player ID (being demoted)
+            new_starter_id: Bench player's player ID (being promoted)
+        """
         try:
+            # Persist swap to database via controller
+            success = self.controller.swap_starter_with_bench(
+                self.current_team_id,
+                position,
+                old_starter_id,
+                new_starter_id
+            )
+
+            if success:
+                # Show success toast
+                from ui.widgets.toast_notification import ToastNotification
+                ToastNotification.show_success(
+                    self.window(),
+                    f"{position.replace('_', ' ').title()} depth chart updated!"
+                )
+
+                # Reload depth chart to show updated positions
+                team = get_team_by_id(self.current_team_id)
+                team_name = team.full_name if team else f"Team {self.current_team_id}"
+                depth_chart_data = self.controller.get_depth_chart(self.current_team_id)
+                self.depth_chart_tab.load_depth_chart(team_name, depth_chart_data)
+            else:
+                # Show error toast
+                from ui.widgets.toast_notification import ToastNotification
+                ToastNotification.show_error(
+                    self.window(),
+                    f"Failed to swap {position.replace('_', ' ')} players"
+                )
+
+        except Exception as e:
+            print(f"[ERROR TeamView] Failed to swap depth chart for {position}: {e}")
+            import traceback
+            traceback.print_exc()
+
+            # Show error toast
+            from ui.widgets.toast_notification import ToastNotification
+            ToastNotification.show_error(
+                self.window(),
+                f"Error swapping depth chart: {str(e)}"
+            )
+
+    def _load_initial_roster(self):
+        """Load roster, finances, and depth chart for dynasty's team on initialization."""
+        try:
+            # Load roster
             roster_data = self.controller.get_team_roster(self.current_team_id)
             self.roster_tab.set_roster_data(roster_data)
         except Exception as e:
             print(f"[ERROR TeamView] Failed to load initial roster for team {self.current_team_id}: {e}")
             # Keep mock data on error
+
+        try:
+            # Load finances
+            self.finances_tab.load_finances_data(self.controller, self.current_team_id)
+        except Exception as e:
+            print(f"[ERROR TeamView] Failed to load initial finances for team {self.current_team_id}: {e}")
+            # Keep existing data on error
+
+        try:
+            # Load depth chart
+            team = get_team_by_id(self.current_team_id)
+            team_name = team.full_name if team else f"Team {self.current_team_id}"
+            depth_chart_data = self.controller.get_depth_chart(self.current_team_id)
+            self.depth_chart_tab.load_depth_chart(team_name, depth_chart_data)
+        except Exception as e:
+            print(f"[ERROR TeamView] Failed to load initial depth chart for team {self.current_team_id}: {e}")
+            import traceback
+            traceback.print_exc()
+            # Keep existing data on error

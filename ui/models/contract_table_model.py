@@ -32,32 +32,6 @@ class ContractTableModel(QAbstractTableModel):
         # Column headers
         self._headers = ["Player", "Pos", "2025 Hit", "Years Left", "Dead $ (Cut)"]
 
-        # Generate mock data
-        self._generate_mock_data()
-
-    def _generate_mock_data(self):
-        """Generate mock contract data for demonstration."""
-        mock_contracts = [
-            {"player": "A. Brown", "pos": "WR", "cap_hit": 25000000, "years_left": 3, "dead_money": 15000000},
-            {"player": "J. Allen", "pos": "QB", "cap_hit": 43000000, "years_left": 4, "dead_money": 52000000},
-            {"player": "T. Hill", "pos": "WR", "cap_hit": 30000000, "years_left": 2, "dead_money": 20000000},
-            {"player": "C. Jones", "pos": "DT", "cap_hit": 28500000, "years_left": 3, "dead_money": 18000000},
-            {"player": "M. Parsons", "pos": "LB", "cap_hit": 21000000, "years_left": 1, "dead_money": 8000000},
-            {"player": "D. Adams", "pos": "WR", "cap_hit": 24000000, "years_left": 2, "dead_money": 12000000},
-            {"player": "J. Ramsey", "pos": "CB", "cap_hit": 20000000, "years_left": 3, "dead_money": 10000000},
-            {"player": "Q. Nelson", "pos": "G", "cap_hit": 19500000, "years_left": 4, "dead_money": 15000000},
-            {"player": "N. Bosa", "pos": "DE", "cap_hit": 34000000, "years_left": 4, "dead_money": 25000000},
-            {"player": "T. Watt", "pos": "LB", "cap_hit": 28000000, "years_left": 2, "dead_money": 16000000},
-            {"player": "D. Samuel", "pos": "WR", "cap_hit": 23500000, "years_left": 2, "dead_money": 14000000},
-            {"player": "J. Burrow", "pos": "QB", "cap_hit": 55000000, "years_left": 5, "dead_money": 85000000},
-            {"player": "F. Warner", "pos": "LB", "cap_hit": 19000000, "years_left": 3, "dead_money": 11000000},
-            {"player": "M. Williams", "pos": "T", "cap_hit": 18500000, "years_left": 2, "dead_money": 9000000},
-            {"player": "D. Henry", "pos": "RB", "cap_hit": 16000000, "years_left": 1, "dead_money": 4000000},
-        ]
-
-        # Sort by cap hit (highest to lowest)
-        self._contracts = sorted(mock_contracts, key=lambda c: c["cap_hit"], reverse=True)
-
     def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:
         """Return number of rows (contracts)."""
         if parent.isValid():

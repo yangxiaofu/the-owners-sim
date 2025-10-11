@@ -114,8 +114,18 @@ class MainWindow(QMainWindow):
             dynasty_id=self.dynasty_id,
             season=self.season
         )
-        self.player_view = PlayerView(self)
-        self.offseason_view = OffseasonView(self)
+        self.player_view = PlayerView(
+            self,
+            db_path=self.db_path,
+            dynasty_id=self.dynasty_id,
+            season=self.season
+        )
+        self.offseason_view = OffseasonView(
+            self,
+            db_path=self.db_path,
+            dynasty_id=self.dynasty_id,
+            season=self.season
+        )
         self.league_view = LeagueView(self, controller=self.league_controller)
         self.game_view = GameView(self)
 

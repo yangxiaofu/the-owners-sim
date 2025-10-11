@@ -22,6 +22,8 @@ class RealPlayer:
     positions: List[str]
     team_id: int
     attributes: Dict[str, Any]
+    birthdate: Optional[str] = None  # Birthdate in YYYY-MM-DD format
+    contract: Optional[Dict[str, Any]] = None  # Contract data from JSON
     
     @property
     def full_name(self) -> str:
@@ -156,6 +158,26 @@ class PlayerDataLoader:
                 print(f"Warning: Could not load {filename}: {e}")
                 continue
 
+        # Load free agents separately (not in team_XX format)
+        free_agents_file = os.path.join(self.players_file_path, 'free_agents.json')
+        if os.path.exists(free_agents_file):
+            try:
+                with open(free_agents_file, 'r') as f:
+                    fa_data = json.load(f)
+
+                fa_players = fa_data.get('players', {})
+                print(f"  Loading Free Agents: {len(fa_players)} players")
+
+                # Add free agents to main data structure
+                for player_id_str, player_data in fa_players.items():
+                    # Ensure team_id is None for free agents
+                    player_data['team_id'] = None
+                    self._players_data['players'][player_id_str] = player_data
+                    self._create_and_index_player(player_id_str, player_data)
+
+            except Exception as e:
+                print(f"Warning: Could not load free_agents.json: {e}")
+
         print(f"Loaded total of {len(self._players_by_id)} players from team files")
 
     def _create_and_index_player(self, player_id_str: str, player_data: Dict[str, Any]):
@@ -167,7 +189,9 @@ class PlayerDataLoader:
             number=player_data['number'],
             positions=player_data['positions'],
             team_id=player_data['team_id'],
-            attributes=player_data['attributes']
+            attributes=player_data['attributes'],
+            birthdate=player_data.get('birthdate'),  # Include birthdate if present
+            contract=player_data.get('contract')  # Include contract data if present
         )
 
         # Index by ID
@@ -199,15 +223,26 @@ class PlayerDataLoader:
     def get_players_by_team(self, team_id: int) -> List[RealPlayer]:
         """
         Get all players for a specific team
-        
+
         Args:
             team_id: Team ID (7 for Browns, 31 for 49ers)
-            
+
         Returns:
             List of RealPlayer objects for the team
         """
         return self._players_by_team.get(team_id, [])
-    
+
+    def get_free_agents(self) -> List[RealPlayer]:
+        """
+        Get all free agent players from free_agents.json
+
+        Returns:
+            List of RealPlayer objects representing free agents (team_id will be None)
+        """
+        # Free agents are stored separately in free_agents.json
+        # They have team_id = null in JSON
+        return self._players_by_team.get(None, [])
+
     def get_players_by_position(self, position: str) -> List[RealPlayer]:
         """
         Get all players who can play a specific position

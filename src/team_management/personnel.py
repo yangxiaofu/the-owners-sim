@@ -8,26 +8,94 @@ from .teams.team_loader import get_team_by_id, Team
 
 class PersonnelPackageManager:
     """Manages player selection for specific play types and formations"""
-    
-    def __init__(self, team_roster: List[Player]):
+
+    def __init__(self, team_roster: List[Player], strict_depth_chart: bool = True):
         self.roster = team_roster
+        self.strict_depth_chart = strict_depth_chart
         self.position_groups = self._organize_by_position()
     
     def _organize_by_position(self) -> Dict[str, List[Player]]:
-        """Organize roster by position for quick lookup"""
+        """Organize roster by position and validate/sort by depth chart order"""
         position_groups = {}
-        
+
         for player in self.roster:
             position = player.primary_position
             if position not in position_groups:
                 position_groups[position] = []
             position_groups[position].append(player)
-        
-        # Sort players by overall rating (best first)
+
+        # Validate depth charts and sort
         for position in position_groups:
-            position_groups[position].sort(key=lambda p: p.get_rating('overall'), reverse=True)
-        
+            if self.strict_depth_chart:
+                # STRICT MODE: Validate all players have valid depth chart assignments
+                self._validate_depth_chart(position, position_groups[position])
+
+                # Sort by depth chart order (lower = higher priority), then overall as tiebreaker
+                position_groups[position].sort(
+                    key=lambda p: (
+                        p.depth_chart_order,      # Primary: depth chart order (1, 2, 3...)
+                        -p.get_rating('overall')  # Secondary: overall rating (descending)
+                    )
+                )
+            else:
+                # PERMISSIVE MODE: Fall back to overall sorting with default depth_chart_order=99
+                position_groups[position].sort(
+                    key=lambda p: (
+                        getattr(p, 'depth_chart_order', 99),  # Default to 99 if missing
+                        -p.get_rating('overall')              # Overall as tiebreaker
+                    )
+                )
+
         return position_groups
+
+    def _validate_depth_chart(self, position: str, players: List[Player]) -> None:
+        """
+        Validate that all players have valid depth chart assignments (strict mode only).
+
+        Args:
+            position: Position to validate (e.g., 'QB', 'RB')
+            players: List of players at this position
+
+        Raises:
+            ValueError: If any player missing depth_chart_order or has depth_chart_order=99
+        """
+        # Check for missing depth_chart_order attribute
+        players_without_depth = [
+            p for p in players
+            if not hasattr(p, 'depth_chart_order') or p.depth_chart_order is None
+        ]
+
+        if players_without_depth:
+            player_details = [
+                f"  - {p.name} (#{p.number})"
+                for p in players_without_depth
+            ]
+            raise ValueError(
+                f"❌ DEPTH CHART ERROR: Position {position} has {len(players_without_depth)} "
+                f"player(s) without depth chart assignment:\n" +
+                "\n".join(player_details) +
+                f"\n\nAll players must have a depth_chart_order assigned before game simulation.\n"
+                f"Use the Depth Chart tab to set starters and backups for {position}."
+            )
+
+        # Check for unassigned players (depth_chart_order = 99)
+        unassigned_players = [
+            p for p in players
+            if p.depth_chart_order == 99
+        ]
+
+        if unassigned_players:
+            player_details = [
+                f"  - {p.name} (#{p.number})"
+                for p in unassigned_players
+            ]
+            raise ValueError(
+                f"❌ DEPTH CHART ERROR: Position {position} has {len(unassigned_players)} "
+                f"unassigned player(s) (depth_chart_order=99):\n" +
+                "\n".join(player_details) +
+                f"\n\nAll players must be assigned a depth chart position before game simulation.\n"
+                f"Use the Depth Chart tab to assign {position} depth positions."
+            )
     
     def get_offensive_personnel(self, formation: str) -> List[Player]:
         """Get 11 offensive players for a specific formation"""
@@ -189,6 +257,10 @@ class TeamRosterGenerator:
                 ratings=attributes,
                 team_id=row['team_id']
             )
+
+            # Add depth_chart_order attribute (loaded from database)
+            player.depth_chart_order = row.get('depth_chart_order', 99)
+
             roster.append(player)
 
         return roster

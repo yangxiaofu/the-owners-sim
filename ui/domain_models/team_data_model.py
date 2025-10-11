@@ -25,8 +25,12 @@ if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
 from database.player_roster_api import PlayerRosterAPI
+from database.dynasty_state_api import DynastyStateAPI
 from salary_cap.cap_database_api import CapDatabaseAPI
 from team_management.teams.team_loader import TeamDataLoader, Team
+from constants.position_abbreviations import get_position_abbreviation
+from shared.player_utils import get_player_age
+from depth_chart.depth_chart_api import DepthChartAPI
 
 
 class TeamDataModel:
@@ -59,6 +63,8 @@ class TeamDataModel:
         # Initialize all database API instances (model owns these)
         self.player_roster_api = PlayerRosterAPI(db_path)
         self.cap_db_api = CapDatabaseAPI(db_path)
+        self.dynasty_state_api = DynastyStateAPI(db_path)
+        self.depth_chart_api = DepthChartAPI(db_path)
         self.team_loader = TeamDataLoader()
 
         # Initialize DatabaseConnection for dynasty queries
@@ -171,6 +177,8 @@ class TeamDataModel:
         try:
             positions = json.loads(player['positions']) if isinstance(player['positions'], str) else player['positions']
             primary_position = positions[0] if positions else "UNK"
+            # Convert to NFL abbreviation (e.g., "wide_receiver" → "WR")
+            primary_position = get_position_abbreviation(primary_position)
         except (json.JSONDecodeError, KeyError, IndexError):
             primary_position = "UNK"
 
@@ -181,8 +189,8 @@ class TeamDataModel:
         except (json.JSONDecodeError, KeyError):
             overall = 0
 
-        # Calculate age from years_pro (assume rookie age of 22)
-        age = self._calculate_age(player.get('years_pro', 0))
+        # Calculate age from birthdate if available, otherwise estimate from years_pro
+        age = self._calculate_age(player)
 
         # Format name as "Last, First"
         first_name = player.get('first_name', '')
@@ -280,31 +288,174 @@ class TeamDataModel:
             print(f"[WARN TeamDataModel] Error formatting salary: {e}")
             return "$0"
 
-    def _calculate_age(self, years_pro: int) -> int:
+    def _calculate_age(self, player: Dict[str, Any]) -> int:
         """
-        Calculate player age based on years of professional experience.
+        Calculate player age from birthdate if available, otherwise estimate from years_pro.
 
-        Assumes average rookie age of 22 years old.
+        Uses accurate birthdate calculation when available, falling back to years_pro estimation.
 
         Args:
-            years_pro: Number of years player has been in NFL
+            player: Player dict containing birthdate and/or years_pro
 
         Returns:
-            Estimated age in years
+            Player age in years
 
         Examples:
-            - Rookie (0 years pro): 22 years old
-            - 5th year player: 27 years old
-            - 10th year veteran: 32 years old
+            - With birthdate: Accurate age based on current simulation date
+            - Without birthdate (fallback): Estimated from years_pro + 22
         """
-        ROOKIE_AGE = 22
-        return ROOKIE_AGE + years_pro
+        birthdate = player.get('birthdate')
+        years_pro = player.get('years_pro', 0)
+
+        # Get current simulation date
+        current_date = self.dynasty_state_api.get_current_date(self.dynasty_id, self.season)
+
+        # Use shared utility function (handles birthdate + fallback)
+        return get_player_age(
+            birthdate=birthdate,
+            current_date=current_date,
+            years_pro=years_pro,
+            rookie_age=22
+        )
 
     # ==================== Salary Cap Operations ====================
+
+    def get_team_contracts(self, team_id: int) -> List[Dict[str, Any]]:
+        """
+        Get team contracts with player information for finances display.
+
+        Retrieves all active contracts for a team and merges with player roster data
+        to provide complete contract information formatted for UI display.
+
+        Args:
+            team_id: Team ID (1-32)
+
+        Returns:
+            List of contract dictionaries with format:
+            [
+                {
+                    'player': str,        # "Last, First" format
+                    'pos': str,           # Position abbreviation (QB, WR, LB, etc.)
+                    'cap_hit': int,       # Current year cap hit in dollars
+                    'years_left': int,    # Years remaining on contract
+                    'dead_money': int     # Dead money if released today (dollars)
+                },
+                ...
+            ]
+
+            Returns empty list [] if:
+            - Team has no contracts in database
+            - Dynasty not initialized
+            - Database query fails
+
+        Example:
+            contracts = model.get_team_contracts(22)  # Detroit Lions
+            for contract in contracts:
+                print(f"{contract['player']} ({contract['pos']}) - ${contract['cap_hit']/1_000_000:.1f}M cap hit")
+        """
+        try:
+            # Step 1: Get all active contracts for team
+            contracts = self.cap_db_api.get_team_contracts(
+                team_id=team_id,
+                season=self.season,
+                dynasty_id=self.dynasty_id,
+                active_only=True
+            )
+
+            # Convert to dicts if needed
+            contracts = [dict(c) if not isinstance(c, dict) else c for c in contracts]
+
+            if not contracts:
+                return []
+
+            # Step 2: Get roster to map player_id to player names/positions
+            roster_players = self.player_roster_api.get_team_roster(
+                dynasty_id=self.dynasty_id,
+                team_id=team_id
+            )
+
+            # Convert to dicts and create player lookup
+            roster_players = [dict(player) for player in roster_players]
+            player_map = {player['player_id']: player for player in roster_players}
+
+            # Step 3: Merge contract with player data and format
+            formatted_contracts = []
+            for contract in contracts:
+                player = player_map.get(contract['player_id'])
+                if not player:
+                    continue  # Skip contracts for players not on roster
+
+                formatted_contract = self._format_contract_for_display(contract, player)
+                formatted_contracts.append(formatted_contract)
+
+            return formatted_contracts
+
+        except Exception as e:
+            print(f"[ERROR TeamDataModel] Failed to load contracts for team {team_id}: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+
+    def _format_contract_for_display(
+        self,
+        contract: Dict[str, Any],
+        player: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Format contract and player data for finances UI display.
+
+        Args:
+            contract: Contract dict from database
+            player: Player dict from database
+
+        Returns:
+            Formatted contract dict ready for UI display
+        """
+        # Parse player position
+        try:
+            positions = json.loads(player['positions']) if isinstance(player['positions'], str) else player['positions']
+            primary_position = positions[0] if positions else "UNK"
+            primary_position = get_position_abbreviation(primary_position)
+        except (json.JSONDecodeError, KeyError, IndexError):
+            primary_position = "UNK"
+
+        # Format player name as "Last, First"
+        first_name = player.get('first_name', '')
+        last_name = player.get('last_name', '')
+        player_name = f"{last_name}, {first_name}"
+
+        # Get current year cap hit
+        try:
+            year_details = self.cap_db_api.get_contract_year_details(
+                contract_id=contract['contract_id'],
+                season_year=self.season
+            )
+            cap_hit = year_details[0].get('total_cap_hit', 0) if year_details else 0
+        except Exception:
+            cap_hit = 0
+
+        # Calculate years remaining on contract
+        years_left = contract['end_year'] - self.season + 1
+        years_left = max(0, years_left)  # Ensure non-negative
+
+        # Calculate dead money (simplified - full remaining guaranteed money)
+        # TODO: Implement proper dead money calculation with June 1 designation logic
+        dead_money = contract.get('total_guaranteed', 0)
+
+        return {
+            'player': player_name,
+            'pos': primary_position,
+            'cap_hit': cap_hit,
+            'years_left': years_left,
+            'dead_money': dead_money
+        }
 
     def get_cap_summary(self, team_id: int) -> Dict[str, Any]:
         """
         Get complete salary cap summary for team.
+
+        Retrieves salary cap totals, spending, cap space, and roster count
+        for UI display in finances tab.
 
         Args:
             team_id: Team ID (1-32)
@@ -312,27 +463,88 @@ class TeamDataModel:
         Returns:
             Dictionary with cap summary:
             {
-                'cap_limit': int,
-                'cap_used': int,
-                'cap_space': int,
-                'dead_money': int,
-                'top_51_active': bool,
-                ...
+                'cap_limit': int,           # Total salary cap limit
+                'cap_used': int,            # Current cap spending
+                'cap_space': int,           # Available cap space
+                'roster_count': int,        # Current roster count
+                'dead_money': int,          # Dead money total
+                'top_51_active': bool,      # Whether top-51 rule is active
+                # Projections:
+                'next_year_cap': int,       # Projected next year cap
+                'next_year_commitments': int,  # Committed spending next year
+                'next_year_space': int      # Projected cap space next year
             }
 
             Returns empty dict {} if no cap data exists
 
-        TODO: Implement complete cap summary retrieval
+        Example:
+            summary = model.get_cap_summary(22)  # Detroit Lions
+            print(f"Cap Space: ${summary['cap_space']/1_000_000:.1f}M")
         """
-        # TODO: Implement cap summary retrieval
-        # Will use: self.cap_db_api.get_team_cap_summary(team_id, self.season, self.dynasty_id)
-        return {}
+        try:
+            # Get cap summary from database view
+            cap_summary = self.cap_db_api.get_team_cap_summary(
+                team_id=team_id,
+                season=self.season,
+                dynasty_id=self.dynasty_id
+            )
+
+            if not cap_summary:
+                # No cap data initialized - return empty dict
+                return {}
+
+            # Get roster count
+            roster_players = self.player_roster_api.get_team_roster(
+                dynasty_id=self.dynasty_id,
+                team_id=team_id
+            )
+            roster_count = len(list(roster_players))
+
+            # Get dead money total
+            dead_money_entries = self.cap_db_api.get_team_dead_money(
+                team_id=team_id,
+                season=self.season,
+                dynasty_id=self.dynasty_id
+            )
+            dead_money_total = sum(entry.get('current_year_dead_money', 0) for entry in dead_money_entries)
+
+            # TODO: Calculate next year projections
+            # For now, use placeholder values
+            next_year_cap = 238_200_000  # Projected 2026 cap
+            next_year_commitments = 0  # Calculate from multi-year contracts
+            next_year_space = next_year_cap - next_year_commitments
+
+            return {
+                'cap_limit': cap_summary.get('total_cap_limit', 0),
+                'cap_used': cap_summary.get('total_cap_used', 0),
+                'cap_space': cap_summary.get('cap_space_available', 0),
+                'roster_count': roster_count,
+                'dead_money': dead_money_total,
+                'top_51_active': cap_summary.get('is_top_51_active', False),
+                'next_year_cap': next_year_cap,
+                'next_year_commitments': next_year_commitments,
+                'next_year_space': next_year_space
+            }
+
+        except Exception as e:
+            # Gracefully handle missing cap data (database may not have cap tables initialized)
+            if "no such table" in str(e).lower():
+                # Cap system not initialized yet - return empty summary silently
+                return {}
+            else:
+                # Other errors - log with traceback
+                print(f"[ERROR TeamDataModel] Failed to load cap summary for team {team_id}: {e}")
+                import traceback
+                traceback.print_exc()
+                return {}
 
     # ==================== Depth Chart Operations ====================
 
-    def get_depth_chart(self, team_id: int) -> Dict[str, List[Dict[str, Any]]]:
+    def get_full_depth_chart(self, team_id: int) -> Dict[str, List[Dict[str, Any]]]:
         """
-        Get team depth chart organized by position.
+        Get complete team depth chart organized by position.
+
+        Retrieves depth chart for all positions and formats for UI display.
 
         Args:
             team_id: Team ID (1-32)
@@ -340,18 +552,173 @@ class TeamDataModel:
         Returns:
             Dictionary mapping position to sorted player list:
             {
-                'QB': [player1, player2, ...],
-                'RB': [player1, player2, ...],
+                'quarterback': [
+                    {
+                        'player_id': int,
+                        'player_name': str,
+                        'overall': int,
+                        'depth_order': int,
+                        'position': str
+                    },
+                    ...
+                ],
+                'running_back': [...],
                 ...
             }
 
             Returns empty dict {} if no depth chart exists
 
-        TODO: Implement depth chart retrieval and sorting logic
+        Example:
+            depth_chart = model.get_full_depth_chart(22)  # Detroit Lions
+            for position, players in depth_chart.items():
+                print(f"{position}: {len(players)} players")
         """
-        # TODO: Implement depth chart retrieval
-        # Will use: self.player_roster_api.get_team_roster() + depth_chart_order sorting
-        return {}
+        try:
+            # Get full depth chart from API
+            full_depth_chart = self.depth_chart_api.get_full_depth_chart(
+                dynasty_id=self.dynasty_id,
+                team_id=team_id
+            )
+
+            return full_depth_chart
+
+        except Exception as e:
+            print(f"[ERROR TeamDataModel] Failed to load depth chart for team {team_id}: {e}")
+            import traceback
+            traceback.print_exc()
+            return {}
+
+    def get_position_depth_chart(self, team_id: int, position: str) -> List[Dict[str, Any]]:
+        """
+        Get depth chart for specific position.
+
+        Args:
+            team_id: Team ID (1-32)
+            position: Position name (e.g., "quarterback", "running_back")
+
+        Returns:
+            List of players sorted by depth_chart_order:
+            [
+                {
+                    'player_id': int,
+                    'player_name': str,
+                    'overall': int,
+                    'depth_order': int,
+                    'position': str
+                },
+                ...
+            ]
+
+            Returns empty list [] if no players at position
+
+        Example:
+            qb_depth = model.get_position_depth_chart(22, "quarterback")
+            for i, player in enumerate(qb_depth, 1):
+                print(f"{i}. {player['player_name']} ({player['overall']} OVR)")
+        """
+        try:
+            # Get position depth chart from API
+            position_depth_chart = self.depth_chart_api.get_position_depth_chart(
+                dynasty_id=self.dynasty_id,
+                team_id=team_id,
+                position=position
+            )
+
+            return position_depth_chart
+
+        except Exception as e:
+            print(f"[ERROR TeamDataModel] Failed to load depth chart for {position}: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+
+    def reorder_position_depth_chart(
+        self,
+        team_id: int,
+        position: str,
+        ordered_player_ids: List[int]
+    ) -> bool:
+        """
+        Reorder depth chart for a specific position.
+
+        Updates depth_chart_order for all players at position based on new order.
+        First player gets depth_order=1 (starter), second gets depth_order=2, etc.
+
+        Args:
+            team_id: Team ID (1-32)
+            position: Position name (e.g., "quarterback", "running_back")
+            ordered_player_ids: List of player IDs in desired depth chart order
+
+        Returns:
+            True if reorder succeeded, False otherwise
+
+        Example:
+            # Swap QB1 and QB2
+            qb_depth = model.get_position_depth_chart(22, "quarterback")
+            ordered_ids = [qb_depth[1]['player_id'], qb_depth[0]['player_id']]
+            success = model.reorder_position_depth_chart(22, "quarterback", ordered_ids)
+            if success:
+                print("Depth chart reordered successfully!")
+        """
+        try:
+            # Call API to reorder depth chart
+            success = self.depth_chart_api.reorder_position_depth(
+                dynasty_id=self.dynasty_id,
+                team_id=team_id,
+                position=position,
+                ordered_player_ids=ordered_player_ids
+            )
+
+            return success
+
+        except Exception as e:
+            print(f"[ERROR TeamDataModel] Failed to reorder depth chart for {position}: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+
+    def swap_player_depths(
+        self,
+        team_id: int,
+        player1_id: int,
+        player2_id: int
+    ) -> bool:
+        """
+        Swap depth chart positions between two players.
+
+        Players must be on same team and same position. Their depth_chart_order
+        values will be exchanged atomically in the database.
+
+        Args:
+            team_id: Team ID (1-32)
+            player1_id: First player ID (typically starter)
+            player2_id: Second player ID (typically bench player)
+
+        Returns:
+            True if swap succeeded, False otherwise
+
+        Example:
+            # Swap starter QB with backup QB
+            success = model.swap_player_depths(22, starter_id=12345, bench_id=67890)
+            if success:
+                print("QB depth chart swapped successfully!")
+        """
+        try:
+            # Call API to swap depth positions
+            success = self.depth_chart_api.swap_depth_positions(
+                dynasty_id=self.dynasty_id,
+                team_id=team_id,
+                player1_id=player1_id,
+                player2_id=player2_id
+            )
+
+            return success
+
+        except Exception as e:
+            print(f"[ERROR TeamDataModel] Failed to swap player depths: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
 
     # ==================== Coaching Staff Operations ====================
 

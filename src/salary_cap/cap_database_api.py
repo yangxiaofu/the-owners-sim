@@ -250,7 +250,9 @@ class CapDatabaseAPI:
             query += " ORDER BY total_value DESC"
 
             cursor = conn.execute(query, params)
-            return [dict(row) for row in cursor.fetchall()]
+            results = [dict(row) for row in cursor.fetchall()]
+
+            return results
 
     def get_contract_year_details(
         self,

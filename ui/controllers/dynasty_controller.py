@@ -222,12 +222,28 @@ class DynastyController:
             # Pass shared connection so all operations use same transaction
             roster_api = PlayerRosterAPI(self.db_path, connection=conn)
 
-            players_loaded = roster_api.initialize_dynasty_rosters(dynasty_id)
+            players_loaded = roster_api.initialize_dynasty_rosters(dynasty_id, season)
 
             print(f"✅ Loaded {players_loaded} players from JSON → Database")
             print(f"   Rosters for all 32 teams initialized")
 
-            # Step 4: Commit dynasty + standings + rosters atomically
+            # Step 3.5: Auto-generate depth charts for all 32 teams
+            print(f"📊 Auto-generating depth charts for all 32 teams...")
+            from depth_chart.depth_chart_api import DepthChartAPI
+            depth_chart_api = DepthChartAPI(self.db_path)
+
+            depth_charts_created = 0
+            for team_id in range(1, 33):
+                # Pass shared connection to avoid database lock
+                success = depth_chart_api.auto_generate_depth_chart(dynasty_id, team_id, connection=conn)
+                if success:
+                    depth_charts_created += 1
+                else:
+                    print(f"[WARNING] Failed to generate depth chart for team {team_id}")
+
+            print(f"✅ Depth charts auto-generated for {depth_charts_created}/32 teams (sorted by overall rating)")
+
+            # Step 4: Commit dynasty + standings + rosters + depth charts atomically
             # Must commit BEFORE schedule generation (which creates its own connections)
             conn.commit()
             print(f"✅ Dynasty '{dynasty_id}' committed to database")

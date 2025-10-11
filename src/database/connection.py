@@ -524,6 +524,90 @@ class DatabaseConnection:
             )
         ''')
 
+        # ============================================================================
+        # SALARY CAP SYSTEM TABLES
+        # ============================================================================
+
+        # Player contracts table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS player_contracts (
+                contract_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                player_id INTEGER NOT NULL,
+                team_id INTEGER NOT NULL,
+                dynasty_id TEXT NOT NULL,
+
+                -- Contract Duration
+                start_year INTEGER NOT NULL,
+                end_year INTEGER NOT NULL,
+                contract_years INTEGER NOT NULL,
+
+                -- Contract Type
+                contract_type TEXT NOT NULL CHECK(contract_type IN (
+                    'ROOKIE', 'VETERAN', 'FRANCHISE_TAG', 'TRANSITION_TAG', 'EXTENSION'
+                )),
+
+                -- Financial Terms
+                total_value INTEGER NOT NULL,
+                signing_bonus INTEGER DEFAULT 0,
+                signing_bonus_proration INTEGER DEFAULT 0,
+
+                -- Guarantees
+                guaranteed_at_signing INTEGER DEFAULT 0,
+                injury_guaranteed INTEGER DEFAULT 0,
+                total_guaranteed INTEGER DEFAULT 0,
+
+                -- Status
+                is_active BOOLEAN DEFAULT TRUE,
+                signed_date DATE NOT NULL,
+                voided_date DATE,
+
+                -- Metadata
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+                FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE
+            )
+        ''')
+
+        # Contract year details table
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS contract_year_details (
+                detail_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contract_id INTEGER NOT NULL,
+                contract_year INTEGER NOT NULL,
+                season_year INTEGER NOT NULL,
+
+                -- Salary Components
+                base_salary INTEGER NOT NULL,
+                roster_bonus INTEGER DEFAULT 0,
+                workout_bonus INTEGER DEFAULT 0,
+                option_bonus INTEGER DEFAULT 0,
+                per_game_roster_bonus INTEGER DEFAULT 0,
+
+                -- Performance Incentives
+                ltbe_incentives INTEGER DEFAULT 0,
+                nltbe_incentives INTEGER DEFAULT 0,
+
+                -- Guarantees for this year
+                base_salary_guaranteed BOOLEAN DEFAULT FALSE,
+                guarantee_type TEXT CHECK(guarantee_type IN ('FULL', 'INJURY', 'SKILL', 'NONE') OR guarantee_type IS NULL),
+                guarantee_date DATE,
+
+                -- Cap Impact
+                signing_bonus_proration INTEGER DEFAULT 0,
+                option_bonus_proration INTEGER DEFAULT 0,
+                total_cap_hit INTEGER NOT NULL,
+
+                -- Cash Flow
+                cash_paid INTEGER NOT NULL,
+
+                -- Status
+                is_voided BOOLEAN DEFAULT FALSE,
+
+                FOREIGN KEY (contract_id) REFERENCES player_contracts(contract_id) ON DELETE CASCADE
+            )
+        ''')
+
         # Create indexes for performance
         conn.execute("CREATE INDEX IF NOT EXISTS idx_games_dynasty_season ON games(dynasty_id, season, week)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_games_teams ON games(home_team_id, away_team_id)")
@@ -569,6 +653,16 @@ class DatabaseConnection:
         # Dynasty-aware composite indexes for efficient dynasty-filtered queries
         conn.execute("CREATE INDEX IF NOT EXISTS idx_events_dynasty_timestamp ON events(dynasty_id, timestamp)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_events_dynasty_type ON events(dynasty_id, event_type)")
+
+        # Salary cap system indexes
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_contracts_player ON player_contracts(player_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_contracts_team_season ON player_contracts(team_id, start_year)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_contracts_dynasty ON player_contracts(dynasty_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_contracts_active ON player_contracts(is_active)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_contracts_team_active ON player_contracts(team_id, is_active)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_contract_details_contract ON contract_year_details(contract_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_contract_details_season ON contract_year_details(season_year)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_contract_details_contract_year ON contract_year_details(contract_id, contract_year)")
 
         # Initialize standings for dynasties with games but missing standings
         self._initialize_standings_if_empty(conn)

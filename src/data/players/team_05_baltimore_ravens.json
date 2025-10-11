@@ -8,6 +8,7 @@
       "first_name": "Lamar",
       "last_name": "Jackson",
       "number": 8,
+      "birthdate": "1995-06-26",
       "positions": [
         "quarterback"
       ],
@@ -40,6 +41,7 @@
       "first_name": "Derrick",
       "last_name": "Henry",
       "number": 22,
+      "birthdate": "1987-06-28",
       "positions": [
         "running_back"
       ],
@@ -72,6 +74,7 @@
       "first_name": "Mark",
       "last_name": "Andrews",
       "number": 89,
+      "birthdate": "1994-06-12",
       "positions": [
         "tight_end"
       ],
@@ -104,6 +107,7 @@
       "first_name": "Zay",
       "last_name": "Flowers",
       "number": 4,
+      "birthdate": "2002-06-17",
       "positions": [
         "wide_receiver"
       ],
@@ -136,6 +140,7 @@
       "first_name": "Ronnie",
       "last_name": "Stanley",
       "number": 79,
+      "birthdate": "1995-05-28",
       "positions": [
         "left_tackle"
       ],
@@ -167,6 +172,7 @@
       "first_name": "Tyler",
       "last_name": "Linderbaum",
       "number": 64,
+      "birthdate": "1999-10-16",
       "positions": [
         "center"
       ],
@@ -198,6 +204,7 @@
       "first_name": "Roquan",
       "last_name": "Smith",
       "number": 0,
+      "birthdate": "1995-04-12",
       "positions": [
         "mike_linebacker"
       ],
@@ -232,6 +239,7 @@
       "first_name": "Kyle",
       "last_name": "Hamilton",
       "number": 14,
+      "birthdate": "2000-02-15",
       "positions": [
         "free_safety"
       ],
@@ -266,6 +274,7 @@
       "first_name": "Marlon",
       "last_name": "Humphrey",
       "number": 44,
+      "birthdate": "1996-01-09",
       "positions": [
         "cornerback"
       ],
@@ -299,6 +308,7 @@
       "first_name": "Roquan",
       "last_name": "Smith",
       "number": 18,
+      "birthdate": "1998-09-27",
       "positions": [
         "outside_linebacker"
       ],
@@ -332,6 +342,7 @@
       "first_name": "Justin",
       "last_name": "Tucker",
       "number": 9,
+      "birthdate": "1988-11-25",
       "positions": [
         "kicker"
       ],
@@ -361,6 +372,7 @@
       "first_name": "Jordan",
       "last_name": "Stout",
       "number": 11,
+      "birthdate": "2002-06-19",
       "positions": [
         "punter"
       ],
@@ -389,6 +401,7 @@
       "first_name": "Lamar",
       "last_name": "Jackson",
       "number": 8,
+      "birthdate": "1995-05-26",
       "positions": [
         "quarterback"
       ],
@@ -422,6 +435,7 @@
       "first_name": "Cooper",
       "last_name": "Rush",
       "number": 15,
+      "birthdate": "1994-04-03",
       "positions": [
         "quarterback"
       ],
@@ -454,6 +468,7 @@
       "first_name": "Derrick",
       "last_name": "Henry",
       "number": 22,
+      "birthdate": "1988-12-01",
       "positions": [
         "running_back"
       ],
@@ -488,6 +503,7 @@
       "first_name": "Justice",
       "last_name": "Hill",
       "number": 43,
+      "birthdate": "1997-06-05",
       "positions": [
         "running_back"
       ],
@@ -522,6 +538,7 @@
       "first_name": "Rasheen",
       "last_name": "Ali",
       "number": 26,
+      "birthdate": "2001-07-19",
       "positions": [
         "running_back"
       ],
@@ -557,6 +574,7 @@
       "first_name": "Keaton",
       "last_name": "Mitchell",
       "number": 34,
+      "birthdate": "1999-04-01",
       "positions": [
         "running_back"
       ],
@@ -591,6 +609,7 @@
       "first_name": "DeAndre",
       "last_name": "Hopkins",
       "number": 10,
+      "birthdate": "1989-12-09",
       "positions": [
         "wide_receiver"
       ],
@@ -625,6 +644,7 @@
       "first_name": "Zay",
       "last_name": "Flowers",
       "number": 4,
+      "birthdate": "2001-02-23",
       "positions": [
         "wide_receiver"
       ],
@@ -660,6 +680,7 @@
       "first_name": "Rashod",
       "last_name": "Bateman",
       "number": 7,
+      "birthdate": "2002-06-14",
       "positions": [
         "wide_receiver"
       ],
@@ -695,6 +716,7 @@
       "first_name": "Tylan",
       "last_name": "Wallace",
       "number": 16,
+      "birthdate": "1999-04-24",
       "positions": [
         "wide_receiver"
       ],
@@ -729,6 +751,7 @@
       "first_name": "Devontez",
       "last_name": "Walker",
       "number": 81,
+      "birthdate": "2002-03-22",
       "positions": [
         "wide_receiver"
       ],
@@ -764,6 +787,7 @@
       "first_name": "LaJohntay",
       "last_name": "Wester",
       "number": 83,
+      "birthdate": "2003-05-25",
       "positions": [
         "wide_receiver"
       ],
@@ -799,6 +823,7 @@
       "first_name": "Mark",
       "last_name": "Andrews",
       "number": 89,
+      "birthdate": "1994-10-06",
       "positions": [
         "tight_end"
       ],
@@ -834,6 +859,7 @@
       "first_name": "Isaiah",
       "last_name": "Likely",
       "number": 80,
+      "birthdate": "2001-09-13",
       "positions": [
         "tight_end"
       ],
@@ -869,6 +895,7 @@
       "first_name": "Charlie",
       "last_name": "Kolar",
       "number": 88,
+      "birthdate": "2000-06-10",
       "positions": [
         "tight_end"
       ],
@@ -904,6 +931,7 @@
       "first_name": "Patrick",
       "last_name": "Ricard",
       "number": 47,
+      "birthdate": "1995-08-19",
       "positions": [
         "fullback",
         "tight_end"
@@ -942,6 +970,7 @@
       "first_name": "Ronnie",
       "last_name": "Stanley",
       "number": 79,
+      "birthdate": "1995-12-07",
       "positions": [
         "left_tackle"
       ],
@@ -975,6 +1004,7 @@
       "first_name": "Joseph",
       "last_name": "Noteboom",
       "number": 68,
+      "birthdate": "1993-10-26",
       "positions": [
         "left_guard"
       ],
@@ -1007,6 +1037,7 @@
       "first_name": "Tyler",
       "last_name": "Linderbaum",
       "number": 64,
+      "birthdate": "1999-02-19",
       "positions": [
         "center"
       ],
@@ -1041,6 +1072,7 @@
       "first_name": "Andrew",
       "last_name": "Vorhees",
       "number": 72,
+      "birthdate": "2000-06-26",
       "positions": [
         "right_guard"
       ],
@@ -1073,6 +1105,7 @@
       "first_name": "Roger",
       "last_name": "Rosengarten",
       "number": 70,
+      "birthdate": "2002-07-10",
       "positions": [
         "right_tackle"
       ],
@@ -1106,6 +1139,7 @@
       "first_name": "Ben",
       "last_name": "Cleveland",
       "number": 66,
+      "birthdate": "2002-08-10",
       "positions": [
         "guard"
       ],
@@ -1138,6 +1172,7 @@
       "first_name": "Daniel",
       "last_name": "Faalele",
       "number": 77,
+      "birthdate": "1999-03-10",
       "positions": [
         "tackle"
       ],
@@ -1170,6 +1205,7 @@
       "first_name": "Carson",
       "last_name": "Vinson",
       "number": 76,
+      "birthdate": "2002-12-20",
       "positions": [
         "tackle",
         "guard"
@@ -1205,6 +1241,7 @@
       "first_name": "Corey",
       "last_name": "Bullock",
       "number": 69,
+      "birthdate": "1999-07-13",
       "positions": [
         "center",
         "guard"
@@ -1240,6 +1277,7 @@
       "first_name": "Nnamdi",
       "last_name": "Madubuike",
       "number": 92,
+      "birthdate": "2000-01-17",
       "positions": [
         "defensive_tackle"
       ],
@@ -1273,6 +1311,7 @@
       "first_name": "Travis",
       "last_name": "Jones",
       "number": 98,
+      "birthdate": "2001-05-10",
       "positions": [
         "defensive_tackle"
       ],
@@ -1306,6 +1345,7 @@
       "first_name": "John",
       "last_name": "Jenkins",
       "number": 94,
+      "birthdate": "1990-05-15",
       "positions": [
         "nose_tackle"
       ],
@@ -1339,6 +1379,7 @@
       "first_name": "Broderick",
       "last_name": "Washington",
       "number": 96,
+      "birthdate": "2001-10-10",
       "positions": [
         "defensive_tackle"
       ],
@@ -1374,6 +1415,7 @@
       "first_name": "Aeneas",
       "last_name": "Peebles",
       "number": 93,
+      "birthdate": "2004-09-04",
       "positions": [
         "defensive_tackle"
       ],
@@ -1408,6 +1450,7 @@
       "first_name": "Roquan",
       "last_name": "Smith",
       "number": 0,
+      "birthdate": "1994-10-23",
       "positions": [
         "middle_linebacker"
       ],
@@ -1442,6 +1485,7 @@
       "first_name": "Trenton",
       "last_name": "Simpson",
       "number": 32,
+      "birthdate": "2001-01-19",
       "positions": [
         "middle_linebacker"
       ],
@@ -1476,6 +1520,7 @@
       "first_name": "David",
       "last_name": "Ojabo",
       "number": 90,
+      "birthdate": "2001-05-27",
       "positions": [
         "outside_linebacker"
       ],
@@ -1511,6 +1556,7 @@
       "first_name": "Odafe",
       "last_name": "Oweh",
       "number": 99,
+      "birthdate": "2002-05-11",
       "positions": [
         "outside_linebacker"
       ],
@@ -1545,6 +1591,7 @@
       "first_name": "Kyle",
       "last_name": "Van Noy",
       "number": 53,
+      "birthdate": "1990-12-26",
       "positions": [
         "linebacker"
       ],
@@ -1581,6 +1628,7 @@
       "first_name": "Jake",
       "last_name": "Hummel",
       "number": 35,
+      "birthdate": "2001-03-05",
       "positions": [
         "linebacker"
       ],
@@ -1617,6 +1665,7 @@
       "first_name": "Mike",
       "last_name": "Green",
       "number": 45,
+      "birthdate": "2002-05-20",
       "positions": [
         "linebacker"
       ],
@@ -1652,6 +1701,7 @@
       "first_name": "Jaire",
       "last_name": "Alexander",
       "number": 23,
+      "birthdate": "1993-08-01",
       "positions": [
         "cornerback"
       ],
@@ -1686,6 +1736,7 @@
       "first_name": "Marlon",
       "last_name": "Humphrey",
       "number": 44,
+      "birthdate": "1993-09-18",
       "positions": [
         "cornerback"
       ],
@@ -1721,6 +1772,7 @@
       "first_name": "Chidobe",
       "last_name": "Awuzie",
       "number": 3,
+      "birthdate": "1995-10-23",
       "positions": [
         "cornerback"
       ],
@@ -1756,6 +1808,7 @@
       "first_name": "Nate",
       "last_name": "Wiggins",
       "number": 2,
+      "birthdate": "2002-09-24",
       "positions": [
         "cornerback"
       ],
@@ -1790,6 +1843,7 @@
       "first_name": "T.J.",
       "last_name": "Tampa",
       "number": 27,
+      "birthdate": "2001-10-15",
       "positions": [
         "cornerback"
       ],
@@ -1825,6 +1879,7 @@
       "first_name": "Keyon",
       "last_name": "Martin",
       "number": 38,
+      "birthdate": "2004-09-17",
       "positions": [
         "cornerback"
       ],
@@ -1860,6 +1915,7 @@
       "first_name": "Kyle",
       "last_name": "Hamilton",
       "number": 14,
+      "birthdate": "1999-05-13",
       "positions": [
         "safety"
       ],
@@ -1895,6 +1951,7 @@
       "first_name": "Malaki",
       "last_name": "Starks",
       "number": 6,
+      "birthdate": "2003-05-20",
       "positions": [
         "safety"
       ],
@@ -1930,6 +1987,7 @@
       "first_name": "Sanoussi",
       "last_name": "Kane",
       "number": 21,
+      "birthdate": "2000-06-26",
       "positions": [
         "safety"
       ],
@@ -1965,6 +2023,7 @@
       "first_name": "Reuben",
       "last_name": "Lowery III",
       "number": 30,
+      "birthdate": "2003-03-08",
       "positions": [
         "safety"
       ],
@@ -2000,6 +2059,7 @@
       "first_name": "Tyler",
       "last_name": "Loop",
       "number": 19,
+      "birthdate": "2002-12-10",
       "positions": [
         "kicker"
       ],
@@ -2033,6 +2093,7 @@
       "first_name": "Jordan",
       "last_name": "Stout",
       "number": 11,
+      "birthdate": "2002-04-06",
       "positions": [
         "punter"
       ],
@@ -2067,6 +2128,7 @@
       "first_name": "Nick",
       "last_name": "Moore",
       "number": 46,
+      "birthdate": "1995-04-02",
       "positions": [
         "long_snapper"
       ],
