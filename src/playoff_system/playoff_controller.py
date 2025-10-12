@@ -84,7 +84,8 @@ class PlayoffController:
         wild_card_start_date: Optional[Date] = None,
         initial_seeding: Optional[PlayoffSeeding] = None,
         enable_persistence: bool = True,
-        verbose_logging: bool = True
+        verbose_logging: bool = True,
+        phase_state: Optional['PhaseState'] = None
     ):
         """
         Initialize playoff controller.
@@ -97,6 +98,7 @@ class PlayoffController:
             initial_seeding: Playoff seeding from regular season standings (if None, generates random seeding)
             enable_persistence: Whether to persist game results to database
             verbose_logging: Whether to print detailed progress messages
+            phase_state: Shared PhaseState object for cross-phase state management (optional)
         """
         self.database_path = database_path
         self.season_year = season_year
@@ -123,7 +125,8 @@ class PlayoffController:
         # Initialize core components
         self.calendar = CalendarComponent(
             start_date=wild_card_start_date,
-            season_year=season_year
+            season_year=season_year,
+            phase_state=phase_state
         )
 
         self.event_db = EventDatabaseAPI(database_path)
@@ -134,7 +137,8 @@ class PlayoffController:
             database_path=database_path,
             dynasty_id=dynasty_id,
             enable_persistence=enable_persistence,
-            season_year=season_year
+            season_year=season_year,
+            phase_state=phase_state
         )
 
         # Playoff-specific components
@@ -1173,6 +1177,29 @@ class PlayoffController:
 
         if self.verbose_logging:
             print(f"\n✅ Playoffs reset to {self.wild_card_start_date}")
+
+    def clear_playoff_games(self) -> int:
+        """
+        Clear all playoff games for current dynasty/season.
+
+        This is a safety method to ensure clean playoff scheduling.
+        Useful for:
+        - Removing old playoff games from previous test runs
+        - Rescheduling playoffs after changing seeding
+        - Dynasty cleanup operations
+
+        Returns:
+            Number of playoff games deleted
+        """
+        deleted = self.event_db.delete_playoff_events_by_dynasty(
+            dynasty_id=self.dynasty_id,
+            season=self.season_year
+        )
+
+        if self.verbose_logging and deleted > 0:
+            print(f"🗑️  Cleared {deleted} old playoff game(s) for dynasty '{self.dynasty_id}', season {self.season_year}")
+
+        return deleted
 
     def __str__(self) -> str:
         """String representation"""

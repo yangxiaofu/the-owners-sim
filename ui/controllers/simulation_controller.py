@@ -66,7 +66,6 @@ class SimulationController(QObject):
 
         print(f"[DEBUG SimulationController] After _load_state():")
         print(f"  current_date_str: {self.current_date_str}")
-        print(f"  current_phase: {self.current_phase}")
         print(f"  current_week: {self.current_week}")
 
         # Initialize season cycle controller with the loaded state
@@ -123,7 +122,7 @@ class SimulationController(QObject):
 
         # Cache state values for quick access
         self.current_date_str = state_info['current_date']
-        self.current_phase = state_info['current_phase']
+        # Don't cache phase locally - use SeasonCycleController's PhaseState instead
         self.current_week = state_info['current_week']
 
         # Print any validation warnings from model
@@ -156,22 +155,22 @@ class SimulationController(QObject):
             if result.get('success', False):
                 # Extract date and phase
                 new_date = result.get('date', self.current_date_str)
-                new_phase = result.get('current_phase', self.current_phase)
+                new_phase = result.get('current_phase', self.season_controller.phase_state.phase.value)
                 games = result.get('results', [])
 
                 # Check for phase transition
-                if new_phase != self.current_phase:
-                    old_phase = self.current_phase
+                if new_phase != self.season_controller.phase_state.phase.value:
+                    old_phase = self.season_controller.phase_state.phase.value
                     self.phase_changed.emit(old_phase, new_phase)
 
                 # Update state
                 self.current_date_str = new_date
-                self.current_phase = new_phase
 
                 # Save to database
                 self._save_state_to_db(new_date, new_phase, self.current_week)
 
                 # Emit signals
+                print(f"[DEBUG SimulationController] Emitting date_changed signal: date={new_date}, phase={new_phase}")
                 self.date_changed.emit(new_date, new_phase)
 
                 if games:
@@ -189,7 +188,7 @@ class SimulationController(QObject):
                 return {
                     "success": False,
                     "date": self.current_date_str,
-                    "phase": self.current_phase,
+                    "phase": self.season_controller.phase_state.phase.value,
                     "games_played": 0,
                     "results": [],
                     "message": result.get('message', 'Simulation failed')
@@ -199,7 +198,7 @@ class SimulationController(QObject):
             return {
                 "success": False,
                 "date": self.current_date_str,
-                "phase": self.current_phase,
+                "phase": self.season_controller.phase_state.phase.value,
                 "games_played": 0,
                 "results": [],
                 "message": f"Error: {str(e)}"
@@ -217,17 +216,17 @@ class SimulationController(QObject):
 
             if result.get('success', False):
                 new_date = result.get('date', self.current_date_str)
-                new_phase = result.get('current_phase', self.current_phase)
+                new_phase = result.get('current_phase', self.season_controller.phase_state.phase.value)
 
                 self.current_date_str = new_date
-                self.current_phase = new_phase
 
                 # Increment week
-                if self.current_phase == "REGULAR_SEASON":
+                if self.season_controller.phase_state.phase.value == "regular_season":
                     self.current_week += 1
 
                 self._save_state_to_db(new_date, new_phase, self.current_week)
 
+                print(f"[DEBUG SimulationController] Emitting date_changed signal (advance_week): date={new_date}, phase={new_phase}")
                 self.date_changed.emit(new_date, new_phase)
 
                 return result
@@ -256,7 +255,7 @@ class SimulationController(QObject):
         Returns:
             "REGULAR_SEASON", "PLAYOFFS", or "OFFSEASON"
         """
-        return self.current_phase
+        return self.season_controller.phase_state.phase.value
 
     def get_current_week(self) -> Optional[int]:
         """
@@ -265,7 +264,74 @@ class SimulationController(QObject):
         Returns:
             Week number or None if not in regular season
         """
-        return self.current_week if self.current_phase == "REGULAR_SEASON" else None
+        return self.current_week if self.season_controller.phase_state.phase.value == "regular_season" else None
+
+    def advance_to_end_of_phase(self, progress_callback=None) -> Dict[str, Any]:
+        """
+        Simulate until end of current phase (phase transition detected).
+
+        Stops at phase boundaries to give user control (review brackets, make decisions).
+
+        Args:
+            progress_callback: Optional callback(week_num, games_played) for progress updates
+
+        Returns:
+            Summary dict with simulation results:
+            {
+                'start_date': str,
+                'end_date': str,
+                'weeks_simulated': int,
+                'total_games': int,
+                'starting_phase': str,
+                'ending_phase': str,
+                'phase_transition': bool,
+                'success': bool,
+                'message': str
+            }
+        """
+        try:
+            # Call backend with progress callback
+            summary = self.season_controller.simulate_to_phase_end(
+                progress_callback=progress_callback
+            )
+
+            if summary.get('success', False):
+                # Update cached state
+                self.current_date_str = summary['end_date']
+
+                # Save to database
+                self._save_state_to_db(
+                    self.current_date_str,
+                    self.season_controller.phase_state.phase.value,
+                    self.current_week
+                )
+
+                # Emit signals for UI refresh
+                print(f"[DEBUG SimulationController] Emitting date_changed signal (phase end): date={self.current_date_str}, phase={self.season_controller.phase_state.phase.value}")
+                self.date_changed.emit(self.current_date_str, self.season_controller.phase_state.phase.value)
+
+                # Add friendly message
+                phase_name = summary['starting_phase'].replace('_', ' ').title()
+                summary['message'] = (
+                    f"{phase_name} complete! "
+                    f"{summary['weeks_simulated']} weeks simulated, "
+                    f"{summary['total_games']} games played."
+                )
+
+            return summary
+
+        except Exception as e:
+            return {
+                'success': False,
+                'message': f'Error: {str(e)}',
+                'start_date': self.current_date_str,
+                'end_date': self.current_date_str,
+                'weeks_simulated': 0,
+                'total_games': 0,
+                'starting_phase': self.season_controller.phase_state.phase.value,
+                'ending_phase': self.season_controller.phase_state.phase.value,
+                'phase_transition': False
+            }
 
     def get_simulation_state(self) -> Dict[str, Any]:
         """
@@ -276,7 +342,7 @@ class SimulationController(QObject):
         """
         return {
             "date": self.current_date_str,
-            "phase": self.current_phase,
+            "phase": self.season_controller.phase_state.phase.value,
             "week": self.current_week,
             "season": self.season,
             "dynasty_id": self.dynasty_id

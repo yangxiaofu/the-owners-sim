@@ -17,6 +17,7 @@ from ui.views.player_view import PlayerView
 from ui.views.offseason_view import OffseasonView
 from ui.views.league_view import LeagueView
 from ui.views.game_view import GameView
+from ui.views.playoff_view import PlayoffView
 
 import sys
 import os
@@ -30,6 +31,7 @@ from controllers.season_controller import SeasonController
 from controllers.calendar_controller import CalendarController
 from controllers.simulation_controller import SimulationController
 from controllers.league_controller import LeagueController
+from controllers.playoff_controller import PlayoffController
 
 
 class MainWindow(QMainWindow):
@@ -94,6 +96,11 @@ class MainWindow(QMainWindow):
             season=self.season
         )
 
+        # Playoff controller for playoff bracket and seeding
+        self.playoff_controller = PlayoffController(
+            simulation_controller=self.simulation_controller
+        )
+
         # Connect simulation signals to UI updates
         self.simulation_controller.date_changed.connect(self._on_date_changed)
         self.simulation_controller.games_played.connect(self._on_games_played)
@@ -127,6 +134,7 @@ class MainWindow(QMainWindow):
             season=self.season
         )
         self.league_view = LeagueView(self, controller=self.league_controller)
+        self.playoff_view = PlayoffView(self, controller=self.playoff_controller)
         self.game_view = GameView(self)
 
         # Add tabs
@@ -136,7 +144,21 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.player_view, "Player")
         self.tabs.addTab(self.offseason_view, "Offseason")
         self.tabs.addTab(self.league_view, "League")
+        self.tabs.addTab(self.playoff_view, "Playoffs")
         self.tabs.addTab(self.game_view, "Game")
+
+        # Store playoff tab index for visibility toggling
+        self.playoff_tab_index = 6  # Playoffs tab position
+
+        # Set Playoffs tab visibility based on initial phase
+        current_phase = self.simulation_controller.get_current_phase()
+        if current_phase in ["playoffs", "offseason"]:
+            self.tabs.setTabVisible(self.playoff_tab_index, True)
+            # Refresh playoff view if in playoffs phase
+            if current_phase == "playoffs" and hasattr(self, 'playoff_view'):
+                self.playoff_view.refresh()
+        else:
+            self.tabs.setTabVisible(self.playoff_tab_index, False)
 
         # Connect tab change signal for auto-refresh
         self.tabs.currentChanged.connect(self._on_tab_changed)
@@ -287,6 +309,15 @@ class MainWindow(QMainWindow):
             self._sim_week,
             "Simulate one week"
         ))
+
+        # Phase-end simulation button (dynamic text based on current phase)
+        self.sim_phase_action = self._create_action(
+            "Sim to Playoffs",
+            self._sim_to_phase_end,
+            "Simulate to end of regular season"
+        )
+        toolbar.addAction(self.sim_phase_action)
+
         toolbar.addSeparator()
 
         # Quick navigation
@@ -394,9 +425,14 @@ class MainWindow(QMainWindow):
                 msg += f"\n\n{result['games_played']} games simulated"
             QMessageBox.information(self, "Simulation Complete", msg)
 
-            # Refresh calendar view
+            # Refresh calendar view (re-sync date and reload events)
             if hasattr(self, 'calendar_view'):
-                self.calendar_view.load_events()
+                self.calendar_view.refresh_current_date()
+
+            # Refresh playoff view if playoffs tab is visible (playoffs or offseason)
+            if self.simulation_controller.get_current_phase() in ["playoffs", "offseason"]:
+                if hasattr(self, 'playoff_view'):
+                    self.playoff_view.refresh()
         else:
             QMessageBox.warning(self, "Simulation Failed", result['message'])
 
@@ -413,14 +449,83 @@ class MainWindow(QMainWindow):
 
             QMessageBox.information(self, "Week Simulation Complete", msg)
 
-            # Refresh calendar view
+            # Refresh calendar view (re-sync date and reload events)
             if hasattr(self, 'calendar_view'):
-                self.calendar_view.load_events()
+                self.calendar_view.refresh_current_date()
+
+            # Refresh playoff view if playoffs tab is visible (playoffs or offseason)
+            if self.simulation_controller.get_current_phase() in ["playoffs", "offseason"]:
+                if hasattr(self, 'playoff_view'):
+                    self.playoff_view.refresh()
         else:
             QMessageBox.warning(
                 self,
                 "Week Simulation Failed",
                 result.get('message', 'Unknown error')
+            )
+
+    def _sim_to_phase_end(self):
+        """Simulate to end of current phase with progress dialog."""
+        from PySide6.QtWidgets import QProgressDialog, QApplication
+
+        # Create progress dialog
+        progress = QProgressDialog(
+            "Simulating...",
+            "Cancel",
+            0,
+            100,  # Will update max dynamically
+            self
+        )
+        progress.setWindowTitle("Season Simulation")
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)  # Show immediately
+
+        weeks_completed = 0
+
+        # Progress callback
+        def update_progress(week_num, games_played):
+            nonlocal weeks_completed
+            weeks_completed = week_num
+            progress.setValue(week_num)
+            progress.setLabelText(
+                f"Simulating week {week_num}...\n{games_played} games simulated"
+            )
+            QApplication.processEvents()
+
+            # Check if user cancelled
+            if progress.wasCanceled():
+                # TODO: Implement cancellation logic if needed
+                pass
+
+        # Execute simulation
+        summary = self.simulation_controller.advance_to_end_of_phase(
+            progress_callback=update_progress
+        )
+
+        progress.close()
+
+        # Show summary dialog
+        if summary.get('success', False):
+            phase_name = summary['starting_phase'].replace('_', ' ').title()
+            msg = (
+                f"{phase_name} Complete!\n\n"
+                f"Weeks Simulated: {summary['weeks_simulated']}\n"
+                f"Games Played: {summary['total_games']}\n"
+                f"End Date: {summary['end_date']}\n\n"
+                f"Now entering: {summary['ending_phase'].replace('_', ' ').title()}"
+            )
+            QMessageBox.information(self, "Simulation Complete", msg)
+
+            # Refresh views
+            if hasattr(self, 'calendar_view'):
+                self.calendar_view.refresh_current_date()
+            if hasattr(self, 'playoff_view') and summary['ending_phase'] == 'playoffs':
+                self.playoff_view.refresh()
+        else:
+            QMessageBox.warning(
+                self,
+                "Simulation Failed",
+                summary.get('message', 'Unknown error')
             )
 
     def _show_depth_chart(self):
@@ -453,12 +558,16 @@ class MainWindow(QMainWindow):
         )
 
     def _show_playoff_picture(self):
-        """Show playoff picture."""
-        QMessageBox.information(
-            self,
-            "Playoff Picture",
-            "Playoff Picture coming in Phase 2!\n\nView current playoff seeding and scenarios."
-        )
+        """Show playoff picture by switching to Playoffs tab."""
+        if self.simulation_controller.get_current_phase() == "playoffs":
+            # Switch to Playoffs tab (index 6)
+            self.tabs.setCurrentIndex(self.playoff_tab_index)
+        else:
+            QMessageBox.information(
+                self,
+                "Playoff Picture",
+                "Playoffs have not started yet.\n\nComplete the regular season to view playoff bracket."
+            )
 
     def _show_help(self):
         """Show user guide."""
@@ -485,9 +594,50 @@ class MainWindow(QMainWindow):
     # Signal handlers for simulation updates
     def _on_date_changed(self, date_str: str, phase: str):
         """Handle simulation date change."""
-        # Update status bar
+        from PySide6.QtWidgets import QApplication
+
+        print(f"[DEBUG MainWindow] _on_date_changed called: date={date_str}, phase={phase}")
+
+        # Update date label
         self.date_label.setText(f"Date: {date_str}")
-        self.phase_label.setText(f"Phase: {phase}")
+
+        # Format phase consistently with initial creation
+        phase_display = phase.replace('_', ' ').title()
+        current_week = self.simulation_controller.get_current_week()
+        if current_week:
+            phase_display += f" - Week {current_week}"
+        self.phase_label.setText(f"Phase: {phase_display}")
+
+        # Force immediate repaint of status bar widgets
+        self.date_label.repaint()
+        self.phase_label.repaint()
+        self.statusBar().repaint()
+
+        # Process pending Qt events to ensure UI updates are visible
+        QApplication.processEvents()
+
+        print(f"[DEBUG MainWindow] Status bar updated and repainted")
+
+        # Update phase-end button text dynamically based on current phase
+        if phase == "regular_season":
+            self.sim_phase_action.setText("Sim to Playoffs")
+            self.sim_phase_action.setToolTip("Simulate rest of regular season")
+        elif phase == "playoffs":
+            self.sim_phase_action.setText("Sim to Offseason")
+            self.sim_phase_action.setToolTip("Simulate rest of playoffs")
+        else:  # offseason
+            self.sim_phase_action.setText("Sim to Next Season")
+            self.sim_phase_action.setToolTip("Simulate rest of offseason")
+
+        # Show/hide Playoffs tab based on phase
+        # Show during playoffs and offseason, hide during regular season
+        if phase in ["playoffs", "offseason"]:
+            self.tabs.setTabVisible(self.playoff_tab_index, True)
+            # Refresh view when entering playoffs or offseason phase
+            if phase in ["playoffs", "offseason"] and hasattr(self, 'playoff_view'):
+                self.playoff_view.refresh()
+        else:  # regular_season
+            self.tabs.setTabVisible(self.playoff_tab_index, False)
 
     def _on_games_played(self, game_results: list):
         """Handle games played signal."""
@@ -499,3 +649,7 @@ class MainWindow(QMainWindow):
         # League tab (index 5) - refresh standings
         if index == 5 and hasattr(self, 'league_view'):
             self.league_view.load_standings()
+
+        # Playoffs tab (index 6) - refresh bracket and seeding
+        elif index == 6 and hasattr(self, 'playoff_view'):
+            self.playoff_view.refresh()

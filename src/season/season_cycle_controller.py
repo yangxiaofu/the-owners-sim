@@ -26,6 +26,7 @@ from typing import Dict, List, Any, Optional
 
 from calendar.date_models import Date
 from calendar.season_phase_tracker import SeasonPhase
+from calendar.phase_state import PhaseState
 from playoff_system.playoff_controller import PlayoffController
 from playoff_system.playoff_seeder import PlayoffSeeder
 from database.api import DatabaseAPI
@@ -96,6 +97,9 @@ class SeasonCycleController:
 
         self.start_date = start_date
 
+        # Create shared phase state (single source of truth for season phase)
+        self.phase_state = PhaseState(SeasonPhase.REGULAR_SEASON)
+
         # Import SeasonController here to avoid circular imports
         from demo.interactive_season_sim.season_controller import SeasonController
 
@@ -106,7 +110,8 @@ class SeasonCycleController:
             season_year=season_year,
             dynasty_id=dynasty_id,
             enable_persistence=enable_persistence,
-            verbose_logging=verbose_logging
+            verbose_logging=verbose_logging,
+            phase_state=self.phase_state
         )
 
         # Access the shared calendar from season controller
@@ -116,7 +121,6 @@ class SeasonCycleController:
         self.playoff_controller: Optional[PlayoffController] = None
 
         # State tracking
-        self.current_phase = SeasonPhase.REGULAR_SEASON
         self.active_controller = self.season_controller
 
         # Season summary (generated in offseason)
@@ -148,7 +152,7 @@ class SeasonCycleController:
             print(f"Start Date: {start_date}")
             print(f"Dynasty: {dynasty_id}")
             print(f"Database: {database_path}")
-            print(f"Current Phase: {self.current_phase.value}")
+            print(f"Current Phase: {self.phase_state.phase.value}")
             print(f"Persistence: {'ENABLED' if enable_persistence else 'DISABLED'}")
             print(f"{'='*80}")
 
@@ -170,7 +174,7 @@ class SeasonCycleController:
             }
         """
         # Handle offseason case
-        if self.current_phase == SeasonPhase.OFFSEASON:
+        if self.phase_state.phase == SeasonPhase.OFFSEASON:
             # Execute any scheduled offseason events for this day
             try:
                 current_date = self.calendar.get_current_date()
@@ -230,7 +234,7 @@ class SeasonCycleController:
         if phase_transition:
             result['phase_transition'] = phase_transition
 
-        result['current_phase'] = self.current_phase.value
+        result['current_phase'] = self.phase_state.phase.value
 
         return result
 
@@ -241,7 +245,7 @@ class SeasonCycleController:
         Returns:
             Dictionary with weekly summary
         """
-        if self.current_phase == SeasonPhase.OFFSEASON:
+        if self.phase_state.phase == SeasonPhase.OFFSEASON:
             return {
                 "week_complete": False,
                 "current_phase": "offseason",
@@ -256,7 +260,7 @@ class SeasonCycleController:
 
         # Check for phase transitions
         if self.verbose_logging:
-            print(f"\n[DEBUG] advance_week(): Before phase transition check, phase = {self.current_phase.value}")
+            print(f"\n[DEBUG] advance_week(): Before phase transition check, phase = {self.phase_state.phase.value}")
 
         phase_transition = self._check_phase_transition()
         if phase_transition:
@@ -265,9 +269,13 @@ class SeasonCycleController:
                 print(f"[DEBUG] advance_week(): Phase transition occurred: {phase_transition}")
 
         if self.verbose_logging:
-            print(f"[DEBUG] advance_week(): After phase transition check, phase = {self.current_phase.value}")
+            print(f"[DEBUG] advance_week(): After phase transition check, phase = {self.phase_state.phase.value}")
 
-        result['current_phase'] = self.current_phase.value
+        result['current_phase'] = self.phase_state.phase.value
+
+        # Add current date to result (matching what advance_day() returns)
+        # This ensures UI controllers can properly update the displayed date
+        result['date'] = str(self.calendar.get_current_date())
 
         return result
 
@@ -289,21 +297,76 @@ class SeasonCycleController:
             print(f"{'='*80}")
 
         # Continue until offseason
-        while self.current_phase != SeasonPhase.OFFSEASON:
+        while self.phase_state.phase != SeasonPhase.OFFSEASON:
             self.advance_week()
 
         return {
             "start_date": str(start_date),
             "end_date": str(self.calendar.get_current_date()),
             "total_games": self.total_games_played - initial_games,
-            "final_phase": self.current_phase.value,
+            "final_phase": self.phase_state.phase.value,
             "season_summary": self.season_summary,
             "success": True
         }
 
+    def simulate_to_phase_end(self, progress_callback=None) -> Dict[str, Any]:
+        """
+        Simulate until current phase ends (phase transition detected).
+
+        Stops when phase changes, giving user control at phase boundaries.
+        This allows users to review playoff brackets, make offseason decisions, etc.
+
+        Args:
+            progress_callback: Optional callback(week_num, games_played) for UI progress updates
+
+        Returns:
+            Summary dict with weeks_simulated, total_games, phase_transition info:
+            {
+                'start_date': str,
+                'end_date': str,
+                'weeks_simulated': int,
+                'total_games': int,
+                'starting_phase': str,
+                'ending_phase': str,
+                'phase_transition': bool,
+                'success': bool
+            }
+        """
+        starting_phase = self.phase_state.phase
+        start_date = self.calendar.get_current_date()
+        initial_games = self.total_games_played
+        weeks_simulated = 0
+
+        if self.verbose_logging:
+            title = f"SIMULATING TO END OF {starting_phase.value.upper()}"
+            print(f"\n{'='*80}")
+            print(f"{title.center(80)}")
+            print(f"{'='*80}")
+
+        # Continue until phase changes
+        while self.phase_state.phase == starting_phase and self.phase_state.phase != SeasonPhase.OFFSEASON:
+            result = self.advance_week()
+            weeks_simulated += 1
+
+            # Progress callback for UI updates
+            if progress_callback:
+                games_this_iteration = self.total_games_played - initial_games
+                progress_callback(weeks_simulated, games_this_iteration)
+
+        return {
+            'start_date': str(start_date),
+            'end_date': str(self.calendar.get_current_date()),
+            'weeks_simulated': weeks_simulated,
+            'total_games': self.total_games_played - initial_games,
+            'starting_phase': starting_phase.value,
+            'ending_phase': self.phase_state.phase.value,
+            'phase_transition': self.phase_state.phase != starting_phase,
+            'success': True
+        }
+
     def get_current_phase(self) -> SeasonPhase:
         """Get current season phase."""
-        return self.current_phase
+        return self.phase_state.phase
 
     def get_current_standings(self) -> Dict[str, Any]:
         """
@@ -312,7 +375,7 @@ class SeasonCycleController:
         Returns:
             Standings organized by division/conference
         """
-        if self.current_phase != SeasonPhase.REGULAR_SEASON:
+        if self.phase_state.phase != SeasonPhase.REGULAR_SEASON:
             # Return final standings from database
             return self.database_api.get_standings(
                 dynasty_id=self.dynasty_id,
@@ -328,7 +391,7 @@ class SeasonCycleController:
         Returns:
             Bracket data or None if not in playoffs
         """
-        if self.current_phase != SeasonPhase.PLAYOFFS:
+        if self.phase_state.phase != SeasonPhase.PLAYOFFS:
             return None
 
         if not self.playoff_controller:
@@ -339,7 +402,7 @@ class SeasonCycleController:
     def get_current_state(self) -> Dict[str, Any]:
         """Get comprehensive current state."""
         return {
-            "current_phase": self.current_phase.value,
+            "current_phase": self.phase_state.phase.value,
             "current_date": str(self.calendar.get_current_date()),
             "season_year": self.season_year,
             "dynasty_id": self.dynasty_id,
@@ -358,9 +421,9 @@ class SeasonCycleController:
             Transition info if occurred, None otherwise
         """
         if self.verbose_logging:
-            print(f"\n[DEBUG] Checking phase transition (current phase: {self.current_phase.value})")
+            print(f"\n[DEBUG] Checking phase transition (current phase: {self.phase_state.phase.value})")
 
-        if self.current_phase == SeasonPhase.REGULAR_SEASON:
+        if self.phase_state.phase == SeasonPhase.REGULAR_SEASON:
             if self._is_regular_season_complete():
                 self._transition_to_playoffs()
                 return {
@@ -369,7 +432,7 @@ class SeasonCycleController:
                     "trigger": "272_games_complete"
                 }
 
-        elif self.current_phase == SeasonPhase.PLAYOFFS:
+        elif self.phase_state.phase == SeasonPhase.PLAYOFFS:
             if self._is_super_bowl_complete():
                 if self.verbose_logging:
                     print(f"[DEBUG] Super Bowl complete! Transitioning to offseason...")
@@ -521,8 +584,10 @@ class SeasonCycleController:
                 dynasty_id=self.dynasty_id,
                 season_year=self.season_year,
                 wild_card_start_date=wild_card_date,
+                initial_seeding=playoff_seeding,  # Pass real seeding from regular season!
                 enable_persistence=self.enable_persistence,
-                verbose_logging=self.verbose_logging
+                verbose_logging=self.verbose_logging,
+                phase_state=self.phase_state
             )
 
             # Replace the playoff controller's calendar with the shared calendar
@@ -545,7 +610,7 @@ class SeasonCycleController:
             self.playoff_controller.brackets['wild_card'] = result['bracket']
 
             # 6. Update state
-            self.current_phase = SeasonPhase.PLAYOFFS
+            self.phase_state.phase = SeasonPhase.PLAYOFFS
             self.active_controller = self.playoff_controller
 
             if self.verbose_logging:
@@ -565,7 +630,7 @@ class SeasonCycleController:
             print(f"{'SEASON COMPLETE - ENTERING OFFSEASON'.center(80)}")
             print(f"{'='*80}")
             print(f"[DEBUG] _transition_to_offseason() called")
-            print(f"[DEBUG] Current phase before transition: {self.current_phase.value}")
+            print(f"[DEBUG] Current phase before transition: {self.phase_state.phase.value}")
 
         try:
             # 1. Get Super Bowl result
@@ -578,11 +643,11 @@ class SeasonCycleController:
 
             # 2. Update state
             if self.verbose_logging:
-                print(f"[DEBUG] Setting current_phase to OFFSEASON...")
-            self.current_phase = SeasonPhase.OFFSEASON
+                print(f"[DEBUG] Setting phase_state.phase to OFFSEASON...")
+            self.phase_state.phase = SeasonPhase.OFFSEASON
             self.active_controller = None  # No active controller in offseason
             if self.verbose_logging:
-                print(f"[DEBUG] Current phase after setting: {self.current_phase.value}")
+                print(f"[DEBUG] Current phase after setting: {self.phase_state.phase.value}")
 
             # Schedule offseason events
             try:
@@ -726,7 +791,7 @@ class SeasonCycleController:
     def __str__(self) -> str:
         """String representation"""
         return (f"SeasonCycleController(season={self.season_year}, "
-                f"phase={self.current_phase.value}, "
+                f"phase={self.phase_state.phase.value}, "
                 f"games={self.total_games_played})")
 
     def __repr__(self) -> str:

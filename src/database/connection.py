@@ -498,6 +498,7 @@ class DatabaseConnection:
                 contract_id INTEGER,            -- FK to player_contracts (future salary cap integration)
                 status TEXT DEFAULT 'active',   -- 'active', 'injured', 'suspended', 'practice_squad'
                 years_pro INTEGER DEFAULT 0,
+                birthdate TEXT DEFAULT NULL,    -- Player birth date (YYYY-MM-DD format)
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 

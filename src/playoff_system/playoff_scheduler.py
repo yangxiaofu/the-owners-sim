@@ -200,7 +200,10 @@ class PlayoffScheduler:
             game_id = self._generate_playoff_game_id(game, dynasty_id)
 
             # Check if this game is already scheduled (duplicate prevention)
-            existing_events = self.event_db_api.get_events_by_game_id(game_id)
+            # IMPORTANT: Use dynasty-aware query to prevent cross-dynasty conflicts
+            existing_events = self.event_db_api.get_events_by_game_id_and_dynasty(
+                game_id, dynasty_id
+            )
             if existing_events:
                 # Game already exists - skip to prevent duplicate simulation
                 skipped_duplicates += 1

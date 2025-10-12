@@ -63,7 +63,8 @@ class SimulationExecutor:
         database_path: Optional[str] = None,
         dynasty_id: str = "default",
         enable_persistence: bool = True,
-        season_year: Optional[int] = None
+        season_year: Optional[int] = None,
+        phase_state: Optional['PhaseState'] = None
     ):
         """
         Initialize simulation executor.
@@ -75,11 +76,13 @@ class SimulationExecutor:
             dynasty_id: Dynasty context for data isolation
             enable_persistence: Whether to persist game results to database
             season_year: Season year for filtering dynasty-specific events (extracted from calendar if None)
+            phase_state: Optional shared PhaseState object for phase reporting (uses calendar if None)
         """
         self.calendar = calendar
         self.event_db = event_db
         self.enable_persistence = enable_persistence
         self.dynasty_id = dynasty_id
+        self.phase_state = phase_state  # NEW: Store for phase reporting
 
         # Extract season year from calendar if not provided
         if season_year is None:
@@ -136,7 +139,7 @@ class SimulationExecutor:
                 "events_count": 0,
                 "events_completed": [],
                 "phase_transitions": [],
-                "current_phase": self.calendar.get_current_phase().value,
+                "current_phase": self._get_current_phase_value(),
                 "success": True,
                 "message": "No events scheduled for this day"
             }
@@ -209,7 +212,7 @@ class SimulationExecutor:
         print(f"DAY SIMULATION COMPLETE")
         print(f"{'='*80}")
         print(f"Events Completed: {len([e for e in events_completed if e.get('success', False)])}/{len(events_for_day)}")
-        print(f"Current Phase: {self.calendar.get_current_phase().value}")
+        print(f"Current Phase: {self._get_current_phase_value()}")
         if phase_transitions:
             print(f"Phase Transitions: {len(phase_transitions)}")
         if errors:
@@ -225,7 +228,7 @@ class SimulationExecutor:
             "games_played": games_played,  # Backward compatibility with SeasonController
             "events_executed": events_completed,  # Alternative name for offseason events
             "phase_transitions": [self._transition_to_dict(t) for t in phase_transitions],
-            "current_phase": self.calendar.get_current_phase().value,
+            "current_phase": self._get_current_phase_value(),
             "phase_info": self.calendar.get_phase_info(),
             "success": len(errors) == 0,
             "errors": errors
@@ -354,19 +357,29 @@ class SimulationExecutor:
         all_events_for_dynasty = []
 
         # Get playoff game events for this specific dynasty/season
-        playoff_prefix = f"playoff_{self.dynasty_id}_{self.season_year}_"
-        playoff_events = self.event_db.get_events_by_game_id_prefix(
-            playoff_prefix,
+        # Note: game_id format is "playoff_{season}_{round}_{number}"
+        # Dynasty isolation is via dynasty_id column, not game_id
+        all_playoff_events = self.event_db.get_events_by_dynasty(
+            dynasty_id=self.dynasty_id,
             event_type="GAME"
         )
+        playoff_events = [
+            e for e in all_playoff_events
+            if e.get('game_id', '').startswith(f'playoff_{self.season_year}_')
+        ]
         all_events_for_dynasty.extend(playoff_events)
 
         # Get preseason game events for this specific dynasty/season (future-proofing)
-        preseason_prefix = f"preseason_{self.dynasty_id}_{self.season_year}_"
-        preseason_events = self.event_db.get_events_by_game_id_prefix(
-            preseason_prefix,
+        # Note: game_id format is "preseason_{season}_{week}_{number}"
+        # Dynasty isolation is via dynasty_id column, not game_id
+        all_preseason_events = self.event_db.get_events_by_dynasty(
+            dynasty_id=self.dynasty_id,
             event_type="GAME"
         )
+        preseason_events = [
+            e for e in all_preseason_events
+            if e.get('game_id', '').startswith(f'preseason_{self.season_year}_')
+        ]
         all_events_for_dynasty.extend(preseason_events)
 
         # Get regular season game events for this specific dynasty
@@ -516,3 +529,9 @@ class SimulationExecutor:
     def get_phase_info(self) -> Dict[str, Any]:
         """Get comprehensive phase information from calendar."""
         return self.calendar.get_phase_info()
+
+    def _get_current_phase_value(self) -> str:
+        """Get current phase value for reporting."""
+        if self.phase_state:
+            return self.phase_state.phase.value
+        return self.calendar.get_current_phase().value

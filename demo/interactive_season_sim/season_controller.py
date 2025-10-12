@@ -79,7 +79,8 @@ class SeasonController:
         season_year: int,
         dynasty_id: str = "default",
         enable_persistence: bool = True,
-        verbose_logging: bool = True
+        verbose_logging: bool = True,
+        phase_state: Optional['PhaseState'] = None
     ):
         """
         Initialize season controller.
@@ -92,6 +93,7 @@ class SeasonController:
             dynasty_id: Dynasty context for data isolation
             enable_persistence: Whether to persist game results to database
             verbose_logging: Whether to print detailed progress messages
+            phase_state: Optional shared PhaseState object for multi-phase coordination
         """
         self.database_path = database_path
         self.season_year = season_year
@@ -109,10 +111,14 @@ class SeasonController:
         db_conn = DatabaseConnection(database_path)
         db_conn.ensure_dynasty_exists(dynasty_id)
 
+        # Store phase_state for passing to components
+        self.phase_state = phase_state
+
         # Initialize core components
         self.calendar = CalendarComponent(
             start_date=start_date,
-            season_year=season_year
+            season_year=season_year,
+            phase_state=phase_state
         )
 
         self.event_db = EventDatabaseAPI(database_path)
@@ -123,7 +129,8 @@ class SeasonController:
             database_path=database_path,
             dynasty_id=dynasty_id,
             enable_persistence=enable_persistence,
-            season_year=season_year
+            season_year=season_year,
+            phase_state=phase_state
         )
 
         self.database_api = DatabaseAPI(database_path)

@@ -569,6 +569,24 @@ class CalendarView(QWidget):
         """Refresh the calendar view with latest data."""
         self.load_events()
 
+    def refresh_current_date(self):
+        """
+        Refresh current_date from dynasty_state after simulation.
+
+        This ensures the calendar view stays synced with the simulation date
+        after day/week advancement. It re-queries the database for the current
+        simulation date and reloads events for the new current month.
+        """
+        print("[DEBUG CalendarView] refresh_current_date() called")
+
+        # Re-sync to current simulation date
+        self.current_date = self._get_initial_date()
+
+        print(f"[DEBUG CalendarView] Refreshed current_date to: {self.current_date}")
+
+        # Reload events for the new current month
+        self.load_events()
+
     def update_dynasty_info(self):
         """Update dynasty info label."""
         if self.controller:

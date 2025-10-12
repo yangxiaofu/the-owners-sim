@@ -281,6 +281,97 @@ class EventDatabaseAPI:
         finally:
             conn.close()
 
+    def get_events_by_game_id_and_dynasty(
+        self,
+        game_id: str,
+        dynasty_id: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve events for specific game AND dynasty.
+
+        This is the dynasty-aware version of get_events_by_game_id().
+        Use this for duplicate detection in dynasty-isolated scheduling.
+
+        This solves the cross-dynasty contamination issue where playoff games
+        from one dynasty would prevent scheduling in another dynasty.
+
+        Args:
+            game_id: Game identifier
+            dynasty_id: Dynasty identifier
+
+        Returns:
+            List of event dictionaries matching both game_id and dynasty_id,
+            ordered by timestamp (oldest first)
+            Empty list if no matching events found
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute(
+                'SELECT * FROM events WHERE game_id = ? AND dynasty_id = ? ORDER BY timestamp ASC',
+                (game_id, dynasty_id)
+            )
+
+            rows = cursor.fetchall()
+            events = [self._row_to_dict(row) for row in rows]
+
+            self.logger.debug(
+                f"Retrieved {len(events)} events for game_id: {game_id}, dynasty_id: {dynasty_id}"
+            )
+
+            return events
+
+        finally:
+            conn.close()
+
+    def delete_playoff_events_by_dynasty(
+        self,
+        dynasty_id: str,
+        season: int
+    ) -> int:
+        """
+        Delete all playoff events for a specific dynasty and season.
+
+        Useful for cleanup before rescheduling playoffs or resetting dynasty state.
+        This allows users to reschedule playoffs without cross-dynasty interference.
+
+        Args:
+            dynasty_id: Dynasty identifier
+            season: Season year
+
+        Returns:
+            Number of events deleted
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+
+        try:
+            # Delete all playoff games for this dynasty/season
+            cursor.execute('''
+                DELETE FROM events
+                WHERE dynasty_id = ?
+                AND game_id LIKE ?
+            ''', (dynasty_id, f'playoff_{season}_%'))
+
+            deleted_count = cursor.rowcount
+            conn.commit()
+
+            self.logger.info(
+                f"Deleted {deleted_count} playoff events for dynasty: {dynasty_id}, season: {season}"
+            )
+
+            return deleted_count
+
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Error deleting playoff events: {e}")
+            raise
+
+        finally:
+            conn.close()
+
     def get_events_by_type(self, event_type: str, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """
         Retrieve all events of a specific type.

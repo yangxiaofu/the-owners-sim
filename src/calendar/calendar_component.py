@@ -37,7 +37,8 @@ class CalendarComponent:
     MAX_ADVANCE_DAYS = 365
 
     def __init__(self, start_date: Union[Date, PyDate, str], season_year: Optional[int] = None,
-                 publisher: Optional[CalendarEventPublisher] = None):
+                 publisher: Optional[CalendarEventPublisher] = None,
+                 phase_state: Optional['PhaseState'] = None):
         """
         Initialize calendar component.
 
@@ -45,6 +46,7 @@ class CalendarComponent:
             start_date: Starting date (Date object, Python date, or string)
             season_year: NFL season year (e.g., 2024 for 2024-25 season)
             publisher: Optional event publisher for calendar notifications
+            phase_state: Optional shared PhaseState object for phase tracking
 
         Raises:
             InvalidDateException: If start_date is invalid
@@ -66,7 +68,15 @@ class CalendarComponent:
         if season_year is None:
             season_year = self._current_date.year
 
-        self._season_phase_tracker = SeasonPhaseTracker(self._current_date, season_year)
+        # Use shared phase_state if provided, otherwise create SeasonPhaseTracker
+        self._external_phase_state = phase_state
+        if phase_state is None:
+            # Backward compatibility: create internal phase tracker
+            self._season_phase_tracker = SeasonPhaseTracker(self._current_date, season_year)
+        else:
+            # Use external phase state (preferred for new code)
+            self._season_phase_tracker = None  # Don't need tracker for phase
+
         self._milestone_calculator = create_season_milestone_calculator()
         self._season_milestones: List[SeasonMilestone] = []
 
@@ -266,6 +276,10 @@ class CalendarComponent:
     def get_current_phase(self) -> SeasonPhase:
         """Get the current NFL season phase."""
         with self._lock:
+            # Use external phase state if provided
+            if self._external_phase_state:
+                return self._external_phase_state.phase
+            # Fallback to internal tracker (backward compatibility)
             return self._season_phase_tracker.get_current_phase()
 
     def get_current_week(self) -> int:
@@ -283,8 +297,12 @@ class CalendarComponent:
     def get_season_day(self) -> int:
         """Get the number of days since the season started."""
         with self._lock:
-            phase_info = self._season_phase_tracker.get_phase_info()
-            return phase_info.get("days_in_current_phase", 0)
+            # Use internal tracker if available
+            if self._season_phase_tracker:
+                phase_info = self._season_phase_tracker.get_phase_info()
+                return phase_info.get("days_in_current_phase", 0)
+            # External phase state doesn't track days in phase
+            return 0
 
     def is_offseason(self) -> bool:
         """Check if currently in the offseason."""
@@ -328,6 +346,11 @@ class CalendarComponent:
             PhaseTransition if a transition was triggered, None otherwise
         """
         with self._lock:
+            # Only internal tracker supports game completion tracking
+            if not self._season_phase_tracker:
+                # External phase state doesn't support game completion events
+                return None
+
             transition = self._season_phase_tracker.record_game_completion(game_event)
 
             if transition:
@@ -343,7 +366,16 @@ class CalendarComponent:
     def get_phase_info(self) -> Dict[str, Any]:
         """Get comprehensive information about the current season phase."""
         with self._lock:
-            base_info = self._season_phase_tracker.get_phase_info()
+            # Use external phase state if provided
+            if self._external_phase_state:
+                # Simplified phase info for external phase state
+                base_info = {
+                    "current_phase": self._external_phase_state.phase.value,
+                    "phase_name": self._external_phase_state.phase.name
+                }
+            else:
+                # Full phase info from internal tracker (backward compatibility)
+                base_info = self._season_phase_tracker.get_phase_info()
 
             # Add milestone information (avoid nested locking)
             next_milestone = self._milestone_calculator.get_next_milestone(
@@ -388,9 +420,25 @@ class CalendarComponent:
             The transition that was executed
         """
         with self._lock:
-            transition = self._season_phase_tracker.force_phase_transition(
-                to_phase, self._current_date, metadata
-            )
+            # Use external phase state if provided
+            if self._external_phase_state:
+                # Update external phase state directly
+                old_phase = self._external_phase_state.phase
+                self._external_phase_state.phase = to_phase
+
+                # Create transition object for consistency
+                transition = PhaseTransition(
+                    from_phase=old_phase,
+                    to_phase=to_phase,
+                    transition_date=self._current_date,
+                    metadata=metadata or {}
+                )
+            else:
+                # Use internal tracker (backward compatibility)
+                transition = self._season_phase_tracker.force_phase_transition(
+                    to_phase, self._current_date, metadata
+                )
+
             self._update_season_milestones()
 
             # Publish phase transition notification if publisher is configured
@@ -401,9 +449,13 @@ class CalendarComponent:
 
     def _update_season_milestones(self) -> None:
         """Update season milestones based on current state."""
-        # Get current phase info to determine season context
-        phase_info = self._season_phase_tracker.get_phase_info()
-        season_year = phase_info.get("season_year", self._current_date.year)
+        # Get season year from phase info if available
+        if self._season_phase_tracker:
+            phase_info = self._season_phase_tracker.get_phase_info()
+            season_year = phase_info.get("season_year", self._current_date.year)
+        else:
+            # External phase state doesn't track season year, use current year
+            season_year = self._current_date.year
 
         # Calculate milestones for the current season
         self._season_milestones = self._milestone_calculator.calculate_milestones_for_season(
