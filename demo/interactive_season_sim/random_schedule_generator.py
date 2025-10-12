@@ -66,6 +66,7 @@ class RandomScheduleGenerator:
         """
         self.event_db = event_db
         self.dynasty_id = dynasty_id
+        print(f"[DYNASTY_TRACE] RandomScheduleGenerator.__init__(): dynasty_id={dynasty_id}")
         self.logger = logger or logging.getLogger(__name__)
 
         # Get all team IDs and remove duplicates (work around any potential bugs)
@@ -292,6 +293,7 @@ class RandomScheduleGenerator:
                 )
 
                 # Create GameEvent
+                print(f"[DYNASTY_TRACE] Creating GameEvent with dynasty_id={self.dynasty_id}")
                 game = GameEvent(
                     away_team_id=away_team,
                     home_team_id=home_team,

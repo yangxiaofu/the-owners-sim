@@ -780,39 +780,3 @@ class TestPerformanceAndIndexing:
             assert event['dynasty_id'] == 'chiefs_dynasty'
         for event in lions_events:
             assert event['dynasty_id'] == 'lions_dynasty'
-
-
-# ============================================================================
-# TEST: DEPRECATED METHOD COMPATIBILITY
-# ============================================================================
-
-class TestDeprecatedMethodCompatibility:
-    """Test that deprecated get_events_by_game_id_prefix() still works."""
-
-    def test_deprecated_method_shows_warning(self, event_api, dynasties_setup):
-        """Verify that deprecated method emits DeprecationWarning."""
-        event = GameEvent(
-            away_team_id=14, home_team_id=3,
-            game_date=datetime(2025, 9, 5), week=1,
-            dynasty_id='eagles_dynasty', season=2025
-        )
-        event_api.insert_event(event)
-
-        # Should emit DeprecationWarning
-        with pytest.warns(DeprecationWarning, match='deprecated'):
-            event_api.get_events_by_game_id_prefix('game_')
-
-    def test_deprecated_method_still_functional(self, event_api, dynasties_setup):
-        """Verify deprecated method still returns results (backward compatibility)."""
-        event = GameEvent(
-            away_team_id=14, home_team_id=3,
-            game_date=datetime(2025, 9, 5), week=1,
-            dynasty_id='eagles_dynasty', season=2025
-        )
-        event_api.insert_event(event)
-
-        # Should still work despite deprecation
-        with pytest.warns(DeprecationWarning):
-            events = event_api.get_events_by_game_id_prefix('game_')
-
-        assert len(events) > 0

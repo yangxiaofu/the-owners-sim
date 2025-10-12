@@ -56,24 +56,27 @@ class GameLoopController:
     play calling, drive management, and statistics tracking.
     """
     
-    def __init__(self, game_manager: GameManager, 
+    def __init__(self, game_manager: GameManager,
                  home_team: Team, away_team: Team,
                  home_coaching_staff_config: Dict, away_coaching_staff_config: Dict,
                  home_roster: List, away_roster: List,
                  overtime_manager: IOvertimeManager = None,
-                 game_date=None):
+                 game_date=None,
+                 season_type: str = "regular_season"):
         """
         Initialize game loop controller with all required components
-        
+
         Args:
             game_manager: Initialized GameManager with clock, scoreboard, possession
             home_team: Home team metadata
-            away_team: Away team metadata  
+            away_team: Away team metadata
             home_coaching_staff_config: Coaching staff JSON configuration
             away_coaching_staff_config: Coaching staff JSON configuration
             home_roster: Home team player roster
             away_roster: Away team player roster
             overtime_manager: Manager for overtime rules, defaults to RegularSeasonOvertimeManager
+            game_date: Date of the game
+            season_type: Type of season ("regular_season" or "playoffs")
         """
         self.game_manager = game_manager
         self.home_team = home_team
@@ -81,6 +84,7 @@ class GameLoopController:
         self.home_roster = home_roster
         self.away_roster = away_roster
         self.game_date = game_date
+        self.season_type = season_type
         
         # Initialize overtime manager with default if none provided
         self.overtime_manager = overtime_manager or RegularSeasonOvertimeManager()
@@ -516,6 +520,7 @@ class GameLoopController:
             game_duration_minutes=240,  # TODO: Calculate actual duration
             overtime_played=False,  # TODO: Implement overtime detection
             date=self.game_date,
+            season_type=self.season_type,  # ✅ FIX: Pass season_type to GameResult
             # ✅ FIXED: Direct object access - guaranteed objects with attributes
             player_stats=player_stats,              # List[PlayerStats] - guaranteed objects
             home_team_stats=home_team_stats,        # TeamStats - guaranteed object

@@ -259,7 +259,11 @@ class TeamRosterGenerator:
             )
 
             # Add depth_chart_order attribute (loaded from database)
-            player.depth_chart_order = row.get('depth_chart_order', 99)
+            # sqlite3.Row doesn't have .get() method, use try/except for column access
+            try:
+                player.depth_chart_order = row['depth_chart_order']
+            except (KeyError, IndexError):
+                player.depth_chart_order = 99  # Default if column doesn't exist
 
             roster.append(player)
 

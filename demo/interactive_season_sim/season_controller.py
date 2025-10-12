@@ -98,6 +98,7 @@ class SeasonController:
         self.database_path = database_path
         self.season_year = season_year
         self.dynasty_id = dynasty_id
+        print(f"[DYNASTY_TRACE] SeasonController.__init__(): dynasty_id={dynasty_id}")
         self.enable_persistence = enable_persistence
         self.verbose_logging = verbose_logging
 
@@ -499,12 +500,23 @@ class SeasonController:
             print(f"INITIALIZING SEASON SCHEDULE")
             print(f"{'='*80}")
 
-        # Check if schedule already exists
-        existing_games = self.event_db.get_events_by_type("GAME")
+        # Check if schedule already exists for this dynasty
+        # Use dynasty-filtered query to prevent cross-dynasty data contamination
+        existing_games = self.event_db.get_events_by_dynasty(
+            dynasty_id=self.dynasty_id,
+            event_type="GAME"
+        )
 
-        if existing_games:
+        # Filter for regular season games only (exclude playoff games)
+        regular_season_games = [
+            e for e in existing_games
+            if not e.get('event_id', '').startswith('playoff_')
+            and not e.get('event_id', '').startswith('preseason_')
+        ]
+
+        if regular_season_games:
             if self.verbose_logging:
-                print(f"✅ Found existing schedule: {len(existing_games)} games")
+                print(f"✅ Found existing schedule: {len(regular_season_games)} games")
                 print(f"{'='*80}")
             return
 

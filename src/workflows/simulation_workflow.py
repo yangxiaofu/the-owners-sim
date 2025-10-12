@@ -311,9 +311,10 @@ class SimulationWorkflow:
             print(f"   Dynasty: {self.config.dynasty_id}")
 
         try:
-            # Generate unique game ID using simulation date
-            timestamp = game_event.game_date.strftime('%Y%m%d_%H%M%S')
-            game_id = f"{game_event.away_team_id}_{game_event.home_team_id}_{timestamp}"
+            # Use the game_id from the GameEvent to maintain consistency
+            # This ensures scheduled events and completed games have matching IDs
+            # for proper calendar deduplication
+            game_id = game_event.get_game_id()
 
             # Prepare game result data structure
             game_result_data = {

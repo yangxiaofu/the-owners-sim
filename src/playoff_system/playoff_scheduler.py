@@ -192,6 +192,12 @@ class PlayoffScheduler:
         Returns:
             List of event IDs for created events (excludes already-scheduled games)
         """
+        # LOGGING: Track game event creation
+        print(f"\n[PLAYOFF_SCHEDULING] _create_game_events() called")
+        print(f"[PLAYOFF_SCHEDULING] Dynasty: {dynasty_id}")
+        print(f"[PLAYOFF_SCHEDULING] Bracket round: {bracket.round_name if hasattr(bracket, 'round_name') else 'unknown'}")
+        print(f"[PLAYOFF_SCHEDULING] Games in bracket: {len(bracket.games)}")
+
         event_ids = []
         skipped_duplicates = 0
 
@@ -199,13 +205,20 @@ class PlayoffScheduler:
             # Generate game_id first to check for duplicates
             game_id = self._generate_playoff_game_id(game, dynasty_id)
 
+            print(f"[PLAYOFF_SCHEDULING]   Processing game: {game_id}")
+
             # Check if this game is already scheduled (duplicate prevention)
             # IMPORTANT: Use dynasty-aware query to prevent cross-dynasty conflicts
             existing_events = self.event_db_api.get_events_by_game_id_and_dynasty(
                 game_id, dynasty_id
             )
+
+            print(f"[PLAYOFF_SCHEDULING]     Existing events for this game_id: {len(existing_events)}")
+
             if existing_events:
                 # Game already exists - skip to prevent duplicate simulation
+                print(f"[PLAYOFF_SCHEDULING]     ⚠️  SKIPPING: Game already scheduled")
+                print(f"[PLAYOFF_SCHEDULING]        Existing event_id: {existing_events[0]['event_id']}")
                 skipped_duplicates += 1
                 # Still include the existing event_id in return list
                 event_ids.append(existing_events[0]['event_id'])
@@ -230,8 +243,15 @@ class PlayoffScheduler:
             )
 
             # Store event and capture event ID
+            print(f"[PLAYOFF_SCHEDULING]     ✅ Creating NEW event for {game_id}")
             stored_event = self.event_db_api.insert_event(event)
+            print(f"[PLAYOFF_SCHEDULING]        New event_id: {stored_event.event_id}")
             event_ids.append(stored_event.event_id)
+
+        print(f"[PLAYOFF_SCHEDULING] _create_game_events() complete:")
+        print(f"[PLAYOFF_SCHEDULING]   New events created: {len(event_ids) - skipped_duplicates}")
+        print(f"[PLAYOFF_SCHEDULING]   Duplicates skipped: {skipped_duplicates}")
+        print(f"[PLAYOFF_SCHEDULING]   Total event_ids returned: {len(event_ids)}")
 
         if skipped_duplicates > 0:
             print(f"⚠️  Skipped {skipped_duplicates} already-scheduled playoff game(s)")

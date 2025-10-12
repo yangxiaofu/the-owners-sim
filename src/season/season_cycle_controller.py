@@ -68,6 +68,7 @@ class SeasonCycleController:
         dynasty_id: str = "default",
         season_year: int = 2024,
         start_date: Optional[Date] = None,
+        initial_phase: SeasonPhase = SeasonPhase.REGULAR_SEASON,
         enable_persistence: bool = True,
         verbose_logging: bool = True
     ):
@@ -80,11 +81,14 @@ class SeasonCycleController:
             season_year: NFL season year (e.g., 2024)
             start_date: Dynasty start date - should be ONE DAY BEFORE first game
                        (defaults to Sept 4 for first game on Sept 5)
+            initial_phase: Starting phase (REGULAR_SEASON, PLAYOFFS, or OFFSEASON)
+                          Used when loading saved dynasty mid-season
             enable_persistence: Whether to save stats to database
             verbose_logging: Whether to print progress messages
         """
         self.database_path = database_path
         self.dynasty_id = dynasty_id
+        print(f"[DYNASTY_TRACE] SeasonCycleController.__init__(): dynasty_id={dynasty_id}")
         self.season_year = season_year
         self.enable_persistence = enable_persistence
         self.verbose_logging = verbose_logging
@@ -97,8 +101,8 @@ class SeasonCycleController:
 
         self.start_date = start_date
 
-        # Create shared phase state (single source of truth for season phase)
-        self.phase_state = PhaseState(SeasonPhase.REGULAR_SEASON)
+        # Create shared phase state with correct starting phase (single source of truth)
+        self.phase_state = PhaseState(initial_phase)
 
         # Import SeasonController here to avoid circular imports
         from demo.interactive_season_sim.season_controller import SeasonController
@@ -120,9 +124,6 @@ class SeasonCycleController:
         # Playoff controller created when needed
         self.playoff_controller: Optional[PlayoffController] = None
 
-        # State tracking
-        self.active_controller = self.season_controller
-
         # Season summary (generated in offseason)
         self.season_summary: Optional[Dict[str, Any]] = None
 
@@ -130,7 +131,7 @@ class SeasonCycleController:
         self.total_games_played = 0
         self.total_days_simulated = 0
 
-        # Database API for data retrieval
+        # Database API for data retrieval (MUST be initialized before phase-aware initialization)
         self.database_api = DatabaseAPI(database_path)
 
         # Calculate last scheduled regular season game date for flexible end-of-season detection
@@ -143,6 +144,19 @@ class SeasonCycleController:
             owner_name=None,
             team_id=None
         )
+
+        # State tracking - set active controller based on initial phase
+        # IMPORTANT: This comes AFTER database_api initialization because _restore_playoff_controller() needs it
+        if initial_phase == SeasonPhase.PLAYOFFS:
+            # Restore playoff controller from database
+            self._restore_playoff_controller()
+            self.active_controller = self.playoff_controller
+        elif initial_phase == SeasonPhase.OFFSEASON:
+            # No active controller in offseason
+            self.active_controller = None
+        else:
+            # Regular season - use season controller
+            self.active_controller = self.season_controller
 
         if self.verbose_logging:
             print(f"\n{'='*80}")
@@ -344,9 +358,24 @@ class SeasonCycleController:
             print(f"{'='*80}")
 
         # Continue until phase changes
+        consecutive_empty_weeks = 0
+        max_empty_weeks = 3  # Safety valve: stop if 3 weeks pass with no games
+
         while self.phase_state.phase == starting_phase and self.phase_state.phase != SeasonPhase.OFFSEASON:
+            games_before = self.total_games_played
             result = self.advance_week()
+            games_after = self.total_games_played
             weeks_simulated += 1
+
+            # Track consecutive empty weeks (no games played)
+            if games_after == games_before:
+                consecutive_empty_weeks += 1
+                if consecutive_empty_weeks >= max_empty_weeks:
+                    if self.verbose_logging:
+                        print(f"[WARNING] Stopping simulation: {consecutive_empty_weeks} consecutive weeks with no games")
+                    break
+            else:
+                consecutive_empty_weeks = 0  # Reset counter when games are played
 
             # Progress callback for UI updates
             if progress_callback:
@@ -452,23 +481,33 @@ class SeasonCycleController:
         This provides flexible end-of-season detection that adapts to any schedule length
         (17 weeks, 18 weeks, etc.) without code changes.
 
+        Filters:
+        - Only this dynasty's games (dynasty_id)
+        - Only regular season games (exclude playoffs/preseason)
+        - Only reasonable weeks (weeks 1-18 to avoid corrupted data)
+
         Returns:
-            Date of the last scheduled regular season game
+            Date of the last scheduled regular season game for this dynasty
         """
         try:
             # Get all GAME events from event database
             all_game_events = self.season_controller.event_db.get_events_by_type("GAME")
 
-            # Filter for regular season games (exclude playoff/preseason)
+            # Filter for regular season games WITH DYNASTY ISOLATION
             regular_season_events = [
                 e for e in all_game_events
-                if not e.get('game_id', '').startswith('playoff_')
+                # CRITICAL: Only look at this dynasty's games
+                if e.get('dynasty_id') == self.dynasty_id
+                # Exclude playoff and preseason games
+                and not e.get('game_id', '').startswith('playoff_')
                 and not e.get('game_id', '').startswith('preseason_')
+                # CRITICAL: Only include weeks 1-18 (ignore corrupted future games)
+                and 1 <= e.get('data', {}).get('parameters', {}).get('week', 0) <= 18
             ]
 
             if not regular_season_events:
                 # No regular season games scheduled - return season end date as fallback
-                self.logger.warning("No regular season games found in event database")
+                self.logger.warning(f"No regular season games found for dynasty {self.dynasty_id}")
                 return Date(self.season_year, 12, 31)  # Dec 31 fallback
 
             # Find the event with the maximum timestamp
@@ -483,7 +522,9 @@ class SeasonCycleController:
             )
 
             if self.verbose_logging:
-                self.logger.info(f"Last regular season game scheduled for: {last_date}")
+                game_id = last_event.get('game_id', 'unknown')
+                week = last_event.get('data', {}).get('parameters', {}).get('week', '?')
+                self.logger.info(f"Last regular season game scheduled for: {last_date} (Week {week}, game_id={game_id})")
 
             return last_date
 
@@ -494,16 +535,38 @@ class SeasonCycleController:
 
     def _is_regular_season_complete(self) -> bool:
         """
-        Check if regular season is complete by comparing current date to last scheduled game.
+        Check if regular season is complete.
 
-        This replaces the hardcoded game count check (>= 272) with a flexible date-based
-        approach that adapts to any schedule length.
+        Uses a hybrid approach for reliability:
+        1. Primary: Check if 272 games have been played (most reliable)
+        2. Fallback: Check if current date is after last scheduled game
+
+        This handles both normal completion and edge cases (corrupted schedules).
 
         Returns:
-            True if current date is after the last scheduled regular season game
+            True if regular season is complete (either by game count or date)
         """
+        # PRIMARY CHECK: Have all 272 regular season games been played?
+        # This is the most reliable indicator and handles corrupted schedules
+        games_played = self.total_games_played
+        if games_played >= 272:
+            if self.verbose_logging:
+                print(f"[DEBUG] Regular season complete: {games_played} games played (threshold: 272)")
+            return True
+
+        # FALLBACK CHECK: Has date passed last scheduled regular season game?
+        # This handles edge cases where games might not all be played
         current_date = self.calendar.get_current_date()
-        return current_date > self.last_regular_season_game_date
+        date_check = current_date > self.last_regular_season_game_date
+
+        if self.verbose_logging:
+            print(f"[DEBUG] Regular season check:")
+            print(f"  - Games played: {games_played}/272")
+            print(f"  - Current date: {current_date}")
+            print(f"  - Last scheduled game: {self.last_regular_season_game_date}")
+            print(f"  - Date check result: {date_check}")
+
+        return date_check
 
     def _is_super_bowl_complete(self) -> bool:
         """Check if Super Bowl has been played."""
@@ -529,6 +592,12 @@ class SeasonCycleController:
 
     def _transition_to_playoffs(self):
         """Execute transition from regular season to playoffs."""
+        # Guard: prevent redundant transitions if already in playoffs
+        if self.phase_state.phase == SeasonPhase.PLAYOFFS:
+            if self.verbose_logging:
+                print(f"\n⚠️  Already in playoffs phase, skipping transition")
+            return
+
         if self.verbose_logging:
             print(f"\n{'='*80}")
             print(f"{'REGULAR SEASON COMPLETE - PLAYOFFS STARTING'.center(80)}")
@@ -598,29 +667,107 @@ class SeasonCycleController:
             # Override the playoff controller's random seeding with real seeding
             self.playoff_controller.original_seeding = playoff_seeding
 
-            # Schedule Wild Card round with real seeding
-            result = self.playoff_controller.playoff_scheduler.schedule_wild_card_round(
-                seeding=playoff_seeding,
-                start_date=wild_card_date,
-                season=self.season_year,
-                dynasty_id=self.dynasty_id
-            )
-
-            # Store the wild card bracket
-            self.playoff_controller.brackets['wild_card'] = result['bracket']
+            # Note: PlayoffController.__init__() already handles Wild Card scheduling
+            # via _initialize_playoff_bracket(), which checks for existing playoff games
+            # and either schedules new games OR reconstructs bracket from existing games.
+            # No need to schedule here - that would bypass the duplicate check!
 
             # 6. Update state
             self.phase_state.phase = SeasonPhase.PLAYOFFS
             self.active_controller = self.playoff_controller
 
             if self.verbose_logging:
-                print(f"\n✅ Playoff bracket initialized: {result['games_scheduled']} games scheduled")
+                print(f"\n✅ Playoff transition complete")
+                print(f"   PlayoffController initialized and bracket ready")
                 print(f"{'='*80}\n")
 
         except Exception as e:
             self.logger.error(f"Error transitioning to playoffs: {e}")
             if self.verbose_logging:
                 print(f"❌ Playoff transition failed: {e}")
+            raise
+
+    def _restore_playoff_controller(self):
+        """
+        Restore PlayoffController when loading saved dynasty mid-playoffs.
+
+        Called during initialization when phase_state indicates dynasty is in playoffs.
+        Reconstructs bracket from existing database events without re-scheduling games.
+        """
+        # Guard: prevent duplicate initialization
+        if self.playoff_controller is not None:
+            if self.verbose_logging:
+                print(f"⚠️  Playoff controller already initialized, skipping restoration")
+            return
+
+        try:
+            if self.verbose_logging:
+                print(f"\n{'='*80}")
+                print(f"{'RESTORING PLAYOFF STATE FROM DATABASE'.center(80)}")
+                print(f"{'='*80}")
+
+            # 1. Query database for final standings (needed for seeding)
+            standings_data = self.database_api.get_standings(
+                dynasty_id=self.dynasty_id,
+                season=self.season_year
+            )
+
+            if not standings_data or not standings_data.get('divisions'):
+                self.logger.error("No standings found - cannot restore playoff controller")
+                raise RuntimeError("Cannot restore playoff bracket - no standings available")
+
+            # 2. Convert standings to format expected by PlayoffSeeder
+            standings_dict = {}
+            for division_name, teams in standings_data.get('divisions', {}).items():
+                for team_data in teams:
+                    team_id = team_data['team_id']
+                    standings_dict[team_id] = team_data['standing']
+
+            # 3. Calculate playoff seeding
+            seeder = PlayoffSeeder()
+            playoff_seeding = seeder.calculate_seeding(
+                standings=standings_dict,
+                season=self.season_year,
+                week=18
+            )
+
+            # 4. Estimate Wild Card date (mid-January)
+            # When restoring, exact date matters less since games already scheduled
+            wild_card_date = Date(self.season_year + 1, 1, 18)
+
+            if self.verbose_logging:
+                print(f"\n📋 Playoff Seeding Restored")
+                print(f"📅 Wild Card Weekend: {wild_card_date}")
+
+            # 5. Initialize PlayoffController
+            # The controller's __init__ will detect existing playoff games and reconstruct bracket
+            self.playoff_controller = PlayoffController(
+                database_path=self.database_path,
+                dynasty_id=self.dynasty_id,
+                season_year=self.season_year,
+                wild_card_start_date=wild_card_date,
+                initial_seeding=playoff_seeding,
+                enable_persistence=self.enable_persistence,
+                verbose_logging=self.verbose_logging,
+                phase_state=self.phase_state
+            )
+
+            # 6. Share calendar for date continuity
+            self.playoff_controller.calendar = self.calendar
+            self.playoff_controller.simulation_executor.calendar = self.calendar
+
+            # 7. Set as active controller
+            self.active_controller = self.playoff_controller
+
+            if self.verbose_logging:
+                print(f"\n✅ PlayoffController restored successfully")
+                print(f"   Bracket reconstructed from existing database events")
+                print(f"{'='*80}\n")
+
+        except Exception as e:
+            self.logger.error(f"Error restoring playoff controller: {e}")
+            if self.verbose_logging:
+                print(f"❌ Playoff restoration failed: {e}")
             raise
 
     def _transition_to_offseason(self):
@@ -631,6 +778,25 @@ class SeasonCycleController:
             print(f"{'='*80}")
             print(f"[DEBUG] _transition_to_offseason() called")
             print(f"[DEBUG] Current phase before transition: {self.phase_state.phase.value}")
+
+        # CRITICAL DIAGNOSTIC: Verify playoff events exist BEFORE transition
+        import sqlite3
+        print(f"\n[PLAYOFF_LIFECYCLE] ===== BEFORE OFFSEASON TRANSITION =====")
+        verify_conn = sqlite3.connect(self.database_path)
+        verify_cursor = verify_conn.cursor()
+        verify_cursor.execute("""
+            SELECT COUNT(*) FROM events
+            WHERE dynasty_id = ?
+              AND event_type = 'GAME'
+              AND game_id LIKE ?
+        """, (self.dynasty_id, f"playoff_{self.season_year}_%"))
+        playoff_count_before = verify_cursor.fetchone()[0]
+        verify_conn.close()
+        print(f"[PLAYOFF_LIFECYCLE]   Dynasty: {self.dynasty_id}")
+        print(f"[PLAYOFF_LIFECYCLE]   Database: {self.database_path}")
+        print(f"[PLAYOFF_LIFECYCLE]   Playoff events in database: {playoff_count_before}")
+        if playoff_count_before == 0:
+            print(f"[PLAYOFF_LIFECYCLE]   ⚠️  WARNING: NO PLAYOFF EVENTS FOUND!")
 
         try:
             # 1. Get Super Bowl result
@@ -702,6 +868,26 @@ class SeasonCycleController:
                 print(f"   Total Games: {self.total_games_played}")
                 print(f"   Total Days: {self.total_days_simulated}")
                 print(f"{'='*80}\n")
+
+            # CRITICAL DIAGNOSTIC: Verify playoff events STILL exist AFTER transition
+            print(f"\n[PLAYOFF_LIFECYCLE] ===== AFTER OFFSEASON TRANSITION =====")
+            verify_conn_after = sqlite3.connect(self.database_path)
+            verify_cursor_after = verify_conn_after.cursor()
+            verify_cursor_after.execute("""
+                SELECT COUNT(*) FROM events
+                WHERE dynasty_id = ?
+                  AND event_type = 'GAME'
+                  AND game_id LIKE ?
+            """, (self.dynasty_id, f"playoff_{self.season_year}_%"))
+            playoff_count_after = verify_cursor_after.fetchone()[0]
+            verify_conn_after.close()
+            print(f"[PLAYOFF_LIFECYCLE]   Playoff events in database: {playoff_count_after}")
+            if playoff_count_after == 0:
+                print(f"[PLAYOFF_LIFECYCLE]   ⚠️  WARNING: PLAYOFF EVENTS DISAPPEARED!")
+            elif playoff_count_after != playoff_count_before:
+                print(f"[PLAYOFF_LIFECYCLE]   ⚠️  WARNING: Event count changed! Before: {playoff_count_before}, After: {playoff_count_after}")
+            else:
+                print(f"[PLAYOFF_LIFECYCLE]   ✅ Playoff events preserved ({playoff_count_after} events)")
 
         except Exception as e:
             self.logger.error(f"Error transitioning to offseason: {e}")

@@ -106,10 +106,10 @@ class DatabaseDemoPersister(DemoPersister):
             # Insert game record
             query = """
                 INSERT OR REPLACE INTO games (
-                    game_id, dynasty_id, season, week, game_type,
+                    game_id, dynasty_id, season, week, game_type, season_type,
                     away_team_id, home_team_id, away_score, home_score,
                     total_plays, game_duration_minutes, overtime_periods, game_date, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
 
             params = (
@@ -118,6 +118,7 @@ class DatabaseDemoPersister(DemoPersister):
                 game_data.get('season', 2024),
                 game_data.get('week', 0),
                 game_data.get('game_type', 'regular'),
+                game_data.get('season_type', 'regular_season'),  # ✅ ADDED: season_type
                 game_data['away_team_id'],
                 game_data['home_team_id'],
                 game_data['away_score'],

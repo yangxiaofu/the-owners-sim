@@ -56,6 +56,7 @@ class GameEvent(BaseEvent):
             game_type: Specific game type ("regular", "wildcard", "divisional", "conference", "super_bowl")
         """
         super().__init__(event_id=event_id, timestamp=game_date, dynasty_id=dynasty_id)
+        print(f"[DYNASTY_TRACE] GameEvent.__init__(): away={away_team_id}, home={home_team_id}, dynasty_id={dynasty_id}")
 
         # Validate team IDs
         if not (1 <= away_team_id <= 32):
@@ -113,7 +114,10 @@ class GameEvent(BaseEvent):
                 self._simulator = FullGameSimulator(
                     away_team_id=self.away_team_id,
                     home_team_id=self.home_team_id,
-                    overtime_type=self.overtime_type
+                    dynasty_id=self.dynasty_id,
+                    db_path="data/database/nfl_simulation.db",  # TODO: Make configurable
+                    overtime_type=self.overtime_type,
+                    season_type=self.season_type
                 )
 
             # Run game simulation
@@ -337,7 +341,7 @@ class GameEvent(BaseEvent):
             home_team_id=params['home_team_id'],
             game_date=datetime.fromisoformat(params['game_date']),
             week=params['week'],
-            dynasty_id=params.get('dynasty_id', 'default'),
+            dynasty_id=event_data.get('dynasty_id') or params.get('dynasty_id'),
             game_id=event_data['game_id'],
             event_id=event_data['event_id'],
             overtime_type=params.get('overtime_type', 'regular_season'),

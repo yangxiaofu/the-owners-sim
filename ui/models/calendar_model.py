@@ -243,10 +243,8 @@ class CalendarModel(QAbstractTableModel):
         parameters = data.get('parameters', {})
 
         if event_type == 'GAME':
-            # Format: "Week X: City Nickname @ City Nickname"
             away_id = parameters.get('away_team_id', '?')
             home_id = parameters.get('home_team_id', '?')
-            week = parameters.get('week', '?')
 
             # Look up team names from IDs
             away_team = self._team_loader.get_team_by_id(away_id) if isinstance(away_id, int) else None
@@ -256,7 +254,18 @@ class CalendarModel(QAbstractTableModel):
             away_name = f"{away_team.city} {away_team.nickname}" if away_team else f"Team {away_id}"
             home_name = f"{home_team.city} {home_team.nickname}" if home_team else f"Team {home_id}"
 
-            return f"Week {week}: {away_name} @ {home_name}"
+            # Check if this is a playoff game
+            game_id = event.get('game_id', '')
+            if game_id.startswith('playoff_'):
+                # Extract playoff round from game_id
+                # Format: playoff_YYYY_round_name_game_number
+                # Examples: playoff_2025_wild_card_1, playoff_2025_divisional_1, playoff_2025_super_bowl
+                round_label = self._extract_playoff_round(game_id)
+                return f"{round_label}: {away_name} @ {home_name}"
+            else:
+                # Regular season game - use week number
+                week = parameters.get('week', '?')
+                return f"Week {week}: {away_name} @ {home_name}"
 
         elif event_type == 'DEADLINE':
             # Use description field from parameters
@@ -274,6 +283,55 @@ class CalendarModel(QAbstractTableModel):
 
         # Fallback: try to get a description from parameters or data
         return parameters.get('description', data.get('description', 'Unknown Event'))
+
+    def _extract_playoff_round(self, game_id: str) -> str:
+        """
+        Extract and format playoff round name from game_id.
+
+        Playoff game_id format: playoff_{season}_{round_name}_{game_number}
+        Examples:
+            - playoff_2025_wild_card_1 → "Wild Card"
+            - playoff_2025_divisional_1 → "Divisional Round"
+            - playoff_2025_conference_1 → "Conference Championship"
+            - playoff_2025_super_bowl → "Super Bowl"
+
+        Args:
+            game_id: Playoff game identifier
+
+        Returns:
+            Formatted playoff round label
+        """
+        try:
+            # Split game_id by underscore
+            parts = game_id.split('_')
+
+            # Skip 'playoff' and season year (first 2 parts)
+            # Take remaining parts (round name + optional game number)
+            remaining = parts[2:]
+
+            # Remove game number if present (last part is digit)
+            if remaining and remaining[-1].isdigit():
+                round_parts = remaining[:-1]
+            else:
+                round_parts = remaining
+
+            # Join parts to get round name (e.g., 'wild_card', 'divisional')
+            round_name = '_'.join(round_parts)
+
+            # Map round names to display labels
+            round_labels = {
+                'wild_card': 'Wild Card',
+                'divisional': 'Divisional Round',
+                'conference': 'Conference Championship',
+                'super_bowl': 'Super Bowl'
+            }
+
+            # Return formatted label or fallback to title case
+            return round_labels.get(round_name, round_name.replace('_', ' ').title())
+
+        except (IndexError, AttributeError):
+            # Fallback if game_id format is unexpected
+            return 'Playoff Game'
 
     def _format_status(self, event: Dict[str, Any]) -> str:
         """

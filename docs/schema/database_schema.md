@@ -359,7 +359,7 @@ INSERT INTO player_game_stats (
 
 ### 4. standings
 
-Team records with conference/division/home/away splits.
+Team records with conference/division/home/away splits, separated by season type (regular season vs playoffs).
 
 ```sql
 CREATE TABLE standings (
@@ -367,6 +367,10 @@ CREATE TABLE standings (
     dynasty_id TEXT NOT NULL,
     team_id INTEGER NOT NULL,
     season INTEGER NOT NULL,
+
+    -- Season type discriminator for regular season vs playoff separation
+    season_type TEXT NOT NULL DEFAULT 'regular_season',
+    -- Values: 'regular_season' | 'playoffs'
 
     -- Overall record
     wins INTEGER DEFAULT 0,
@@ -395,7 +399,7 @@ CREATE TABLE standings (
     current_streak TEXT,
     division_rank INTEGER,
 
-    UNIQUE(dynasty_id, team_id, season)
+    UNIQUE(dynasty_id, team_id, season, season_type)
 );
 ```
 
@@ -407,9 +411,10 @@ CREATE TABLE standings (
 | `dynasty_id` | TEXT | NOT NULL | Dynasty isolation |
 | `team_id` | INTEGER | NOT NULL | Team ID (1-32) |
 | `season` | INTEGER | NOT NULL | Season year |
-| `wins` | INTEGER | DEFAULT 0 | Total wins |
-| `losses` | INTEGER | DEFAULT 0 | Total losses |
-| `ties` | INTEGER | DEFAULT 0 | Total ties |
+| `season_type` | TEXT | NOT NULL, DEFAULT 'regular_season' | **NEW v2.4.0**: Season type for record separation ('regular_season' or 'playoffs') |
+| `wins` | INTEGER | DEFAULT 0 | Total wins for this season type |
+| `losses` | INTEGER | DEFAULT 0 | Total losses for this season type |
+| `ties` | INTEGER | DEFAULT 0 | Total ties for this season type |
 | `points_for` | INTEGER | DEFAULT 0 | Total points scored |
 | `points_against` | INTEGER | DEFAULT 0 | Total points allowed |
 | `division_wins` | INTEGER | DEFAULT 0 | Division game wins |
@@ -423,30 +428,61 @@ CREATE TABLE standings (
 | `current_streak` | TEXT | | Streak notation (e.g., "W3", "L2") |
 | `division_rank` | INTEGER | | Current division rank |
 
-**Unique Constraint**: One standings record per (dynasty_id, team_id, season)
+**Unique Constraint**: One standings record per (dynasty_id, team_id, season, season_type)
+
+**Season Type Separation** (v2.4.0):
+Each team has TWO standings records per season:
+- `season_type='regular_season'` - Regular season record (e.g., 14-3)
+- `season_type='playoffs'` - Playoff record (e.g., 2-1)
+
+This allows separate tracking and display of regular season vs playoff performance.
 
 **Indexes**:
 ```sql
 CREATE INDEX idx_standings_dynasty ON standings(dynasty_id);
 CREATE INDEX idx_standings_team ON standings(team_id);
 CREATE INDEX idx_standings_season ON standings(season);
+
+-- v2.4.0: Season type indexes for efficient filtering
+CREATE UNIQUE INDEX idx_standings_unique ON standings(dynasty_id, team_id, season, season_type);
+CREATE INDEX idx_standings_season_type ON standings(dynasty_id, season, season_type);
+CREATE INDEX idx_standings_team_season_type ON standings(team_id, season, season_type);
 ```
 
 **Example Data**:
 ```sql
+-- Regular season record
 INSERT INTO standings VALUES (
     1,
     'eagles_rebuild_2024',
     22,  -- Detroit Lions
     2024,
-    12, 4, 0,  -- 12-4 record
-    4, 2,      -- 4-2 division
-    9, 3,      -- 9-3 conference
-    7, 1,      -- 7-1 home
-    5, 3,      -- 5-3 away
-    428, 312,  -- Points
+    'regular_season',  -- Regular season record
+    14, 3, 0,  -- 14-3 regular season record
+    5, 1,      -- 5-1 division
+    11, 2,     -- 11-2 conference
+    8, 0,      -- 8-0 home
+    6, 3,      -- 6-3 away
+    456, 312,  -- Points
     'W3',      -- Winning streak
-    '2024-12-25T16:30:00'
+    1          -- Division rank
+);
+
+-- Playoff record (same team, same season, different season_type)
+INSERT INTO standings VALUES (
+    2,
+    'eagles_rebuild_2024',
+    22,  -- Detroit Lions
+    2024,
+    'playoffs',        -- Playoff record
+    2, 1, 0,  -- 2-1 playoff record
+    0, 0,      -- No division games in playoffs
+    2, 1,      -- Conference games
+    1, 0,      -- 1-0 home
+    1, 1,      -- 1-1 away
+    72, 65,    -- Points (3 playoff games)
+    'L1',      -- Lost last game (Super Bowl)
+    NULL       -- No division rank for playoffs
 );
 ```
 

@@ -117,12 +117,23 @@ class EventDatabaseAPI:
         Raises:
             Exception: If database operation fails
         """
+        print(f"[DYNASTY_TRACE] EventDatabaseAPI.insert_event(): event_id={event.event_id[:8]}, dynasty_id={event.dynasty_id}")
         try:
             # Convert event to database format
             event_data = event.to_database_format()
 
             # Validate required fields
             self._validate_event_data(event_data)
+
+            # PLAYOFF EVENT LOGGING: Track when playoff events are saved
+            game_id = event_data.get('game_id', '')
+            if 'playoff_' in game_id:
+                print(f"[PLAYOFF_PERSISTENCE] Saving playoff event to database:")
+                print(f"  event_id: {event_data['event_id']}")
+                print(f"  game_id: {game_id}")
+                print(f"  dynasty_id: {event_data['dynasty_id']}")
+                print(f"  event_type: {event_data['event_type']}")
+                print(f"  database: {self.db_path}")
 
             # Insert into database
             conn = sqlite3.connect(self.db_path)
@@ -141,6 +152,19 @@ class EventDatabaseAPI:
 
             conn.commit()
             conn.close()
+
+            # Verify playoff event was saved
+            if 'playoff_' in game_id:
+                # Immediately query back to confirm it's in the database
+                verify_conn = sqlite3.connect(self.db_path)
+                verify_cursor = verify_conn.cursor()
+                verify_cursor.execute(
+                    'SELECT COUNT(*) FROM events WHERE game_id = ? AND dynasty_id = ?',
+                    (game_id, event_data['dynasty_id'])
+                )
+                count = verify_cursor.fetchone()[0]
+                verify_conn.close()
+                print(f"[PLAYOFF_PERSISTENCE] ✅ Verified: {count} event(s) with game_id='{game_id}' in database")
 
             self.logger.debug(f"Inserted event: {event_data['event_id']} ({event_data['event_type']})")
 
@@ -344,10 +368,30 @@ class EventDatabaseAPI:
         Returns:
             Number of events deleted
         """
+        # CRITICAL LOGGING: Track when playoff events are being deleted
+        import traceback
+        print(f"\n[PLAYOFF_DELETION] ⚠️  delete_playoff_events_by_dynasty() CALLED")
+        print(f"[PLAYOFF_DELETION]   dynasty_id: {dynasty_id}")
+        print(f"[PLAYOFF_DELETION]   season: {season}")
+        print(f"[PLAYOFF_DELETION]   database: {self.db_path}")
+        print(f"[PLAYOFF_DELETION]   Call stack:")
+        # Print stack trace to see what triggered the deletion
+        for line in traceback.format_stack()[:-1]:  # Exclude this frame
+            print(f"     {line.strip()}")
+
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
         try:
+            # Count before deleting
+            cursor.execute('''
+                SELECT COUNT(*) FROM events
+                WHERE dynasty_id = ?
+                AND game_id LIKE ?
+            ''', (dynasty_id, f'playoff_{season}_%'))
+            count_before = cursor.fetchone()[0]
+            print(f"[PLAYOFF_DELETION]   Events to delete: {count_before}")
+
             # Delete all playoff games for this dynasty/season
             cursor.execute('''
                 DELETE FROM events
@@ -357,6 +401,8 @@ class EventDatabaseAPI:
 
             deleted_count = cursor.rowcount
             conn.commit()
+
+            print(f"[PLAYOFF_DELETION]   ✅ Deleted {deleted_count} playoff events")
 
             self.logger.info(
                 f"Deleted {deleted_count} playoff events for dynasty: {dynasty_id}, season: {season}"
@@ -674,6 +720,15 @@ class EventDatabaseAPI:
             # Convert event to database format
             event_data = event.to_database_format()
 
+            # PLAYOFF EVENT LOGGING: Track when playoff events are updated
+            game_id = event_data.get('game_id', '')
+            if 'playoff_' in game_id:
+                print(f"[PLAYOFF_UPDATE] Updating playoff event in database:")
+                print(f"  event_id: {event_data['event_id']}")
+                print(f"  game_id: {game_id}")
+                print(f"  dynasty_id: {event_data['dynasty_id']}")
+                print(f"  event_type: {event_data['event_type']}")
+
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
 
@@ -700,9 +755,13 @@ class EventDatabaseAPI:
 
             if affected_rows > 0:
                 self.logger.debug(f"Updated event: {event_data['event_id']}")
+                if 'playoff_' in game_id:
+                    print(f"[PLAYOFF_UPDATE] ✅ Updated {affected_rows} playoff event(s)")
                 return True
             else:
                 self.logger.warning(f"No event found with ID: {event_data['event_id']}")
+                if 'playoff_' in game_id:
+                    print(f"[PLAYOFF_UPDATE] ⚠️  WARNING: No playoff event found with ID: {event_data['event_id']}")
                 return False
 
         except Exception as e:

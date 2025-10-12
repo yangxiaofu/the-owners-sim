@@ -57,16 +57,13 @@ class SimulationController(QObject):
         self.db_path = db_path
         self.dynasty_id = dynasty_id
         self.season = season
+        print(f"[DYNASTY_TRACE] SimulationController.__init__(): dynasty_id={dynasty_id}")
 
         # Domain model for state persistence and retrieval
         self.state_model = SimulationDataModel(db_path, dynasty_id, season)
 
         # Load current state from database FIRST (establishes current_date_str, current_phase, current_week)
         self._load_state()
-
-        print(f"[DEBUG SimulationController] After _load_state():")
-        print(f"  current_date_str: {self.current_date_str}")
-        print(f"  current_week: {self.current_week}")
 
         # Initialize season cycle controller with the loaded state
         self._init_season_controller()
@@ -77,16 +74,29 @@ class SimulationController(QObject):
         # This ensures calendar and controller state are synchronized
         start_date = Date.from_string(self.current_date_str)
 
-        print(f"[DEBUG SimulationController] Creating SeasonCycleController with start_date: {start_date}")
+        # Convert loaded phase string to SeasonPhase enum
+        from calendar.season_phase_tracker import SeasonPhase
 
+        if self.loaded_phase == 'PLAYOFFS' or self.loaded_phase == 'playoffs':
+            initial_phase = SeasonPhase.PLAYOFFS
+        elif self.loaded_phase == 'OFFSEASON' or self.loaded_phase == 'offseason':
+            initial_phase = SeasonPhase.OFFSEASON
+        else:
+            initial_phase = SeasonPhase.REGULAR_SEASON
+
+        # Pass initial_phase to constructor so it starts in correct phase
+        # This prevents regular season game scheduling when loading mid-playoffs
         self.season_controller = SeasonCycleController(
             database_path=self.db_path,
             dynasty_id=self.dynasty_id,
             season_year=self.season,
             start_date=start_date,
+            initial_phase=initial_phase,
             enable_persistence=True,
             verbose_logging=True  # Enable for player stats debugging
         )
+
+        # No more manual phase synchronization needed - handled by constructor!
 
     def _get_state_from_db(self) -> Optional[Dict[str, Any]]:
         """
@@ -122,13 +132,10 @@ class SimulationController(QObject):
 
         # Cache state values for quick access
         self.current_date_str = state_info['current_date']
-        # Don't cache phase locally - use SeasonCycleController's PhaseState instead
         self.current_week = state_info['current_week']
 
-        # Print any validation warnings from model
-        if state_info['warnings']:
-            for warning in state_info['warnings']:
-                print(f"[WARNING SimulationController] {warning}")
+        # Cache loaded phase - will be applied to SeasonCycleController after it's created
+        self.loaded_phase = state_info.get('current_phase', 'REGULAR_SEASON')
 
     def advance_day(self) -> Dict[str, Any]:
         """
@@ -170,7 +177,6 @@ class SimulationController(QObject):
                 self._save_state_to_db(new_date, new_phase, self.current_week)
 
                 # Emit signals
-                print(f"[DEBUG SimulationController] Emitting date_changed signal: date={new_date}, phase={new_phase}")
                 self.date_changed.emit(new_date, new_phase)
 
                 if games:
@@ -226,7 +232,6 @@ class SimulationController(QObject):
 
                 self._save_state_to_db(new_date, new_phase, self.current_week)
 
-                print(f"[DEBUG SimulationController] Emitting date_changed signal (advance_week): date={new_date}, phase={new_phase}")
                 self.date_changed.emit(new_date, new_phase)
 
                 return result
@@ -307,7 +312,6 @@ class SimulationController(QObject):
                 )
 
                 # Emit signals for UI refresh
-                print(f"[DEBUG SimulationController] Emitting date_changed signal (phase end): date={self.current_date_str}, phase={self.season_controller.phase_state.phase.value}")
                 self.date_changed.emit(self.current_date_str, self.season_controller.phase_state.phase.value)
 
                 # Add friendly message

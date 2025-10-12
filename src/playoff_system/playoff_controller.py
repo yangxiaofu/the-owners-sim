@@ -27,6 +27,8 @@ from playoff_system.playoff_seeder import PlayoffSeeder
 from playoff_system.playoff_manager import PlayoffManager
 from playoff_system.playoff_scheduler import PlayoffScheduler
 from playoff_system.seeding_models import PlayoffSeeding
+from playoff_system.playoff_state import PlayoffState
+from playoff_system.bracket_persistence import BracketPersistence
 from stores.standings_store import EnhancedTeamStanding
 from shared.game_result import GameResult
 from team_management.teams.team_loader import get_team_by_id
@@ -149,26 +151,21 @@ class PlayoffController:
             playoff_manager=self.playoff_manager
         )
 
-        # Playoff state tracking
-        self.current_round = 'wild_card'
-        self.original_seeding: Optional[PlayoffSeeding] = None
-        self.completed_games: Dict[str, List[Dict]] = {
-            'wild_card': [],
-            'divisional': [],
-            'conference': [],
-            'super_bowl': []
-        }
-        # Store actual bracket objects
-        self.brackets: Dict[str, Optional['PlayoffBracket']] = {
-            'wild_card': None,
-            'divisional': None,
-            'conference': None,
-            'super_bowl': None
-        }
+        # NEW: Centralized state management
+        self.state = PlayoffState()
+        self.persistence = BracketPersistence(self.event_db)
 
-        # Statistics tracking
-        self.total_games_played = 0
-        self.total_days_simulated = 0
+        # Legacy field aliases for backward compatibility (will be removed in Phase 4)
+        # These allow existing code to work while we migrate
+        self.completed_games = self.state.completed_games
+        self.brackets = self.state.brackets
+
+        # Legacy direct property aliases (these properties exist directly on PlayoffState)
+        # Access via self.state.property_name, but we provide direct aliases for compatibility
+        self.current_round = self.state.current_round
+        self.original_seeding = self.state.original_seeding
+        self.total_games_played = self.state.total_games_played
+        self.total_days_simulated = self.state.total_days_simulated
 
         # Initialize playoff bracket with provided seeding or random seeding
         self._initialize_playoff_bracket(initial_seeding)
@@ -202,7 +199,7 @@ class PlayoffController:
         """
         if self.verbose_logging:
             print(f"\n{'='*80}")
-            print(f"ADVANCING DAY - {self.current_round.upper()} ROUND")
+            print(f"ADVANCING DAY - {self.state.current_round.upper()} ROUND")
             print(f"{'='*80}")
 
         # Get current date BEFORE advancing
@@ -210,7 +207,7 @@ class PlayoffController:
 
         if self.verbose_logging:
             print(f"Current Date: {current_date}")
-            print(f"Total Days Simulated: {self.total_days_simulated + 1}")
+            print(f"Total Days Simulated: {self.state.total_days_simulated + 1}")
 
         # Simulate all games scheduled for TODAY (before advancing)
         simulation_result = self.simulation_executor.simulate_day(current_date)
@@ -221,77 +218,60 @@ class PlayoffController:
 
         # NOW advance calendar by 1 day for next call
         advance_result = self.calendar.advance(1)
-        self.total_days_simulated += 1
 
         # Update statistics
         games_played = len([g for g in simulation_result.get('games_played', []) if g.get('success', False)])
-        self.total_games_played += games_played
 
         if self.verbose_logging:
             print(f"[DEBUG] games_played count (from 'games_played' key): {games_played}")
             print(f"[DEBUG] Raw games list length: {len(simulation_result.get('games_played', []))}")
 
-        # Detect round transitions and track completed games
-        round_transitioned = False
+        # Update round transition tracking (results already in database)
+        # No need to track in-memory - database is single source of truth
         if games_played > 0:
             if self.verbose_logging:
-                print(f"\n[DEBUG] Processing {games_played} games for tracking...")
+                print(f"\n[DEBUG] Processing {games_played} games for round tracking...")
 
             for i, game in enumerate(simulation_result.get('games_played', [])):
                 if self.verbose_logging:
                     print(f"[DEBUG] Game {i+1}: event_id={game.get('event_id')}, success={game.get('success')}")
 
                 if game.get('success', False):
-                    # Detect which round this game belongs to by checking the event_id
-                    game_round = self._detect_game_round(game.get('event_id', ''))
+                    # Detect round from game_id for display purposes only
+                    game_id = game.get('game_id', game.get('event_id', ''))
+                    game_round = self._detect_game_round(game_id)
 
-                    if self.verbose_logging:
-                        print(f"[DEBUG]   Detected round: {game_round}, current_round: {self.current_round}")
+                    if not game_round or game_round not in self.ROUND_ORDER:
+                        self.logger.warning(f"Could not detect round for game: {game_id}")
+                        continue
 
-                    # If game is from a different round, transition
-                    if game_round and game_round != self.current_round:
+                    # Update current_round for UI display (not used for logic)
+                    if game_round != self.state.current_round:
                         if self.verbose_logging:
-                            print(f"\n🔄 Round transition detected: {self.current_round} → {game_round}")
-                        self.current_round = game_round
-                        round_transitioned = True
-
-                    # Track game in appropriate round (with duplicate detection)
-                    event_id = game.get('event_id', '')
-                    existing_event_ids = [g.get('event_id', '') for g in self.completed_games[self.current_round]]
-
-                    if self.verbose_logging:
-                        print(f"[DEBUG]   Existing event_ids in {self.current_round}: {len(existing_event_ids)}")
-                        print(f"[DEBUG]   Is duplicate? {event_id in existing_event_ids}")
-
-                    if event_id and event_id not in existing_event_ids:
-                        self.completed_games[self.current_round].append(game)
-                        if self.verbose_logging:
-                            print(f"[DEBUG]   ✅ Game added to {self.current_round}! Total now: {len(self.completed_games[self.current_round])}")
-                    elif event_id in existing_event_ids:
-                        # This should NEVER happen if dynasty isolation is working correctly
-                        error_msg = (
-                            f"CRITICAL: Duplicate game detected: {event_id}. "
-                            f"This indicates a bug in dynasty isolation or event scheduling. "
-                            f"Check that playoff events are properly filtered by dynasty_id."
-                        )
-                        self.logger.error(error_msg)
-                        raise RuntimeError(error_msg)
+                            print(f"[PLAYOFF] Round transition: {self.state.current_round} → {game_round}")
+                        self.state.current_round = game_round
                 else:
                     if self.verbose_logging:
                         print(f"[DEBUG]   ⚠️  Game marked as unsuccessful, not tracking")
 
+        # Update counters in state
+        self.state.total_days_simulated += 1
+        self.state.total_games_played += games_played  # Track total games from database
+
         # Check if current round is complete
-        round_complete = self._is_round_complete(self.current_round)
+        round_complete = self._is_round_complete(self.state.current_round)
 
         if self.verbose_logging and games_played > 0:
             print(f"\n✅ Day complete: {games_played} game(s) played")
-            print(f"Round progress: {len(self.completed_games[self.current_round])}/{self._get_expected_game_count(self.current_round)} games")
+            # Query database for accurate round progress
+            completed_count = len(self._get_completed_games_from_database(self.state.current_round))
+            print(f"Round progress: {completed_count}/{self._get_expected_game_count(self.state.current_round)} games")
 
         return {
             "date": str(current_date),
             "games_played": games_played,
             "results": simulation_result.get('games_played', []),
-            "current_round": self.current_round,
+            "current_round": self.state.current_round,
             "round_complete": round_complete,
             "success": simulation_result.get('success', True),
             "errors": simulation_result.get('errors', [])
@@ -315,13 +295,14 @@ class PlayoffController:
         """
         if self.verbose_logging:
             print(f"\n{'='*80}")
-            print(f"ADVANCING WEEK - {self.current_round.upper()} ROUND")
+            print(f"ADVANCING WEEK - {self.state.current_round.upper()} ROUND")
             print(f"{'='*80}")
 
         start_date = self.calendar.get_current_date()
         daily_results = []
         total_games_this_week = 0
         rounds_completed = []
+        rounds_completed_this_week = set()  # FIX #1: Track already-completed rounds to prevent duplicates
 
         # Simulate 7 days
         for day in range(7):
@@ -331,14 +312,43 @@ class PlayoffController:
 
             # Check if round completed and schedule next round
             if day_result['round_complete']:
+                current_round_name = self.state.current_round
+
+                # FIX #1: Prevent duplicate round completion processing
+                if current_round_name in rounds_completed_this_week:
+                    if self.verbose_logging:
+                        print(f"[DEBUG] Day {day+1}: Round {current_round_name} already processed this week, skipping")
+                    continue
+
+                # Mark this round as processed for this week
+                rounds_completed_this_week.add(current_round_name)
                 if self.verbose_logging:
-                    print(f"\n[DEBUG] Day {day+1}: Round {self.current_round} is complete!")
+                    print(f"\n[DEBUG] Day {day+1}: Round {self.state.current_round} is complete!")
                     print(f"[DEBUG] Games played today: {day_result['games_played']}")
 
-                if self.current_round != 'super_bowl':
+                # DATABASE VERIFICATION: Confirm playoff events exist after round completion
+                import sqlite3
+                verify_conn = sqlite3.connect(self.database_path)
+                verify_cursor = verify_conn.cursor()
+                verify_cursor.execute("""
+                    SELECT COUNT(*) FROM events
+                    WHERE dynasty_id = ?
+                      AND event_type = 'GAME'
+                      AND game_id LIKE ?
+                """, (self.dynasty_id, f"playoff_{self.season_year}_%"))
+                playoff_event_count = verify_cursor.fetchone()[0]
+                verify_conn.close()
+
+                print(f"[PLAYOFF_VERIFICATION] Round '{self.state.current_round}' complete!")
+                print(f"[PLAYOFF_VERIFICATION] Database check: {playoff_event_count} playoff events exist for dynasty '{self.dynasty_id}'")
+                print(f"[PLAYOFF_VERIFICATION] Expected: {self.state.total_games_played} completed games")
+                if playoff_event_count < self.state.total_games_played:
+                    print(f"[PLAYOFF_VERIFICATION] ⚠️  WARNING: Event count mismatch! Some playoff events may not have been saved!")
+
+                if self.state.current_round != 'super_bowl':
                     if self.verbose_logging:
-                        print(f"[DEBUG] Calling _schedule_next_round() for {self.current_round}")
-                    rounds_completed.append(self.current_round)
+                        print(f"[DEBUG] Calling _schedule_next_round() for {self.state.current_round}")
+                    rounds_completed.append(self.state.current_round)
                     self._schedule_next_round()
                     if self.verbose_logging:
                         print(f"[DEBUG] _schedule_next_round() returned")
@@ -354,7 +364,7 @@ class PlayoffController:
             print(f"{'='*80}")
             print(f"Date Range: {start_date} to {end_date}")
             print(f"Games Played: {total_games_this_week}")
-            print(f"Total Playoff Games: {self.total_games_played}")
+            print(f"Total Playoff Games: {self.state.total_games_played}")
             if rounds_completed:
                 print(f"Rounds Completed: {', '.join(r.title() for r in rounds_completed)}")
             print(f"{'='*80}")
@@ -364,7 +374,7 @@ class PlayoffController:
             "end_date": str(end_date),
             "total_games_played": total_games_this_week,
             "daily_results": daily_results,
-            "current_round": self.current_round,
+            "current_round": self.state.current_round,
             "rounds_completed": rounds_completed,
             "success": all(d.get('success', False) for d in daily_results)
         }
@@ -401,8 +411,8 @@ class PlayoffController:
 
         # Track which round we're about to complete
         round_to_complete = active_round
-        initial_games = self.total_games_played
-        initial_days = self.total_days_simulated
+        initial_games = self.state.total_games_played
+        initial_days = self.state.total_days_simulated
 
         # Advance until THIS SPECIFIC round is complete (safety limit: 30 days)
         max_days = 30
@@ -412,13 +422,13 @@ class PlayoffController:
             self.advance_day()
             days_simulated += 1
 
-        games_in_round = self.total_games_played - initial_games
+        games_in_round = self.state.total_games_played - initial_games
 
         # The round that was just completed
         completed_round = round_to_complete
 
         # Get completed games for the round that was just completed
-        round_results = self.completed_games[completed_round].copy()
+        round_results = self.state.completed_games[completed_round].copy()
 
         # Schedule next round if not Super Bowl
         next_round_scheduled = False
@@ -478,7 +488,7 @@ class PlayoffController:
             print(f"{'='*80}")
 
         start_date = self.calendar.get_current_date()
-        initial_games = self.total_games_played
+        initial_games = self.state.total_games_played
         rounds_completed = []
 
         # Continue until Super Bowl is complete (safety limit: 60 days)
@@ -492,10 +502,10 @@ class PlayoffController:
 
             # Check if round completed
             if day_result['round_complete']:
-                rounds_completed.append(self.current_round)
+                rounds_completed.append(self.state.current_round)
 
                 # If Super Bowl just completed, we're done
-                if self.current_round == 'super_bowl':
+                if self.state.current_round == 'super_bowl':
                     break
 
                 # Otherwise, schedule next round
@@ -506,16 +516,16 @@ class PlayoffController:
                 current_date = self.calendar.get_current_date()
                 print(f"\n📊 Progress Update (Day {days_simulated})")
                 print(f"   Current Date: {current_date}")
-                print(f"   Current Round: {self.current_round.title()}")
-                print(f"   Total Games Played: {self.total_games_played}")
+                print(f"   Current Round: {self.state.current_round.title()}")
+                print(f"   Total Games Played: {self.state.total_games_played}")
 
         final_date = self.calendar.get_current_date()
-        total_games = self.total_games_played - initial_games
+        total_games = self.state.total_games_played - initial_games
 
         # Determine Super Bowl winner
         super_bowl_winner = None
-        if self.completed_games['super_bowl']:
-            sb_game = self.completed_games['super_bowl'][0]
+        if self.state.completed_games['super_bowl']:
+            sb_game = self.state.completed_games['super_bowl'][0]
             super_bowl_winner = sb_game.get('winner_id')
 
         if self.verbose_logging:
@@ -556,19 +566,21 @@ class PlayoffController:
             }
         """
         bracket = {
-            "current_round": self.current_round,
-            "original_seeding": self.original_seeding,
-            "wild_card": self.brackets['wild_card'],
-            "divisional": self.brackets['divisional'],
-            "conference": self.brackets['conference'],
-            "super_bowl": self.brackets['super_bowl']
+            "current_round": self.state.current_round,
+            "original_seeding": self.state.original_seeding,
+            "wild_card": self.state.brackets['wild_card'],
+            "divisional": self.state.brackets['divisional'],
+            "conference": self.state.brackets['conference'],
+            "super_bowl": self.state.brackets['super_bowl']
         }
 
         return bracket
 
     def get_round_games(self, round_name: str) -> List[Dict[str, Any]]:
         """
-        Get games for a specific playoff round.
+        Get games for a specific playoff round FROM DATABASE.
+
+        Single source of truth: Queries database for completed games.
 
         Args:
             round_name: 'wild_card', 'divisional', 'conference', or 'super_bowl'
@@ -579,7 +591,7 @@ class PlayoffController:
         if round_name not in self.ROUND_ORDER:
             raise ValueError(f"Invalid round name: {round_name}")
 
-        return self.completed_games.get(round_name, [])
+        return self._get_completed_games_from_database(round_name)
 
     def get_current_state(self) -> Dict[str, Any]:
         """
@@ -596,53 +608,47 @@ class PlayoffController:
             }
         """
         current_date = self.calendar.get_current_date()
+
+        # Query database for round progress (single source of truth)
         round_progress = {
             round_name: {
-                "games_completed": len(self.completed_games[round_name]),
+                "games_completed": len(self._get_completed_games_from_database(round_name)),
                 "games_expected": self._get_expected_game_count(round_name),
-                "complete": len(self.completed_games[round_name]) >= self._get_expected_game_count(round_name)
+                "complete": self._is_round_complete(round_name)
             }
             for round_name in self.ROUND_ORDER
         }
 
         return {
             "current_date": str(current_date),
-            "current_round": self.current_round,
+            "current_round": self.state.current_round,
             "active_round": self.get_active_round(),
-            "games_played": self.total_games_played,
-            "days_simulated": self.total_days_simulated,
+            "games_played": self.state.total_games_played,
+            "days_simulated": self.state.total_days_simulated,
             "round_progress": round_progress
         }
 
     def get_active_round(self) -> str:
         """
-        Get the current "active" playoff round based on completion status.
+        Get the current "active" playoff round based on DATABASE completion status.
 
-        This is different from self.current_round which only updates when
-        games from the next round are simulated. This method determines the
-        active round based on:
-        1. Which rounds have been completed
-        2. Which rounds have games scheduled
+        Single source of truth: Queries database to determine which rounds are complete.
+        This ensures correct behavior even after app restart.
 
         Returns:
-            Round name ('wild_card', 'divisional', 'conference', 'super_bowl')
-
-        Examples:
-            - Wild Card complete, Divisional scheduled → returns 'divisional'
-            - Divisional in progress → returns 'divisional'
-            - All complete → returns 'super_bowl'
+            The name of the first incomplete round, or 'complete' if all rounds done
         """
-        # Check each round in order
+        # Check each round in order - first incomplete round is active
         for round_name in self.ROUND_ORDER:
-            games_completed = len(self.completed_games[round_name])
-            games_expected = self._get_expected_game_count(round_name)
+            completed_games = self._get_completed_games_from_database(round_name)
+            expected = self._get_expected_game_count(round_name)
 
-            # If this round is incomplete, it's the active round
-            if games_completed < games_expected:
+            if len(completed_games) < expected:
+                # This round is incomplete - it's the active round
                 return round_name
 
-        # All rounds complete - playoffs are over, return final round
-        return 'super_bowl'
+        # All rounds complete
+        return 'complete'
 
     # ========== Private Helper Methods ==========
 
@@ -658,32 +664,52 @@ class PlayoffController:
                            If None, generates random seeding for standalone demos.
         """
         seeding_type = "REAL SEEDING" if initial_seeding else "RANDOM SEEDING"
+
+        # LOGGING: Track every initialization call
+        print(f"\n[PLAYOFF_SCHEDULING] ===== _initialize_playoff_bracket() CALLED =====")
+        print(f"[PLAYOFF_SCHEDULING] Dynasty: {self.dynasty_id}")
+        print(f"[PLAYOFF_SCHEDULING] Season: {self.season_year}")
+        print(f"[PLAYOFF_SCHEDULING] Seeding Type: {seeding_type}")
+        print(f"[PLAYOFF_SCHEDULING] Database: {self.database_path}")
+
         if self.verbose_logging:
             print(f"\n{'='*80}")
             print(f"INITIALIZING PLAYOFF BRACKET WITH {seeding_type}")
             print(f"{'='*80}")
 
         # Check if Wild Card round already scheduled for this dynasty/season
-        existing_events = self.event_db.get_events_by_type("GAME")
-        dynasty_playoff_prefix = f"playoff_{self.dynasty_id}_{self.season_year}_"
+        # Use dynasty-filtered query to prevent cross-dynasty data contamination
+        existing_events = self.event_db.get_events_by_dynasty(
+            dynasty_id=self.dynasty_id,
+            event_type="GAME"
+        )
+
+        # Filter for playoff games (defensive NULL check)
+        playoff_game_prefix = f"playoff_{self.season_year}_"
         dynasty_playoff_events = [
             e for e in existing_events
-            if e.get('game_id', '').startswith(dynasty_playoff_prefix)
+            if e.get('game_id') and e.get('game_id').startswith(playoff_game_prefix)
         ]
 
         if dynasty_playoff_events:
             if self.verbose_logging:
                 print(f"\n✅ Found existing playoff bracket for dynasty '{self.dynasty_id}': {len(dynasty_playoff_events)} games")
+                print(f"   Game ID pattern: {playoff_game_prefix}*")
                 print(f"   Reusing existing playoff schedule")
 
-            # Use provided seeding if available, otherwise generate random seeding for display
-            if initial_seeding:
-                self.original_seeding = initial_seeding
-            else:
-                self.original_seeding = self._generate_random_seeding()
+            # Determine seeding to use (real from standings or random for testing)
+            seeding_to_use = initial_seeding if initial_seeding else self._generate_random_seeding()
 
-            # TODO: Reconstruct bracket structure from existing events if needed
-            # For now, bracket will be populated as games are simulated
+            # Reconstruct bracket state WITH seeding (prevents NoneType crash)
+            self._reconstruct_bracket_from_events(dynasty_playoff_events, seeding_to_use)
+
+            # Defensive: Ensure seeding is set (should already be set by reconstruction)
+            if self.state.original_seeding is None:
+                self.state.original_seeding = seeding_to_use
+
+            # Re-schedule brackets to populate self.brackets dict
+            # This ensures UI has bracket structure (matchups) in addition to results
+            self._reschedule_brackets_from_completed_games()
 
             if self.verbose_logging:
                 print(f"{'='*80}")
@@ -692,30 +718,30 @@ class PlayoffController:
         # No existing playoff events for this dynasty - generate new bracket
         # Use provided seeding if available, otherwise generate random seeding
         if initial_seeding:
-            self.original_seeding = initial_seeding
+            self.state.original_seeding = initial_seeding
         else:
-            self.original_seeding = self._generate_random_seeding()
+            self.state.original_seeding = self._generate_random_seeding()
 
         if self.verbose_logging:
             print(f"\nAFC Seeding:")
-            for seed in self.original_seeding.afc.seeds:
+            for seed in self.state.original_seeding.afc.seeds:
                 print(f"  #{seed.seed}: Team {seed.team_id} ({seed.record_string})")
 
             print(f"\nNFC Seeding:")
-            for seed in self.original_seeding.nfc.seeds:
+            for seed in self.state.original_seeding.nfc.seeds:
                 print(f"  #{seed.seed}: Team {seed.team_id} ({seed.record_string})")
 
         # Schedule Wild Card round
         try:
             result = self.playoff_scheduler.schedule_wild_card_round(
-                seeding=self.original_seeding,
+                seeding=self.state.original_seeding,
                 start_date=self.wild_card_start_date,
                 season=self.season_year,
                 dynasty_id=self.dynasty_id
             )
 
             # Store the wild card bracket
-            self.brackets['wild_card'] = result['bracket']
+            self.state.brackets['wild_card'] = result['bracket']
 
             if self.verbose_logging:
                 print(f"\n✅ Wild Card round scheduled: {result['games_scheduled']} games")
@@ -726,6 +752,186 @@ class PlayoffController:
             if self.verbose_logging:
                 print(f"❌ Wild Card scheduling failed: {e}")
             raise
+
+    def _reconstruct_bracket_from_events(
+        self,
+        playoff_events: List[Dict[str, Any]],
+        original_seeding: 'PlayoffSeeding'
+    ):
+        """
+        Reconstruct playoff bracket state from existing game events in database.
+
+        NOW DELEGATES TO: BracketPersistence.reconstruct_state()
+
+        When the PlayoffController is reinitialized (e.g., after app restart),
+        this method rebuilds the in-memory bracket state by parsing completed
+        playoff game events from the database.
+
+        Args:
+            playoff_events: List of playoff game events from database
+            original_seeding: Playoff seeding to restore (prevents NoneType crash)
+        """
+        # Delegate to persistence layer WITH seeding
+        self.state = self.persistence.reconstruct_state(
+            playoff_events=playoff_events,
+            detect_round_func=self._detect_game_round,
+            original_seeding=original_seeding
+        )
+
+        # Verbose logging (optional)
+        if self.verbose_logging:
+            print(f"✅ Bracket reconstruction complete:")
+            for round_name in self.ROUND_ORDER:
+                count = len(self.state.completed_games[round_name])
+                expected = self.state._get_expected_game_count(round_name)
+                status = "COMPLETE" if count >= expected else f"{count}/{expected}"
+                print(f"   {round_name.title()}: {status}")
+
+    def _reschedule_brackets_from_completed_games(self):
+        """
+        Reconstruct playoff bracket OBJECTS from existing database events.
+
+        **CRITICAL: This method does NOT create any database events!**
+
+        This method is called after `_reconstruct_bracket_from_events()` to populate
+        the `self.brackets` dict with bracket structure information. While reconstruction
+        rebuilds `self.completed_games` (results), it doesn't populate `self.brackets`
+        (matchup structure). This method leverages the deterministic nature of playoff
+        brackets: same seeding always produces the same bracket structure.
+
+        Strategy:
+        1. Reconstruct Wild Card bracket OBJECT using playoff_manager (NO events created)
+        2. For each subsequent round, check if games exist in completed_games
+        3. If yes, generate bracket OBJECT using playoff_manager (NO events created)
+        4. Store all bracket objects in self.brackets dict for UI consumption
+
+        This approach:
+        - Uses playoff_manager (generates objects) NOT playoff_scheduler (creates events)
+        - Works with any partial bracket state (mid-playoffs reload)
+        - Produces identical bracket structure to original (deterministic)
+        - ZERO database writes - purely in-memory reconstruction
+        """
+        if self.verbose_logging:
+            print(f"\n🔄 Reconstructing bracket structure from existing events...")
+            print(f"   ⚠️  This should NOT create any new database events!")
+
+        # Round date offsets (relative to Wild Card start)
+        round_offsets = {
+            'wild_card': self.WILD_CARD_OFFSET,
+            'divisional': self.DIVISIONAL_OFFSET,
+            'conference': self.CONFERENCE_OFFSET,
+            'super_bowl': self.SUPER_BOWL_OFFSET
+        }
+
+        # 1. Always reconstruct Wild Card round bracket (WITHOUT creating events)
+        # CRITICAL: Use playoff_manager NOT playoff_scheduler to avoid creating new events
+        try:
+            wc_start_date = self.wild_card_start_date.add_days(round_offsets['wild_card'])
+
+            # Generate bracket structure WITHOUT creating database events
+            wc_bracket = self.playoff_manager.generate_wild_card_bracket(
+                seeding=self.state.original_seeding,
+                start_date=wc_start_date,
+                season=self.season_year
+            )
+            self.state.brackets['wild_card'] = wc_bracket
+
+            if self.verbose_logging:
+                print(f"   ✅ Wild Card bracket reconstructed (0 events created)")
+
+        except Exception as e:
+            self.logger.error(f"Error reconstructing Wild Card bracket: {e}")
+            if self.verbose_logging:
+                print(f"   ❌ Wild Card bracket reconstruction failed: {e}")
+
+        # 2. Re-schedule subsequent rounds if they have games
+        # Must process in order: divisional → conference → super_bowl
+        for round_name in ['divisional', 'conference', 'super_bowl']:
+            # Check if this round has any games (scheduled or completed)
+            if len(self.state.completed_games[round_name]) == 0:
+                # No games in this round yet, stop here
+                if self.verbose_logging:
+                    print(f"   ⏭️  {round_name.title()} round: No games found, skipping")
+                break
+
+            # This round has games, re-schedule its bracket
+            try:
+                # Get the previous round's completed games
+                prev_round = self._get_previous_round_name(round_name)
+                if not prev_round:
+                    if self.verbose_logging:
+                        print(f"   ⚠️  {round_name.title()}: Cannot determine previous round")
+                    break
+
+                # Check if previous round is complete
+                prev_round_complete = len(self.state.completed_games[prev_round]) >= self._get_expected_game_count(prev_round)
+                if not prev_round_complete:
+                    if self.verbose_logging:
+                        print(f"   ⚠️  {round_name.title()}: Previous round ({prev_round}) not complete")
+                    break
+
+                # Convert previous round's games to GameResult objects
+                prev_round_games = self.state.completed_games[prev_round]
+                completed_results = self._convert_games_to_results(prev_round_games)
+
+                # Calculate start date for this round
+                start_date = self.wild_card_start_date.add_days(round_offsets[round_name])
+
+                # Generate bracket structure WITHOUT creating database events
+                # CRITICAL: Use playoff_manager NOT playoff_scheduler to avoid creating new events
+                if round_name == 'divisional':
+                    bracket = self.playoff_manager.generate_divisional_bracket(
+                        wild_card_results=completed_results,
+                        original_seeding=self.state.original_seeding,
+                        start_date=start_date,
+                        season=self.season_year
+                    )
+                elif round_name == 'conference':
+                    bracket = self.playoff_manager.generate_conference_championship_bracket(
+                        divisional_results=completed_results,
+                        start_date=start_date,
+                        season=self.season_year
+                    )
+                elif round_name == 'super_bowl':
+                    bracket = self.playoff_manager.generate_super_bowl_bracket(
+                        conference_results=completed_results,
+                        start_date=start_date,
+                        season=self.season_year
+                    )
+
+                # Store bracket structure (no events created)
+                self.state.brackets[round_name] = bracket
+
+                if self.verbose_logging:
+                    print(f"   ✅ {round_name.title()} bracket reconstructed (0 events created)")
+
+            except Exception as e:
+                self.logger.error(f"Error reconstructing {round_name} bracket: {e}")
+                if self.verbose_logging:
+                    print(f"   ❌ {round_name.title()} bracket reconstruction failed: {e}")
+                # Stop processing subsequent rounds on error
+                break
+
+        if self.verbose_logging:
+            print(f"✅ Bracket reconstruction complete - UI ready (0 new events created)")
+
+    def _get_previous_round_name(self, current_round: str) -> Optional[str]:
+        """
+        Get the name of the previous playoff round.
+
+        Args:
+            current_round: Current round name
+
+        Returns:
+            Previous round name or None if already at Wild Card
+        """
+        try:
+            current_index = self.ROUND_ORDER.index(current_round)
+            if current_index > 0:
+                return self.ROUND_ORDER[current_index - 1]
+        except (ValueError, IndexError):
+            pass
+        return None
 
     def _generate_random_seeding(self) -> PlayoffSeeding:
         """
@@ -819,30 +1025,22 @@ class PlayoffController:
             calculation_date=datetime.now().isoformat()
         )
 
-    def _is_round_complete(self) -> bool:
-        """
-        Check if current round is complete.
-
-        Returns:
-            True if all expected games for current round are complete
-        """
-        expected = self._get_expected_game_count(self.current_round)
-        completed = len(self.completed_games[self.current_round])
-        return completed >= expected
-
     def _is_round_complete(self, round_name: str) -> bool:
         """
-        Check if a specific round is complete.
+        Check if a specific round is complete by querying DATABASE.
+
+        Single source of truth: Queries database for completed games with results.
+        This ensures correct behavior even after app restart.
 
         Args:
-            round_name: Name of round to check ('wild_card', 'divisional', etc.)
+            round_name: The playoff round to check
 
         Returns:
-            True if all expected games for the round are complete
+            True if all expected games for this round have been completed
         """
+        completed_games = self._get_completed_games_from_database(round_name)
         expected = self._get_expected_game_count(round_name)
-        completed = len(self.completed_games[round_name])
-        return completed >= expected
+        return len(completed_games) >= expected
 
     def _is_active_round_complete(self) -> bool:
         """
@@ -862,19 +1060,99 @@ class PlayoffController:
         """
         Get expected number of games for a round.
 
+        NOW DELEGATES TO: PlayoffState._get_expected_game_count()
+        """
+        return self.state._get_expected_game_count(round_name)
+
+    def _get_completed_games_from_database(self, round_name: str) -> List[Dict[str, Any]]:
+        """
+        Query database for completed playoff games with results for a specific round.
+
+        FIX #2: This method directly queries the events table to find games that have
+        been SIMULATED (have results), not just scheduled. This solves the issue where
+        self.state.completed_games is empty after app reload because it only tracks
+        in-memory simulated games.
+
         Args:
-            round_name: Round name
+            round_name: Playoff round name ('wild_card', 'divisional', 'conference', 'super_bowl')
 
         Returns:
-            Expected game count
+            List of completed game dictionaries with results, including:
+            - event_id: Game identifier
+            - game_id: Full game ID
+            - away_team_id: Away team ID
+            - home_team_id: Home team ID
+            - away_score: Final away score
+            - home_score: Final home score
+            - winner_id: Winning team ID
+            - success: True (only returns successful games)
         """
-        expected_counts = {
-            'wild_card': 6,
-            'divisional': 4,
-            'conference': 2,
-            'super_bowl': 1
-        }
-        return expected_counts.get(round_name, 0)
+        import json
+
+        # Query all playoff events for this dynasty/season/round
+        all_playoff_events = self.event_db.get_events_by_dynasty(
+            dynasty_id=self.dynasty_id,
+            event_type="GAME"
+        )
+
+        # Filter for this specific round
+        round_prefix = f"playoff_{self.season_year}_{round_name}_"
+        completed_games = []
+
+        for event in all_playoff_events:
+            game_id = event.get('game_id', '')
+
+            # Check if this game belongs to the target round
+            if not game_id.startswith(round_prefix):
+                continue
+
+            # Parse event data
+            event_data = event.get('data', '{}')
+            if isinstance(event_data, str):
+                try:
+                    event_data = json.loads(event_data)
+                except json.JSONDecodeError:
+                    continue
+
+            # Check if game has results (was simulated)
+            results = event_data.get('results')
+            if not results:
+                continue  # Skip scheduled but not simulated games
+
+            # Extract game parameters and results
+            parameters = event_data.get('parameters', {})
+            away_team_id = parameters.get('away_team_id')
+            home_team_id = parameters.get('home_team_id')
+            away_score = results.get('away_score')
+            home_score = results.get('home_score')
+
+            # Validate required fields
+            if away_team_id is None or home_team_id is None:
+                continue
+            if away_score is None or home_score is None:
+                continue
+
+            # Determine winner
+            winner_id = home_team_id if home_score > away_score else away_team_id
+
+            # Build completed game record
+            completed_game = {
+                'event_id': game_id,  # Use game_id as event_id
+                'game_id': game_id,
+                'away_team_id': away_team_id,
+                'home_team_id': home_team_id,
+                'away_score': away_score,
+                'home_score': home_score,
+                'winner_id': winner_id,
+                'success': True
+            }
+
+            completed_games.append(completed_game)
+
+        if self.verbose_logging and completed_games:
+            print(f"[DATABASE_QUERY] Found {len(completed_games)} completed games for {round_name} round")
+
+        return completed_games
 
     def _schedule_next_round(self):
         """
@@ -886,10 +1164,10 @@ class PlayoffController:
         """
         if self.verbose_logging:
             print(f"\n[DEBUG] _schedule_next_round() called")
-            print(f"[DEBUG] Current round: {self.current_round}")
+            print(f"[DEBUG] Current round: {self.state.current_round}")
             print(f"[DEBUG] Completed games status:")
             for round_name in self.ROUND_ORDER:
-                count = len(self.completed_games[round_name])
+                count = len(self.state.completed_games[round_name])
                 expected = self._get_expected_game_count(round_name)
                 print(f"  - {round_name}: {count}/{expected} games")
 
@@ -903,7 +1181,7 @@ class PlayoffController:
             print(f"[DEBUG] Active round (from get_active_round()): {active_round} (index {active_index})")
 
         # If active round is first round AND has no games, there's no completed round yet
-        if active_index == 0 and len(self.completed_games[active_round]) == 0:
+        if active_index == 0 and len(self.state.completed_games[active_round]) == 0:
             if self.verbose_logging:
                 print(f"[DEBUG] Early return: No completed rounds yet (active={active_round}, games=0)")
             self.logger.warning("No completed rounds yet - cannot schedule next round")
@@ -911,7 +1189,9 @@ class PlayoffController:
 
         # The completed round is the one before the active round
         # (or the active round itself if it's complete)
-        if len(self.completed_games[active_round]) >= self._get_expected_game_count(active_round):
+        # Query database for accurate completion status (single source of truth)
+        completed_games_db = self._get_completed_games_from_database(active_round)
+        if len(completed_games_db) >= self._get_expected_game_count(active_round):
             # Active round is complete, use it as completed round
             completed_round = active_round
             if self.verbose_logging:
@@ -947,21 +1227,16 @@ class PlayoffController:
         if self.verbose_logging:
             print(f"[DEBUG] Determined: completed_round={completed_round}, next_round={next_round}")
 
-        # Check if next round already scheduled (prevent duplicates)
-        event_prefix = f"playoff_{self.dynasty_id}_{self.season_year}_{next_round}_"
-        existing_events = self.event_db.get_events_by_game_id_prefix(
-            event_prefix,
-            event_type="GAME"
+        # Check for existing round games (delegate to BracketPersistence)
+        existing_events = self.persistence.check_existing_round(
+            dynasty_id=self.dynasty_id,
+            season=self.season_year,
+            round_name=next_round
         )
-
-        if self.verbose_logging:
-            print(f"[DEBUG] Checking for existing {next_round} events with prefix: {event_prefix}")
-            print(f"[DEBUG] Found {len(existing_events)} existing events")
 
         if existing_events:
             if self.verbose_logging:
-                print(f"[DEBUG] Early return: {next_round.title()} round already scheduled ({len(existing_events)} games)")
-                print(f"   Skipping duplicate scheduling")
+                print(f"⏭️  Skipping {next_round} scheduling - {len(existing_events)} games already exist")
             return
 
         # Calculate start date for next round
@@ -983,12 +1258,23 @@ class PlayoffController:
             print(f"Start Date: {start_date}")
 
         try:
+            # FIX #3: Query database directly for completed games with results
+            # This solves the issue where self.state.completed_games is empty after app reload
+            # because it only tracks in-memory simulated games
+            completed_games = self._get_completed_games_from_database(completed_round)
+
+            if not completed_games:
+                if self.verbose_logging:
+                    print(f"[ERROR] Cannot schedule {next_round}: No completed games found for {completed_round}")
+                    print(f"[ERROR] Database query returned 0 games with results")
+                self.logger.error(f"Cannot schedule {next_round}: No completed games for {completed_round}")
+                return
+
             # Convert completed games to GameResult objects for PlayoffScheduler
-            # Use the round that just completed (not self.current_round which may be stale)
-            completed_games = self.completed_games.get(completed_round, [])
             completed_results = self._convert_games_to_results(completed_games)
 
             if self.verbose_logging:
+                print(f"[DATABASE_QUERY] Retrieved {len(completed_games)} completed games from database")
                 print(f"Converting {len(completed_games)} completed games to {len(completed_results)} results")
 
             # Schedule next round using PlayoffScheduler
@@ -996,14 +1282,14 @@ class PlayoffController:
             result = self.playoff_scheduler.schedule_next_round(
                 completed_results=completed_results,
                 current_round=completed_round,
-                original_seeding=self.original_seeding,
+                original_seeding=self.state.original_seeding,
                 start_date=start_date,
                 season=self.season_year,
                 dynasty_id=self.dynasty_id
             )
 
-            # Store the bracket for this round
-            self.brackets[next_round] = result['bracket']
+            # Store the bracket for this round in state
+            self.state.brackets[next_round] = result['bracket']
 
             # DO NOT update current_round here - let it transition naturally
             # when we start simulating games from the next round
@@ -1138,7 +1424,7 @@ class PlayoffController:
         Returns:
             Dictionary with round summary
         """
-        completed = self.completed_games.get(round_name, [])
+        completed = self.state.completed_games.get(round_name, [])
         expected = self._get_expected_game_count(round_name)
 
         return {
@@ -1162,15 +1448,8 @@ class PlayoffController:
             self.wild_card_start_date = new_wild_card_date
             self.calendar.reset(new_wild_card_date)
 
-        self.current_round = 'wild_card'
-        self.completed_games = {
-            'wild_card': [],
-            'divisional': [],
-            'conference': [],
-            'super_bowl': []
-        }
-        self.total_games_played = 0
-        self.total_days_simulated = 0
+        # Delegate to state reset
+        self.state.reset()
 
         # Reinitialize bracket
         self._initialize_playoff_bracket()
@@ -1204,8 +1483,8 @@ class PlayoffController:
     def __str__(self) -> str:
         """String representation"""
         return (f"PlayoffController(season={self.season_year}, "
-                f"round={self.current_round}, "
-                f"games={self.total_games_played})")
+                f"round={self.state.current_round}, "
+                f"games={self.state.total_games_played})")
 
     def __repr__(self) -> str:
         """Detailed representation"""

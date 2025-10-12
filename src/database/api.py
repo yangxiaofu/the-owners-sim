@@ -33,13 +33,16 @@ class DatabaseAPI:
         self.db_connection = DatabaseConnection(database_path)
         self.logger = logging.getLogger("DatabaseAPI")
     
-    def get_standings(self, dynasty_id: str, season: int) -> Dict[str, Any]:
+    def get_standings(self, dynasty_id: str, season: int, season_type: str = "regular_season") -> Dict[str, Any]:
         """
-        Get current standings from database.
+        Get current standings from database for a specific season type.
 
         Args:
             dynasty_id: Dynasty identifier
             season: Season year
+            season_type: "regular_season" or "playoffs" (default: "regular_season")
+                        NOTE: This parameter is kept for backward compatibility but is not used in the query.
+                        The standings table does not have a season_type column.
 
         Returns:
             Formatted standings data matching StandingsStore structure
@@ -263,15 +266,18 @@ class DatabaseAPI:
         )
         return results if results else []
 
-    def get_team_standing(self, dynasty_id: str, team_id: int, season: int) -> Optional[EnhancedTeamStanding]:
+    def get_team_standing(self, dynasty_id: str, team_id: int, season: int, season_type: str = "regular_season") -> Optional[EnhancedTeamStanding]:
         """
-        Get standing for a specific team.
-        
+        Get standing for a specific team and season type.
+
         Args:
             dynasty_id: Dynasty identifier
             team_id: Team identifier
             season: Season year
-            
+            season_type: "regular_season" or "playoffs" (default: "regular_season")
+                        NOTE: This parameter is kept for backward compatibility but is not used in the query.
+                        The standings table does not have a season_type column.
+
         Returns:
             Team standing or None if not found
         """
@@ -280,10 +286,10 @@ class DatabaseAPI:
                    conference_wins, conference_losses, home_wins, home_losses,
                    away_wins, away_losses, points_for, points_against,
                    current_streak, division_rank
-            FROM standings 
+            FROM standings
             WHERE dynasty_id = ? AND team_id = ? AND season = ?
         '''
-        
+
         results = self.db_connection.execute_query(query, (dynasty_id, team_id, season))
         
         if not results:

@@ -188,6 +188,10 @@ class CalendarDataModel:
         all_items = []
 
         # 1. Get scheduled events from events table
+        print(f"[CALENDAR_DEBUG] Querying events table: dynasty={self.dynasty_id}, year={year}, month={month}")
+        print(f"[CALENDAR_DEBUG] Timestamp range: {start_ms} to {end_ms}")
+        print(f"[CALENDAR_DEBUG] Event types filter: {event_types}")
+
         if event_types:
             # Query each event type separately with dynasty isolation
             for event_type in event_types:
@@ -197,6 +201,7 @@ class CalendarDataModel:
                     end_timestamp_ms=end_ms,
                     event_type=event_type
                 )
+                print(f"[CALENDAR_DEBUG] Events table returned {len(events)} events for type '{event_type}'")
                 all_items.extend(events)
         else:
             # Query all event types with dynasty isolation
@@ -205,54 +210,77 @@ class CalendarDataModel:
                 start_timestamp_ms=start_ms,
                 end_timestamp_ms=end_ms
             )
+            print(f"[CALENDAR_DEBUG] Events table returned {len(events)} events (all types)")
             all_items.extend(events)
 
-        # 2. Get completed games from games table
-        # Only if GAME events are being requested (or all events)
+        print(f"[CALENDAR_DEBUG] Total events from events table: {len(all_items)}")
+        for i, event in enumerate(all_items[:5]):  # Show first 5
+            print(f"  Event {i+1}: game_id={event.get('game_id', 'N/A')}, type={event.get('event_type', 'N/A')}")
+
+        # 2. Get completed games from games table (for historical game data)
         if not event_types or 'GAME' in event_types:
+            print(f"[CALENDAR_DEBUG] Querying games table for completed games...")
             completed_games = self.database_api.get_games_by_date_range(
                 dynasty_id=self.dynasty_id,
                 start_timestamp_ms=start_ms,
                 end_timestamp_ms=end_ms
             )
 
+            # Convert sqlite3.Row objects to dicts for .get() compatibility
+            completed_games = [dict(game) for game in completed_games]
+            print(f"[CALENDAR_DEBUG] Games table returned {len(completed_games)} completed games")
+            for i, game in enumerate(completed_games[:5]):  # Show first 5
+                print(f"  Game {i+1}: game_id={game.get('game_id', 'N/A')}, season_type={game.get('season_type', 'N/A')}")
+
+            # Track seen game_ids for efficient deduplication (O(1) lookup)
+            seen_game_ids = {e.get('game_id') for e in all_items if e.get('game_id')}
+            print(f"[CALENDAR_DEBUG] Deduplication: {len(seen_game_ids)} game_ids already seen from events table")
+
             # Convert game records to event-like format for calendar display
+            games_added_from_table = 0
+            games_skipped_duplicate = 0
             for game in completed_games:
+                game_id = game.get('game_id')
+
                 # Skip if this game already exists in events (avoid duplicates)
-                game_id = game['game_id']
-                if any(e.get('game_id') == game_id for e in all_items):
+                if game_id in seen_game_ids:
+                    games_skipped_duplicate += 1
                     continue
 
+                # Mark as seen
+                seen_game_ids.add(game_id)
+                games_added_from_table += 1
+
                 # Convert game to event format
+                # Build event from game data with proper structure
                 game_event = {
                     'event_id': f"completed_{game_id}",
                     'event_type': 'GAME',
-                    'timestamp': game['game_date'],  # Use game_date timestamp
+                    'timestamp': game.get('game_date'),
                     'game_id': game_id,
                     'dynasty_id': self.dynasty_id,
                     'data': {
                         'parameters': {
-                            'home_team_id': game['home_team_id'],
-                            'away_team_id': game['away_team_id'],
-                            'week': game['week'],
-                            'season': game['season'],
-                            'season_type': game['season_type'],
-                            'game_type': game['game_type']
+                            'away_team_id': game.get('away_team_id'),
+                            'home_team_id': game.get('home_team_id'),
+                            'week': game.get('week'),
+                            'season_type': game.get('season_type', 'regular')
                         },
                         'results': {
-                            'home_score': game['home_score'],
-                            'away_score': game['away_score'],
-                            'total_plays': game['total_plays'],
-                            'game_duration_minutes': game['game_duration_minutes'],
-                            'overtime_periods': game['overtime_periods'],
-                            'completed': True  # Mark as completed
+                            'away_score': game.get('away_score'),
+                            'home_score': game.get('home_score'),
+                            'winner_team_id': game.get('winner_team_id')
                         },
                         'metadata': {
-                            'description': f"Week {game['week']}: Completed Game"
+                            'completed': True,
+                            'source': 'games_table'
                         }
                     }
                 }
                 all_items.append(game_event)
+
+            print(f"[CALENDAR_DEBUG] Games from games table: {games_added_from_table} added, {games_skipped_duplicate} skipped (duplicates)")
+            print(f"[CALENDAR_DEBUG] Final item count before sorting: {len(all_items)}")
 
         # Sort all items by timestamp (handle both datetime and milliseconds)
         def get_sort_key(item):
@@ -266,6 +294,18 @@ class CalendarDataModel:
                 return 0  # Fallback for unexpected types
 
         all_items.sort(key=get_sort_key)
+
+        print(f"[CALENDAR_DEBUG] Returning {len(all_items)} total events for {year}-{month:02d}")
+        # Show first 10 items with their game_ids
+        for i, item in enumerate(all_items[:10]):
+            ts = item.get('timestamp')
+            if isinstance(ts, datetime):
+                ts_str = ts.strftime('%Y-%m-%d %H:%M')
+            elif isinstance(ts, (int, float)):
+                ts_str = datetime.fromtimestamp(ts / 1000.0).strftime('%Y-%m-%d %H:%M')
+            else:
+                ts_str = 'unknown'
+            print(f"  Item {i+1}: game_id={item.get('game_id', 'N/A')[:30]}, type={item.get('event_type')}, time={ts_str}")
 
         return all_items
 
@@ -295,9 +335,9 @@ class CalendarDataModel:
 
         BUSINESS LOGIC:
         --------------
-        Handles both regular event IDs and synthetic event IDs:
-        - Regular event IDs: Query events table directly
-        - Synthetic event IDs (starts with "completed_"): Reconstruct from games table
+        Query events table directly for event details. All game events
+        (both scheduled and completed) are stored in the events table with
+        complete data including results.
 
         Args:
             event_id: Unique identifier of the event
@@ -306,78 +346,7 @@ class CalendarDataModel:
             Event dictionary if found, None if not found.
             Dict contains: event_id, event_type, timestamp, game_id, data
         """
-        # Check if this is a synthetic event_id from completed games
-        if event_id.startswith('completed_'):
-            # Extract game_id from synthetic event_id: "completed_game_20250908_1_at_12" -> "game_20250908_1_at_12"
-            game_id = event_id.replace('completed_', '', 1)
-
-            # Query games table directly
-            query = '''
-                SELECT
-                    game_id,
-                    game_date,
-                    season,
-                    week,
-                    season_type,
-                    game_type,
-                    home_team_id,
-                    away_team_id,
-                    home_score,
-                    away_score,
-                    total_plays,
-                    game_duration_minutes,
-                    overtime_periods
-                FROM games
-                WHERE game_id = ? AND dynasty_id = ?
-            '''
-
-            results = self.database_api.db_connection.execute_query(
-                query,
-                (game_id, self.dynasty_id)
-            )
-
-            if not results or len(results) == 0:
-                return None
-
-            game = results[0]
-
-            # Reconstruct event structure (same format as get_events_for_month)
-            return {
-                'event_id': event_id,
-                'event_type': 'GAME',
-                'timestamp': game['game_date'],
-                'game_id': game_id,
-                'dynasty_id': self.dynasty_id,
-                'data': {
-                    'parameters': {
-                        'home_team_id': game['home_team_id'],
-                        'away_team_id': game['away_team_id'],
-                        'week': game['week'],
-                        'season': game['season'],
-                        'season_type': game['season_type'],
-                        'game_type': game['game_type']
-                    },
-                    'results': {
-                        'home_score': game['home_score'],
-                        'away_score': game['away_score'],
-                        'winner_id': None,  # Could calculate from scores if needed
-                        'winner_name': None,
-                        'total_plays': game['total_plays'],
-                        'total_drives': None,  # Not stored in games table
-                        'game_duration_minutes': game['game_duration_minutes'],
-                        'simulation_time': None,  # Not stored in games table
-                        'overtime_periods': game['overtime_periods'],
-                        'completed': True
-                    },
-                    'metadata': {
-                        'matchup_description': f"Week {game['week']}: Team {game['away_team_id']} @ Team {game['home_team_id']}",
-                        'is_playoff_game': game['season_type'] == 'playoffs',
-                        'game_id': game_id
-                    }
-                }
-            }
-
-        # Regular event_id - query events table
+        # Query events table for event details
         return self.event_api.get_event_by_id(event_id)
 
     def get_dynasty_info(self) -> Dict[str, str]:

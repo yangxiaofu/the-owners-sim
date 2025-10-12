@@ -20,14 +20,16 @@ class SchedulePopulator:
     without needing a full schedule generation system.
     """
 
-    def __init__(self, event_db: EventDatabaseAPI):
+    def __init__(self, event_db: EventDatabaseAPI, dynasty_id: str = "default"):
         """
         Initialize schedule populator.
 
         Args:
             event_db: Event database API for storing events
+            dynasty_id: Dynasty identifier for game event isolation (default: "default")
         """
         self.event_db = event_db
+        self.dynasty_id = dynasty_id
 
     def create_single_game(
         self,
@@ -57,6 +59,7 @@ class SchedulePopulator:
             home_team_id=home_team_id,
             game_date=game_date,
             week=week,
+            dynasty_id=self.dynasty_id,
             season=season,
             season_type=season_type
         )

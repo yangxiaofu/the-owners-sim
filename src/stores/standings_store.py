@@ -137,21 +137,34 @@ class StandingsStore(BaseStore[EnhancedTeamStanding]):
         self.dynasty_id: Optional[str] = None
         self.current_season: Optional[int] = None
 
-        # Initialize all teams with 0-0 records
-        self._initialize_standings()
+        # Initialize all teams with 0-0 records for regular season
+        # Playoff standings will be created on-demand when first playoff game is played
+        self._initialize_standings(season_type="regular_season")
 
-        # Standings by grouping
-        self.division_standings: Dict[str, List[int]] = {}
-        self.conference_standings: Dict[str, List[int]] = {}
-        self.overall_standings: List[int] = []
+        # Standings by grouping AND season_type
+        # Structure: {season_type: {division/conference: [team_ids]}}
+        self.division_standings: Dict[str, Dict[str, List[int]]] = {
+            "regular_season": {},
+            "playoffs": {}
+        }
+        self.conference_standings: Dict[str, Dict[str, List[int]]] = {
+            "regular_season": {},
+            "playoffs": {}
+        }
+        self.overall_standings: Dict[str, List[int]] = {
+            "regular_season": [],
+            "playoffs": []
+        }
 
-        # Head-to-head records for tiebreaking
-        self.head_to_head: Dict[Tuple[int, int], Dict[str, int]] = defaultdict(
+        # Head-to-head records for tiebreaking (keyed by team pair, tracked per season_type)
+        # Structure: {(team1, team2, season_type): {'team1_wins': 0, 'team2_wins': 0, 'ties': 0}}
+        self.head_to_head: Dict[Tuple[int, int, str], Dict[str, int]] = defaultdict(
             lambda: {'team1_wins': 0, 'team2_wins': 0, 'ties': 0}
         )
 
-        # Recent results for streak tracking
-        self.recent_results: Dict[int, List[str]] = defaultdict(list)  # 'W' or 'L'
+        # Recent results for streak tracking (tracked per team, per season_type)
+        # Structure: {(team_id, season_type): ['W', 'L', 'W', ...]}
+        self.recent_results: Dict[Tuple[int, str], List[str]] = defaultdict(list)
 
         self._sort_all_standings()
 
@@ -253,6 +266,10 @@ class StandingsStore(BaseStore[EnhancedTeamStanding]):
         """
         Update standings based on a game result.
 
+        Auto-detects season_type from GameResult and routes to the correct standing record.
+        Regular season games update regular_season standings.
+        Playoff games update playoffs standings.
+
         Args:
             result: Game result to process
         """
@@ -260,15 +277,29 @@ class StandingsStore(BaseStore[EnhancedTeamStanding]):
             self.logger.warning("Cannot update locked standings")
             return
 
-        home_id = str(result.home_team.team_id)
-        away_id = str(result.away_team.team_id)
+        # 🔑 AUTO-DETECT season_type from GameResult
+        season_type = getattr(result, 'season_type', 'regular_season')
 
-        home_standing = self.data.get(home_id)
-        away_standing = self.data.get(away_id)
+        home_id = result.home_team.team_id
+        away_id = result.away_team.team_id
 
-        if not home_standing or not away_standing:
-            self.logger.error(f"Team not found in standings: {home_id} or {away_id}")
-            return
+        # 🔑 BUILD COMPOSITE KEYS with season_type
+        home_key = f"{home_id}_{season_type}"
+        away_key = f"{away_id}_{season_type}"
+
+        home_standing = self.data.get(home_key)
+        away_standing = self.data.get(away_key)
+
+        # 🔑 LAZY CREATION: If playoff standings don't exist yet, create them
+        if not home_standing:
+            self.logger.info(f"Creating {season_type} standing for team {home_id}")
+            home_standing = self._create_standing_for_team(home_id, season_type)
+            self.data[home_key] = home_standing
+
+        if not away_standing:
+            self.logger.info(f"Creating {season_type} standing for team {away_id}")
+            away_standing = self._create_standing_for_team(away_id, season_type)
+            self.data[away_key] = away_standing
 
         # Determine winner
         if result.home_score > result.away_score:
@@ -278,11 +309,11 @@ class StandingsStore(BaseStore[EnhancedTeamStanding]):
             away_standing.losses += 1
             away_standing.away_losses += 1
 
-            self.recent_results[result.home_team.team_id].append('W')
-            self.recent_results[result.away_team.team_id].append('L')
+            self.recent_results[(result.home_team.team_id, season_type)].append('W')
+            self.recent_results[(result.away_team.team_id, season_type)].append('L')
 
-            # Update head-to-head
-            self._update_head_to_head(result.home_team.team_id, result.away_team.team_id, 'home')
+            # Update head-to-head (now includes season_type)
+            self._update_head_to_head(result.home_team.team_id, result.away_team.team_id, 'home', season_type)
 
         elif result.away_score > result.home_score:
             # Away team wins
@@ -291,22 +322,22 @@ class StandingsStore(BaseStore[EnhancedTeamStanding]):
             home_standing.losses += 1
             home_standing.home_losses += 1
 
-            self.recent_results[result.away_team.team_id].append('W')
-            self.recent_results[result.home_team.team_id].append('L')
+            self.recent_results[(result.away_team.team_id, season_type)].append('W')
+            self.recent_results[(result.home_team.team_id, season_type)].append('L')
 
-            # Update head-to-head
-            self._update_head_to_head(result.home_team.team_id, result.away_team.team_id, 'away')
+            # Update head-to-head (now includes season_type)
+            self._update_head_to_head(result.home_team.team_id, result.away_team.team_id, 'away', season_type)
 
         else:
             # Tie
             home_standing.ties += 1
             away_standing.ties += 1
 
-            self.recent_results[result.home_team.team_id].append('T')
-            self.recent_results[result.away_team.team_id].append('T')
+            self.recent_results[(result.home_team.team_id, season_type)].append('T')
+            self.recent_results[(result.away_team.team_id, season_type)].append('T')
 
-            # Update head-to-head
-            self._update_head_to_head(result.home_team.team_id, result.away_team.team_id, 'tie')
+            # Update head-to-head (now includes season_type)
+            self._update_head_to_head(result.home_team.team_id, result.away_team.team_id, 'tie', season_type)
 
         # Update points
         home_standing.points_for += result.home_score
@@ -317,44 +348,54 @@ class StandingsStore(BaseStore[EnhancedTeamStanding]):
         # Update division/conference records
         self._update_division_conference_records(result, home_standing, away_standing)
 
-        # Update streaks
-        self._update_streaks(result.home_team.team_id, home_standing)
-        self._update_streaks(result.away_team.team_id, away_standing)
+        # Update streaks (now includes season_type)
+        self._update_streaks(result.home_team.team_id, home_standing, season_type)
+        self._update_streaks(result.away_team.team_id, away_standing, season_type)
 
-        # Re-sort standings
-        self._sort_all_standings()
+        # Re-sort standings FOR THIS SEASON TYPE
+        self._sort_standings_by_type(season_type)
 
-        # Immediate database persistence for both teams
-        self._persist_to_database(result.home_team.team_id, home_standing)
-        self._persist_to_database(result.away_team.team_id, away_standing)
+        # Immediate database persistence for both teams (now includes season_type)
+        self._persist_to_database(result.home_team.team_id, home_standing, season_type)
+        self._persist_to_database(result.away_team.team_id, away_standing, season_type)
 
-        self.logger.info(f"Updated standings for game: {result.away_team.team_id} @ {result.home_team.team_id}")
+        self.logger.info(f"Updated {season_type} standings for game: {result.away_team.team_id} @ {result.home_team.team_id}")
 
-    def get_division_standings(self, division: str) -> List[EnhancedTeamStanding]:
+    def get_division_standings(self, division: str, season_type: str = "regular_season") -> List[EnhancedTeamStanding]:
         """
-        Get sorted standings for a division.
+        Get sorted standings for a division and season type.
 
         Args:
-            division: Division name
+            division: Division name (e.g., "AFC East", "NFC North")
+            season_type: "regular_season" or "playoffs" (default: "regular_season")
 
         Returns:
-            Sorted list of team standings
+            Sorted list of team standings for this division/season_type
         """
-        team_ids = self.division_standings.get(division, [])
-        return [self.data[str(tid)] for tid in team_ids]
+        team_ids = self.division_standings.get(season_type, {}).get(division, [])
+        return [
+            self.data[f"{tid}_{season_type}"]
+            for tid in team_ids
+            if f"{tid}_{season_type}" in self.data
+        ]
 
-    def get_conference_standings(self, conference: str) -> List[EnhancedTeamStanding]:
+    def get_conference_standings(self, conference: str, season_type: str = "regular_season") -> List[EnhancedTeamStanding]:
         """
-        Get sorted standings for a conference.
+        Get sorted standings for a conference and season type.
 
         Args:
             conference: Conference name ('AFC' or 'NFC')
+            season_type: "regular_season" or "playoffs" (default: "regular_season")
 
         Returns:
-            Sorted list of team standings
+            Sorted list of team standings for this conference/season_type
         """
-        team_ids = self.conference_standings.get(conference, [])
-        return [self.data[str(tid)] for tid in team_ids]
+        team_ids = self.conference_standings.get(season_type, {}).get(conference, [])
+        return [
+            self.data[f"{tid}_{season_type}"]
+            for tid in team_ids
+            if f"{tid}_{season_type}" in self.data
+        ]
 
     def get_playoff_picture(self) -> Dict[str, Any]:
         """
@@ -397,22 +438,27 @@ class StandingsStore(BaseStore[EnhancedTeamStanding]):
 
         return playoff_picture
 
-    def get_team_standing(self, team_id: int) -> Optional[EnhancedTeamStanding]:
+    def get_team_standing(self, team_id: int, season_type: str = "regular_season") -> Optional[EnhancedTeamStanding]:
         """
-        Get standing for a specific team.
+        Get standing for a specific team and season type.
 
         Args:
-            team_id: Team identifier
+            team_id: Team identifier (1-32)
+            season_type: "regular_season" or "playoffs" (default: "regular_season")
 
         Returns:
-            Team standing if found
+            Team standing if found, None otherwise
         """
-        return self.data.get(str(team_id))
+        key = f"{team_id}_{season_type}"
+        return self.data.get(key)
 
-    def _initialize_standings(self) -> None:
-        """Initialize standings for all 32 teams."""
-        self.data.clear()
+    def _initialize_standings(self, season_type: str = "regular_season") -> None:
+        """
+        Initialize standings for all 32 teams for a specific season type.
 
+        Args:
+            season_type: "regular_season" or "playoffs"
+        """
         for team_id in range(1, 33):
             # Determine division place (1-4 within division)
             division_place = ((team_id - 1) % 4) + 1
@@ -424,44 +470,107 @@ class StandingsStore(BaseStore[EnhancedTeamStanding]):
                 ties=0,
                 division_place=division_place
             )
-            self.data[str(team_id)] = standing
+            # Use composite key: team_id_season_type
+            key = f"{team_id}_{season_type}"
+            self.data[key] = standing
+
+    def _create_standing_for_team(self, team_id: int, season_type: str) -> EnhancedTeamStanding:
+        """
+        Create a new standing record for a team/season_type combination.
+
+        Used for lazy creation of playoff standings when first playoff game is played.
+
+        Args:
+            team_id: Team identifier (1-32)
+            season_type: "regular_season" or "playoffs"
+
+        Returns:
+            New EnhancedTeamStanding with 0-0 record
+        """
+        division_place = ((team_id - 1) % 4) + 1
+        return EnhancedTeamStanding(
+            team_id=team_id,
+            wins=0,
+            losses=0,
+            ties=0,
+            division_place=division_place
+        )
 
     def _sort_all_standings(self) -> None:
-        """Sort all standings (division, conference, overall)."""
+        """Sort all standings (division, conference, overall) for BOTH season types."""
+        # Sort for both regular_season and playoffs
+        for season_type in ["regular_season", "playoffs"]:
+            self._sort_standings_by_type(season_type)
+
+    def _sort_standings_by_type(self, season_type: str) -> None:
+        """
+        Sort standings for a specific season type.
+
+        Args:
+            season_type: "regular_season" or "playoffs"
+        """
+        # Get all teams for this season type
+        teams_for_type = [
+            standing for key, standing in self.data.items()
+            if key.endswith(f"_{season_type}")
+        ]
+
+        # If no teams exist for this season type yet, skip
+        if not teams_for_type:
+            return
+
         # Sort each division
         for division, team_ids in NFL_DIVISIONS.items():
-            division_teams = [self.data[str(tid)] for tid in team_ids]
-            division_teams.sort(key=lambda t: (
-                t.win_percentage,
-                t.wins,
-                t.division_wins,
-                t.point_differential
-            ), reverse=True)
-            self.division_standings[division] = [t.team_id for t in division_teams]
+            division_teams = []
+            for tid in team_ids:
+                key = f"{tid}_{season_type}"
+                if key in self.data:
+                    division_teams.append(self.data[key])
 
-            # Update division places
-            for i, team in enumerate(division_teams):
-                team.division_place = i + 1
+            if division_teams:
+                division_teams.sort(key=lambda t: (
+                    t.win_percentage,
+                    t.wins,
+                    t.division_wins,
+                    t.point_differential
+                ), reverse=True)
+
+                if season_type not in self.division_standings:
+                    self.division_standings[season_type] = {}
+                self.division_standings[season_type][division] = [t.team_id for t in division_teams]
+
+                # Update division places
+                for i, team in enumerate(division_teams):
+                    team.division_place = i + 1
 
         # Sort each conference
         for conference, team_ids in NFL_CONFERENCES.items():
-            conference_teams = [self.data[str(tid)] for tid in team_ids]
-            conference_teams.sort(key=lambda t: (
-                t.win_percentage,
-                t.wins,
-                t.conference_wins,
-                t.point_differential
-            ), reverse=True)
-            self.conference_standings[conference] = [t.team_id for t in conference_teams]
+            conference_teams = []
+            for tid in team_ids:
+                key = f"{tid}_{season_type}"
+                if key in self.data:
+                    conference_teams.append(self.data[key])
 
-        # Sort overall
-        all_teams = list(self.data.values())
-        all_teams.sort(key=lambda t: (
+            if conference_teams:
+                conference_teams.sort(key=lambda t: (
+                    t.win_percentage,
+                    t.wins,
+                    t.conference_wins,
+                    t.point_differential
+                ), reverse=True)
+
+                if season_type not in self.conference_standings:
+                    self.conference_standings[season_type] = {}
+                self.conference_standings[season_type][conference] = [t.team_id for t in conference_teams]
+
+        # Sort overall for this season type
+        all_teams_for_type = list(teams_for_type)
+        all_teams_for_type.sort(key=lambda t: (
             t.win_percentage,
             t.wins,
             t.point_differential
         ), reverse=True)
-        self.overall_standings = [t.team_id for t in all_teams]
+        self.overall_standings[season_type] = [t.team_id for t in all_teams_for_type]
 
     def _update_division_conference_records(self, result: GameResult,
                                            home_standing: EnhancedTeamStanding,
@@ -490,9 +599,18 @@ class StandingsStore(BaseStore[EnhancedTeamStanding]):
                 away_standing.conference_wins += 1
                 home_standing.conference_losses += 1
 
-    def _update_head_to_head(self, team1_id: int, team2_id: int, winner: str) -> None:
-        """Update head-to-head record."""
-        key = tuple(sorted([team1_id, team2_id]))
+    def _update_head_to_head(self, team1_id: int, team2_id: int, winner: str, season_type: str) -> None:
+        """
+        Update head-to-head record for a specific season type.
+
+        Args:
+            team1_id: First team ID (home team typically)
+            team2_id: Second team ID (away team typically)
+            winner: 'home', 'away', or 'tie'
+            season_type: "regular_season" or "playoffs"
+        """
+        # Key now includes season_type for separation
+        key = tuple(sorted([team1_id, team2_id]) + [season_type])
 
         if winner == 'home' and team1_id < team2_id:
             self.head_to_head[key]['team1_wins'] += 1
@@ -505,9 +623,17 @@ class StandingsStore(BaseStore[EnhancedTeamStanding]):
         else:  # tie
             self.head_to_head[key]['ties'] += 1
 
-    def _update_streaks(self, team_id: int, standing: EnhancedTeamStanding) -> None:
-        """Update win/loss streaks and last 5 games."""
-        recent = self.recent_results[team_id]
+    def _update_streaks(self, team_id: int, standing: EnhancedTeamStanding, season_type: str) -> None:
+        """
+        Update win/loss streaks and last 5 games for a specific season type.
+
+        Args:
+            team_id: Team identifier
+            standing: Team standing to update
+            season_type: "regular_season" or "playoffs"
+        """
+        # Recent results now keyed by (team_id, season_type)
+        recent = self.recent_results[(team_id, season_type)]
 
         # Calculate current streak
         if recent:
@@ -580,32 +706,35 @@ class StandingsStore(BaseStore[EnhancedTeamStanding]):
             }
         }
 
-    def _persist_to_database(self, team_id: int, standing: EnhancedTeamStanding) -> None:
+    def _persist_to_database(self, team_id: int, standing: EnhancedTeamStanding, season_type: str) -> None:
         """
-        Persist team standing to database immediately.
-        
+        Persist team standing to database immediately with season_type.
+
         Args:
             team_id: Team identifier
             standing: Team standing data
+            season_type: "regular_season" or "playoffs"
         """
         if not self.db_connection or not self.dynasty_id or not self.current_season:
             self.logger.warning("Database persistence not available - missing connection or context")
             return
-        
+
         try:
             # Use INSERT OR REPLACE to handle updates
+            # CRITICAL: Include season_type in query for proper record separation
             query = '''
                 INSERT OR REPLACE INTO standings (
-                    dynasty_id, team_id, season, wins, losses, ties,
+                    dynasty_id, team_id, season, season_type,
+                    wins, losses, ties,
                     division_wins, division_losses, conference_wins, conference_losses,
                     home_wins, home_losses, away_wins, away_losses,
                     points_for, points_against, point_differential,
-                    current_streak, division_rank, last_updated
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    current_streak, division_rank
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             '''
-            
+
             params = (
-                self.dynasty_id, team_id, self.current_season,
+                self.dynasty_id, team_id, self.current_season, season_type,  # ⭐ Added season_type
                 standing.wins, standing.losses, standing.ties,
                 standing.division_wins, standing.division_losses,
                 standing.conference_wins, standing.conference_losses,
@@ -615,9 +744,9 @@ class StandingsStore(BaseStore[EnhancedTeamStanding]):
                 standing.point_differential, standing.streak,
                 standing.division_place
             )
-            
+
             self.db_connection.execute_update(query, params)
-            self.logger.debug(f"Persisted standings for team {team_id}")
-            
+            self.logger.debug(f"Persisted {season_type} standings for team {team_id}")
+
         except Exception as e:
-            self.logger.error(f"Failed to persist standings for team {team_id}: {e}")
+            self.logger.error(f"Failed to persist {season_type} standings for team {team_id}: {e}")

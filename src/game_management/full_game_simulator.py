@@ -30,7 +30,8 @@ class FullGameSimulator:
     def __init__(self, away_team_id: int, home_team_id: int,
                  dynasty_id: Optional[str] = None,
                  db_path: Optional[str] = None,
-                 overtime_type: str = "regular_season"):
+                 overtime_type: str = "regular_season",
+                 season_type: str = "regular_season"):
         """
         Initialize game simulator with two teams.
 
@@ -40,6 +41,7 @@ class FullGameSimulator:
             dynasty_id: Dynasty context (REQUIRED for database rosters, None for demo mode)
             db_path: Database path (REQUIRED for database rosters, None for demo mode)
             overtime_type: Type of overtime rules ("regular_season" or "playoffs")
+            season_type: Type of season ("regular_season" or "playoffs")
         """
         # Load team data
         self.away_team = get_team_by_id(away_team_id)
@@ -63,6 +65,9 @@ class FullGameSimulator:
 
         # Store overtime type for game simulation
         self.overtime_type = OvertimeType.PLAYOFFS if overtime_type == "playoffs" else OvertimeType.REGULAR_SEASON
+
+        # Store season type for game result persistence
+        self.season_type = season_type
 
         # Load team rosters (database or synthetic)
         if dynasty_id and db_path:
@@ -140,7 +145,8 @@ class FullGameSimulator:
                 home_roster=self.home_roster,
                 away_roster=self.away_roster,
                 overtime_manager=overtime_manager,
-                game_date=date
+                game_date=date,
+                season_type=self.season_type
             )
 
             print("✅ GameLoopController initialized successfully")
