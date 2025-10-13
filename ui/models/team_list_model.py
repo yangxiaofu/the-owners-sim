@@ -28,30 +28,33 @@ class TeamListModel(QAbstractTableModel):
 
     # Column indices
     COL_TEAM_NAME = 0
-    COL_DIVISION = 1
-    COL_CONFERENCE = 2
-    COL_RECORD = 3
+    COL_WINS = 1
+    COL_LOSSES = 2
+    COL_TIES = 3
+    COL_WIN_PCT = 4
+    COL_PF = 5
+    COL_PA = 6
 
     def __init__(self, parent=None):
         """Initialize team list model."""
         super().__init__(parent)
         self._teams: List[Team] = []
-        self._records: dict[int, dict[str, int]] = {}  # team_id -> {wins, losses, ties}
+        self._records: dict[int, dict[str, Any]] = {}  # team_id -> {wins, losses, ties, points_for, points_against}
         self._has_records = False
 
         # Column headers
-        self._headers = ["Team", "Division", "Conference", "Record"]
+        self._headers = ["Team", "W", "L", "T", "Win%", "PF", "PA"]
 
     def set_teams(self, teams: List[Team], records: Optional[dict[int, dict[str, int]]] = None):
         """
         Set teams data for display.
 
         Args:
-            teams: List of Team objects
+            teams: List of Team objects (preserves caller's sort order)
             records: Optional dict mapping team_id to {wins, losses, ties}
         """
         self.beginResetModel()
-        self._teams = sorted(teams, key=lambda t: (t.conference, t.division, t.city))
+        self._teams = teams  # Preserve caller's sort order (e.g., win percentage)
         self._records = records or {}
         self._has_records = bool(records)
         self.endResetModel()
@@ -85,31 +88,52 @@ class TeamListModel(QAbstractTableModel):
         team = self._teams[row]
 
         if role == Qt.TextAlignmentRole:
-            # Center-align all columns
+            # Left-align team name, center-align all other columns
+            if col == self.COL_TEAM_NAME:
+                return Qt.AlignLeft | Qt.AlignVCenter
             return Qt.AlignCenter
 
         # Display role
         if col == self.COL_TEAM_NAME:
             return team.full_name
 
-        elif col == self.COL_DIVISION:
-            return f"{team.conference} {team.division}"
+        elif col == self.COL_WINS:
+            if self._has_records and team.team_id in self._records:
+                return str(self._records[team.team_id].get('wins', 0))
+            return "-"
 
-        elif col == self.COL_CONFERENCE:
-            return team.conference
+        elif col == self.COL_LOSSES:
+            if self._has_records and team.team_id in self._records:
+                return str(self._records[team.team_id].get('losses', 0))
+            return "-"
 
-        elif col == self.COL_RECORD:
+        elif col == self.COL_TIES:
+            if self._has_records and team.team_id in self._records:
+                return str(self._records[team.team_id].get('ties', 0))
+            return "-"
+
+        elif col == self.COL_WIN_PCT:
             if self._has_records and team.team_id in self._records:
                 record = self._records[team.team_id]
                 wins = record.get('wins', 0)
                 losses = record.get('losses', 0)
                 ties = record.get('ties', 0)
-                if ties > 0:
-                    return f"{wins}-{losses}-{ties}"
-                else:
-                    return f"{wins}-{losses}"
-            else:
-                return "N/A"
+                total = wins + losses + ties
+                if total == 0:
+                    return ".000"
+                win_pct = (wins + 0.5 * ties) / total
+                return f".{int(win_pct * 1000):03d}"
+            return "-"
+
+        elif col == self.COL_PF:
+            if self._has_records and team.team_id in self._records:
+                return str(self._records[team.team_id].get('points_for', 0))
+            return "-"
+
+        elif col == self.COL_PA:
+            if self._has_records and team.team_id in self._records:
+                return str(self._records[team.team_id].get('points_against', 0))
+            return "-"
 
         return None
 
@@ -136,13 +160,25 @@ class TeamListModel(QAbstractTableModel):
         if column == self.COL_TEAM_NAME:
             self._teams.sort(key=lambda t: t.full_name, reverse=reverse)
 
-        elif column == self.COL_DIVISION:
-            self._teams.sort(key=lambda t: (t.conference, t.division), reverse=reverse)
+        elif column == self.COL_WINS:
+            if self._has_records:
+                self._teams.sort(key=lambda t: self._records.get(t.team_id, {}).get('wins', 0), reverse=reverse)
+            else:
+                self._teams.sort(key=lambda t: t.full_name, reverse=reverse)
 
-        elif column == self.COL_CONFERENCE:
-            self._teams.sort(key=lambda t: t.conference, reverse=reverse)
+        elif column == self.COL_LOSSES:
+            if self._has_records:
+                self._teams.sort(key=lambda t: self._records.get(t.team_id, {}).get('losses', 0), reverse=reverse)
+            else:
+                self._teams.sort(key=lambda t: t.full_name, reverse=reverse)
 
-        elif column == self.COL_RECORD:
+        elif column == self.COL_TIES:
+            if self._has_records:
+                self._teams.sort(key=lambda t: self._records.get(t.team_id, {}).get('ties', 0), reverse=reverse)
+            else:
+                self._teams.sort(key=lambda t: t.full_name, reverse=reverse)
+
+        elif column == self.COL_WIN_PCT:
             if self._has_records:
                 def get_win_pct(team: Team) -> float:
                     """Calculate win percentage for sorting."""
@@ -159,7 +195,18 @@ class TeamListModel(QAbstractTableModel):
 
                 self._teams.sort(key=get_win_pct, reverse=reverse)
             else:
-                # If no records, sort by team name
+                self._teams.sort(key=lambda t: t.full_name, reverse=reverse)
+
+        elif column == self.COL_PF:
+            if self._has_records:
+                self._teams.sort(key=lambda t: self._records.get(t.team_id, {}).get('points_for', 0), reverse=reverse)
+            else:
+                self._teams.sort(key=lambda t: t.full_name, reverse=reverse)
+
+        elif column == self.COL_PA:
+            if self._has_records:
+                self._teams.sort(key=lambda t: self._records.get(t.team_id, {}).get('points_against', 0), reverse=reverse)
+            else:
                 self._teams.sort(key=lambda t: t.full_name, reverse=reverse)
 
         self.endResetModel()

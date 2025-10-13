@@ -177,26 +177,39 @@ class PlayoffView(QWidget):
 
     def refresh(self) -> None:
         """Reload playoff data and update the display."""
+        print(f"\n[DEBUG PlayoffView] refresh() called")
+
         if not self.controller:
+            print(f"[DEBUG PlayoffView] Controller is None, showing no data message")
             self._show_no_data_message()
             return
 
         # Check if playoffs are active
         is_active = self.controller.is_active()
+        print(f"[DEBUG PlayoffView] is_active() = {is_active}")
+
         if not is_active:
+            print(f"[DEBUG PlayoffView] Not active, showing not active message")
             self._show_not_active_message()
             return
 
         try:
             # Get seeding data
             seeding = self.controller.get_seeding()
+            print(f"[DEBUG PlayoffView] seeding = {seeding is not None}")
+
             if seeding:
                 self._update_seeding_tables(seeding)
             else:
+                print(f"[DEBUG PlayoffView] No seeding, showing no data message")
                 self._show_no_data_message()
 
             # Get bracket data
             bracket_data = self.controller.get_bracket()
+            print(f"[DEBUG PlayoffView] bracket_data = {bracket_data is not None}")
+            if bracket_data:
+                print(f"[DEBUG PlayoffView] bracket_data keys = {list(bracket_data.keys())}")
+
             if bracket_data:
                 # Get game results for each round
                 round_results = {
@@ -205,10 +218,17 @@ class PlayoffView(QWidget):
                     'conference': self.controller.get_round_games('conference'),
                     'super_bowl': self.controller.get_round_games('super_bowl')
                 }
+                print(f"[DEBUG PlayoffView] round_results counts:")
+                for round_name, games in round_results.items():
+                    print(f"  {round_name}: {len(games) if games else 0} games")
+
+                print(f"[DEBUG PlayoffView] Calling _update_bracket_display()")
                 self._update_bracket_display(bracket_data, round_results)
+                print(f"[DEBUG PlayoffView] _update_bracket_display() completed")
 
         except Exception as e:
             import traceback
+            print(f"[DEBUG PlayoffView] EXCEPTION: {e}")
             traceback.print_exc()
             self._show_error_message(f"Error loading playoff data: {str(e)}")
 

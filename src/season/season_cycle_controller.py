@@ -152,8 +152,9 @@ class SeasonCycleController:
             self._restore_playoff_controller()
             self.active_controller = self.playoff_controller
         elif initial_phase == SeasonPhase.OFFSEASON:
-            # No active controller in offseason
-            self.active_controller = None
+            # Restore playoff controller so users can review completed bracket
+            self._restore_playoff_controller()
+            self.active_controller = None  # No active controller in offseason (no more games to simulate)
         else:
             # Regular season - use season controller
             self.active_controller = self.season_controller
@@ -415,13 +416,27 @@ class SeasonCycleController:
 
     def get_playoff_bracket(self) -> Optional[Dict[str, Any]]:
         """
-        Get playoff bracket (only available during playoffs).
+        Get playoff bracket (available during playoffs and offseason).
 
         Returns:
-            Bracket data or None if not in playoffs
+            Bracket data or None if not available
         """
-        if self.phase_state.phase != SeasonPhase.PLAYOFFS:
+        # Only hide bracket during regular season (before playoffs start)
+        if self.phase_state.phase == SeasonPhase.REGULAR_SEASON:
             return None
+
+        # Lazy initialization: If playoff controller not initialized but we need it, restore it
+        # This handles the case when app restarts during playoffs or offseason
+        if not self.playoff_controller and self.phase_state.phase in [SeasonPhase.PLAYOFFS, SeasonPhase.OFFSEASON]:
+            try:
+                if self.verbose_logging:
+                    print(f"[DEBUG] get_playoff_bracket(): playoff_controller is None, attempting restoration...")
+                self._restore_playoff_controller()
+            except Exception as e:
+                self.logger.error(f"Failed to restore playoff controller: {e}")
+                if self.verbose_logging:
+                    print(f"[ERROR] Failed to restore playoff controller: {e}")
+                return None
 
         if not self.playoff_controller:
             return None

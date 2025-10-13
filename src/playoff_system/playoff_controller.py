@@ -580,18 +580,21 @@ class PlayoffController:
         """
         Get games for a specific playoff round FROM DATABASE.
 
-        Single source of truth: Queries database for completed games.
+        Single source of truth: Queries database for ALL games (scheduled AND completed).
+        This method is used by the UI to display the complete bracket structure.
 
         Args:
             round_name: 'wild_card', 'divisional', 'conference', or 'super_bowl'
 
         Returns:
-            List of game dictionaries with matchup and result information
+            List of game dictionaries with matchup and result information:
+            - Completed games: Include scores, winner_id, status='completed'
+            - Scheduled games: Include teams, status='scheduled', no scores
         """
         if round_name not in self.ROUND_ORDER:
             raise ValueError(f"Invalid round name: {round_name}")
 
-        return self._get_completed_games_from_database(round_name)
+        return self._get_all_playoff_games_from_database(round_name)
 
     def get_current_state(self) -> Dict[str, Any]:
         """
@@ -811,6 +814,14 @@ class PlayoffController:
         - Produces identical bracket structure to original (deterministic)
         - ZERO database writes - purely in-memory reconstruction
         """
+        print(f"\n[DEBUG _reschedule_brackets] ===== METHOD CALLED =====")
+        print(f"[DEBUG _reschedule_brackets] self.state.brackets BEFORE: {list(self.state.brackets.keys())}")
+        for round_name in self.ROUND_ORDER:
+            bracket = self.state.brackets.get(round_name)
+            print(f"[DEBUG _reschedule_brackets]   {round_name}: {type(bracket).__name__ if bracket else 'None'}")
+            if bracket and hasattr(bracket, 'games'):
+                print(f"[DEBUG _reschedule_brackets]     -> has {len(bracket.games)} games")
+
         if self.verbose_logging:
             print(f"\n🔄 Reconstructing bracket structure from existing events...")
             print(f"   ⚠️  This should NOT create any new database events!")
@@ -836,6 +847,12 @@ class PlayoffController:
             )
             self.state.brackets['wild_card'] = wc_bracket
 
+            print(f"[DEBUG _reschedule_brackets] Wild Card bracket created!")
+            print(f"[DEBUG _reschedule_brackets]   Type: {type(wc_bracket).__name__}")
+            print(f"[DEBUG _reschedule_brackets]   Has .games attribute: {hasattr(wc_bracket, 'games')}")
+            if hasattr(wc_bracket, 'games'):
+                print(f"[DEBUG _reschedule_brackets]   Number of games: {len(wc_bracket.games)}")
+
             if self.verbose_logging:
                 print(f"   ✅ Wild Card bracket reconstructed (0 events created)")
 
@@ -847,8 +864,10 @@ class PlayoffController:
         # 2. Re-schedule subsequent rounds if they have games
         # Must process in order: divisional → conference → super_bowl
         for round_name in ['divisional', 'conference', 'super_bowl']:
-            # Check if this round has any games (scheduled or completed)
-            if len(self.state.completed_games[round_name]) == 0:
+            # Check if this round has any games (scheduled or completed) by querying DATABASE
+            # FIX: Use database query instead of in-memory completed_games to detect scheduled games after app restart
+            round_games_db = self._get_all_playoff_games_from_database(round_name)
+            if len(round_games_db) == 0:
                 # No games in this round yet, stop here
                 if self.verbose_logging:
                     print(f"   ⏭️  {round_name.title()} round: No games found, skipping")
@@ -863,16 +882,18 @@ class PlayoffController:
                         print(f"   ⚠️  {round_name.title()}: Cannot determine previous round")
                     break
 
-                # Check if previous round is complete
-                prev_round_complete = len(self.state.completed_games[prev_round]) >= self._get_expected_game_count(prev_round)
+                # Check if previous round is complete by querying DATABASE
+                # FIX: Use database query instead of in-memory completed_games to detect completed games after app restart
+                prev_round_games_db = self._get_completed_games_from_database(prev_round)
+                prev_round_complete = len(prev_round_games_db) >= self._get_expected_game_count(prev_round)
                 if not prev_round_complete:
                     if self.verbose_logging:
                         print(f"   ⚠️  {round_name.title()}: Previous round ({prev_round}) not complete")
                     break
 
                 # Convert previous round's games to GameResult objects
-                prev_round_games = self.state.completed_games[prev_round]
-                completed_results = self._convert_games_to_results(prev_round_games)
+                # Use previously queried database games (prev_round_games_db from above)
+                completed_results = self._convert_games_to_results(prev_round_games_db)
 
                 # Calculate start date for this round
                 start_date = self.wild_card_start_date.add_days(round_offsets[round_name])
@@ -902,6 +923,12 @@ class PlayoffController:
                 # Store bracket structure (no events created)
                 self.state.brackets[round_name] = bracket
 
+                print(f"[DEBUG _reschedule_brackets] {round_name.title()} bracket created!")
+                print(f"[DEBUG _reschedule_brackets]   Type: {type(bracket).__name__}")
+                print(f"[DEBUG _reschedule_brackets]   Has .games attribute: {hasattr(bracket, 'games')}")
+                if hasattr(bracket, 'games'):
+                    print(f"[DEBUG _reschedule_brackets]   Number of games: {len(bracket.games)}")
+
                 if self.verbose_logging:
                     print(f"   ✅ {round_name.title()} bracket reconstructed (0 events created)")
 
@@ -911,6 +938,14 @@ class PlayoffController:
                     print(f"   ❌ {round_name.title()} bracket reconstruction failed: {e}")
                 # Stop processing subsequent rounds on error
                 break
+
+        print(f"\n[DEBUG _reschedule_brackets] ===== FINAL STATE =====")
+        print(f"[DEBUG _reschedule_brackets] self.state.brackets AFTER: {list(self.state.brackets.keys())}")
+        for round_name in self.ROUND_ORDER:
+            bracket = self.state.brackets.get(round_name)
+            print(f"[DEBUG _reschedule_brackets]   {round_name}: {type(bracket).__name__ if bracket else 'None'}")
+            if bracket and hasattr(bracket, 'games'):
+                print(f"[DEBUG _reschedule_brackets]     -> has {len(bracket.games)} games")
 
         if self.verbose_logging:
             print(f"✅ Bracket reconstruction complete - UI ready (0 new events created)")
@@ -1153,6 +1188,124 @@ class PlayoffController:
             print(f"[DATABASE_QUERY] Found {len(completed_games)} completed games for {round_name} round")
 
         return completed_games
+
+    def _get_all_playoff_games_from_database(self, round_name: str) -> List[Dict[str, Any]]:
+        """
+        Query database for ALL playoff games (scheduled AND completed) for a specific round.
+
+        This method is designed for UI display purposes, returning both:
+        - Scheduled games (not yet simulated, no results)
+        - Completed games (simulated with results and scores)
+
+        Unlike _get_completed_games_from_database(), this method does NOT filter out
+        scheduled games, allowing the UI to display the full bracket structure including
+        future matchups.
+
+        Args:
+            round_name: Playoff round name ('wild_card', 'divisional', 'conference', 'super_bowl')
+
+        Returns:
+            List of game dictionaries including:
+            - event_id: Game identifier
+            - game_id: Full game ID
+            - away_team_id: Away team ID
+            - home_team_id: Home team ID
+            - away_score: Final away score (0 if scheduled)
+            - home_score: Final home score (0 if scheduled)
+            - winner_id: Winning team ID (None if scheduled)
+            - status: 'completed' or 'scheduled'
+            - game_date: Game date (if available)
+            - success: True for completed games, False for scheduled
+        """
+        import json
+
+        # Query all playoff events for this dynasty/season
+        # FILTERING #1: Dynasty isolation via get_events_by_dynasty()
+        all_playoff_events = self.event_db.get_events_by_dynasty(
+            dynasty_id=self.dynasty_id,
+            event_type="GAME"
+        )
+
+        # FILTERING #2: Season + Round filtering via game_id prefix
+        round_prefix = f"playoff_{self.season_year}_{round_name}_"
+        all_games = []
+
+        for event in all_playoff_events:
+            game_id = event.get('game_id', '')
+
+            # Check if this game belongs to the target round
+            if not game_id.startswith(round_prefix):
+                continue
+
+            # Parse event data
+            event_data = event.get('data', '{}')
+            if isinstance(event_data, str):
+                try:
+                    event_data = json.loads(event_data)
+                except json.JSONDecodeError:
+                    continue
+
+            # Extract game parameters (always present, even for scheduled games)
+            parameters = event_data.get('parameters', {})
+            away_team_id = parameters.get('away_team_id')
+            home_team_id = parameters.get('home_team_id')
+            game_date = parameters.get('game_date')
+
+            # Validate required fields
+            if away_team_id is None or home_team_id is None:
+                continue
+
+            # Check if game has results (was simulated)
+            results = event_data.get('results')
+
+            if not results:
+                # SCHEDULED GAME - no results yet, include as scheduled
+                game_dict = {
+                    'event_id': game_id,
+                    'game_id': game_id,
+                    'away_team_id': away_team_id,
+                    'home_team_id': home_team_id,
+                    'away_score': 0,
+                    'home_score': 0,
+                    'winner_id': None,
+                    'status': 'scheduled',
+                    'success': False,
+                    'game_date': game_date
+                }
+                all_games.append(game_dict)
+            else:
+                # COMPLETED GAME - has results, include with scores
+                away_score = results.get('away_score')
+                home_score = results.get('home_score')
+
+                # Validate scores
+                if away_score is None or home_score is None:
+                    continue
+
+                # Determine winner
+                winner_id = home_team_id if home_score > away_score else away_team_id
+
+                game_dict = {
+                    'event_id': game_id,
+                    'game_id': game_id,
+                    'away_team_id': away_team_id,
+                    'home_team_id': home_team_id,
+                    'away_score': away_score,
+                    'home_score': home_score,
+                    'winner_id': winner_id,
+                    'status': 'completed',
+                    'success': True,
+                    'game_date': game_date
+                }
+                all_games.append(game_dict)
+
+        if self.verbose_logging and all_games:
+            scheduled_count = sum(1 for g in all_games if g['status'] == 'scheduled')
+            completed_count = sum(1 for g in all_games if g['status'] == 'completed')
+            print(f"[DATABASE_QUERY] Found {len(all_games)} total games for {round_name} round "
+                  f"({completed_count} completed, {scheduled_count} scheduled)")
+
+        return all_games
 
     def _schedule_next_round(self):
         """

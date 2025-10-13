@@ -5,7 +5,7 @@ Displays league-wide statistics, standings, and team comparisons.
 """
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableView, QPushButton,
-    QHeaderView, QTabWidget
+    QHeaderView, QTabWidget, QGridLayout, QGroupBox, QScrollArea
 )
 from PySide6.QtCore import Qt
 
@@ -81,43 +81,106 @@ class LeagueView(QWidget):
             self.load_standings()
 
     def _create_standings_tab(self) -> QWidget:
-        """Create standings tab."""
+        """Create standings tab with 8 division tables in a scrollable area."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(10, 10, 10, 10)
 
-        # Standings table
-        self.standings_table = QTableView()
-        self.standings_model = TeamListModel()
-        self.standings_table.setModel(self.standings_model)
+        # Create scroll area to hold the grid
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll_area.setFrameShape(QScrollArea.NoFrame)
 
-        # Configure table appearance
-        self.standings_table.setSortingEnabled(True)
-        self.standings_table.setAlternatingRowColors(True)
-        self.standings_table.setSelectionBehavior(QTableView.SelectRows)
-        self.standings_table.setSelectionMode(QTableView.SingleSelection)
-        self.standings_table.verticalHeader().setVisible(False)
+        # Create container widget for the grid
+        grid_container = QWidget()
+        grid_layout = QGridLayout(grid_container)
+        grid_layout.setSpacing(15)
+        grid_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Set column widths
-        header = self.standings_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.Stretch)  # Team name
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # Division
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Conference
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # Record
+        # Store division tables and models for later updates
+        self.division_tables = {}
+        self.division_models = {}
 
-        layout.addWidget(self.standings_table)
+        # Define divisions in display order
+        afc_divisions = ["AFC East", "AFC North", "AFC South", "AFC West"]
+        nfc_divisions = ["NFC East", "NFC North", "NFC South", "NFC West"]
+
+        # Create AFC division tables (left column)
+        for row, division in enumerate(afc_divisions):
+            group_box = self._create_division_table(division)
+            grid_layout.addWidget(group_box, row, 0)
+
+        # Create NFC division tables (right column)
+        for row, division in enumerate(nfc_divisions):
+            group_box = self._create_division_table(division)
+            grid_layout.addWidget(group_box, row, 1)
+
+        # Add grid container to scroll area
+        scroll_area.setWidget(grid_container)
+        layout.addWidget(scroll_area)
 
         # Refresh button
         button_layout = QHBoxLayout()
         button_layout.addStretch()
 
-        self.refresh_button = QPushButton("Refresh Standings")
+        self.refresh_button = QPushButton("Refresh Standings (32 teams)")
         self.refresh_button.clicked.connect(self.load_standings)
         button_layout.addWidget(self.refresh_button)
 
         layout.addLayout(button_layout)
 
         return widget
+
+    def _create_division_table(self, division: str) -> QGroupBox:
+        """Create a table for a single division.
+
+        Args:
+            division: Division name (e.g., "AFC East")
+
+        Returns:
+            QGroupBox containing the division table
+        """
+        group_box = QGroupBox(division)
+        group_box.setStyleSheet("QGroupBox { font-weight: bold; }")
+
+        layout = QVBoxLayout(group_box)
+        layout.setContentsMargins(5, 10, 5, 5)
+
+        # Create table for this division
+        table = QTableView()
+        model = TeamListModel()
+        table.setModel(model)
+
+        # Configure table appearance
+        table.setSortingEnabled(False)  # Manual sorting by win%
+        table.setAlternatingRowColors(True)
+        table.setSelectionBehavior(QTableView.SelectRows)
+        table.setSelectionMode(QTableView.SingleSelection)
+        table.verticalHeader().setVisible(False)
+        table.horizontalHeader().setStretchLastSection(False)
+
+        # Set column widths
+        header = table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.Stretch)  # Team name
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # W
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # L
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # T
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Win%
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)  # PF
+        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)  # PA
+
+        # Disable scrollbars - main scroll area handles scrolling
+        table.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        table.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        layout.addWidget(table)
+
+        # Store references for later updates
+        self.division_tables[division] = table
+        self.division_models[division] = model
+
+        return group_box
 
     def _create_free_agents_tab(self) -> QWidget:
         """Create free agents tab (read-only, informational)."""
@@ -167,7 +230,7 @@ class LeagueView(QWidget):
             self.fa_status_label.setText("Error loading free agents")
 
     def load_standings(self):
-        """Load standings data from controller and display in table."""
+        """Load standings data from controller and display in division tables."""
         if not self.controller:
             return
 
@@ -182,33 +245,65 @@ class LeagueView(QWidget):
         if standings_data:
             # standings_data is organized by division
             for division_name, division_data in standings_data.items():
-                if isinstance(division_data, dict) and 'teams' in division_data:
-                    # Division contains list of team standing dicts
-                    for team_dict in division_data['teams']:
-                        if 'standing' in team_dict:
-                            standing = team_dict['standing']
-                            records[standing.team_id] = {
-                                'wins': standing.wins,
-                                'losses': standing.losses,
-                                'ties': standing.ties
-                            }
-                elif isinstance(division_data, list):
-                    # Alternative: division_data is direct list of team dicts
+                if isinstance(division_data, list):
+                    # division_data is list of team dicts
                     for team_dict in division_data:
                         if 'standing' in team_dict:
                             standing = team_dict['standing']
                             records[standing.team_id] = {
                                 'wins': standing.wins,
                                 'losses': standing.losses,
-                                'ties': standing.ties
+                                'ties': standing.ties,
+                                'points_for': standing.points_for,
+                                'points_against': standing.points_against
                             }
 
-        # Update model
-        self.standings_model.set_teams(teams, records if records else None)
+        # Create team lookup by ID
+        teams_by_id = {team.team_id: team for team in teams}
 
-        # Force table to refresh and become visible
-        self.standings_table.viewport().update()
-        self.standings_table.show()
+        # Update each division table
+        for division_name, model in self.division_models.items():
+            # Filter teams for this division
+            division_teams = [team for team in teams if f"{team.conference} {team.division}" == division_name]
+
+            # Sort by win percentage (descending)
+            if records:
+                def get_win_pct(team):
+                    """Calculate win percentage for sorting."""
+                    if team.team_id not in records:
+                        return 0.0
+                    record = records[team.team_id]
+                    wins = record.get('wins', 0)
+                    losses = record.get('losses', 0)
+                    ties = record.get('ties', 0)
+                    total = wins + losses + ties
+                    if total == 0:
+                        return 0.0
+                    return (wins + 0.5 * ties) / total
+
+                division_teams.sort(key=get_win_pct, reverse=True)
+
+            # Update model for this division
+            model.set_teams(division_teams, records if records else None)
+
+            # Force table to refresh
+            table = self.division_tables[division_name]
+            table.viewport().update()
+
+            # Calculate and set proper height to show all rows without scrolling
+            # Get row count (should be 4 for NFL divisions)
+            row_count = model.rowCount()
+            if row_count > 0:
+                # Calculate total height: header + all rows + frame
+                header_height = table.horizontalHeader().height()
+                row_height = table.rowHeight(0)  # Get height of first row
+                total_row_height = row_height * row_count
+                frame_height = table.frameWidth() * 2
+
+                # Set minimum height to show all content
+                calculated_height = header_height + total_row_height + frame_height + 5  # +5 for padding
+                table.setMinimumHeight(calculated_height)
+                table.setMaximumHeight(calculated_height)
 
         # Update status
         team_count = len(teams)

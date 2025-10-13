@@ -51,13 +51,17 @@ class PlayoffDataModel:
 
     def is_playoffs_active(self) -> bool:
         """
-        Check if current season phase is playoffs.
+        Check if playoff bracket is available for viewing.
+
+        Returns True for both active playoffs AND offseason (to view completed bracket).
+        Only returns False during regular season (before playoffs start).
 
         Returns:
-            True if current phase is playoffs, False otherwise
+            True if playoff bracket should be displayed, False during regular season
         """
         phase = self.simulation_controller.get_current_phase()
-        return phase == "playoffs"
+        # Allow bracket viewing during playoffs (active) and offseason (review results)
+        return phase in ["playoffs", "offseason"]
 
     def get_playoff_seeding(self) -> Optional[Dict[str, Any]]:
         """
