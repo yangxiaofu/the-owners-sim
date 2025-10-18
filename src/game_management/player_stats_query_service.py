@@ -57,6 +57,13 @@ class PlayerStatsQueryService:
         # Get all player stats from the PlayerStatsAccumulator
         all_player_stats = stats_aggregator.player_stats.get_all_players_with_stats()
 
+        # DEBUG: Check if QB stats have interceptions before passing to persistence
+        for stats in all_player_stats:
+            if hasattr(stats, 'passing_attempts') and stats.passing_attempts > 0:
+                ints_thrown = getattr(stats, 'interceptions_thrown', 0)
+                if ints_thrown > 0:
+                    print(f"🔴 INT DEBUG QueryService: {stats.player_name} has interceptions_thrown={ints_thrown} (being passed to persistence)")
+
         return all_player_stats
 
     @staticmethod

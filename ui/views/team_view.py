@@ -26,6 +26,7 @@ from widgets.finances_tab_widget import FinancesTabWidget
 from widgets.depth_chart_split_view import DepthChartSplitView
 from widgets.staff_tab_widget import StaffTabWidget
 from widgets.strategy_tab_widget import StrategyTabWidget
+from widgets.team_statistics_widget import TeamStatisticsWidget
 from controllers.team_controller import TeamController
 from constants.team_ids import TeamIDs
 from team_management.teams.team_loader import get_all_teams, get_team_by_id
@@ -132,6 +133,12 @@ class TeamView(QWidget):
         self.finances_tab = FinancesTabWidget()
         self.staff_tab = StaffTabWidget()
         self.strategy_tab = StrategyTabWidget()
+        self.statistics_tab = TeamStatisticsWidget(
+            team_id=self.current_team_id,
+            db_path=self.db_path,
+            dynasty_id=self.dynasty_id,
+            season=self.season
+        )
 
         # Connect depth chart signal for persistence
         self.depth_chart_tab.swap_requested.connect(self._on_swap_requested)
@@ -142,6 +149,7 @@ class TeamView(QWidget):
         sub_tabs.addTab(self.finances_tab, "Finances")
         sub_tabs.addTab(self.staff_tab, "Staff")
         sub_tabs.addTab(self.strategy_tab, "Strategy")
+        sub_tabs.addTab(self.statistics_tab, "Statistics")
 
         return sub_tabs
 
@@ -217,6 +225,14 @@ class TeamView(QWidget):
                 import traceback
                 traceback.print_exc()
                 # Keep existing data on error
+
+            # Update statistics tab (mockup - just updates header)
+            try:
+                team = get_team_by_id(team_id)
+                team_name = team.full_name if team else f"Team {team_id}"
+                self.statistics_tab.set_team(team_id, team_name)
+            except Exception as e:
+                print(f"[ERROR TeamView] Failed to update statistics tab for team {team_id}: {e}")
 
             # TODO Phase 3: Load other tabs
             # self.staff_tab.load_staff(team_id)

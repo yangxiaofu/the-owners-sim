@@ -424,13 +424,55 @@ class DriveManager:
     def _end_drive_scoring(self, field_result, play_result: PlayResult) -> None:
         """End drive due to scoring play"""
         if field_result.scoring_type == "touchdown":
+            # ✅ FIX: Update player stats with TD attribution AFTER field tracking detects scoring
+            self._update_touchdown_attribution(play_result)
             self._end_drive(DriveEndReason.TOUCHDOWN)
         elif play_result.points == 3:  # Field goal
             self._end_drive(DriveEndReason.FIELD_GOAL)
         elif field_result.scoring_type == "safety":
             self._end_drive(DriveEndReason.SAFETY)
-    
-    
+
+    def _update_touchdown_attribution(self, play_result: PlayResult) -> None:
+        """
+        Update player stats with touchdown attribution after FieldTracker detects scoring.
+
+        This fixes the timing issue where TD attribution was happening BEFORE
+        FieldTracker set points_scored = 6.
+
+        Args:
+            play_result: PlayResult with player_stats_summary containing player stats
+        """
+        # Check if play_result has player stats summary
+        if not hasattr(play_result, 'player_stats_summary') or play_result.player_stats_summary is None:
+            return
+
+        player_stats_summary = play_result.player_stats_summary
+
+        # Check if the summary has player_stats attribute
+        if not hasattr(player_stats_summary, 'player_stats'):
+            return
+
+        # Iterate through player stats and add TDs based on play type
+        for player_stat in player_stats_summary.player_stats:
+            # Rushing touchdown: player had rushing attempts
+            if hasattr(player_stat, 'rushing_attempts') and player_stat.rushing_attempts > 0:
+                if hasattr(player_stat, 'add_rushing_touchdown'):
+                    player_stat.add_rushing_touchdown()
+                    print(f"✅ DriveManager: Added rushing TD to {player_stat.player_name}")
+
+            # Passing touchdown: player had passing attempts
+            if hasattr(player_stat, 'passing_attempts') and player_stat.passing_attempts > 0:
+                if hasattr(player_stat, 'add_passing_touchdown'):
+                    player_stat.add_passing_touchdown()
+                    print(f"✅ DriveManager: Added passing TD to {player_stat.player_name}")
+
+            # Receiving touchdown: player had receptions
+            if hasattr(player_stat, 'receptions') and player_stat.receptions > 0:
+                if hasattr(player_stat, 'add_receiving_touchdown'):
+                    player_stat.add_receiving_touchdown()
+                    print(f"✅ DriveManager: Added receiving TD to {player_stat.player_name}")
+
+
     def _end_drive(self, reason: DriveEndReason) -> None:
         """Mark drive as ended with specified reason"""
         self.drive_ended = True

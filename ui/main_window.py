@@ -550,12 +550,12 @@ class MainWindow(QMainWindow):
         self.tabs.setCurrentIndex(5)
 
     def _show_stats_leaders(self):
-        """Show statistical leaders."""
-        QMessageBox.information(
-            self,
-            "Stats Leaders",
-            "Stats Leaders coming in Phase 3!\n\nView league leaders in all statistical categories."
-        )
+        """Show statistical leaders by switching to League tab → Stats Leaders sub-tab."""
+        # Switch to League tab (index 5)
+        self.tabs.setCurrentIndex(5)
+        # Switch to Stats Leaders sub-tab (index 2: Standings=0, Free Agents=1, Stats Leaders=2)
+        if hasattr(self, 'league_view') and hasattr(self.league_view, 'tabs'):
+            self.league_view.tabs.setCurrentIndex(2)
 
     def _show_playoff_picture(self):
         """Show playoff picture by switching to Playoffs tab."""
@@ -640,9 +640,19 @@ class MainWindow(QMainWindow):
             self.tabs.setTabVisible(self.playoff_tab_index, False)
 
     def _on_games_played(self, game_results: list):
-        """Handle games played signal."""
-        # Could show game results notification here if desired
-        pass
+        """
+        Handle games played signal.
+
+        Refreshes team statistics widget to show newly simulated game data.
+        This ensures statistics appear immediately without requiring app restart.
+
+        Args:
+            game_results: List of game results from simulation
+        """
+        # Refresh team statistics with fresh database connection
+        if hasattr(self, 'team_view') and hasattr(self.team_view, 'statistics_tab'):
+            self.team_view.statistics_tab.refresh()
+            print(f"[DEBUG MainWindow] Team statistics refreshed after {len(game_results)} games")
 
     def _on_tab_changed(self, index: int):
         """Handle tab change - refresh data when switching to certain tabs."""

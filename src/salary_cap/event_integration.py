@@ -8,10 +8,10 @@ events.
 
 from typing import Optional, Tuple
 
-from src.salary_cap.cap_calculator import CapCalculator
-from src.salary_cap.cap_validator import CapValidator
-from src.salary_cap.tag_manager import TagManager
-from src.salary_cap.cap_database_api import CapDatabaseAPI
+from salary_cap.cap_calculator import CapCalculator
+from salary_cap.cap_validator import CapValidator
+from salary_cap.tag_manager import TagManager
+from salary_cap.cap_database_api import CapDatabaseAPI
 
 
 class ValidationMiddleware:
@@ -192,7 +192,7 @@ class EventCapBridge:
         Args:
             database_path: Path to database
         """
-        from src.salary_cap.contract_manager import ContractManager
+        from salary_cap.contract_manager import ContractManager
         import logging
 
         self.calculator = CapCalculator(database_path)

@@ -21,6 +21,7 @@ from models.team_list_model import TeamListModel
 from models.roster_table_model import RosterTableModel
 from controllers.league_controller import LeagueController
 from controllers.player_controller import PlayerController
+from widgets.stats_leaders_widget import StatsLeadersWidget
 
 
 class LeagueView(QWidget):
@@ -73,6 +74,7 @@ class LeagueView(QWidget):
         self.tabs = QTabWidget()
         self.tabs.addTab(self._create_standings_tab(), "Standings")
         self.tabs.addTab(self._create_free_agents_tab(), "Free Agents")
+        self.tabs.addTab(self._create_stats_leaders_tab(), "Stats Leaders")
 
         layout.addWidget(self.tabs)
 
@@ -311,3 +313,18 @@ class LeagueView(QWidget):
             self.refresh_button.setText(f"Refresh Standings ({team_count} teams)")
         else:
             self.refresh_button.setText(f"Refresh Standings ({team_count} teams - No season data)")
+
+    def _create_stats_leaders_tab(self) -> QWidget:
+        """Create stats leaders tab with league-wide leaderboards."""
+        if self.controller:
+            dynasty_info = self.controller.get_dynasty_info()
+            widget = StatsLeadersWidget(
+                self,
+                db_path=self.controller.db_path,
+                dynasty_id=dynasty_info['dynasty_id'],
+                season=int(dynasty_info['season'])
+            )
+        else:
+            # Fallback if no controller (shouldn't happen in production)
+            widget = StatsLeadersWidget(self)
+        return widget

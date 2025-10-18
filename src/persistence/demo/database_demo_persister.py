@@ -3,6 +3,9 @@ Database Demo Persister
 
 Concrete implementation of DemoPersister using SQLite database.
 Reuses existing database connection and schema from main codebase.
+
+Phase 3: Refactored to use auto-generated INSERT statements from schema_generator.
+This ensures consistency and prevents bugs when adding new stats.
 """
 
 import time
@@ -14,8 +17,16 @@ from .persistence_result import PersistenceResult, PersistenceStatus
 
 try:
     from database.connection import DatabaseConnection
+    from persistence.schema_generator import (
+        generate_player_stats_insert,
+        extract_player_stats_params
+    )
 except ImportError:
     from ...database.connection import DatabaseConnection
+    from ...persistence.schema_generator import (
+        generate_player_stats_insert,
+        extract_player_stats_params
+    )
 
 
 class DatabaseDemoPersister(DemoPersister):
@@ -178,52 +189,23 @@ class DatabaseDemoPersister(DemoPersister):
         try:
             conn = self._get_connection()
 
-            query = """
-                INSERT INTO player_game_stats (
-                    dynasty_id, game_id, player_id, player_name,
-                    team_id, position,
-                    passing_yards, passing_tds, passing_completions, passing_attempts,
-                    rushing_yards, rushing_tds, rushing_attempts,
-                    receiving_yards, receiving_tds, receptions, targets,
-                    tackles_total, sacks, interceptions,
-                    field_goals_made, field_goals_attempted,
-                    extra_points_made, extra_points_attempted,
-                    snap_counts_offense, snap_counts_defense
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """
+            # Auto-generate INSERT statement from PlayerStatField metadata
+            # This ensures consistency and prevents bugs when adding new stats
+            query = generate_player_stats_insert(
+                table_name="player_game_stats",
+                additional_columns=["dynasty_id", "game_id"]
+            )
 
             persisted_count = 0
             failed_count = 0
 
             for player_stat in player_stats:
                 try:
-                    params = (
-                        dynasty_id,
-                        game_id,
-                        getattr(player_stat, 'player_id', 'unknown'),
-                        getattr(player_stat, 'player_name', 'Unknown Player'),
-                        getattr(player_stat, 'team_id', 0),
-                        getattr(player_stat, 'position', 'UNK'),
-                        getattr(player_stat, 'passing_yards', 0),
-                        getattr(player_stat, 'passing_tds', 0),
-                        getattr(player_stat, 'passing_completions', 0),
-                        getattr(player_stat, 'passing_attempts', 0),
-                        getattr(player_stat, 'rushing_yards', 0),
-                        getattr(player_stat, 'rushing_tds', 0),
-                        getattr(player_stat, 'rushing_attempts', 0),
-                        getattr(player_stat, 'receiving_yards', 0),
-                        getattr(player_stat, 'receiving_tds', 0),
-                        getattr(player_stat, 'receptions', 0),
-                        getattr(player_stat, 'targets', 0),
-                        getattr(player_stat, 'tackles', 0),
-                        getattr(player_stat, 'sacks', 0),
-                        getattr(player_stat, 'interceptions', 0),
-                        getattr(player_stat, 'field_goals_made', 0),
-                        getattr(player_stat, 'field_goals_attempted', 0),
-                        getattr(player_stat, 'extra_points_made', 0),
-                        getattr(player_stat, 'extra_points_attempted', 0),
-                        getattr(player_stat, 'offensive_snaps', 0),
-                        getattr(player_stat, 'defensive_snaps', 0)
+                    # Auto-extract params from PlayerStats object
+                    # Uses PlayerStatField metadata for field names and default values
+                    params = extract_player_stats_params(
+                        player_stat,
+                        additional_values=(dynasty_id, game_id)
                     )
 
                     conn.execute(query, params)

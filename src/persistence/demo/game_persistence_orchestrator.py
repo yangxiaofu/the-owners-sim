@@ -16,6 +16,7 @@ from .persistence_result import (
     CompositePersistenceResult,
     PersistenceStatus
 )
+from statistics.season_stats_aggregator import SeasonStatsAggregator
 
 
 class GamePersistenceOrchestrator:
@@ -48,6 +49,11 @@ class GamePersistenceOrchestrator:
         """
         self.persister = persister
         self.logger = logger or logging.getLogger(self.__class__.__name__)
+
+        # Initialize season stats aggregator with same database path
+        # Extract database path from persister if available
+        db_path = getattr(persister, 'database_path', 'data/database/nfl_simulation.db')
+        self.season_aggregator = SeasonStatsAggregator(database_path=db_path)
 
         # Statistics
         self.total_operations = 0
@@ -128,6 +134,20 @@ class GamePersistenceOrchestrator:
                 # Partial success is acceptable for player stats
                 if player_stats_persistence.status == PersistenceStatus.FAILURE:
                     self.logger.warning("Player stats persistence failed, but continuing")
+
+            # Step 2.5: Update season stats aggregation (if player stats were persisted)
+            if player_stats and "player_stats" in composite_result.results and composite_result.results["player_stats"].success:
+                season_stats_result = self._update_season_stats(
+                    game_id=game_id,
+                    dynasty_id=dynasty_id,
+                    season=season,
+                    game_data=game_data
+                )
+                composite_result.add_result("season_stats", season_stats_result)
+
+                # Log warning but don't fail transaction if season stats fail
+                if not season_stats_result.success:
+                    self.logger.warning("Season stats aggregation failed, but continuing")
 
             # Step 3: Persist team statistics
             home_stats, away_stats = self._extract_team_stats(game_result)
@@ -317,6 +337,63 @@ class GamePersistenceOrchestrator:
             self.logger.warning(f"Error extracting team stats: {e}")
 
         return home_stats, away_stats
+
+    def _update_season_stats(
+        self,
+        game_id: str,
+        dynasty_id: str,
+        season: int,
+        game_data: Dict[str, Any]
+    ) -> PersistenceResult:
+        """
+        Update season statistics aggregation after game persistence.
+
+        Calls SeasonStatsAggregator to update player_season_stats table with
+        aggregated season totals from player_game_stats for all players who
+        participated in this game.
+
+        Args:
+            game_id: Game identifier
+            dynasty_id: Dynasty context
+            season: Season year
+            game_data: Game metadata dictionary
+
+        Returns:
+            PersistenceResult indicating success or failure
+        """
+        result = PersistenceResult(status=PersistenceStatus.SUCCESS)
+
+        try:
+            # Extract season_type from game_data
+            season_type = game_data.get('season_type', 'regular_season')
+
+            # Call aggregator to update season stats
+            # Pass the orchestrator's connection to participate in the same transaction
+            rows_affected = self.season_aggregator.update_after_game(
+                game_id=game_id,
+                dynasty_id=dynasty_id,
+                season=season,
+                season_type=season_type,
+                conn=self.persister._connection  # Use existing transaction connection
+            )
+
+            result.metadata['rows_affected'] = rows_affected
+            result.metadata['season_type'] = season_type
+
+            self.logger.info(
+                f"Season stats updated for game {game_id}: "
+                f"{rows_affected} player records affected"
+            )
+
+        except Exception as e:
+            result.status = PersistenceStatus.FAILURE
+            result.add_error(f"Season stats aggregation failed: {str(e)}")
+            self.logger.error(
+                f"Error updating season stats for game {game_id}: {e}",
+                exc_info=True
+            )
+
+        return result
 
     def __str__(self) -> str:
         """String representation"""

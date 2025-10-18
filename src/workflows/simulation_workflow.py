@@ -118,7 +118,7 @@ class SimulationWorkflow:
             enable_persistence=True,
             database_path=database_path,
             dynasty_id=dynasty_id,
-            verbose_logging=False
+            verbose_logging=True  # TEMPORARILY ENABLED FOR DEBUGGING
         )
 
     def execute(self, game_event: GameEvent) -> WorkflowResult:

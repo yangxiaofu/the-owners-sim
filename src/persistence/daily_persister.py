@@ -3,12 +3,20 @@ Daily Data Persister
 
 Handles persisting daily simulation results from stores to database.
 Simple, testable, and follows single responsibility principle.
+
+Phase 3: Refactored to use auto-generated INSERT statements from schema_generator.
+This ensures consistency and prevents bugs when adding new stats.
 """
 
 import logging
 from datetime import date, datetime
 from typing import Dict, List, Any, Optional
 import json
+
+from persistence.schema_generator import (
+    generate_player_stats_insert,
+    extract_player_stats_params
+)
 
 
 class DailyDataPersister:
@@ -261,23 +269,12 @@ class DailyDataPersister:
         conn.execute(query, params)
     
     def _save_player_stat(self, conn, game_id: str, player_stat, game_result=None) -> None:
-        """Save a single player's game statistics to the database."""
-        query = """
-            INSERT INTO player_game_stats (
-                dynasty_id, game_id, player_id, player_name,
-                team_id, position,
-                passing_yards, passing_tds, passing_completions, passing_attempts,
-                rushing_yards, rushing_tds, rushing_attempts,
-                receiving_yards, receiving_tds, receptions, targets,
-                tackles_total, sacks, interceptions,
-                field_goals_made, field_goals_attempted,
-                extra_points_made, extra_points_attempted
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
-        
-        # Handle different stat object structures gracefully
-        # Note: PlayerStats uses different field names than expected
+        Save a single player's game statistics to the database.
 
+        Uses auto-generated INSERT statement from schema_generator to ensure
+        consistency and prevent bugs when adding new stats.
+        """
         # Handle team_id - if None, try to infer from game context
         team_id = getattr(player_stat, 'team_id', None)
         if team_id is None and game_result:
@@ -286,36 +283,23 @@ class DailyDataPersister:
         elif team_id is None:
             team_id = 0
 
-        params = (
-            self.dynasty_id,
-            game_id,
-            getattr(player_stat, 'player_id', 'unknown'),
-            getattr(player_stat, 'player_name', 'Unknown Player'),
-            team_id,
-            getattr(player_stat, 'position', 'UNK'),
-            getattr(player_stat, 'passing_yards', 0),
-            # Fix: PlayerStats uses 'passing_touchdowns' not 'passing_tds'
-            getattr(player_stat, 'passing_touchdowns', getattr(player_stat, 'passing_tds', 0)),
-            getattr(player_stat, 'passing_completions', 0),
-            getattr(player_stat, 'passing_attempts', 0),
-            getattr(player_stat, 'rushing_yards', 0),
-            # Fix: PlayerStats uses 'rushing_touchdowns' not 'rushing_tds'
-            getattr(player_stat, 'rushing_touchdowns', getattr(player_stat, 'rushing_tds', 0)),
-            getattr(player_stat, 'rushing_attempts', 0),
-            getattr(player_stat, 'receiving_yards', 0),
-            # Fix: PlayerStats uses 'receiving_tds' field name
-            getattr(player_stat, 'receiving_tds', 0),
-            getattr(player_stat, 'receptions', 0),
-            getattr(player_stat, 'targets', 0),
-            getattr(player_stat, 'tackles', 0),
-            getattr(player_stat, 'sacks', 0),
-            getattr(player_stat, 'interceptions', 0),
-            getattr(player_stat, 'field_goals_made', 0),
-            getattr(player_stat, 'field_goal_attempts', 0),
-            getattr(player_stat, 'extra_points_made', 0),
-            getattr(player_stat, 'extra_points_attempted', 0)
+        # Override team_id in player_stat if it was None
+        if not hasattr(player_stat, 'team_id') or player_stat.team_id is None:
+            player_stat.team_id = team_id
+
+        # Auto-generate INSERT statement from PlayerStatField metadata
+        query = generate_player_stats_insert(
+            table_name="player_game_stats",
+            additional_columns=["dynasty_id", "game_id"]
         )
-        
+
+        # Auto-extract params from PlayerStats object
+        # Uses PlayerStatField metadata for field names and default values
+        params = extract_player_stats_params(
+            player_stat,
+            additional_values=(self.dynasty_id, game_id)
+        )
+
         conn.execute(query, params)
     
     def _update_standing(self, conn, team_id: int, standing) -> None:

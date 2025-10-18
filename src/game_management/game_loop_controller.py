@@ -232,10 +232,35 @@ class GameLoopController:
             # Run single play
             play_result = self._run_play(drive_manager, possessing_team_id)
             plays_in_drive.append(play_result)
-            
-            # Update drive state with play result
+
+            # Update drive state with play result (adds TDs if scoring play)
             drive_manager.process_play_result(play_result)
-            
+
+            # ✅ FIX: Record stats AFTER drive processing so TDs are included
+            # DriveManager._update_touchdown_attribution() has already run at this point
+            current_situation = drive_manager.get_current_situation() if not drive_manager.is_drive_over() else None
+
+            # Use last known situation if drive just ended
+            if current_situation is None:
+                # Drive ended, use final position for stats context
+                final_position = drive_manager.get_current_field_position()
+                final_down = drive_manager.get_current_down_state()
+                down = final_down.current_down
+                yards_to_go = final_down.yards_to_go
+                field_position = final_position.yard_line
+            else:
+                down = current_situation.down
+                yards_to_go = current_situation.yards_to_go
+                field_position = current_situation.field_position
+
+            self.stats_aggregator.record_play_result(
+                play_result=play_result,
+                possessing_team_id=possessing_team_id,
+                down=down,
+                yards_to_go=yards_to_go,
+                field_position=field_position
+            )
+
             # Update statistics
             self.total_plays += 1
             drive_total_yards += play_result.yards
@@ -309,20 +334,13 @@ class GameLoopController:
         
         # Execute play
         play_result = simulate(play_params)
-        
+
         # Advance game clock by play time
         clock_result = self.game_manager.game_clock.advance_time(play_result.time_elapsed)
-        
-        # Record play statistics using CentralizedStatsAggregator
-        current_situation = drive_manager.get_current_situation()
-        self.stats_aggregator.record_play_result(
-            play_result=play_result,
-            possessing_team_id=possessing_team_id,
-            down=current_situation.down,
-            yards_to_go=current_situation.yards_to_go,
-            field_position=current_situation.field_position
-        )
-        
+
+        # ✅ FIX: Stats recording moved to _run_drive() AFTER drive processing
+        # This ensures TDs added by DriveManager are included in stats
+
         return play_result
     
     def _handle_drive_transition(self, drive_result: DriveResult) -> None:

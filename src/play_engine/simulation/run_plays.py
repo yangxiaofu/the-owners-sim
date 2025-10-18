@@ -488,44 +488,127 @@ class RunPlaySimulator:
     
     def _select_tacklers(self, yards_gained: int, potential_tacklers: List) -> List[Tuple]:
         """
-        Select which defenders made tackles based on yards gained
-        
+        Select which defenders made tackles based on yards gained with position-weighted probabilities.
+
+        Realistic NFL tackle distribution:
+        - Linebackers: 65% (primary run stoppers)
+        - Safeties: 25% (second level, deep plays)
+        - Defensive Line: 8% (TFLs, stuff plays only)
+        - Cornerbacks: 2% (rare, mostly edge runs)
+
         Args:
             yards_gained: Yards gained on play
             potential_tacklers: List of defensive players who could make tackles
-            
+
         Returns:
             List of (player, is_assisted) tuples
         """
         if not potential_tacklers:
             return []
-        
+
         tacklers = []
-        
+
         # Get configured tackling parameters
         stats_config = config.get_statistical_attribution_config('run_play')
         tackling_config = stats_config.get('tackling', {})
         long_run_threshold = tackling_config.get('long_run_threshold', 5)
         assisted_tackle_prob = tackling_config.get('assisted_tackle_probability', 0.6)
-        
+
         # More yards = more likely to have assisted tackles
         if yards_gained >= long_run_threshold:
             # Long run: likely 1 primary tackler + 1 assisted
-            primary_tackler = random.choice(potential_tacklers)
+            primary_tackler = self._select_tackler_by_position_weight(potential_tacklers)
             tacklers.append((primary_tackler, False))
-            
+
             # Configured chance of assisted tackle
             if random.random() < assisted_tackle_prob:
                 remaining = [p for p in potential_tacklers if p != primary_tackler]
                 if remaining:
-                    assisted_tackler = random.choice(remaining)
+                    assisted_tackler = self._select_tackler_by_position_weight(remaining)
                     tacklers.append((assisted_tackler, True))
         else:
             # Short run: likely just 1 tackler
-            primary_tackler = random.choice(potential_tacklers)
+            primary_tackler = self._select_tackler_by_position_weight(potential_tacklers)
             tacklers.append((primary_tackler, False))
-        
+
         return tacklers
+
+    def _select_tackler_by_position_weight(self, potential_tacklers: List):
+        """
+        Select a tackler using position-weighted probabilities to create realistic tackle distributions.
+
+        Weight distribution mirrors NFL reality:
+        - Linebackers dominate with 65% of run tackles
+        - Safeties get 25% (cleanup, deep plays)
+        - Defensive line gets 8% (TFLs, penetration)
+        - Cornerbacks get 2% (edge contain)
+
+        Args:
+            potential_tacklers: List of defensive players
+
+        Returns:
+            Selected player based on position-weighted probability
+        """
+        if not potential_tacklers:
+            return None
+
+        # Categorize tacklers by position
+        linebackers = []
+        safeties = []
+        defensive_line = []
+        cornerbacks = []
+
+        lb_positions = ['mike_linebacker', 'sam_linebacker', 'will_linebacker', 'linebacker',
+                       'inside_linebacker', 'outside_linebacker', 'ilb', 'olb']
+        safety_positions = ['safety', 'free_safety', 'strong_safety', 'fs', 'ss']
+        dl_positions = ['defensive_end', 'defensive_tackle', 'nose_tackle', 'de', 'dt', 'nt']
+        cb_positions = ['cornerback', 'cb']
+
+        for player in potential_tacklers:
+            pos = player.primary_position.lower()
+            if pos in lb_positions:
+                linebackers.append(player)
+            elif pos in safety_positions:
+                safeties.append(player)
+            elif pos in dl_positions:
+                defensive_line.append(player)
+            elif pos in cb_positions:
+                cornerbacks.append(player)
+
+        # Build weighted selection pool
+        candidates = []
+        weights = []
+
+        # Linebackers: 65% weight (heavily favored)
+        if linebackers:
+            candidates.extend(linebackers)
+            weights.extend([0.65 / len(linebackers)] * len(linebackers))
+
+        # Safeties: 25% weight (second line)
+        if safeties:
+            candidates.extend(safeties)
+            weights.extend([0.25 / len(safeties)] * len(safeties))
+
+        # Defensive Line: 8% weight (TFLs only)
+        if defensive_line:
+            candidates.extend(defensive_line)
+            weights.extend([0.08 / len(defensive_line)] * len(defensive_line))
+
+        # Cornerbacks: 2% weight (rare)
+        if cornerbacks:
+            candidates.extend(cornerbacks)
+            weights.extend([0.02 / len(cornerbacks)] * len(cornerbacks))
+
+        # Fallback to uniform if no categorized players
+        if not candidates:
+            return random.choice(potential_tacklers)
+
+        # Normalize weights to sum to 1.0
+        total_weight = sum(weights)
+        normalized_weights = [w / total_weight for w in weights]
+
+        # Use weighted random selection
+        return random.choices(candidates, weights=normalized_weights, k=1)[0]
 
     def _track_snaps_for_all_players(self, player_stats: List[PlayerStats]) -> List[PlayerStats]:
         """

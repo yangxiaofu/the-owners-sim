@@ -667,11 +667,20 @@ class PlayerStatsAccumulator:
     def get_all_players_with_stats(self) -> List[PlayerStats]:
         """
         Get all players who have recorded statistics.
-        
+
         Returns:
             List of PlayerStats objects for all players with accumulated stats
         """
-        return [stats for stats in self._player_totals.values() if stats.get_total_stats()]
+        all_stats = [stats for stats in self._player_totals.values() if stats.get_total_stats()]
+
+        # DEBUG: Check accumulated QB stats for interceptions
+        for stats in all_stats:
+            if hasattr(stats, 'passing_attempts') and stats.passing_attempts > 0:
+                ints_thrown = getattr(stats, 'interceptions_thrown', 0)
+                if ints_thrown > 0:
+                    print(f"🔴 INT DEBUG Accumulated Total: {stats.player_name} has interceptions_thrown={ints_thrown} (total across all plays)")
+
+        return all_stats
     
     def get_players_by_position(self, position: str) -> List[PlayerStats]:
         """

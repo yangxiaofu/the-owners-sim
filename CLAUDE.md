@@ -107,6 +107,17 @@ PYTHONPATH=src python demo/player_generator_demo/player_generator_demo.py  # Int
 # See demo/player_generator_demo/README.md for detailed usage
 # Demonstrates: archetype-based generation, position-specific attributes, draft class generation
 
+# Offseason System Demos
+PYTHONPATH=src python demo/offseason_demo/offseason_demo.py  # Interactive NFL offseason simulation demo
+# Terminal-based interactive NFL offseason simulation:
+# - Navigate through all offseason phases (franchise tags → free agency → draft → roster cuts)
+# - Test franchise/transition tag operations with salary cap integration
+# - Browse and sign free agents with contract validation
+# - Make draft selections and simulate entire draft
+# - Manage roster cuts and finalize 53-man roster
+# - Calendar advancement with automatic deadline triggering
+# See demo/offseason_demo/README.md for detailed usage
+
 # Play Demos (Individual Play Mechanics)
 PYTHONPATH=src python demo/play_demos/pass_play_demo.py  # Pass play mechanics with real NFL players
 PYTHONPATH=src python demo/play_demos/run_play_demo.py  # Run play mechanics with formation matchups
@@ -125,6 +136,12 @@ PYTHONPATH=src python verify_player_stats_persistence.py  # Verify player stats 
 PYTHONPATH=src python simple_stats_check.py  # Simple statistics validation (if exists)
 PYTHONPATH=src python snap_tracking_diagnostic.py  # Snap count tracking diagnostics (if exists)
 PYTHONPATH=src python debug_game_result_structure.py  # Debug game result issues (if exists)
+
+# Root-level test debug scripts (Statistics API testing)
+python test_leaderboard_debug.py  # Debug leaderboard generation
+python test_passing_debug.py  # Debug passing statistics
+python test_stats_api_3rd_dynasty.py  # Test Statistics API with 3rd dynasty
+python test_statsapi_debug.py  # General Statistics API debugging
 
 # Player data migration (if migration script exists)
 PYTHONPATH=src python scripts/migrate_players_to_teams.py
@@ -359,6 +376,23 @@ The simulation follows a layered architecture with clear separation of concerns:
 - Archetype-based generation with realistic attribute distributions
 - See `docs/plans/player_generator_plan.md` and `docs/specifications/player_generator_system.md`
 
+**20. Statistics System (`src/statistics/`)**
+- `stats_api.py`: **Main statistics API** with 25+ methods for leader queries, player queries, team queries
+- `leaderboards.py`: Leaderboard generation with calculated metrics (passer rating, YPC, catch rate)
+- `models.py`: Type-safe dataclasses (PassingStats, RushingStats, ReceivingStats, DefensiveStats, etc.)
+- `filters.py`: Statistical filtering utilities (conference, division, position, minimum thresholds)
+- `rankings.py`: League/conference/division ranking calculations with tie handling
+- `aggregations.py`: Team and position statistical aggregations
+- **Architecture**: UI → StatsAPI → DatabaseAPI → SQLite (clean separation of concerns)
+- **Dynasty Isolation**: Complete statistical separation between different dynasties
+- **Key Features**: NFL passer rating calculation, yards per carry, catch rate, efficiency metrics
+- See `docs/api/statistics_api_specification.md` for complete API reference
+
+**21. Stats Calculations (`src/stats_calculations/`)**
+- `calculations.py`: Pure calculation functions for NFL metrics
+- Passer rating, yards per attempt, yards per carry, catch rate
+- No database dependencies - pure mathematical functions for testing and reuse
+
 ### Key Design Patterns
 
 **Match/Case Play Selection**: The main play engine uses Python's match/case for clean play type routing:
@@ -483,6 +517,13 @@ Comprehensive documentation is available in `docs/`:
   - `docs/plans/calendar_manager_plan.md` - Calendar system design
 - **Specifications**:
   - `docs/specifications/player_generator_system.md` - Player generation system design
+- **API Specifications**:
+  - `docs/api/statistics_api_specification.md` - Complete Statistics API reference (25+ methods, data models, filtering, integration guide)
+  - `docs/api/depth_chart_api_specification.md` - Depth chart API documentation
+- **UI Specifications**:
+  - `docs/ui/team_tab_spec.md` - Team tab UI specification
+  - `docs/ui/calendar_tab_spec.md` - Calendar tab UI specification
+  - `docs/ui/offseason_specs_dashboard.md` - Offseason dashboard specification
 - **Interactive Demos**:
   - `demo/interactive_season_sim/QUICK_START.md` - Quick start guide for interactive season simulation
   - `demo/interactive_playoff_sim/` - Interactive playoff simulator documentation

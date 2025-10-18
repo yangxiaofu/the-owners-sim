@@ -7,10 +7,33 @@ simulation, persistence, and display layers.
 
 This enum uses the simulation layer naming convention as the canonical standard.
 All layers (simulation, persistence, database, display) should use these names.
+
+Extended with database persistence metadata to auto-generate INSERT statements
+and ensure consistency across all persistence layers.
 """
 
+from dataclasses import dataclass
 from enum import Enum
-from typing import List, Set, Dict
+from typing import List, Set, Dict, Any, Optional
+
+
+@dataclass(frozen=True)
+class StatFieldMetadata:
+    """
+    Metadata for a player statistic field.
+
+    Attributes:
+        field_name: Canonical simulation layer name (e.g., "passing_yards")
+        db_column: Database column name (e.g., "passing_yards")
+        default_value: Default value for this stat (0 for numbers, "" for strings)
+        data_type: Python type (int, float, str)
+        persistable: Whether this field is saved to the database
+    """
+    field_name: str
+    db_column: str
+    default_value: Any
+    data_type: type
+    persistable: bool = True
 
 
 class StatCategory(Enum):
@@ -26,120 +49,189 @@ class StatCategory(Enum):
 
 class PlayerStatField(Enum):
     """
-    Canonical player statistics field names.
+    Canonical player statistics field names with database persistence metadata.
 
-    Uses simulation layer naming convention as the standard.
+    Each field contains:
+    - field_name: Simulation layer canonical name
+    - db_column: Database column name
+    - default_value: Default value when stat is not recorded
+    - data_type: Python type for validation
+    - persistable: Whether this stat is saved to database
+
     All code should reference these enum values instead of hard-coded strings.
     """
 
-    # Basic player info (not stats, but needed for consistency)
-    PLAYER_NAME = "player_name"
-    PLAYER_NUMBER = "player_number"
-    POSITION = "position"
-    TEAM_ID = "team_id"
-    PLAYER_ID = "player_id"
+    # ============================================================
+    # PLAYER IDENTIFICATION (Required for all records)
+    # ============================================================
+    PLAYER_ID = StatFieldMetadata("player_id", "player_id", "unknown", str, persistable=True)
+    PLAYER_NAME = StatFieldMetadata("player_name", "player_name", "Unknown Player", str, persistable=True)
+    TEAM_ID = StatFieldMetadata("team_id", "team_id", 0, int, persistable=True)
+    POSITION = StatFieldMetadata("position", "position", "UNK", str, persistable=True)
+    PLAYER_NUMBER = StatFieldMetadata("player_number", "player_number", 0, int, persistable=False)
 
-    # Rushing stats
-    CARRIES = "rushing_attempts"  # Database-compatible name
-    RUSHING_YARDS = "rushing_yards"
-    RUSHING_TOUCHDOWNS = "rushing_tds"  # Database-compatible name
+    # ============================================================
+    # PASSING STATS (QB) - Columns 7-11 in player_game_stats
+    # ============================================================
+    PASSING_YARDS = StatFieldMetadata("passing_yards", "passing_yards", 0, int, persistable=True)
+    PASSING_TDS = StatFieldMetadata("passing_tds", "passing_tds", 0, int, persistable=True)
+    COMPLETIONS = StatFieldMetadata("passing_completions", "passing_completions", 0, int, persistable=True)
+    PASS_ATTEMPTS = StatFieldMetadata("passing_attempts", "passing_attempts", 0, int, persistable=True)
+    INTERCEPTIONS_THROWN = StatFieldMetadata("interceptions_thrown", "passing_interceptions", 0, int, persistable=True)
 
-    # Passing stats (QB)
-    PASS_ATTEMPTS = "passing_attempts"  # Database-compatible name
-    COMPLETIONS = "passing_completions"  # Database-compatible name
-    PASSING_YARDS = "passing_yards"
-    PASSING_TDS = "passing_tds"
-    INTERCEPTIONS_THROWN = "interceptions_thrown"
-    SACKS_TAKEN = "sacks_taken"
-    SACK_YARDS_LOST = "sack_yards_lost"
-    QB_HITS_TAKEN = "qb_hits_taken"
-    PRESSURES_FACED = "pressures_faced"
-    AIR_YARDS = "air_yards"
-    PASSING_TOUCHDOWNS = "passing_touchdowns"  # For non-QBs throwing TDs
+    # Advanced passing stats (not yet in database schema)
+    SACKS_TAKEN = StatFieldMetadata("sacks_taken", "sacks_taken", 0, int, persistable=False)
+    SACK_YARDS_LOST = StatFieldMetadata("sack_yards_lost", "sack_yards_lost", 0, int, persistable=False)
+    QB_HITS_TAKEN = StatFieldMetadata("qb_hits_taken", "qb_hits_taken", 0, int, persistable=False)
+    PRESSURES_FACED = StatFieldMetadata("pressures_faced", "pressures_faced", 0, int, persistable=False)
+    AIR_YARDS = StatFieldMetadata("air_yards", "air_yards", 0, int, persistable=False)
+    PASSING_TOUCHDOWNS = StatFieldMetadata("passing_touchdowns", "passing_touchdowns", 0, int, persistable=False)
 
-    # Receiving stats (WR/TE)
-    TARGETS = "targets"
-    RECEPTIONS = "receptions"
-    RECEIVING_YARDS = "receiving_yards"
-    RECEIVING_TDS = "receiving_tds"
-    DROPS = "drops"
-    YAC = "yac"
+    # ============================================================
+    # RUSHING STATS - Columns 12-14 in player_game_stats
+    # ============================================================
+    RUSHING_YARDS = StatFieldMetadata("rushing_yards", "rushing_yards", 0, int, persistable=True)
+    RUSHING_TOUCHDOWNS = StatFieldMetadata("rushing_tds", "rushing_tds", 0, int, persistable=True)
+    CARRIES = StatFieldMetadata("rushing_attempts", "rushing_attempts", 0, int, persistable=True)
 
-    # Blocking stats (OL)
-    BLOCKS_MADE = "blocks_made"
-    BLOCKS_MISSED = "blocks_missed"
-    PASS_BLOCKS = "pass_blocks"
-    PRESSURES_ALLOWED = "pressures_allowed"
-    SACKS_ALLOWED = "sacks_allowed"
+    # ============================================================
+    # RECEIVING STATS (WR/TE) - Columns 15-18 in player_game_stats
+    # ============================================================
+    RECEIVING_YARDS = StatFieldMetadata("receiving_yards", "receiving_yards", 0, int, persistable=True)
+    RECEIVING_TDS = StatFieldMetadata("receiving_tds", "receiving_tds", 0, int, persistable=True)
+    RECEPTIONS = StatFieldMetadata("receptions", "receptions", 0, int, persistable=True)
+    TARGETS = StatFieldMetadata("targets", "targets", 0, int, persistable=True)
 
-    # Advanced offensive line stats
-    PANCAKES = "pancakes"
-    HURRIES_ALLOWED = "hurries_allowed"
-    RUN_BLOCKING_GRADE = "run_blocking_grade"
-    PASS_BLOCKING_EFFICIENCY = "pass_blocking_efficiency"
-    MISSED_ASSIGNMENTS = "missed_assignments"
-    HOLDING_PENALTIES = "holding_penalties"
-    FALSE_START_PENALTIES = "false_start_penalties"
-    DOWNFIELD_BLOCKS = "downfield_blocks"
-    DOUBLE_TEAM_BLOCKS = "double_team_blocks"
-    CHIP_BLOCKS = "chip_blocks"
+    # Advanced receiving stats (not yet in database schema)
+    DROPS = StatFieldMetadata("drops", "drops", 0, int, persistable=False)
+    YAC = StatFieldMetadata("yac", "yac", 0, int, persistable=False)
 
-    # Defensive stats
-    TACKLES = "tackles"
-    ASSISTED_TACKLES = "assisted_tackles"
-    SACKS = "sacks"
-    TACKLES_FOR_LOSS = "tackles_for_loss"
-    QB_HITS = "qb_hits"
-    QB_PRESSURES = "qb_pressures"
-    QB_HURRIES = "qb_hurries"
+    # ============================================================
+    # DEFENSIVE STATS - Columns 19-21 in player_game_stats
+    # ============================================================
+    TACKLES = StatFieldMetadata("tackles", "tackles_total", 0, int, persistable=True)
+    SACKS = StatFieldMetadata("sacks", "sacks", 0.0, float, persistable=True)
+    INTERCEPTIONS = StatFieldMetadata("interceptions", "interceptions", 0, int, persistable=True)
 
-    # Pass defense stats
-    PASSES_DEFENDED = "passes_defended"
-    PASSES_DEFLECTED = "passes_deflected"
-    TIPPED_PASSES = "tipped_passes"
-    INTERCEPTIONS = "interceptions"
-    FORCED_FUMBLES = "forced_fumbles"
+    # Advanced defensive stats (not yet in database schema)
+    ASSISTED_TACKLES = StatFieldMetadata("assisted_tackles", "assisted_tackles", 0, int, persistable=False)
+    TACKLES_FOR_LOSS = StatFieldMetadata("tackles_for_loss", "tackles_for_loss", 0, int, persistable=False)
+    QB_HITS = StatFieldMetadata("qb_hits", "qb_hits", 0, int, persistable=False)
+    QB_PRESSURES = StatFieldMetadata("qb_pressures", "qb_pressures", 0, int, persistable=False)
+    QB_HURRIES = StatFieldMetadata("qb_hurries", "qb_hurries", 0, int, persistable=False)
+    PASSES_DEFENDED = StatFieldMetadata("passes_defended", "passes_defended", 0, int, persistable=False)
+    PASSES_DEFLECTED = StatFieldMetadata("passes_deflected", "passes_deflected", 0, int, persistable=False)
+    TIPPED_PASSES = StatFieldMetadata("tipped_passes", "tipped_passes", 0, int, persistable=False)
+    FORCED_FUMBLES = StatFieldMetadata("forced_fumbles", "forced_fumbles", 0, int, persistable=False)
 
-    # Special teams stats
-    FIELD_GOAL_ATTEMPTS = "field_goal_attempts"
-    FIELD_GOALS_MADE = "field_goals_made"
-    FIELD_GOALS_MISSED = "field_goals_missed"
-    FIELD_GOALS_BLOCKED = "field_goals_blocked"
-    LONGEST_FIELD_GOAL = "longest_field_goal"
-    FIELD_GOAL_HOLDS = "field_goal_holds"
-    LONG_SNAPS = "long_snaps"
-    SPECIAL_TEAMS_SNAPS = "special_teams_snaps"
-    BLOCKS_ALLOWED = "blocks_allowed"
+    # ============================================================
+    # SPECIAL TEAMS STATS - Columns 22-25 in player_game_stats
+    # ============================================================
+    FIELD_GOALS_MADE = StatFieldMetadata("field_goals_made", "field_goals_made", 0, int, persistable=True)
+    FIELD_GOAL_ATTEMPTS = StatFieldMetadata("field_goal_attempts", "field_goals_attempted", 0, int, persistable=True)
+    EXTRA_POINTS_MADE = StatFieldMetadata("extra_points_made", "extra_points_made", 0, int, persistable=True)
+    EXTRA_POINTS_ATTEMPTED = StatFieldMetadata("extra_points_attempted", "extra_points_attempted", 0, int, persistable=True)
 
-    # Snap tracking (playing time)
-    OFFENSIVE_SNAPS = "offensive_snaps"
-    DEFENSIVE_SNAPS = "defensive_snaps"
-    TOTAL_SNAPS = "total_snaps"
+    # Advanced special teams stats (not yet in database schema)
+    FIELD_GOALS_MISSED = StatFieldMetadata("field_goals_missed", "field_goals_missed", 0, int, persistable=False)
+    FIELD_GOALS_BLOCKED = StatFieldMetadata("field_goals_blocked", "field_goals_blocked", 0, int, persistable=False)
+    LONGEST_FIELD_GOAL = StatFieldMetadata("longest_field_goal", "longest_field_goal", 0, int, persistable=False)
+    FIELD_GOAL_HOLDS = StatFieldMetadata("field_goal_holds", "field_goal_holds", 0, int, persistable=False)
+    LONG_SNAPS = StatFieldMetadata("long_snaps", "long_snaps", 0, int, persistable=False)
+    SPECIAL_TEAMS_SNAPS = StatFieldMetadata("special_teams_snaps", "special_teams_snaps", 0, int, persistable=False)
+    BLOCKS_ALLOWED = StatFieldMetadata("blocks_allowed", "blocks_allowed", 0, int, persistable=False)
 
-    # Extra point stats
-    EXTRA_POINTS_MADE = "extra_points_made"
-    EXTRA_POINTS_ATTEMPTED = "extra_points_attempted"
+    # ============================================================
+    # SNAP TRACKING (Playing Time) - Columns 26-27 in player_game_stats
+    # ============================================================
+    OFFENSIVE_SNAPS = StatFieldMetadata("offensive_snaps", "snap_counts_offense", 0, int, persistable=True)
+    DEFENSIVE_SNAPS = StatFieldMetadata("defensive_snaps", "snap_counts_defense", 0, int, persistable=True)
+    TOTAL_SNAPS = StatFieldMetadata("total_snaps", "total_snaps", 0, int, persistable=False)
 
-    # Penalty stats
-    PENALTIES = "penalties"
-    PENALTY_YARDS = "penalty_yards"
+    # ============================================================
+    # BLOCKING STATS (Offensive Line) - Not yet in database schema
+    # ============================================================
+    BLOCKS_MADE = StatFieldMetadata("blocks_made", "blocks_made", 0, int, persistable=False)
+    BLOCKS_MISSED = StatFieldMetadata("blocks_missed", "blocks_missed", 0, int, persistable=False)
+    PASS_BLOCKS = StatFieldMetadata("pass_blocks", "pass_blocks", 0, int, persistable=False)
+    PRESSURES_ALLOWED = StatFieldMetadata("pressures_allowed", "pressures_allowed", 0, int, persistable=False)
+    SACKS_ALLOWED = StatFieldMetadata("sacks_allowed", "sacks_allowed", 0, int, persistable=False)
+    PANCAKES = StatFieldMetadata("pancakes", "pancakes", 0, int, persistable=False)
+    HURRIES_ALLOWED = StatFieldMetadata("hurries_allowed", "hurries_allowed", 0, int, persistable=False)
+    RUN_BLOCKING_GRADE = StatFieldMetadata("run_blocking_grade", "run_blocking_grade", 0.0, float, persistable=False)
+    PASS_BLOCKING_EFFICIENCY = StatFieldMetadata("pass_blocking_efficiency", "pass_blocking_efficiency", 0.0, float, persistable=False)
+    MISSED_ASSIGNMENTS = StatFieldMetadata("missed_assignments", "missed_assignments", 0, int, persistable=False)
+    HOLDING_PENALTIES = StatFieldMetadata("holding_penalties", "holding_penalties", 0, int, persistable=False)
+    FALSE_START_PENALTIES = StatFieldMetadata("false_start_penalties", "false_start_penalties", 0, int, persistable=False)
+    DOWNFIELD_BLOCKS = StatFieldMetadata("downfield_blocks", "downfield_blocks", 0, int, persistable=False)
+    DOUBLE_TEAM_BLOCKS = StatFieldMetadata("double_team_blocks", "double_team_blocks", 0, int, persistable=False)
+    CHIP_BLOCKS = StatFieldMetadata("chip_blocks", "chip_blocks", 0, int, persistable=False)
+
+    # ============================================================
+    # PENALTY STATS - Not yet in database schema
+    # ============================================================
+    PENALTIES = StatFieldMetadata("penalties", "penalties", 0, int, persistable=False)
+    PENALTY_YARDS = StatFieldMetadata("penalty_yards", "penalty_yards", 0, int, persistable=False)
+
+    # ============================================================
+    # PROPERTY ACCESSORS
+    # ============================================================
 
     @property
     def field_name(self) -> str:
-        """Get the canonical field name"""
-        return self.value
+        """Get the canonical simulation layer field name"""
+        return self.value.field_name
+
+    @property
+    def db_column(self) -> str:
+        """Get the database column name"""
+        return self.value.db_column
+
+    @property
+    def default_value(self) -> Any:
+        """Get the default value for this stat"""
+        return self.value.default_value
+
+    @property
+    def data_type(self) -> type:
+        """Get the Python type for this stat"""
+        return self.value.data_type
+
+    @property
+    def persistable(self) -> bool:
+        """Check if this stat is saved to database"""
+        return self.value.persistable
+
+    # ============================================================
+    # CLASS METHODS FOR FIELD DISCOVERY
+    # ============================================================
 
     @classmethod
     def all_fields(cls) -> List[str]:
         """Get all field names as a list"""
-        return [field.value for field in cls]
+        return [field.field_name for field in cls]
 
     @classmethod
     def get_stat_fields(cls) -> Set[str]:
         """Get only statistical fields (exclude player info fields)"""
-        info_fields = {cls.PLAYER_NAME.value, cls.PLAYER_NUMBER.value,
-                      cls.POSITION.value, cls.TEAM_ID.value, cls.PLAYER_ID.value}
+        info_fields = {cls.PLAYER_NAME.field_name, cls.PLAYER_NUMBER.field_name,
+                      cls.POSITION.field_name, cls.TEAM_ID.field_name, cls.PLAYER_ID.field_name}
         return set(cls.all_fields()) - info_fields
+
+    @classmethod
+    def get_persistable_fields(cls) -> List['PlayerStatField']:
+        """Get all fields that are saved to the database (in correct INSERT order)"""
+        return [field for field in cls if field.persistable]
+
+    @classmethod
+    def get_persistable_field_names(cls) -> List[str]:
+        """Get field names for all persistable fields"""
+        return [field.field_name for field in cls.get_persistable_fields()]
+
+    @classmethod
+    def get_persistable_db_columns(cls) -> List[str]:
+        """Get database column names for all persistable fields (in correct INSERT order)"""
+        return [field.db_column for field in cls.get_persistable_fields()]
 
     @classmethod
     def get_fields_by_category(cls, category: StatCategory) -> List[str]:
@@ -177,7 +269,7 @@ class PlayerStatField(Enum):
             ]
         }
 
-        return [field.value for field in category_mappings.get(category, [])]
+        return [field.field_name for field in category_mappings.get(category, [])]
 
     @classmethod
     def validate_field_name(cls, field_name: str) -> bool:
@@ -194,15 +286,15 @@ class PlayerStatField(Enum):
         """
         return {
             # Old simulation layer names -> new database-compatible names
-            "pass_attempts": cls.PASS_ATTEMPTS.value,  # "pass_attempts" -> "passing_attempts"
-            "completions": cls.COMPLETIONS.value,  # "completions" -> "passing_completions"
-            "carries": cls.CARRIES.value,  # "carries" -> "rushing_attempts"
-            "rushing_touchdowns": cls.RUSHING_TOUCHDOWNS.value,  # "rushing_touchdowns" -> "rushing_tds"
+            "pass_attempts": cls.PASS_ATTEMPTS.field_name,
+            "completions": cls.COMPLETIONS.field_name,
+            "carries": cls.CARRIES.field_name,
+            "rushing_touchdowns": cls.RUSHING_TOUCHDOWNS.field_name,
 
             # Persistence layer legacy names -> canonical names
-            "passing_interceptions": cls.INTERCEPTIONS_THROWN.value,
-            "pass_deflections": cls.PASSES_DEFENDED.value,
-            "field_goals_attempted": cls.FIELD_GOAL_ATTEMPTS.value,
+            "passing_interceptions": cls.INTERCEPTIONS_THROWN.field_name,
+            "pass_deflections": cls.PASSES_DEFENDED.field_name,
+            "field_goals_attempted": cls.FIELD_GOAL_ATTEMPTS.field_name,
 
             # Add other legacy mappings as discovered
         }
@@ -215,24 +307,150 @@ class PlayerStatField(Enum):
         Maps canonical field names to user-friendly display names.
         """
         return {
-            cls.FIELD_GOAL_ATTEMPTS.value: "FG Attempts",
-            cls.FIELD_GOALS_MADE.value: "FG Made",
-            cls.EXTRA_POINTS_MADE.value: "XP Made",
-            cls.EXTRA_POINTS_ATTEMPTED.value: "XP Attempts",
-            cls.INTERCEPTIONS_THROWN.value: "Interceptions",
-            cls.RUSHING_TOUCHDOWNS.value: "Rushing TDs",
-            cls.PASSES_DEFENDED.value: "Pass Deflections",
-            cls.PASSING_YARDS.value: "Pass Yards",
-            cls.RUSHING_YARDS.value: "Rush Yards",
-            cls.RECEIVING_YARDS.value: "Rec Yards",
-            cls.TACKLES.value: "Tackles",
-            cls.SACKS.value: "Sacks",
-            cls.RECEPTIONS.value: "Receptions",
-            cls.TARGETS.value: "Targets",
-            cls.COMPLETIONS.value: "Completions",
-            cls.PASS_ATTEMPTS.value: "Pass Attempts",
-            cls.CARRIES.value: "Carries",
+            cls.FIELD_GOAL_ATTEMPTS.field_name: "FG Attempts",
+            cls.FIELD_GOALS_MADE.field_name: "FG Made",
+            cls.EXTRA_POINTS_MADE.field_name: "XP Made",
+            cls.EXTRA_POINTS_ATTEMPTED.field_name: "XP Attempts",
+            cls.INTERCEPTIONS_THROWN.field_name: "Interceptions",
+            cls.RUSHING_TOUCHDOWNS.field_name: "Rushing TDs",
+            cls.PASSES_DEFENDED.field_name: "Pass Deflections",
+            cls.PASSING_YARDS.field_name: "Pass Yards",
+            cls.RUSHING_YARDS.field_name: "Rush Yards",
+            cls.RECEIVING_YARDS.field_name: "Rec Yards",
+            cls.TACKLES.field_name: "Tackles",
+            cls.SACKS.field_name: "Sacks",
+            cls.RECEPTIONS.field_name: "Receptions",
+            cls.TARGETS.field_name: "Targets",
+            cls.COMPLETIONS.field_name: "Completions",
+            cls.PASS_ATTEMPTS.field_name: "Pass Attempts",
+            cls.CARRIES.field_name: "Carries",
             # Add more display names as needed
+        }
+
+    # ============================================================
+    # DATABASE PERSISTENCE HELPERS (Phase 1 Complete)
+    # ============================================================
+
+    @classmethod
+    def generate_insert_statement(
+        cls,
+        table_name: str = "player_game_stats",
+        additional_columns: Optional[List[str]] = None
+    ) -> str:
+        """
+        Auto-generate INSERT statement for player stats persistence.
+
+        Args:
+            table_name: Database table name (default: "player_game_stats")
+            additional_columns: Extra columns to include (e.g., ["dynasty_id", "game_id"])
+
+        Returns:
+            SQL INSERT statement with proper column ordering
+
+        Example:
+            >>> stmt = PlayerStatField.generate_insert_statement(
+            ...     additional_columns=["dynasty_id", "game_id"]
+            ... )
+            >>> print(stmt)
+            INSERT INTO player_game_stats (
+                dynasty_id, game_id, player_id, player_name, ...
+            ) VALUES (?, ?, ?, ?, ...)
+        """
+        # Build column list: additional columns + persistable fields
+        columns = list(additional_columns) if additional_columns else []
+        columns.extend(cls.get_persistable_db_columns())
+
+        # Generate placeholders (? for each column)
+        placeholders = ", ".join(["?" for _ in columns])
+
+        # Format column names (indented, comma-separated)
+        column_list = ",\n        ".join(columns)
+
+        # Build complete INSERT statement
+        query = f"""
+    INSERT INTO {table_name} (
+        {column_list}
+    ) VALUES ({placeholders})
+"""
+        return query.strip()
+
+    @classmethod
+    def extract_params_from_stats(
+        cls,
+        player_stat,
+        additional_params: Optional[tuple] = None
+    ) -> tuple:
+        """
+        Extract database parameter values from a PlayerStats object.
+
+        Args:
+            player_stat: PlayerStats object with accumulated stats
+            additional_params: Extra params to prepend (e.g., (dynasty_id, game_id))
+
+        Returns:
+            Tuple of values in correct order for INSERT statement
+
+        Example:
+            >>> from play_engine.simulation.stats import PlayerStats
+            >>> stats = PlayerStats(...)
+            >>> params = PlayerStatField.extract_params_from_stats(
+            ...     stats,
+            ...     additional_params=("dynasty_1", "game_123")
+            ... )
+            >>> # params = ("dynasty_1", "game_123", "player_id", "Player Name", ...)
+        """
+        # Start with additional params if provided
+        params = list(additional_params) if additional_params else []
+
+        # Extract values for each persistable field
+        for field in cls.get_persistable_fields():
+            value = getattr(player_stat, field.field_name, field.default_value)
+            params.append(value)
+
+        return tuple(params)
+
+    @classmethod
+    def validate_schema_consistency(cls, database_columns: List[str]) -> Dict[str, Any]:
+        """
+        Validate that database schema matches the defined persistable fields.
+
+        Args:
+            database_columns: List of column names from database schema
+
+        Returns:
+            Dictionary with validation results:
+            {
+                "valid": bool,
+                "missing_in_db": List[str],  # Fields defined but not in DB
+                "extra_in_db": List[str],    # Columns in DB but not defined
+                "errors": List[str]           # Human-readable error messages
+            }
+
+        Example:
+            >>> result = PlayerStatField.validate_schema_consistency(
+            ...     database_columns=["player_id", "player_name", "passing_yards"]
+            ... )
+            >>> if not result["valid"]:
+            ...     for error in result["errors"]:
+            ...         print(f"Schema Error: {error}")
+        """
+        expected_columns = set(cls.get_persistable_db_columns())
+        actual_columns = set(database_columns)
+
+        missing_in_db = expected_columns - actual_columns
+        extra_in_db = actual_columns - expected_columns
+
+        errors = []
+        if missing_in_db:
+            errors.append(f"Missing columns in database: {', '.join(sorted(missing_in_db))}")
+        if extra_in_db:
+            errors.append(f"Extra columns in database: {', '.join(sorted(extra_in_db))}")
+
+        return {
+            "valid": len(errors) == 0,
+            "missing_in_db": sorted(missing_in_db),
+            "extra_in_db": sorted(extra_in_db),
+            "errors": errors
         }
 
 
