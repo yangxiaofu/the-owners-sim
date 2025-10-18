@@ -249,13 +249,14 @@ class TeamRosterGenerator:
             positions = json.loads(row['positions'])
             attributes = json.loads(row['attributes'])
 
-            # Create Player object
+            # Create Player object with database player_id preserved
             player = Player(
                 name=f"{row['first_name']} {row['last_name']}",
                 number=row['number'],
                 primary_position=positions[0] if positions else Position.WR,
                 ratings=attributes,
-                team_id=row['team_id']
+                team_id=row['team_id'],
+                player_id=row['player_id']  # Preserve stable database player_id
             )
 
             # Add depth_chart_order attribute (loaded from database)

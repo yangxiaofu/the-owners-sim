@@ -546,16 +546,21 @@ class PlayerStatsAccumulator:
     def add_play_stats(self, play_summary: PlayStatsSummary) -> None:
         """
         Accumulate player stats from a single play into running game totals.
-        
+
         Args:
             play_summary: PlayStatsSummary containing all player stats from one play
         """
         self._plays_processed += 1
-        
+
         # Process each player's stats from the play
         for player_stats in play_summary.player_stats:
-            if player_stats.get_total_stats():  # Only accumulate players with actual stats
+            total_stats = player_stats.get_total_stats()
+            if player_stats.interceptions_thrown > 0:
+                print(f"🔴 INT DEBUG Accumulator: {player_stats.player_name} has interceptions_thrown={player_stats.interceptions_thrown}, total_stats={total_stats}")
+            if total_stats:  # Only accumulate players with actual stats
                 self._merge_player_stats(player_stats)
+            elif player_stats.interceptions_thrown > 0:
+                print(f"🔴 INT DEBUG: BLOCKED! {player_stats.player_name} interceptions_thrown={player_stats.interceptions_thrown} but get_total_stats() returned EMPTY!")
     
     def _merge_player_stats(self, incoming_stats: PlayerStats) -> None:
         """
@@ -1013,10 +1018,17 @@ def create_player_stats_from_player(player, team_id: Optional[int] = None) -> Pl
 
     # Real players will have more comprehensive attributes
     if hasattr(player, 'ratings') and player.ratings:
-        # This is likely a real player - extract ID if available
-        # For now, use a hash of name+number as pseudo-ID since real player_id
-        # isn't directly accessible from Player object
-        player_id = hash(f"{player.name}_{player.number}") % 10000
+        # Use database player_id if available (preferred), otherwise generate for synthetic players
+        if hasattr(player, 'player_id') and player.player_id is not None:
+            # Database player from roster - use stable player_id
+            player_id = player.player_id
+        else:
+            # Synthetic player (demos/tests) - generate deterministic collision-resistant ID
+            # Format: {team_id}{jersey_number:02d}{name_hash:04d}
+            # Example: 220512345 = team 22, jersey #5, name hash 12345
+            # This provides ~10M unique combinations vs 10K before, drastically reducing collisions
+            team_id_part = extracted_team_id if extracted_team_id else 0
+            player_id = int(f"{team_id_part}{player.number:02d}{abs(hash(player.name)) % 10000:04d}")
         player_attributes = player.ratings.copy()
 
     return PlayerStats(
