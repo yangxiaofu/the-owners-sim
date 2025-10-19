@@ -271,6 +271,15 @@ class SimulationController(QObject):
         """
         return self.current_week if self.season_controller.phase_state.phase.value == "regular_season" else None
 
+    def get_next_milestone_name(self) -> str:
+        """
+        Get display name for next offseason milestone.
+
+        Returns:
+            Display name for UI button (e.g., "Franchise Tags", "Free Agency", "Draft")
+        """
+        return self.season_controller.get_next_offseason_milestone_name()
+
     def advance_to_end_of_phase(self, progress_callback=None) -> Dict[str, Any]:
         """
         Simulate until end of current phase (phase transition detected).
@@ -315,12 +324,22 @@ class SimulationController(QObject):
                 self.date_changed.emit(self.current_date_str, self.season_controller.phase_state.phase.value)
 
                 # Add friendly message
-                phase_name = summary['starting_phase'].replace('_', ' ').title()
-                summary['message'] = (
-                    f"{phase_name} complete! "
-                    f"{summary['weeks_simulated']} weeks simulated, "
-                    f"{summary['total_games']} games played."
-                )
+                # Detect if this is a milestone stop (offseason) vs phase completion
+                if 'milestone_reached' in summary:
+                    # Offseason milestone stop - show milestone name
+                    summary['message'] = (
+                        f"Stopped at: {summary['milestone_reached']}\n"
+                        f"Milestone Date: {summary['milestone_date']}\n"
+                        f"Days Advanced: {summary.get('days_simulated', 0)}"
+                    )
+                else:
+                    # Phase completion - show phase name
+                    phase_name = summary['starting_phase'].replace('_', ' ').title()
+                    summary['message'] = (
+                        f"{phase_name} complete! "
+                        f"{summary['weeks_simulated']} weeks simulated, "
+                        f"{summary['total_games']} games played."
+                    )
 
             return summary
 
@@ -335,6 +354,58 @@ class SimulationController(QObject):
                 'starting_phase': self.season_controller.phase_state.phase.value,
                 'ending_phase': self.season_controller.phase_state.phase.value,
                 'phase_transition': False
+            }
+
+    def simulate_to_new_season(self) -> Dict[str, Any]:
+        """
+        Simulate remainder of current season (all phases) until new season starts.
+
+        Completes all remaining phases (regular season → playoffs → offseason)
+        and stops at the start of the next season.
+
+        Returns:
+            Summary dict with simulation results:
+            {
+                'start_date': str,
+                'end_date': str,
+                'weeks_simulated': int,
+                'total_games': int,
+                'starting_phase': str,
+                'ending_phase': str,
+                'success': bool,
+                'message': str
+            }
+        """
+        try:
+            # Call backend method (no progress callback for now)
+            summary = self.season_controller.simulate_to_new_season()
+
+            if summary.get('success', False):
+                # Update cached state
+                self.current_date_str = summary['end_date']
+
+                # Save to database
+                self._save_state_to_db(
+                    self.current_date_str,
+                    summary['ending_phase'],
+                    self.current_week
+                )
+
+                # Emit signal for UI refresh
+                self.date_changed.emit(self.current_date_str, summary['ending_phase'])
+
+            return summary
+
+        except Exception as e:
+            return {
+                'success': False,
+                'message': f'Error: {str(e)}',
+                'start_date': self.current_date_str,
+                'end_date': self.current_date_str,
+                'weeks_simulated': 0,
+                'total_games': 0,
+                'starting_phase': self.season_controller.phase_state.phase.value,
+                'ending_phase': self.season_controller.phase_state.phase.value
             }
 
     def get_simulation_state(self) -> Dict[str, Any]:

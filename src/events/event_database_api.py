@@ -871,6 +871,159 @@ class EventDatabaseAPI:
         finally:
             conn.close()
 
+    def get_next_offseason_milestone(
+        self,
+        current_date,  # calendar.date_models.Date
+        season_year: int,
+        dynasty_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get next offseason milestone event after current date.
+
+        Queries all three offseason event types (DEADLINE, WINDOW, MILESTONE)
+        and returns the chronologically next event for UI display and simulation control.
+
+        Args:
+            current_date: Current calendar date (Date object)
+            season_year: Season year for filtering
+            dynasty_id: Dynasty identifier for isolation
+
+        Returns:
+            Dict with milestone info or None if no more milestones:
+            {
+                'event_id': str,
+                'event_type': 'DEADLINE' | 'WINDOW' | 'MILESTONE',
+                'event_date': Date,
+                'display_name': str,  # User-friendly name
+                'description': str,
+                'data': Dict  # Full event data
+            }
+
+        Example:
+            >>> current = Date(2026, 2, 10)
+            >>> milestone = api.get_next_offseason_milestone(current, 2025, "dynasty1")
+            >>> print(milestone['display_name'])  # "Scouting Combine"
+            >>> print(milestone['event_date'])    # 2026-02-24
+        """
+        from calendar.date_models import Date
+
+        # Convert current_date to timestamp for query
+        # Date → Python date → datetime
+        py_date = current_date.to_python_date()
+        current_datetime = datetime.combine(py_date, datetime.min.time())
+        current_timestamp_ms = int(current_datetime.timestamp() * 1000)
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        try:
+            # Query for next event after current date
+            # Filter by: dynasty_id, season_year (in data JSON), event_type (DEADLINE/WINDOW/MILESTONE)
+            # Order by timestamp ASC, limit 1
+            cursor.execute('''
+                SELECT * FROM events
+                WHERE dynasty_id = ?
+                  AND timestamp > ?
+                  AND event_type IN ('DEADLINE', 'WINDOW', 'MILESTONE')
+                ORDER BY timestamp ASC
+                LIMIT 1
+            ''', (dynasty_id, current_timestamp_ms))
+
+            row = cursor.fetchone()
+
+            if not row:
+                return None
+
+            # Convert row to dict
+            event_dict = self._row_to_dict(row)
+            event_data = event_dict['data']
+
+            # Verify season_year matches (data contains season info in parameters section)
+            # Events store data in structure: {"parameters": {...}, "results": {...}, "metadata": {...}}
+            params = event_data.get('parameters', {})
+            if params.get('season_year') != season_year:
+                return None
+
+            # Extract event-specific fields from parameters section
+            event_type = event_dict['event_type']
+
+            # Build display name based on event type
+            # All event-specific fields are stored in parameters section
+            if event_type == 'DEADLINE':
+                deadline_type = params.get('deadline_type', '')
+                display_name = self._get_deadline_display_name(deadline_type)
+            elif event_type == 'WINDOW':
+                window_name = params.get('window_name', '')
+                window_type = params.get('window_type', 'START')
+                display_name = self._get_window_display_name(window_name, window_type)
+            elif event_type == 'MILESTONE':
+                milestone_type = params.get('milestone_type', '')
+                display_name = self._get_milestone_display_name(milestone_type)
+            else:
+                display_name = 'Next Milestone'
+
+            # Reconstruct Date from timestamp
+            # Note: _row_to_dict() already converts timestamp to datetime object
+            event_timestamp = event_dict['timestamp']
+            event_date = Date(event_timestamp.year, event_timestamp.month, event_timestamp.day)
+
+            return {
+                'event_id': event_dict['event_id'],
+                'event_type': event_type,
+                'event_date': event_date,
+                'display_name': display_name,
+                'description': params.get('description', ''),
+                'data': event_data
+            }
+
+        finally:
+            conn.close()
+
+    def _get_deadline_display_name(self, deadline_type: str) -> str:
+        """Convert deadline type to UI-friendly display name."""
+        DEADLINE_NAMES = {
+            'FRANCHISE_TAG': 'Franchise Tags',
+            'SALARY_CAP_COMPLIANCE': 'Cap Compliance',
+            'RFA_TENDER': 'RFA Tenders',
+            'FINAL_ROSTER_CUTS': 'Roster Cuts',
+            'JUNE_1_RELEASES': 'June 1 Releases'
+        }
+        return DEADLINE_NAMES.get(deadline_type, deadline_type.replace('_', ' ').title())
+
+    def _get_window_display_name(self, window_name: str, window_type: str) -> str:
+        """Convert window name/type to UI-friendly display name."""
+        WINDOW_NAMES = {
+            ('LEGAL_TAMPERING', 'START'): 'Legal Tampering',
+            ('LEGAL_TAMPERING', 'END'): 'Legal Tampering Ends',
+            ('FREE_AGENCY', 'START'): 'Free Agency',
+            ('FREE_AGENCY', 'END'): 'Free Agency Ends',
+            ('OTA_OFFSEASON', 'START'): 'OTAs',
+            ('OTA_OFFSEASON', 'END'): 'OTA Conclusion',
+            ('MINICAMP', 'START'): 'Minicamp',
+            ('MINICAMP', 'END'): 'Minicamp Ends',
+            ('TRAINING_CAMP', 'START'): 'Training Camp',
+            ('TRAINING_CAMP', 'END'): 'Training Camp Ends',
+            ('PRESEASON', 'START'): 'Preseason',
+            ('PRESEASON', 'END'): 'Preseason Ends',
+        }
+        key = (window_name, window_type)
+        default = f"{window_name.replace('_', ' ').title()} {window_type.title()}"
+        return WINDOW_NAMES.get(key, default)
+
+    def _get_milestone_display_name(self, milestone_type: str) -> str:
+        """Convert milestone type to UI-friendly display name."""
+        MILESTONE_NAMES = {
+            'COMBINE_START': 'Scouting Combine',
+            'COMBINE_END': 'Combine Ends',
+            'NEW_LEAGUE_YEAR': 'New League Year',
+            'DRAFT': 'Draft',
+            'DRAFT_ORDER_FINALIZED': 'Draft Order',
+            'ROOKIE_MINICAMP': 'Rookie Minicamp',
+            'SCHEDULE_RELEASE': 'Schedule Release'
+        }
+        return MILESTONE_NAMES.get(milestone_type, milestone_type.replace('_', ' ').title())
+
     def __str__(self) -> str:
         """String representation"""
         return f"EventDatabaseAPI(db_path='{self.db_path}')"

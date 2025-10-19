@@ -30,6 +30,8 @@ from calendar.phase_state import PhaseState
 from playoff_system.playoff_controller import PlayoffController
 from playoff_system.playoff_seeder import PlayoffSeeder
 from database.api import DatabaseAPI
+from database.draft_class_api import DraftClassAPI
+from events import EventDatabaseAPI
 
 
 class SeasonCycleController:
@@ -134,6 +136,9 @@ class SeasonCycleController:
         # Database API for data retrieval (MUST be initialized before phase-aware initialization)
         self.database_api = DatabaseAPI(database_path)
 
+        # Initialize EventDatabaseAPI for offseason event execution
+        self.event_db = EventDatabaseAPI(database_path)
+
         # Calculate last scheduled regular season game date for flexible end-of-season detection
         self.last_regular_season_game_date = self._get_last_regular_season_game_date()
 
@@ -144,6 +149,9 @@ class SeasonCycleController:
             owner_name=None,
             team_id=None
         )
+
+        # GENERATE DRAFT CLASS FOR THIS SEASON
+        self._generate_draft_class_if_needed()
 
         # State tracking - set active controller based on initial phase
         # IMPORTANT: This comes AFTER database_api initialization because _restore_playoff_controller() needs it
@@ -194,21 +202,31 @@ class SeasonCycleController:
             try:
                 current_date = self.calendar.get_current_date()
 
+                if self.verbose_logging:
+                    print(f"\n[OFFSEASON_DAY] Advancing offseason day: {current_date}")
+
                 # Import SimulationExecutor to trigger events
                 from calendar.simulation_executor import SimulationExecutor
 
                 executor = SimulationExecutor(
-                    database_path=self.database_path,
                     calendar=self.calendar,
-                    dynasty_id=self.dynasty_id
+                    event_db=self.event_db,
+                    database_path=self.database_path,
+                    dynasty_id=self.dynasty_id,
+                    enable_persistence=self.enable_persistence,
+                    season_year=self.season_year,
+                    phase_state=self.phase_state
                 )
 
                 # Simulate events for current day
                 event_results = executor.simulate_day(current_date)
 
                 # Advance calendar
-                self.calendar.advance_to_next_day()
+                self.calendar.advance(1)
                 self.total_days_simulated += 1
+
+                if self.verbose_logging:
+                    print(f"[OFFSEASON_DAY] Calendar advanced successfully to: {self.calendar.get_current_date()}")
 
                 return {
                     "date": str(current_date),
@@ -224,7 +242,7 @@ class SeasonCycleController:
             except Exception as e:
                 self.logger.error(f"Error during offseason day advancement: {e}")
                 # Fallback to basic advancement
-                self.calendar.advance_to_next_day()
+                self.calendar.advance(1)
                 self.total_days_simulated += 1
 
                 return {
@@ -261,10 +279,24 @@ class SeasonCycleController:
             Dictionary with weekly summary
         """
         if self.phase_state.phase == SeasonPhase.OFFSEASON:
+            # Advance offseason by 7 days, collecting any triggered events
+            events_triggered = []
+            start_date = str(self.calendar.get_current_date())
+
+            for day_num in range(7):
+                day_result = self.advance_day()
+                if day_result.get('events_triggered'):
+                    events_triggered.extend(day_result['events_triggered'])
+
+            end_date = str(self.calendar.get_current_date())
+
             return {
-                "week_complete": False,
+                "success": True,
+                "week_complete": True,
                 "current_phase": "offseason",
-                "message": "Season complete."
+                "date": end_date,
+                "games_played": 0,
+                "message": f"Offseason week advanced ({start_date} → {end_date}). {len(events_triggered)} events triggered."
             }
 
         # Delegate to active controller
@@ -347,6 +379,11 @@ class SeasonCycleController:
                 'success': bool
             }
         """
+        # NEW: Handle offseason - simulate to next milestone instead of full phase
+        if self.phase_state.phase == SeasonPhase.OFFSEASON:
+            return self.simulate_to_next_offseason_milestone(progress_callback)
+
+        # Existing code for regular season and playoffs continues below...
         starting_phase = self.phase_state.phase
         start_date = self.calendar.get_current_date()
         initial_games = self.total_games_played
@@ -392,6 +429,286 @@ class SeasonCycleController:
             'ending_phase': self.phase_state.phase.value,
             'phase_transition': self.phase_state.phase != starting_phase,
             'success': True
+        }
+
+    def simulate_to_next_offseason_milestone(self, progress_callback=None) -> Dict[str, Any]:
+        """
+        Simulate to next offseason milestone (stops at EVERY milestone).
+
+        Includes ALL events: deadlines, window starts/ends, and milestone markers.
+        Gives user control at every major offseason event.
+
+        Now uses generic simulate_to_date() method for implementation.
+
+        Args:
+            progress_callback: Optional callback(days_advanced, total_days) for UI progress updates
+
+        Returns:
+            {
+                'start_date': str,
+                'end_date': str,
+                'days_simulated': int,
+                'milestone_reached': str,  # Display name
+                'milestone_type': str,     # Event type
+                'milestone_date': str,
+                'events_triggered': List,
+                'success': bool,
+                'message': str
+            }
+        """
+        if self.phase_state.phase != SeasonPhase.OFFSEASON:
+            return {
+                'success': False,
+                'message': 'Not in offseason phase',
+                'start_date': str(self.calendar.get_current_date()),
+                'end_date': str(self.calendar.get_current_date()),
+                'days_simulated': 0
+            }
+
+        # Query next milestone from event database
+        next_milestone = self.event_db.get_next_offseason_milestone(
+            current_date=self.calendar.get_current_date(),
+            season_year=self.season_year,
+            dynasty_id=self.dynasty_id
+        )
+
+        if not next_milestone:
+            # NO FALLBACK - this is an error condition that must be fixed
+            error_msg = (
+                f"No offseason milestone found in database!\n\n"
+                f"Dynasty: {self.dynasty_id}\n"
+                f"Season: {self.season_year}\n"
+                f"Current Date: {self.calendar.get_current_date()}\n\n"
+                f"This means offseason events were not scheduled during Super Bowl → Offseason transition.\n"
+                f"Check terminal output for '[OFFSEASON_EVENTS] Scheduling...' message and any errors."
+            )
+
+            if self.verbose_logging:
+                print(f"\n{'='*80}")
+                print(f"[ERROR] NO OFFSEASON MILESTONES FOUND")
+                print(f"{'='*80}")
+                print(error_msg)
+                print(f"{'='*80}\n")
+
+            return {
+                'success': False,
+                'message': error_msg,
+                'starting_phase': 'offseason',
+                'ending_phase': 'offseason',
+                'weeks_simulated': 0,
+                'total_games': 0,
+                'phase_transition': False,
+                'days_simulated': 0,
+                'events_executed': 0
+            }
+
+        # Use simulate_to_date to reach milestone
+        milestone_date = next_milestone['event_date']
+        result = self.simulate_to_date(milestone_date, execute_events=True, progress_callback=progress_callback)
+
+        # Add milestone-specific info to result
+        result['milestone_reached'] = next_milestone['display_name']
+        result['milestone_type'] = next_milestone['event_type']
+        result['milestone_date'] = str(milestone_date)
+
+        # Add keys UI expects
+        result['starting_phase'] = 'offseason'
+        result['ending_phase'] = self.phase_state.phase.value
+        result['weeks_simulated'] = result['days_simulated'] // 7
+        result['total_games'] = result.get('games_played', 0)
+        result['phase_transition'] = False
+
+        return result
+
+    def simulate_to_date(
+        self,
+        target_date: Date,
+        execute_events: bool = True,
+        progress_callback=None
+    ) -> Dict[str, Any]:
+        """
+        Generic simulation advancing day-by-day to target date.
+
+        This is the core simulation method that all other simulation methods use.
+        Handles offseason, regular season, and playoffs uniformly.
+
+        Args:
+            target_date: Date to simulate until
+            execute_events: Whether to execute events encountered (default True)
+            progress_callback: Optional callback(current_day, total_days) for UI
+
+        Returns:
+            {
+                'success': bool,
+                'start_date': str,
+                'end_date': str,
+                'days_simulated': int,
+                'events_triggered': List[Dict],
+                'games_played': int,
+                'message': str
+            }
+        """
+        # Validate target_date is in future
+        current_date = self.calendar.get_current_date()
+        if target_date <= current_date:
+            return {
+                'success': False,
+                'start_date': str(current_date),
+                'end_date': str(current_date),
+                'days_simulated': 0,
+                'events_triggered': [],
+                'games_played': 0,
+                'message': f'Target date ({target_date}) must be after current date ({current_date})'
+            }
+
+        # Track start state
+        start_date = current_date
+        initial_games = self.total_games_played
+        events_triggered = []
+
+        # Calculate total days for progress tracking
+        target_py_date = target_date.to_python_date()
+        start_py_date = start_date.to_python_date()
+        total_days = (target_py_date - start_py_date).days
+        days_advanced = 0
+
+        if self.verbose_logging:
+            print(f"\n{'='*80}")
+            print(f"{'SIMULATING TO DATE'.center(80)}")
+            print(f"{'='*80}")
+            print(f"From: {start_date}")
+            print(f"To: {target_date}")
+            print(f"Total Days: {total_days}")
+            print(f"Execute Events: {execute_events}")
+            print(f"{'='*80}")
+
+        # Day-by-day loop until target reached
+        while self.calendar.get_current_date() < target_date:
+            # Advance one day (handles events if execute_events via advance_day's SimulationExecutor)
+            day_result = self.advance_day()
+            days_advanced += 1
+
+            # Collect events triggered
+            if day_result.get('events_triggered'):
+                events_triggered.extend(day_result['events_triggered'])
+
+            # Progress callback for UI
+            if progress_callback and total_days > 0:
+                progress_callback(days_advanced, total_days)
+
+            # Safety check: prevent infinite loops
+            if days_advanced > total_days + 7:  # Allow 7-day buffer for tolerance
+                self.logger.warning(f"Simulation exceeded expected days ({days_advanced} > {total_days})")
+                break
+
+        end_date = self.calendar.get_current_date()
+        games_played = self.total_games_played - initial_games
+
+        if self.verbose_logging:
+            print(f"\n{'='*80}")
+            print(f"{'SIMULATION TO DATE COMPLETE'.center(80)}")
+            print(f"{'='*80}")
+            print(f"Start: {start_date}")
+            print(f"End: {end_date}")
+            print(f"Days: {days_advanced}")
+            print(f"Games: {games_played}")
+            print(f"Events: {len(events_triggered)}")
+            print(f"{'='*80}")
+
+        return {
+            'success': True,
+            'start_date': str(start_date),
+            'end_date': str(end_date),
+            'days_simulated': days_advanced,
+            'events_triggered': events_triggered,
+            'games_played': games_played,
+            'message': f'Simulated {days_advanced} days ({start_date} → {end_date}). {games_played} games, {len(events_triggered)} events.'
+        }
+
+    def get_next_offseason_milestone_name(self) -> str:
+        """
+        Get display name for next offseason milestone (for UI button text).
+
+        Returns:
+            Display name like "Franchise Tags", "Free Agency", "Draft", etc.
+            Returns "Next Season" if no more milestones.
+        """
+        if self.phase_state.phase != SeasonPhase.OFFSEASON:
+            return "Next Phase"
+
+        current_date = self.calendar.get_current_date()
+        next_milestone = self.event_db.get_next_offseason_milestone(
+            current_date=current_date,
+            season_year=self.season_year,
+            dynasty_id=self.dynasty_id
+        )
+
+        if not next_milestone:
+            return "Next Season"
+
+        return next_milestone['display_name']
+
+    def simulate_to_new_season(self, progress_callback=None) -> Dict[str, Any]:
+        """
+        Skip all remaining offseason milestones and initialize new season.
+
+        Auto-executes all offseason events (franchise tags, draft, FA, etc.)
+        and advances calendar to first Thursday in August (preseason start).
+
+        Args:
+            progress_callback: Optional callback(current, total, event_name) for UI progress updates
+
+        Returns:
+            Dict with same keys as simulate_to_phase_end() for UI compatibility:
+            {
+                'success': bool,
+                'start_date': str,
+                'end_date': str,
+                'starting_phase': str,
+                'ending_phase': str,
+                'weeks_simulated': int,
+                'total_games': int,
+                'phase_transition': bool,
+                'days_simulated': int,
+                'events_executed': int,
+                'event_list': List[str],
+                'new_season_year': int,
+                'message': str
+            }
+        """
+        # TODO: Implement full skip-to-new-season logic
+        # See docs/plans/season_cycle_controller_implementation_plan.md for details
+
+        if self.phase_state.phase != SeasonPhase.OFFSEASON:
+            return {
+                'success': False,
+                'message': 'Can only skip to new season during offseason',
+                'starting_phase': self.phase_state.phase.value,
+                'ending_phase': self.phase_state.phase.value,
+                'weeks_simulated': 0,
+                'total_games': 0,
+                'phase_transition': False,
+                'days_simulated': 0,
+                'events_executed': 0
+            }
+
+        if self.verbose_logging:
+            print(f"\n[SKIP_TO_NEW_SEASON] TODO: Implement full season skip logic")
+            print(f"  Current implementation is placeholder")
+
+        # Placeholder return (will be replaced with full implementation)
+        return {
+            'success': False,
+            'message': 'Skip to new season not yet implemented - see season_cycle_controller_implementation_plan.md',
+            'starting_phase': 'offseason',
+            'ending_phase': 'offseason',
+            'weeks_simulated': 0,
+            'total_games': 0,
+            'phase_transition': False,
+            'days_simulated': 0,
+            'events_executed': 0,
+            'event_list': [],
+            'new_season_year': self.season_year
         }
 
     def get_current_phase(self) -> SeasonPhase:
@@ -478,14 +795,19 @@ class SeasonCycleController:
 
         elif self.phase_state.phase == SeasonPhase.PLAYOFFS:
             if self._is_super_bowl_complete():
-                if self.verbose_logging:
-                    print(f"[DEBUG] Super Bowl complete! Transitioning to offseason...")
+                print(f"\n{'='*80}")
+                print(f"[SUPER_BOWL_FLOW] Super Bowl complete detected!")
+                print(f"[SUPER_BOWL_FLOW] Transitioning from PLAYOFFS → OFFSEASON")
+                print(f"{'='*80}")
                 self._transition_to_offseason()
                 return {
                     "from_phase": "playoffs",
                     "to_phase": "offseason",
                     "trigger": "super_bowl_complete"
                 }
+            else:
+                if self.verbose_logging:
+                    print(f"[DEBUG] Super Bowl not yet complete, remaining in PLAYOFFS phase")
 
         return None
 
@@ -584,14 +906,30 @@ class SeasonCycleController:
         return date_check
 
     def _is_super_bowl_complete(self) -> bool:
-        """Check if Super Bowl has been played."""
+        """
+        Check if Super Bowl has been PLAYED (not just scheduled).
+
+        CRITICAL: This must check if the game has a winner, not just if it exists.
+        The Super Bowl game is SCHEDULED after Conference Championships complete,
+        but it hasn't been PLAYED yet at that point.
+
+        Returns:
+            True only if Super Bowl has been simulated and has a winner_id
+        """
         if not self.playoff_controller:
             if self.verbose_logging:
                 print(f"\n[DEBUG] Checking Super Bowl completion: playoff_controller is None!")
             return False
 
         super_bowl_games = self.playoff_controller.get_round_games('super_bowl')
-        is_complete = len(super_bowl_games) > 0
+
+        # Check if Super Bowl EXISTS and HAS BEEN PLAYED (has a winner)
+        # Game exists but winner_id is None → scheduled but not played yet
+        # Game exists and winner_id is set → game has been played
+        is_complete = (
+            len(super_bowl_games) > 0
+            and super_bowl_games[0].get('winner_id') is not None
+        )
 
         # Debug logging
         if self.verbose_logging:
@@ -599,9 +937,23 @@ class SeasonCycleController:
             print(f"  - playoff_controller exists: True")
             print(f"  - Super Bowl games: {super_bowl_games}")
             print(f"  - Super Bowl games count: {len(super_bowl_games)}")
-            print(f"  - Is complete: {is_complete}")
             if super_bowl_games:
-                print(f"  - Super Bowl winner: {super_bowl_games[0].get('winner_id')}")
+                winner_id = super_bowl_games[0].get('winner_id')
+                status = super_bowl_games[0].get('status')
+                print(f"  - Super Bowl winner_id: {winner_id}")
+                print(f"  - Super Bowl status: {status}")
+                print(f"  - Is complete (has winner): {is_complete}")
+            else:
+                print(f"  - Is complete: {is_complete}")
+
+        if is_complete:
+            print(f"\n[SUPER_BOWL_FLOW] ✅ Super Bowl has been played!")
+            print(f"[SUPER_BOWL_FLOW]    Winner: Team {super_bowl_games[0].get('winner_id')}")
+            print(f"[SUPER_BOWL_FLOW]    Ready to transition to OFFSEASON")
+        elif len(super_bowl_games) > 0:
+            print(f"\n[SUPER_BOWL_FLOW] ⏳ Super Bowl is SCHEDULED but not yet played")
+            print(f"[SUPER_BOWL_FLOW]    Status: {super_bowl_games[0].get('status')}")
+            print(f"[SUPER_BOWL_FLOW]    Remaining in PLAYOFFS phase")
 
         return is_complete
 
@@ -795,18 +1147,11 @@ class SeasonCycleController:
             print(f"[DEBUG] Current phase before transition: {self.phase_state.phase.value}")
 
         # CRITICAL DIAGNOSTIC: Verify playoff events exist BEFORE transition
-        import sqlite3
         print(f"\n[PLAYOFF_LIFECYCLE] ===== BEFORE OFFSEASON TRANSITION =====")
-        verify_conn = sqlite3.connect(self.database_path)
-        verify_cursor = verify_conn.cursor()
-        verify_cursor.execute("""
-            SELECT COUNT(*) FROM events
-            WHERE dynasty_id = ?
-              AND event_type = 'GAME'
-              AND game_id LIKE ?
-        """, (self.dynasty_id, f"playoff_{self.season_year}_%"))
-        playoff_count_before = verify_cursor.fetchone()[0]
-        verify_conn.close()
+        playoff_count_before = self.database_api.count_playoff_events(
+            dynasty_id=self.dynasty_id,
+            season_year=self.season_year
+        )
         print(f"[PLAYOFF_LIFECYCLE]   Dynasty: {self.dynasty_id}")
         print(f"[PLAYOFF_LIFECYCLE]   Database: {self.database_path}")
         print(f"[PLAYOFF_LIFECYCLE]   Playoff events in database: {playoff_count_before}")
@@ -832,6 +1177,11 @@ class SeasonCycleController:
 
             # Schedule offseason events
             try:
+                if self.verbose_logging:
+                    print(f"\n[OFFSEASON_EVENTS] Scheduling offseason events...")
+                    print(f"  Season year: {self.season_year}")
+                    print(f"  Dynasty ID: {self.dynasty_id}")
+
                 from offseason.offseason_event_scheduler import OffseasonEventScheduler
 
                 scheduler = OffseasonEventScheduler()
@@ -848,6 +1198,9 @@ class SeasonCycleController:
                 # If no date in result, use current calendar date
                 if not super_bowl_date:
                     super_bowl_date = self.calendar.get_current_date()
+
+                if self.verbose_logging:
+                    print(f"  Super Bowl date: {super_bowl_date}")
 
                 # Schedule all offseason events
                 scheduling_result = scheduler.schedule_offseason_events(
@@ -867,7 +1220,12 @@ class SeasonCycleController:
             except Exception as e:
                 self.logger.error(f"Error scheduling offseason events: {e}")
                 if self.verbose_logging:
-                    print(f"⚠️  Warning: Could not schedule offseason events: {e}")
+                    print(f"⚠️  WARNING: Offseason event scheduling failed!")
+                    print(f"  Error: {e}")
+                    print(f"  This will prevent milestone-based simulation from working correctly.")
+                    import traceback
+                    traceback.print_exc()
+                # Don't silently continue - this is a critical error
 
             # 3. Generate season summary
             self.season_summary = self._generate_season_summary()
@@ -886,16 +1244,10 @@ class SeasonCycleController:
 
             # CRITICAL DIAGNOSTIC: Verify playoff events STILL exist AFTER transition
             print(f"\n[PLAYOFF_LIFECYCLE] ===== AFTER OFFSEASON TRANSITION =====")
-            verify_conn_after = sqlite3.connect(self.database_path)
-            verify_cursor_after = verify_conn_after.cursor()
-            verify_cursor_after.execute("""
-                SELECT COUNT(*) FROM events
-                WHERE dynasty_id = ?
-                  AND event_type = 'GAME'
-                  AND game_id LIKE ?
-            """, (self.dynasty_id, f"playoff_{self.season_year}_%"))
-            playoff_count_after = verify_cursor_after.fetchone()[0]
-            verify_conn_after.close()
+            playoff_count_after = self.database_api.count_playoff_events(
+                dynasty_id=self.dynasty_id,
+                season_year=self.season_year
+            )
             print(f"[PLAYOFF_LIFECYCLE]   Playoff events in database: {playoff_count_after}")
             if playoff_count_after == 0:
                 print(f"[PLAYOFF_LIFECYCLE]   ⚠️  WARNING: PLAYOFF EVENTS DISAPPEARED!")
@@ -921,8 +1273,11 @@ class SeasonCycleController:
         Returns:
             Wild Card Saturday date
         """
-        # Get current date (after Week 18)
-        final_reg_season_date = self.calendar.get_current_date()
+        # Get date of last regular season game (Week 18 Sunday)
+        # IMPORTANT: Use actual last game date, not current calendar date
+        # This ensures playoffs always start 2 weeks after last game,
+        # regardless of when phase transition is detected
+        final_reg_season_date = self.last_regular_season_game_date
 
         # Add 14 days (2 weeks)
         wild_card_date = final_reg_season_date.add_days(14)
@@ -988,6 +1343,119 @@ class SeasonCycleController:
                 "dynasty_id": self.dynasty_id,
                 "error": str(e)
             }
+
+    def _generate_draft_class_if_needed(self):
+        """
+        Generate draft class for this season if it doesn't exist.
+
+        Called once during SeasonCycleController initialization to ensure
+        draft prospects are available for scouting throughout the season.
+
+        The draft class is for the current season year and will be drafted
+        in April of the following calendar year.
+
+        Example: 2024 season (Sept 2024 → Feb 2025)
+                 → Generate 2024 draft class in Sept 2024
+                 → Draft occurs April 2025
+                 → Drafted players join teams for 2025 season
+        """
+        draft_api = DraftClassAPI(self.database_path)
+
+        # Check if draft class already exists (idempotent)
+        if draft_api.dynasty_has_draft_class(self.dynasty_id, self.season_year):
+            if self.verbose_logging:
+                print(f"   Draft class for {self.season_year} already exists")
+            return
+
+        # Generate draft class (224 prospects = 7 rounds × 32 teams)
+        try:
+            draft_class_id = draft_api.generate_draft_class(
+                dynasty_id=self.dynasty_id,
+                season=self.season_year
+            )
+
+            if self.verbose_logging:
+                print(f"\n🏈 Draft Class Generated:")
+                print(f"   Season: {self.season_year}")
+                print(f"   Prospects: 224 (7 rounds × 32 teams)")
+                print(f"   Draft Class ID: {draft_class_id}")
+
+        except Exception as e:
+            self.logger.error(f"Error generating draft class: {e}")
+            if self.verbose_logging:
+                print(f"⚠️  Warning: Could not generate draft class: {e}")
+
+    # ==================== Skip to New Season Helper Methods (TODO) ====================
+
+    def _get_remaining_offseason_events_until_preseason(self) -> List[Dict]:
+        """
+        Get all offseason events from current date until PRESEASON_START.
+
+        Returns:
+            List of event dicts in chronological order
+
+        TODO: Implement this method
+        See docs/plans/season_cycle_controller_implementation_plan.md for details
+        """
+        # Placeholder implementation
+        if self.verbose_logging:
+            print(f"[TODO] _get_remaining_offseason_events_until_preseason()")
+        return []
+
+    def _execute_offseason_event_auto(self, event: Dict[str, Any]):
+        """
+        Auto-execute offseason event in background (AI mode).
+
+        For now, this is a placeholder. Full implementation would:
+        - Franchise tags: Apply tags to top players
+        - Draft: Simulate draft with AI teams
+        - Free agency: Run FA signing algorithm
+        - Roster cuts: AI teams cut to 53-man
+
+        Args:
+            event: Event dict with type, subtype, metadata
+
+        TODO: Implement actual event execution logic
+        See docs/plans/season_cycle_controller_implementation_plan.md for details
+        """
+        if self.verbose_logging:
+            event_name = event.get('display_name', 'Unknown Event')
+            print(f"[TODO] _execute_offseason_event_auto({event_name})")
+
+    def _initialize_next_season(self):
+        """
+        Initialize new season after offseason completes.
+
+        Steps:
+        1. Increment season_year
+        2. Generate new 272-game schedule
+        3. Reset all 32 team standings to 0-0-0
+        4. Update dynasty_state
+        5. Transition phase to REGULAR_SEASON
+        6. Reinitialize season_controller
+
+        TODO: Implement full season initialization
+        See docs/plans/season_cycle_controller_implementation_plan.md for details
+        """
+        if self.verbose_logging:
+            print(f"[TODO] _initialize_next_season() - Current year: {self.season_year}")
+            print(f"  Would increment to {self.season_year + 1}")
+            print(f"  Would generate new schedule")
+            print(f"  Would reset standings")
+
+    def _reset_all_standings(self):
+        """
+        Reset all 32 teams to 0-0-0 records for new season.
+
+        Updates standings table with fresh records for new season_year.
+
+        TODO: Implement standings reset
+        See docs/plans/season_cycle_controller_implementation_plan.md for details
+        """
+        if self.verbose_logging:
+            print(f"[TODO] _reset_all_standings() for season {self.season_year}")
+
+    # ==================== Dunder Methods ====================
 
     def __str__(self) -> str:
         """String representation"""

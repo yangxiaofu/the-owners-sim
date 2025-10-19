@@ -293,18 +293,18 @@ class MainWindow(QMainWindow):
 
     def _create_toolbar(self):
         """Create toolbar with quick actions."""
-        toolbar = QToolBar("Main Toolbar")
-        toolbar.setIconSize(QSize(24, 24))
-        toolbar.setMovable(False)
-        self.addToolBar(toolbar)
+        self.toolbar = QToolBar("Main Toolbar")
+        self.toolbar.setIconSize(QSize(24, 24))
+        self.toolbar.setMovable(False)
+        self.addToolBar(self.toolbar)
 
         # Simulation controls
-        toolbar.addAction(self._create_action(
+        self.toolbar.addAction(self._create_action(
             "Sim Day",
             self._sim_day,
             "Simulate one day"
         ))
-        toolbar.addAction(self._create_action(
+        self.toolbar.addAction(self._create_action(
             "Sim Week",
             self._sim_week,
             "Simulate one week"
@@ -316,22 +316,29 @@ class MainWindow(QMainWindow):
             self._sim_to_phase_end,
             "Simulate to end of regular season"
         )
-        toolbar.addAction(self.sim_phase_action)
+        self.toolbar.addAction(self.sim_phase_action)
 
-        toolbar.addSeparator()
+        # Skip to New Season button (only visible during offseason)
+        self.skip_to_new_season_action = QAction("Skip to New Season", self)
+        self.skip_to_new_season_action.setToolTip("Skip remaining offseason events and start new season")
+        self.skip_to_new_season_action.triggered.connect(self._on_skip_to_new_season)
+        self.skip_to_new_season_action.setVisible(False)  # Hidden by default
+        self.toolbar.addAction(self.skip_to_new_season_action)
+
+        self.toolbar.addSeparator()
 
         # Quick navigation
-        toolbar.addAction(self._create_action(
+        self.toolbar.addAction(self._create_action(
             "My Team",
             lambda: self.tabs.setCurrentIndex(2),
             "Go to my team"
         ))
-        toolbar.addAction(self._create_action(
+        self.toolbar.addAction(self._create_action(
             "Standings",
             self._show_standings,
             "View standings"
         ))
-        toolbar.addAction(self._create_action(
+        self.toolbar.addAction(self._create_action(
             "League",
             lambda: self.tabs.setCurrentIndex(5),
             "View league stats"
@@ -506,15 +513,29 @@ class MainWindow(QMainWindow):
 
         # Show summary dialog
         if summary.get('success', False):
-            phase_name = summary['starting_phase'].replace('_', ' ').title()
-            msg = (
-                f"{phase_name} Complete!\n\n"
-                f"Weeks Simulated: {summary['weeks_simulated']}\n"
-                f"Games Played: {summary['total_games']}\n"
-                f"End Date: {summary['end_date']}\n\n"
-                f"Now entering: {summary['ending_phase'].replace('_', ' ').title()}"
-            )
-            QMessageBox.information(self, "Simulation Complete", msg)
+            # Detect if this is a milestone stop (offseason) vs phase completion
+            if 'milestone_reached' in summary:
+                # Offseason milestone stop - show milestone details
+                title = "Milestone Reached"
+                msg = (
+                    f"Stopped at: {summary['milestone_reached']}\n\n"
+                    f"Milestone Type: {summary.get('milestone_type', 'N/A')}\n"
+                    f"Milestone Date: {summary.get('milestone_date', 'N/A')}\n"
+                    f"Days Advanced: {summary.get('days_simulated', 0)}\n\n"
+                    f"Still in: {summary['ending_phase'].replace('_', ' ').title()}"
+                )
+            else:
+                # Phase completion - show phase summary
+                title = "Simulation Complete"
+                phase_name = summary['starting_phase'].replace('_', ' ').title()
+                msg = (
+                    f"{phase_name} Complete!\n\n"
+                    f"Weeks Simulated: {summary['weeks_simulated']}\n"
+                    f"Games Played: {summary['total_games']}\n"
+                    f"End Date: {summary['end_date']}\n\n"
+                    f"Now entering: {summary['ending_phase'].replace('_', ' ').title()}"
+                )
+            QMessageBox.information(self, title, msg)
 
             # Refresh views
             if hasattr(self, 'calendar_view'):
@@ -591,6 +612,35 @@ class MainWindow(QMainWindow):
             "<p>© 2024 OwnersSimDev</p>"
         )
 
+    def _on_skip_to_new_season(self):
+        """Skip remaining offseason events and start new season."""
+        # Confirm with user
+        reply = QMessageBox.question(
+            self,
+            "Skip to New Season",
+            "Are you sure you want to skip the remaining offseason?\n\n"
+            "This will simulate all pending offseason events and advance to the new season.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+
+        if reply == QMessageBox.Yes:
+            # Call simulation controller to skip to new season
+            result = self.simulation_controller.simulate_to_new_season()
+
+            if result.get('success', False):
+                # Show success message
+                msg = result.get('message', 'Successfully advanced to new season')
+                QMessageBox.information(self, "Skip to New Season Complete", msg)
+
+                # Refresh calendar view
+                if hasattr(self, 'calendar_view'):
+                    self.calendar_view.refresh_current_date()
+            else:
+                # Show error message
+                error_msg = result.get('message', 'Unknown error occurred')
+                QMessageBox.warning(self, "Skip to New Season Failed", error_msg)
+
     # Signal handlers for simulation updates
     def _on_date_changed(self, date_str: str, phase: str):
         """Handle simulation date change."""
@@ -626,8 +676,19 @@ class MainWindow(QMainWindow):
             self.sim_phase_action.setText("Sim to Offseason")
             self.sim_phase_action.setToolTip("Simulate rest of playoffs")
         else:  # offseason
-            self.sim_phase_action.setText("Sim to Next Season")
-            self.sim_phase_action.setToolTip("Simulate rest of offseason")
+            # Get next milestone name from backend
+            next_milestone = self.simulation_controller.get_next_milestone_name()
+
+            # Update "Sim to Phase End" button text
+            self.sim_phase_action.setText(f"Sim to {next_milestone}")
+            self.sim_phase_action.setToolTip(f"Simulate to next offseason milestone: {next_milestone}")
+
+            # Show "Skip to New Season" button
+            self.skip_to_new_season_action.setVisible(True)
+
+        # Hide "Skip to New Season" button during regular season and playoffs
+        if phase != "offseason":
+            self.skip_to_new_season_action.setVisible(False)
 
         # Show/hide Playoffs tab based on phase
         # Show during playoffs and offseason, hide during regular season

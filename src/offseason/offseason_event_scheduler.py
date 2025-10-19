@@ -41,18 +41,32 @@ class OffseasonEventScheduler:
         Returns:
             Summary dict with counts of events scheduled
         """
+        print(f"[EVENT_SCHEDULER] Step 1: Calculating milestones...")
+        print(f"  Super Bowl date: {super_bowl_date}")
+        print(f"  Season year: {season_year}")
+
         # Calculate all milestones
         milestones = self.milestone_calculator.calculate_milestones_for_season(
             season_year=season_year,
             super_bowl_date=super_bowl_date
         )
+        print(f"[EVENT_SCHEDULER] ✓ Milestones calculated: {len(milestones)}")
 
         # Schedule different event types
+        print(f"[EVENT_SCHEDULER] Step 2: Scheduling deadline events...")
         deadline_count = self._schedule_deadline_events(milestones, season_year, dynasty_id, event_db)
+        print(f"[EVENT_SCHEDULER] ✓ Deadline events scheduled: {deadline_count}")
+
+        print(f"[EVENT_SCHEDULER] Step 3: Scheduling window events...")
         window_count = self._schedule_window_events(milestones, season_year, dynasty_id, event_db)
+        print(f"[EVENT_SCHEDULER] ✓ Window events scheduled: {window_count}")
+
+        print(f"[EVENT_SCHEDULER] Step 4: Scheduling milestone events...")
         milestone_count = self._schedule_milestone_events(milestones, season_year, dynasty_id, event_db)
+        print(f"[EVENT_SCHEDULER] ✓ Milestone events scheduled: {milestone_count}")
 
         total = deadline_count + window_count + milestone_count
+        print(f"[EVENT_SCHEDULER] ✓ COMPLETE: Total events scheduled: {total}")
 
         return {
             "total_events": total,
@@ -407,4 +421,49 @@ class OffseasonEventScheduler:
         event_db.insert_event(draft_order_event)
         count += 1
 
+        # Add Preseason Start (first Thursday in August - target for "Skip to New Season")
+        # Calculate dynamically using SeasonMilestoneCalculator
+        preseason_start_milestone = milestone_dict.get(MilestoneType.PRESEASON_START)
+        if preseason_start_milestone:
+            preseason_date = preseason_start_milestone.date
+        else:
+            # Fallback calculation if not in milestone_dict
+            preseason_date = self._calculate_first_thursday_august(season_year + 1)
+
+        preseason_start_event = MilestoneEvent(
+            milestone_type="PRESEASON_START",
+            description=f"Preseason Begins - First Thursday in August ({preseason_date})",
+            season_year=season_year,
+            event_date=preseason_date,
+            dynasty_id=dynasty_id,
+            metadata={"calculation": "first_thursday_august"}
+        )
+        event_db.insert_event(preseason_start_event)
+        count += 1
+
         return count
+
+    def _calculate_first_thursday_august(self, year: int) -> Date:
+        """
+        Calculate first Thursday in August for given year (fallback method).
+
+        Args:
+            year: Year to calculate for
+
+        Returns:
+            Date of first Thursday in August
+        """
+        # Start with August 1st
+        aug_1 = Date(year, 8, 1)
+        py_date = aug_1.to_python_date()
+
+        # Get weekday (0=Monday, 3=Thursday, 6=Sunday)
+        weekday = py_date.weekday()
+
+        # Calculate days until Thursday
+        if weekday <= 3:  # Monday through Thursday
+            days_to_thursday = 3 - weekday
+        else:  # Friday through Sunday
+            days_to_thursday = 7 - weekday + 3
+
+        return aug_1.add_days(days_to_thursday)
