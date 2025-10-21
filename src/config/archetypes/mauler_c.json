@@ -1,0 +1,28 @@
+{
+  "archetype_id": "mauler_c",
+  "position": "C",
+  "name": "Mauler Center",
+  "description": "Physical run blocker at center. Elite strength and run blocking with solid awareness.",
+  "physical_attributes": {
+    "speed": {"min": 65, "max": 78, "mean": 71, "std_dev": 5},
+    "strength": {"min": 82, "max": 95, "mean": 88, "std_dev": 6},
+    "agility": {"min": 62, "max": 78, "mean": 70, "std_dev": 6},
+    "stamina": {"min": 72, "max": 88, "mean": 80, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 72, "max": 90, "mean": 81, "std_dev": 6},
+    "discipline": {"min": 72, "max": 88, "mean": 80, "std_dev": 6},
+    "composure": {"min": 70, "max": 85, "mean": 77, "std_dev": 6},
+    "experience": {"min": 42, "max": 62, "mean": 52, "std_dev": 7},
+    "penalty_technique": {"min": 70, "max": 85, "mean": 77, "std_dev": 6}
+  },
+  "position_attributes": {
+    "pass_blocking": {"min": 72, "max": 88, "mean": 80, "std_dev": 6},
+    "run_blocking": {"min": 82, "max": 95, "mean": 88, "std_dev": 6},
+    "technique": {"min": 75, "max": 90, "mean": 82, "std_dev": 6}
+  },
+  "overall_range": {"min": 72, "max": 90, "mean": 81, "std_dev": 6},
+  "frequency": 0.50,
+  "peak_age_range": [28, 31],
+  "development_curve": "normal"
+}

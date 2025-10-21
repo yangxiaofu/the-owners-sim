@@ -18,6 +18,7 @@ from ui.views.offseason_view import OffseasonView
 from ui.views.league_view import LeagueView
 from ui.views.game_view import GameView
 from ui.views.playoff_view import PlayoffView
+from ui.views.transactions_view import TransactionsView
 
 import sys
 import os
@@ -136,6 +137,12 @@ class MainWindow(QMainWindow):
         self.league_view = LeagueView(self, controller=self.league_controller)
         self.playoff_view = PlayoffView(self, controller=self.playoff_controller)
         self.game_view = GameView(self)
+        self.transactions_view = TransactionsView(
+            self,
+            db_path=self.db_path,
+            dynasty_id=self.dynasty_id,
+            season=self.season
+        )
 
         # Add tabs
         self.tabs.addTab(self.season_view, "Season")
@@ -144,11 +151,12 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.player_view, "Player")
         self.tabs.addTab(self.offseason_view, "Offseason")
         self.tabs.addTab(self.league_view, "League")
+        self.tabs.addTab(self.transactions_view, "Transactions")
         self.tabs.addTab(self.playoff_view, "Playoffs")
         self.tabs.addTab(self.game_view, "Game")
 
         # Store playoff tab index for visibility toggling
-        self.playoff_tab_index = 6  # Playoffs tab position
+        self.playoff_tab_index = 7  # Playoffs tab position (was 6, now 7 due to Transactions tab)
 
         # Set Playoffs tab visibility based on initial phase
         current_phase = self.simulation_controller.get_current_phase()
@@ -715,12 +723,21 @@ class MainWindow(QMainWindow):
             self.team_view.statistics_tab.refresh()
             print(f"[DEBUG MainWindow] Team statistics refreshed after {len(game_results)} games")
 
+        # Refresh transactions view to show newly simulated transactions
+        if hasattr(self, 'transactions_view') and hasattr(self.transactions_view, 'transaction_widget'):
+            self.transactions_view.transaction_widget.refresh()
+            print(f"[DEBUG MainWindow] Transactions refreshed after {len(game_results)} games")
+
     def _on_tab_changed(self, index: int):
         """Handle tab change - refresh data when switching to certain tabs."""
         # League tab (index 5) - refresh standings
         if index == 5 and hasattr(self, 'league_view'):
             self.league_view.load_standings()
 
-        # Playoffs tab (index 6) - refresh bracket and seeding
-        elif index == 6 and hasattr(self, 'playoff_view'):
+        # Transactions tab (index 6) - refresh transaction history
+        elif index == 6 and hasattr(self, 'transactions_view'):
+            self.transactions_view.refresh()
+
+        # Playoffs tab (index 7) - refresh bracket and seeding
+        elif index == 7 and hasattr(self, 'playoff_view'):
             self.playoff_view.refresh()

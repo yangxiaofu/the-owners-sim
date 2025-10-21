@@ -5,12 +5,15 @@ Action events for NFL contract-related transactions during the offseason.
 These include franchise tags, transition tags, releases, and restructures.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
 from datetime import datetime
 
 from .base_event import BaseEvent, EventResult
 from calendar.date_models import Date
 from salary_cap import EventCapBridge, TagEventHandler, ContractEventHandler, ReleaseEventHandler
+
+if TYPE_CHECKING:
+    from persistence.transaction_logger import TransactionLogger
 
 
 class FranchiseTagEvent(BaseEvent):
@@ -394,7 +397,8 @@ class PlayerReleaseEvent(BaseEvent):
         event_date: Date,
         dynasty_id: str,
         event_id: Optional[str] = None,
-        database_path: str = "data/database/nfl_simulation.db"
+        database_path: str = "data/database/nfl_simulation.db",
+        transaction_logger: Optional["TransactionLogger"] = None
     ):
         """
         Initialize player release event.
@@ -410,6 +414,7 @@ class PlayerReleaseEvent(BaseEvent):
             dynasty_id: Dynasty identifier for isolation (REQUIRED)
             event_id: Unique identifier
             database_path: Path to database
+            transaction_logger: Optional TransactionLogger for automatic logging
         """
         event_datetime = datetime.combine(
             event_date.to_python_date(),
@@ -426,6 +431,7 @@ class PlayerReleaseEvent(BaseEvent):
         self.event_date = event_date
         self.dynasty_id = dynasty_id
         self.database_path = database_path
+        self.transaction_logger = transaction_logger
 
     def get_event_type(self) -> str:
         return "PLAYER_RELEASE"
@@ -456,7 +462,7 @@ class PlayerReleaseEvent(BaseEvent):
             result = handler.handle_player_release(event_data)
 
             if result["success"]:
-                return EventResult(
+                event_result = EventResult(
                     event_id=self.event_id,
                     event_type=self.get_event_type(),
                     success=True,
@@ -475,6 +481,23 @@ class PlayerReleaseEvent(BaseEvent):
                         "message": f"Released player ({self.release_type}): ${result['cap_savings']:,} saved, ${result['dead_money']:,} dead cap"
                     }
                 )
+
+                # Log transaction if logger is provided
+                if self.transaction_logger:
+                    try:
+                        self.transaction_logger.log_from_event_result(
+                            event_result=event_result,
+                            dynasty_id=self.dynasty_id,
+                            season=self.event_date.year  # Use release year as season
+                        )
+                    except Exception as e:
+                        # Log error but don't fail the event
+                        import logging
+                        logging.getLogger(__name__).error(
+                            f"Failed to log player release transaction: {e}"
+                        )
+
+                return event_result
             else:
                 return EventResult(
                     event_id=self.event_id,

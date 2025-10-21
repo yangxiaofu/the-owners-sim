@@ -1,0 +1,27 @@
+{
+  "archetype_id": "speed_corner_cb",
+  "position": "CB",
+  "name": "Speed Corner",
+  "description": "Track star who runs with fastest receivers. Elite speed but developing technique.",
+  "physical_attributes": {
+    "speed": {"min": 92, "max": 99, "mean": 95, "std_dev": 4},
+    "strength": {"min": 55, "max": 70, "mean": 62, "std_dev": 6},
+    "agility": {"min": 85, "max": 96, "mean": 90, "std_dev": 5},
+    "stamina": {"min": 72, "max": 88, "mean": 80, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 65, "max": 80, "mean": 72, "std_dev": 6},
+    "discipline": {"min": 62, "max": 78, "mean": 70, "std_dev": 6},
+    "composure": {"min": 65, "max": 80, "mean": 72, "std_dev": 6},
+    "experience": {"min": 40, "max": 60, "mean": 50, "std_dev": 7},
+    "penalty_technique": {"min": 60, "max": 75, "mean": 67, "std_dev": 6}
+  },
+  "position_attributes": {
+    "coverage": {"min": 75, "max": 90, "mean": 82, "std_dev": 6},
+    "press": {"min": 60, "max": 78, "mean": 69, "std_dev": 6}
+  },
+  "overall_range": {"min": 72, "max": 88, "mean": 80, "std_dev": 6},
+  "frequency": 0.25,
+  "peak_age_range": [24, 27],
+  "development_curve": "early"
+}

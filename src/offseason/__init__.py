@@ -13,12 +13,19 @@ Main Components:
 - DraftManager: Draft class generation and selection
 - RosterManager: Roster expansion and cuts (53→90→53)
 - FreeAgencyManager: Free agent pool and signings
+- TeamNeedsAnalyzer: Analyzes roster weaknesses and priorities for AI decisions
+- MarketValueCalculator: Calculates player contract values for AI negotiations
 """
 
 from offseason.offseason_phases import OffseasonPhase
 from offseason.offseason_controller import OffseasonController
+from offseason.team_needs_analyzer import TeamNeedsAnalyzer, NeedUrgency
+from offseason.market_value_calculator import MarketValueCalculator
 
 __all__ = [
     'OffseasonPhase',
     'OffseasonController',
+    'TeamNeedsAnalyzer',
+    'NeedUrgency',
+    'MarketValueCalculator',
 ]

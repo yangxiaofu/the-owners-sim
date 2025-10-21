@@ -5,7 +5,13 @@ Interactive terminal demo for testing the `OffseasonController` system.
 ## Quick Start
 
 ```bash
-# From project root
+# From project root (no PYTHONPATH needed - auto-configured!)
+python demo/offseason_demo/offseason_demo.py
+
+# OR from anywhere in the project
+python demo/offseason_demo/offseason_demo.py
+
+# OR with explicit PYTHONPATH (also works)
 PYTHONPATH=src python demo/offseason_demo/offseason_demo.py
 ```
 

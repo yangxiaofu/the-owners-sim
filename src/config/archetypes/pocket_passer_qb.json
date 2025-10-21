@@ -1,0 +1,28 @@
+{
+  "archetype_id": "pocket_passer_qb",
+  "position": "QB",
+  "name": "Pocket Passer",
+  "description": "Traditional drop-back QB with elite accuracy and arm strength. Low mobility but excellent decision making.",
+  "physical_attributes": {
+    "speed": {"min": 65, "max": 80, "mean": 72, "std_dev": 5},
+    "strength": {"min": 70, "max": 85, "mean": 77, "std_dev": 5},
+    "agility": {"min": 65, "max": 80, "mean": 72, "std_dev": 5},
+    "stamina": {"min": 75, "max": 95, "mean": 85, "std_dev": 5}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 75, "max": 95, "mean": 85, "std_dev": 5},
+    "discipline": {"min": 70, "max": 90, "mean": 80, "std_dev": 5},
+    "composure": {"min": 75, "max": 95, "mean": 85, "std_dev": 5},
+    "experience": {"min": 40, "max": 65, "mean": 52, "std_dev": 8},
+    "penalty_technique": {"min": 70, "max": 88, "mean": 79, "std_dev": 6}
+  },
+  "position_attributes": {
+    "accuracy": {"min": 80, "max": 99, "mean": 90, "std_dev": 5},
+    "arm_strength": {"min": 80, "max": 95, "mean": 87, "std_dev": 5},
+    "mobility": {"min": 40, "max": 60, "mean": 50, "std_dev": 5}
+  },
+  "overall_range": {"min": 75, "max": 95, "mean": 85, "std_dev": 6},
+  "frequency": 0.30,
+  "peak_age_range": [28, 32],
+  "development_curve": "normal"
+}

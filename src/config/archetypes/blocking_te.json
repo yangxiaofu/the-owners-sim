@@ -1,0 +1,28 @@
+{
+  "archetype_id": "blocking_te",
+  "position": "TE",
+  "name": "Blocking TE",
+  "description": "Extra offensive lineman in run game. Elite blocking and strength but limited receiving ability.",
+  "physical_attributes": {
+    "speed": {"min": 75, "max": 85, "mean": 80, "std_dev": 4},
+    "strength": {"min": 80, "max": 95, "mean": 87, "std_dev": 5},
+    "agility": {"min": 65, "max": 78, "mean": 71, "std_dev": 5},
+    "stamina": {"min": 75, "max": 90, "mean": 82, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 65, "max": 82, "mean": 73, "std_dev": 6},
+    "discipline": {"min": 70, "max": 85, "mean": 77, "std_dev": 6},
+    "composure": {"min": 65, "max": 80, "mean": 72, "std_dev": 6},
+    "experience": {"min": 40, "max": 60, "mean": 50, "std_dev": 7},
+    "penalty_technique": {"min": 70, "max": 85, "mean": 77, "std_dev": 6}
+  },
+  "position_attributes": {
+    "catching": {"min": 60, "max": 78, "mean": 69, "std_dev": 6},
+    "route_running": {"min": 50, "max": 68, "mean": 59, "std_dev": 6},
+    "blocking": {"min": 80, "max": 95, "mean": 87, "std_dev": 5}
+  },
+  "overall_range": {"min": 68, "max": 85, "mean": 76, "std_dev": 6},
+  "frequency": 0.30,
+  "peak_age_range": [26, 29],
+  "development_curve": "normal"
+}

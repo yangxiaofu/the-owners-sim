@@ -21,6 +21,13 @@ if ui_path not in sys.path:
 from models.roster_table_model import RosterTableModel
 from controllers.player_controller import PlayerController
 
+# Add src to path for database imports
+src_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'src')
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
+
+from database.draft_class_api import DraftClassAPI
+
 
 class OffseasonView(QWidget):
     """
@@ -39,6 +46,9 @@ class OffseasonView(QWidget):
 
         # Initialize controller
         self.controller = PlayerController(self.db_path, self.dynasty_id, self.season)
+
+        # Initialize draft class API
+        self.draft_api = DraftClassAPI(self.db_path)
 
         # Main layout
         layout = QVBoxLayout(self)
@@ -889,23 +899,57 @@ class OffseasonView(QWidget):
         return widget
 
     def _create_draft_tab(self) -> QWidget:
-        """Create draft tab (placeholder)."""
+        """Create draft tab with draft prospects list."""
         widget = QWidget()
         layout = QVBoxLayout(widget)
+        layout.setContentsMargins(10, 10, 10, 10)
 
-        description = QLabel(
-            "Draft Board (Placeholder)\n\n"
-            "Coming in Phase 4:\n"
-            "• Draft board with all prospects\n"
-            "• Team needs analysis\n"
-            "• Pick selection interface\n"
-            "• Draft tracker"
-        )
-        description.setAlignment(Qt.AlignCenter)
-        description.setStyleSheet("color: #666; padding: 20px;")
+        # Header
+        header = QLabel("Draft Prospects")
+        header.setStyleSheet("font-size: 18px; font-weight: bold;")
+        layout.addWidget(header)
 
-        layout.addWidget(description)
-        layout.addStretch()
+        # Create table view
+        from PySide6.QtWidgets import QHeaderView
+        from PySide6.QtGui import QStandardItemModel, QStandardItem
+        from PySide6.QtCore import Qt as QtCore
+
+        self.draft_table = QTableView()
+        self.draft_table.setAlternatingRowColors(True)
+        self.draft_table.setSelectionBehavior(QTableView.SelectRows)
+        self.draft_table.setSelectionMode(QTableView.SingleSelection)
+        self.draft_table.setEditTriggers(QTableView.NoEditTriggers)
+
+        # Create model
+        self.draft_model = QStandardItemModel()
+        self.draft_model.setHorizontalHeaderLabels([
+            "Name", "Position", "Overall", "College", "Round", "Pick"
+        ])
+        self.draft_table.setModel(self.draft_model)
+
+        # Configure headers
+        header = self.draft_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.Stretch)  # Name stretches
+        header.setSectionResizeMode(1, QHeaderView.Fixed)
+        header.setSectionResizeMode(2, QHeaderView.Fixed)
+        header.setSectionResizeMode(3, QHeaderView.Stretch)
+        header.setSectionResizeMode(4, QHeaderView.Fixed)
+        header.setSectionResizeMode(5, QHeaderView.Fixed)
+
+        self.draft_table.setColumnWidth(1, 80)   # Position
+        self.draft_table.setColumnWidth(2, 80)   # Overall
+        self.draft_table.setColumnWidth(4, 80)   # Round
+        self.draft_table.setColumnWidth(5, 80)   # Pick
+
+        layout.addWidget(self.draft_table)
+
+        # Load button
+        load_button = QPushButton("Refresh Draft Class")
+        load_button.clicked.connect(self._load_draft_prospects)
+        layout.addWidget(load_button)
+
+        # Load prospects on creation
+        self._load_draft_prospects()
 
         return widget
 
@@ -922,3 +966,60 @@ class OffseasonView(QWidget):
         """Filter free agents table (placeholder)."""
         # TODO: Implement filtering logic
         pass
+
+    def _load_draft_prospects(self):
+        """Load draft prospects from database."""
+        try:
+            from PySide6.QtGui import QStandardItem
+            from PySide6.QtCore import Qt as QtCore
+
+            # Clear existing data
+            self.draft_model.removeRows(0, self.draft_model.rowCount())
+
+            # Get prospects from database
+            prospects = self.draft_api.get_all_prospects(
+                dynasty_id=self.dynasty_id,
+                season=self.season,
+                available_only=True  # Only show undrafted prospects
+            )
+
+            if not prospects:
+                # No draft class generated yet - show message
+                row = [
+                    QStandardItem("No draft class generated"),
+                    QStandardItem(""),
+                    QStandardItem(""),
+                    QStandardItem(""),
+                    QStandardItem(""),
+                    QStandardItem("")
+                ]
+                self.draft_model.appendRow(row)
+                return
+
+            # Populate table with prospect data
+            for prospect in prospects:
+                # Format name
+                name = f"{prospect.get('first_name', '')} {prospect.get('last_name', '')}"
+
+                # Create row items
+                row = [
+                    QStandardItem(name),
+                    QStandardItem(prospect.get('position', '')),
+                    QStandardItem(str(prospect.get('overall', 0))),
+                    QStandardItem(prospect.get('college', '')),
+                    QStandardItem(str(prospect.get('draft_round', ''))),
+                    QStandardItem(str(prospect.get('draft_pick', '')))
+                ]
+
+                # Center align numeric columns
+                for i in [2, 4, 5]:  # Overall, Round, Pick
+                    row[i].setTextAlignment(QtCore.AlignmentFlag.AlignCenter)
+
+                self.draft_model.appendRow(row)
+
+            print(f"[DEBUG OffseasonView] Loaded {len(prospects)} draft prospects")
+
+        except Exception as e:
+            print(f"Error loading draft prospects: {e}")
+            import traceback
+            traceback.print_exc()

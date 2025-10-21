@@ -1,0 +1,28 @@
+{
+  "archetype_id": "versatile_dl",
+  "position": "DL",
+  "name": "Versatile DL",
+  "description": "Can play multiple spots on defensive line. Balanced attributes without elite traits.",
+  "physical_attributes": {
+    "speed": {"min": 68, "max": 82, "mean": 75, "std_dev": 6},
+    "strength": {"min": 78, "max": 90, "mean": 84, "std_dev": 6},
+    "agility": {"min": 65, "max": 80, "mean": 72, "std_dev": 6},
+    "stamina": {"min": 72, "max": 88, "mean": 80, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 68, "max": 85, "mean": 76, "std_dev": 6},
+    "discipline": {"min": 68, "max": 85, "mean": 76, "std_dev": 6},
+    "composure": {"min": 65, "max": 82, "mean": 73, "std_dev": 6},
+    "experience": {"min": 40, "max": 62, "mean": 51, "std_dev": 8},
+    "penalty_technique": {"min": 68, "max": 82, "mean": 75, "std_dev": 6}
+  },
+  "position_attributes": {
+    "pass_rush": {"min": 72, "max": 85, "mean": 78, "std_dev": 6},
+    "run_defense": {"min": 72, "max": 85, "mean": 78, "std_dev": 6},
+    "technique": {"min": 72, "max": 88, "mean": 80, "std_dev": 6}
+  },
+  "overall_range": {"min": 70, "max": 85, "mean": 77, "std_dev": 6},
+  "frequency": 0.20,
+  "peak_age_range": [27, 30],
+  "development_curve": "normal"
+}

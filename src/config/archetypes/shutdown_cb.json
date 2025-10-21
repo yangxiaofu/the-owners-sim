@@ -1,0 +1,27 @@
+{
+  "archetype_id": "shutdown_cb",
+  "position": "CB",
+  "name": "Shutdown Corner",
+  "description": "Elite CB1 who shadows opposing #1 receiver. All elite attributes with no weaknesses.",
+  "physical_attributes": {
+    "speed": {"min": 88, "max": 96, "mean": 92, "std_dev": 4},
+    "strength": {"min": 65, "max": 80, "mean": 72, "std_dev": 6},
+    "agility": {"min": 85, "max": 95, "mean": 90, "std_dev": 4},
+    "stamina": {"min": 80, "max": 95, "mean": 87, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 80, "max": 95, "mean": 87, "std_dev": 6},
+    "discipline": {"min": 75, "max": 90, "mean": 82, "std_dev": 6},
+    "composure": {"min": 75, "max": 90, "mean": 82, "std_dev": 6},
+    "experience": {"min": 42, "max": 62, "mean": 52, "std_dev": 7},
+    "penalty_technique": {"min": 75, "max": 90, "mean": 82, "std_dev": 6}
+  },
+  "position_attributes": {
+    "coverage": {"min": 90, "max": 99, "mean": 94, "std_dev": 4},
+    "press": {"min": 85, "max": 96, "mean": 90, "std_dev": 5}
+  },
+  "overall_range": {"min": 85, "max": 97, "mean": 91, "std_dev": 5},
+  "frequency": 0.15,
+  "peak_age_range": [26, 29],
+  "development_curve": "early"
+}

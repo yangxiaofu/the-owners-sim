@@ -1,0 +1,28 @@
+{
+  "archetype_id": "gunslinger_qb",
+  "position": "QB",
+  "name": "Gunslinger",
+  "description": "Big arm QB who takes risks. Elite arm strength but boom-or-bust potential.",
+  "physical_attributes": {
+    "speed": {"min": 68, "max": 82, "mean": 75, "std_dev": 5},
+    "strength": {"min": 72, "max": 88, "mean": 80, "std_dev": 5},
+    "agility": {"min": 68, "max": 82, "mean": 75, "std_dev": 5},
+    "stamina": {"min": 70, "max": 88, "mean": 79, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 62, "max": 82, "mean": 72, "std_dev": 6},
+    "discipline": {"min": 50, "max": 72, "mean": 61, "std_dev": 7},
+    "composure": {"min": 55, "max": 78, "mean": 66, "std_dev": 7},
+    "experience": {"min": 40, "max": 62, "mean": 51, "std_dev": 8},
+    "penalty_technique": {"min": 60, "max": 78, "mean": 69, "std_dev": 6}
+  },
+  "position_attributes": {
+    "accuracy": {"min": 68, "max": 88, "mean": 78, "std_dev": 6},
+    "arm_strength": {"min": 85, "max": 99, "mean": 92, "std_dev": 5},
+    "mobility": {"min": 50, "max": 72, "mean": 61, "std_dev": 6}
+  },
+  "overall_range": {"min": 68, "max": 92, "mean": 80, "std_dev": 8},
+  "frequency": 0.15,
+  "peak_age_range": [26, 30],
+  "development_curve": "early"
+}

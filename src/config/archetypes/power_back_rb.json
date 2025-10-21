@@ -1,0 +1,28 @@
+{
+  "archetype_id": "power_back_rb",
+  "position": "RB",
+  "name": "Power Back",
+  "description": "Physical runner who powers through tackles. High strength and carrying but lower speed.",
+  "physical_attributes": {
+    "speed": {"min": 82, "max": 92, "mean": 87, "std_dev": 4},
+    "strength": {"min": 80, "max": 95, "mean": 87, "std_dev": 5},
+    "agility": {"min": 70, "max": 85, "mean": 77, "std_dev": 5},
+    "stamina": {"min": 75, "max": 92, "mean": 83, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 60, "max": 80, "mean": 70, "std_dev": 6},
+    "discipline": {"min": 65, "max": 85, "mean": 75, "std_dev": 6},
+    "composure": {"min": 65, "max": 82, "mean": 73, "std_dev": 6},
+    "experience": {"min": 40, "max": 62, "mean": 51, "std_dev": 8},
+    "penalty_technique": {"min": 65, "max": 82, "mean": 73, "std_dev": 6}
+  },
+  "position_attributes": {
+    "carrying": {"min": 75, "max": 92, "mean": 83, "std_dev": 5},
+    "vision": {"min": 65, "max": 82, "mean": 73, "std_dev": 6},
+    "elusiveness": {"min": 60, "max": 78, "mean": 69, "std_dev": 6}
+  },
+  "overall_range": {"min": 72, "max": 90, "mean": 81, "std_dev": 6},
+  "frequency": 0.25,
+  "peak_age_range": [25, 27],
+  "development_curve": "early"
+}

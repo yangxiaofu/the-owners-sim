@@ -1,0 +1,1 @@
+"""Season management integration tests."""

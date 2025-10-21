@@ -287,6 +287,136 @@ class CapDatabaseAPI:
             cursor = conn.execute(query, params)
             return [dict(row) for row in cursor.fetchall()]
 
+    def get_expiring_contracts(
+        self,
+        team_id: int,
+        season: int,
+        dynasty_id: str,
+        active_only: bool = True
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all contracts expiring after this season.
+
+        Useful for identifying pending free agents who may need
+        franchise tags or will enter free agency.
+
+        Args:
+            team_id: Team ID (1-32)
+            season: Current season year (contracts ending this year)
+            dynasty_id: Dynasty identifier
+            active_only: Only return active contracts (default True)
+
+        Returns:
+            List of contract dicts with embedded player information
+
+        Example:
+            >>> api = CapDatabaseAPI()
+            >>> expiring = api.get_expiring_contracts(
+            ...     team_id=7,
+            ...     season=2024,
+            ...     dynasty_id="my_dynasty"
+            ... )
+            >>> print(f"Found {len(expiring)} expiring contracts")
+        """
+        with sqlite3.connect(self.database_path) as conn:
+            conn.row_factory = sqlite3.Row
+
+            query = '''
+                SELECT
+                    pc.*,
+                    p.first_name || ' ' || p.last_name as player_name,
+                    p.positions,
+                    p.attributes,
+                    p.years_pro,
+                    p.birthdate
+                FROM player_contracts pc
+                JOIN players p
+                    ON pc.player_id = p.player_id
+                    AND pc.dynasty_id = p.dynasty_id
+                WHERE pc.team_id = ?
+                  AND pc.dynasty_id = ?
+                  AND pc.end_year = ?
+            '''
+            params = [team_id, dynasty_id, season]
+
+            if active_only:
+                query += " AND pc.is_active = TRUE"
+
+            query += " ORDER BY pc.total_value DESC"
+
+            cursor = conn.execute(query, params)
+            results = [dict(row) for row in cursor.fetchall()]
+
+            return results
+
+    def get_pending_free_agents(
+        self,
+        team_id: int,
+        season: int,
+        dynasty_id: str,
+        min_overall: int = 0
+    ) -> List[Dict[str, Any]]:
+        """
+        Get pending free agents (contracts expiring) filtered by quality.
+
+        Convenience method that filters expiring contracts by player
+        overall rating. Useful for franchise tag decisions and free
+        agency planning.
+
+        Args:
+            team_id: Team ID (1-32)
+            season: Current season year
+            dynasty_id: Dynasty identifier
+            min_overall: Minimum overall rating to include (0-100)
+
+        Returns:
+            List of simplified player dicts sorted by overall rating
+
+        Example:
+            >>> api = CapDatabaseAPI()
+            >>> top_fas = api.get_pending_free_agents(
+            ...     team_id=7,
+            ...     season=2024,
+            ...     dynasty_id="my_dynasty",
+            ...     min_overall=80  # Only elite players
+            ... )
+            >>> for fa in top_fas:
+            ...     print(f"{fa['player_name']} ({fa['position']}) - {fa['overall']} OVR")
+        """
+        # Get raw expiring contracts
+        expiring = self.get_expiring_contracts(team_id, season, dynasty_id)
+
+        # Parse and filter by overall rating
+        pending_fas = []
+        for contract in expiring:
+            # Parse JSON attributes
+            attrs = json.loads(contract['attributes'])
+            overall = attrs.get('overall', 0)
+
+            # Filter by minimum overall
+            if overall >= min_overall:
+                # Parse positions
+                positions = json.loads(contract['positions'])
+                primary_position = positions[0] if positions else 'UNKNOWN'
+
+                # Build simplified dict
+                pending_fas.append({
+                    'player_id': contract['player_id'],
+                    'player_name': contract['player_name'],
+                    'position': primary_position,
+                    'overall': overall,
+                    'years_pro': contract['years_pro'],
+                    'contract_id': contract['contract_id'],
+                    'contract_value': contract['total_value'],
+                    'contract_years': contract['contract_years'],
+                    'aav': contract['total_value'] // contract['contract_years'] if contract['contract_years'] > 0 else 0
+                })
+
+        # Sort by overall rating (best players first)
+        pending_fas.sort(key=lambda x: x['overall'], reverse=True)
+
+        return pending_fas
+
     def void_contract(self, contract_id: int, void_date: Optional[date] = None) -> None:
         """
         Mark contract as voided.

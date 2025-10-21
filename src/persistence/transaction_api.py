@@ -9,6 +9,9 @@ with dynasty isolation and flexible filtering.
 from typing import Dict, List, Any, Optional
 from datetime import date
 import json
+import sqlite3
+import logging
+from pathlib import Path
 from database.connection import DatabaseConnection
 
 
@@ -38,7 +41,38 @@ class TransactionAPI:
             database_path: Path to SQLite database
         """
         self.database_path = database_path
+        self.logger = logging.getLogger(__name__)
         self.db_connection = DatabaseConnection(database_path)
+
+        # Ensure schema exists before any queries
+        self._ensure_schema_exists()
+
+    def _ensure_schema_exists(self) -> None:
+        """Ensure player_transactions table exists."""
+        migration_path = Path(__file__).parent.parent / "database" / "migrations" / "003_player_transactions_table.sql"
+
+        if not migration_path.exists():
+            self.logger.warning(f"Migration file not found: {migration_path}")
+            return
+
+        try:
+            with sqlite3.connect(self.database_path, timeout=30.0) as conn:
+                conn.execute("PRAGMA foreign_keys = ON")
+
+                # Check if table exists
+                cursor = conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='player_transactions'"
+                )
+                if cursor.fetchone() is None:
+                    # Run migration
+                    with open(migration_path, 'r') as f:
+                        migration_sql = f.read()
+                    conn.executescript(migration_sql)
+                    conn.commit()
+                    self.logger.info("Player transactions schema initialized successfully")
+        except Exception as e:
+            self.logger.error(f"Error ensuring schema exists: {e}")
+            raise
 
     def get_player_transactions(
         self,

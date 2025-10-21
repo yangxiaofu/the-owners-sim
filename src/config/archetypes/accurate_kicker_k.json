@@ -1,0 +1,28 @@
+{
+  "archetype_id": "accurate_kicker_k",
+  "position": "K",
+  "name": "Accurate Kicker",
+  "description": "Automatic inside 50 yards. Elite accuracy and pressure performance but limited range.",
+  "physical_attributes": {
+    "speed": {"min": 50, "max": 65, "mean": 57, "std_dev": 6},
+    "strength": {"min": 60, "max": 75, "mean": 67, "std_dev": 6},
+    "agility": {"min": 50, "max": 65, "mean": 57, "std_dev": 6},
+    "stamina": {"min": 70, "max": 85, "mean": 77, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 65, "max": 82, "mean": 73, "std_dev": 6},
+    "discipline": {"min": 70, "max": 88, "mean": 79, "std_dev": 6},
+    "composure": {"min": 75, "max": 92, "mean": 83, "std_dev": 6},
+    "experience": {"min": 40, "max": 60, "mean": 50, "std_dev": 7},
+    "penalty_technique": {"min": 70, "max": 85, "mean": 77, "std_dev": 6}
+  },
+  "position_attributes": {
+    "kick_power": {"min": 70, "max": 85, "mean": 77, "std_dev": 6},
+    "kick_accuracy": {"min": 90, "max": 99, "mean": 94, "std_dev": 4},
+    "pressure": {"min": 85, "max": 96, "mean": 90, "std_dev": 5}
+  },
+  "overall_range": {"min": 72, "max": 90, "mean": 81, "std_dev": 6},
+  "frequency": 0.50,
+  "peak_age_range": [28, 33],
+  "development_curve": "normal"
+}

@@ -12,8 +12,11 @@ from offseason.offseason_phases import OffseasonPhase
 from offseason.draft_manager import DraftManager
 from offseason.roster_manager import RosterManager
 from offseason.free_agency_manager import FreeAgencyManager
+from offseason.team_needs_analyzer import TeamNeedsAnalyzer
+from offseason.market_value_calculator import MarketValueCalculator
 from salary_cap.tag_manager import TagManager
 from salary_cap.cap_calculator import CapCalculator
+from salary_cap.cap_database_api import CapDatabaseAPI
 from database.api import DatabaseAPI
 
 
@@ -77,6 +80,7 @@ class OffseasonController:
 
         # Database APIs
         self.db_api = DatabaseAPI(database_path)
+        self.cap_api = CapDatabaseAPI(database_path)
 
         # Specialized managers
         self.tag_manager = TagManager(database_path)
@@ -90,6 +94,10 @@ class OffseasonController:
         self.fa_manager = FreeAgencyManager(
             database_path, dynasty_id, season_year, enable_persistence
         )
+
+        # AI analysis services
+        self.needs_analyzer = TeamNeedsAnalyzer(database_path, dynasty_id)
+        self.market_calc = MarketValueCalculator()
 
         # State tracking
         self.current_phase = self._detect_current_phase()
@@ -281,44 +289,111 @@ class OffseasonController:
 
     def get_franchise_tag_candidates(self, team_id: int) -> List[Dict[str, Any]]:
         """
-        Get list of players eligible for franchise tag.
+        Get top 3 franchise tag candidates for AI team.
 
-        Returns unrestricted free agents from team's roster who are
-        eligible for franchise or transition tags.
-
-        Args:
-            team_id: Team ID (1-32)
+        Evaluates pending free agents by:
+        - Tag cost vs market value
+        - Position need priority
+        - Cap space availability
 
         Returns:
-            List of eligible player dictionaries with:
-                - player_id, name, position
-                - years_with_team
-                - franchise_tag_salary (estimated)
-                - transition_tag_salary (estimated)
-                - previous_salary (for comparison)
+            List of top 3 tag candidates with recommendations
         """
-        # Get all players with expiring contracts
-        # In a real implementation, this would query the database for:
-        # - Players on team roster
-        # - With contracts expiring after current season
-        # - With 4+ accrued seasons (UFA eligible)
+        # Step 1: Get pending free agents (Gap 1)
+        pending_fas = self.cap_api.get_pending_free_agents(
+            team_id=team_id,
+            season=self.season_year,
+            dynasty_id=self.dynasty_id,
+            min_overall=75  # Only consider quality players
+        )
 
+        if not pending_fas:
+            return []
+
+        # Step 2: Analyze team needs (Gap 2)
+        team_needs = self.needs_analyzer.get_top_needs(
+            team_id=team_id,
+            season=self.season_year,
+            limit=5
+        )
+
+        # Step 3: Evaluate tag candidates (business logic)
+        candidates = self._evaluate_tag_candidates(pending_fas, team_needs)
+
+        # Step 4: Filter by cap space
+        cap_space = self._get_team_cap_space(team_id)
+        affordable = [c for c in candidates if c['tag_cost'] <= cap_space]
+
+        return affordable[:3]
+
+    def _evaluate_tag_candidates(
+        self,
+        pending_fas: List[Dict[str, Any]],
+        team_needs: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Evaluate franchise tag worthiness for each pending FA.
+
+        Pure business logic - no database access.
+
+        Args:
+            pending_fas: List of pending free agents
+            team_needs: List of team positional needs
+
+        Returns:
+            Sorted list of tag candidates with value scores
+        """
         candidates = []
+        need_positions = {n['position'] for n in team_needs}
 
-        # TODO: Implement actual query once player/contract data is available
-        # For now, return empty list with structure documented
-        #
-        # Example query logic:
-        # 1. Get all players on team roster
-        # 2. Filter to those with expiring contracts
-        # 3. Filter to those with 4+ accrued seasons
-        # 4. Calculate estimated tag salaries
-        # 5. Sort by value (highest first)
+        for player in pending_fas:
+            # Calculate franchise tag cost (Gap 3)
+            tag_cost = self.market_calc.calculate_franchise_tag_value(
+                position=player['position'],
+                season=self.season_year
+            )
 
-        if self.verbose_logging:
-            print(f"Found {len(candidates)} franchise tag candidates for team {team_id}")
+            # Calculate market value (Gap 3)
+            market_value = self.market_calc.calculate_player_value(
+                position=player['position'],
+                overall=player['overall'],
+                age=player.get('age', 27),  # Default to 27 if not available
+                years_pro=player.get('years_pro', 4)  # Default to 4 if not available
+            )
 
-        return candidates
+            # Tag value score: How much we save by tagging vs signing FA
+            # Higher score = better value to tag
+            tag_value_score = market_value['total_value'] - (tag_cost / 1_000_000)
+
+            # Bonus points if position is a team need
+            if player['position'] in need_positions:
+                tag_value_score += 5.0
+
+            candidates.append({
+                'player_id': player['player_id'],
+                'player_name': player['player_name'],
+                'position': player['position'],
+                'overall': player['overall'],
+                'tag_cost': tag_cost,
+                'market_value_aav': market_value['aav'],
+                'tag_value_score': tag_value_score,
+                'is_team_need': player['position'] in need_positions,
+                'recommendation': 'TAG' if tag_value_score > 10 else 'CONSIDER'
+            })
+
+        # Sort by tag value score (highest first)
+        return sorted(candidates, key=lambda x: x['tag_value_score'], reverse=True)
+
+    def _get_team_cap_space(self, team_id: int) -> int:
+        """
+        Get team's available salary cap space.
+
+        Returns:
+            Available cap space in dollars
+        """
+        # TODO: Implement cap space calculation
+        # For now, return a reasonable default ($20M)
+        return 20_000_000
 
     def apply_franchise_tag(
         self,

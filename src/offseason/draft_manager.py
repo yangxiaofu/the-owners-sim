@@ -9,6 +9,7 @@ Handles NFL Draft operations including:
 """
 
 from typing import Optional, List, Dict, Any
+from database.draft_class_api import DraftClassAPI
 
 
 class DraftManager:
@@ -44,6 +45,9 @@ class DraftManager:
         self.season_year = season_year
         self.enable_persistence = enable_persistence
 
+        # Initialize DraftClassAPI
+        self.draft_api = DraftClassAPI(database_path)
+
         # Will be initialized when needed
         self.draft_class = None
         self.draft_order = None
@@ -59,11 +63,22 @@ class DraftManager:
         Returns:
             List of prospect dictionaries with attributes
         """
-        # TODO: Implement draft class generation
-        # - Use player generation system
-        # - Generate 300+ prospects across all positions
-        # - Include combine metrics and college stats
-        raise NotImplementedError("Draft class generation not yet implemented")
+        # Check if draft class already exists
+        if self.draft_api.dynasty_has_draft_class(self.dynasty_id, self.season_year):
+            print(f"Draft class for {self.season_year} already exists")
+        else:
+            # Generate new draft class
+            draft_class_id = self.draft_api.generate_draft_class(
+                dynasty_id=self.dynasty_id,
+                season=self.season_year
+            )
+            print(f"✅ Generated draft class: {draft_class_id}")
+
+        # Return all prospects for this dynasty/season
+        return self.draft_api.get_all_prospects(
+            dynasty_id=self.dynasty_id,
+            season=self.season_year
+        )
 
     def get_draft_board(
         self,
@@ -82,16 +97,28 @@ class DraftManager:
         Returns:
             List of prospects sorted by team's board ranking
         """
-        # TODO: Implement draft board retrieval
-        # - Return prospects sorted by team's needs/philosophy
-        # - Apply position filter if specified
-        raise NotImplementedError("Draft board not yet implemented")
+        # Get all available prospects
+        prospects = self.draft_api.get_all_prospects(
+            dynasty_id=self.dynasty_id,
+            season=self.season_year,
+            available_only=True
+        )
+
+        # Apply position filter if specified
+        if position_filter:
+            prospects = [p for p in prospects if p['position'] == position_filter]
+
+        # Sort by overall rating (descending)
+        prospects.sort(key=lambda p: p['overall'], reverse=True)
+
+        # Return top N prospects
+        return prospects[:limit]
 
     def make_draft_selection(
         self,
         round_num: int,
         pick_num: int,
-        player_id: str,
+        player_id: int,
         team_id: int
     ) -> Dict[str, Any]:
         """
@@ -106,13 +133,32 @@ class DraftManager:
         Returns:
             Dictionary with pick details and result
         """
-        # TODO: Implement draft selection
-        # - Validate pick is correct team's turn
-        # - Validate player is still available
-        # - Add player to team roster
-        # - Create rookie contract
-        # - Trigger draft pick event
-        raise NotImplementedError("Draft selection not yet implemented")
+        # Mark prospect as drafted
+        prospect = self.draft_api.mark_prospect_drafted(
+            player_id=player_id,
+            team_id=team_id,
+            actual_round=round_num,
+            actual_pick=pick_num,
+            dynasty_id=self.dynasty_id
+        )
+
+        # Convert prospect to player in main roster
+        final_player_id = self.draft_api.convert_prospect_to_player(
+            player_id=player_id,
+            team_id=team_id,
+            dynasty_id=self.dynasty_id
+        )
+
+        # TODO: Create rookie contract (future integration with salary cap system)
+        # TODO: Trigger DraftPickEvent (future integration with event system)
+
+        return {
+            'player_id': final_player_id,
+            'prospect': prospect,
+            'round': round_num,
+            'pick': pick_num,
+            'team_id': team_id
+        }
 
     def simulate_draft(
         self,

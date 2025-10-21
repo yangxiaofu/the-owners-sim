@@ -27,6 +27,7 @@ sys.path.insert(0, str(project_root / "src"))
 from calendar.calendar_component import CalendarComponent
 from calendar.simulation_executor import SimulationExecutor
 from calendar.date_models import Date
+from calendar.season_phase_tracker import SeasonPhase
 from events import EventDatabaseAPI, GameEvent
 from workflows import SimulationWorkflow
 from database.api import DatabaseAPI
@@ -494,11 +495,23 @@ class SeasonController:
 
         Creates a complete 272-game NFL season schedule using
         RandomScheduleGenerator and stores it in the event database.
+
+        IMPORTANT: Skips schedule generation when starting in OFFSEASON phase,
+        as games should only be scheduled when a new season begins (September).
         """
         if self.verbose_logging:
             print(f"\n{'='*80}")
             print(f"INITIALIZING SEASON SCHEDULE")
             print(f"{'='*80}")
+
+        # Check if we're in offseason phase - if so, don't schedule games yet
+        # Games will be scheduled when the offseason ends and new season begins
+        if self.phase_state and self.phase_state.phase == SeasonPhase.OFFSEASON:
+            if self.verbose_logging:
+                print(f"⏸️  Skipping schedule generation - currently in OFFSEASON")
+                print(f"   Games will be scheduled when new season begins")
+                print(f"{'='*80}")
+            return
 
         # Check if schedule already exists for this dynasty
         # Use dynasty-filtered query to prevent cross-dynasty data contamination

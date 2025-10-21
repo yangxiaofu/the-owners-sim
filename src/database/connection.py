@@ -345,12 +345,13 @@ class DatabaseConnection:
         ''')
 
         # Dynasty state table - tracks current simulation state
+        # IMPORTANT: "current_date" column is quoted to avoid SQLite auto-fill with CURRENT_DATE
         conn.execute('''
             CREATE TABLE IF NOT EXISTS dynasty_state (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 dynasty_id TEXT NOT NULL,
                 season INTEGER NOT NULL,
-                current_date TEXT NOT NULL,
+                "current_date" TEXT NOT NULL,
                 current_phase TEXT NOT NULL,
                 current_week INTEGER,
                 last_simulated_game_id TEXT,

@@ -27,6 +27,7 @@ from widgets.depth_chart_split_view import DepthChartSplitView
 from widgets.staff_tab_widget import StaffTabWidget
 from widgets.strategy_tab_widget import StrategyTabWidget
 from widgets.team_statistics_widget import TeamStatisticsWidget
+from widgets.team_needs_widget import TeamNeedsWidget
 from controllers.team_controller import TeamController
 from constants.team_ids import TeamIDs
 from team_management.teams.team_loader import get_all_teams, get_team_by_id
@@ -139,6 +140,11 @@ class TeamView(QWidget):
             dynasty_id=self.dynasty_id,
             season=self.season
         )
+        self.team_needs_tab = TeamNeedsWidget(
+            db_path=self.db_path,
+            dynasty_id=self.dynasty_id,
+            season=self.season
+        )
 
         # Connect depth chart signal for persistence
         self.depth_chart_tab.swap_requested.connect(self._on_swap_requested)
@@ -150,6 +156,7 @@ class TeamView(QWidget):
         sub_tabs.addTab(self.staff_tab, "Staff")
         sub_tabs.addTab(self.strategy_tab, "Strategy")
         sub_tabs.addTab(self.statistics_tab, "Statistics")
+        sub_tabs.addTab(self.team_needs_tab, "Team Needs")
 
         return sub_tabs
 
@@ -234,6 +241,14 @@ class TeamView(QWidget):
             except Exception as e:
                 print(f"[ERROR TeamView] Failed to update statistics tab for team {team_id}: {e}")
 
+            # Update Team Needs tab
+            try:
+                self.team_needs_tab.update_team(team_id)
+            except Exception as e:
+                print(f"[ERROR TeamView] Failed to update team needs for team {team_id}: {e}")
+                import traceback
+                traceback.print_exc()
+
             # TODO Phase 3: Load other tabs
             # self.staff_tab.load_staff(team_id)
 
@@ -316,6 +331,15 @@ class TeamView(QWidget):
             self.depth_chart_tab.load_depth_chart(team_name, depth_chart_data)
         except Exception as e:
             print(f"[ERROR TeamView] Failed to load initial depth chart for team {self.current_team_id}: {e}")
+            import traceback
+            traceback.print_exc()
+            # Keep existing data on error
+
+        try:
+            # Load team needs
+            self.team_needs_tab.update_team(self.current_team_id)
+        except Exception as e:
+            print(f"[ERROR TeamView] Failed to load initial team needs for team {self.current_team_id}: {e}")
             import traceback
             traceback.print_exc()
             # Keep existing data on error

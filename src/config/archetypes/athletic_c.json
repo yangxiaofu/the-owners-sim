@@ -1,0 +1,28 @@
+{
+  "archetype_id": "athletic_c",
+  "position": "C",
+  "name": "Athletic Center",
+  "description": "Smart, mobile center who excels at pass protection. High awareness for pre-snap adjustments.",
+  "physical_attributes": {
+    "speed": {"min": 68, "max": 82, "mean": 75, "std_dev": 5},
+    "strength": {"min": 75, "max": 88, "mean": 81, "std_dev": 6},
+    "agility": {"min": 68, "max": 82, "mean": 75, "std_dev": 6},
+    "stamina": {"min": 72, "max": 88, "mean": 80, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 75, "max": 92, "mean": 83, "std_dev": 6},
+    "discipline": {"min": 72, "max": 88, "mean": 80, "std_dev": 6},
+    "composure": {"min": 72, "max": 88, "mean": 80, "std_dev": 6},
+    "experience": {"min": 42, "max": 62, "mean": 52, "std_dev": 7},
+    "penalty_technique": {"min": 72, "max": 88, "mean": 80, "std_dev": 6}
+  },
+  "position_attributes": {
+    "pass_blocking": {"min": 78, "max": 92, "mean": 85, "std_dev": 6},
+    "run_blocking": {"min": 70, "max": 85, "mean": 77, "std_dev": 6},
+    "technique": {"min": 75, "max": 90, "mean": 82, "std_dev": 6}
+  },
+  "overall_range": {"min": 72, "max": 90, "mean": 81, "std_dev": 6},
+  "frequency": 0.50,
+  "peak_age_range": [28, 32],
+  "development_curve": "late"
+}

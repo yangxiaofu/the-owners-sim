@@ -5,12 +5,15 @@ Action events for NFL free agency transactions during the offseason.
 These include UFA signings, RFA offer sheets, and compensatory pick awards.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
 from datetime import datetime
 
 from .base_event import BaseEvent, EventResult
 from calendar.date_models import Date
 from salary_cap import EventCapBridge, ContractEventHandler, RFAEventHandler
+
+if TYPE_CHECKING:
+    from persistence.transaction_logger import TransactionLogger
 
 
 class UFASigningEvent(BaseEvent):
@@ -33,7 +36,8 @@ class UFASigningEvent(BaseEvent):
         event_date: Date,
         dynasty_id: str,
         event_id: Optional[str] = None,
-        database_path: str = "data/database/nfl_simulation.db"
+        database_path: str = "data/database/nfl_simulation.db",
+        transaction_logger: Optional["TransactionLogger"] = None
     ):
         """
         Initialize UFA signing event.
@@ -51,6 +55,7 @@ class UFASigningEvent(BaseEvent):
             dynasty_id: Dynasty context for isolation (REQUIRED)
             event_id: Unique identifier
             database_path: Path to database
+            transaction_logger: Optional TransactionLogger for automatic logging
         """
         event_datetime = datetime.combine(
             event_date.to_python_date(),
@@ -69,6 +74,7 @@ class UFASigningEvent(BaseEvent):
         self.event_date = event_date
         self.dynasty_id = dynasty_id
         self.database_path = database_path
+        self.transaction_logger = transaction_logger
 
     def get_event_type(self) -> str:
         return "UFA_SIGNING"
@@ -100,7 +106,7 @@ class UFASigningEvent(BaseEvent):
                 avg_per_year = self.contract_value // self.contract_years if self.contract_years > 0 else 0
                 message = f"Team {self.team_id} signed UFA player {self.player_id}: {self.contract_years}yr/${self.contract_value:,} (${avg_per_year:,}/yr)"
 
-                return EventResult(
+                event_result = EventResult(
                     event_id=self.event_id,
                     event_type=self.get_event_type(),
                     success=True,
@@ -123,6 +129,23 @@ class UFASigningEvent(BaseEvent):
                         "message": message
                     }
                 )
+
+                # Log transaction if logger is provided
+                if self.transaction_logger:
+                    try:
+                        self.transaction_logger.log_from_event_result(
+                            event_result=event_result,
+                            dynasty_id=self.dynasty_id,
+                            season=self.season
+                        )
+                    except Exception as e:
+                        # Log error but don't fail the event
+                        import logging
+                        logging.getLogger(__name__).error(
+                            f"Failed to log UFA signing transaction: {e}"
+                        )
+
+                return event_result
             else:
                 # Cap validation failed
                 error_msg = result.get("error_message", "Unknown error")

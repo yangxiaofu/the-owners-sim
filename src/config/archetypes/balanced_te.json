@@ -1,0 +1,28 @@
+{
+  "archetype_id": "balanced_te",
+  "position": "TE",
+  "name": "Balanced TE",
+  "description": "Versatile TE who can do both. Balanced attributes without elite traits in any area.",
+  "physical_attributes": {
+    "speed": {"min": 78, "max": 88, "mean": 83, "std_dev": 4},
+    "strength": {"min": 72, "max": 85, "mean": 78, "std_dev": 5},
+    "agility": {"min": 70, "max": 82, "mean": 76, "std_dev": 5},
+    "stamina": {"min": 72, "max": 88, "mean": 80, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 68, "max": 82, "mean": 75, "std_dev": 6},
+    "discipline": {"min": 68, "max": 82, "mean": 75, "std_dev": 6},
+    "composure": {"min": 68, "max": 82, "mean": 75, "std_dev": 6},
+    "experience": {"min": 40, "max": 60, "mean": 50, "std_dev": 7},
+    "penalty_technique": {"min": 68, "max": 82, "mean": 75, "std_dev": 6}
+  },
+  "position_attributes": {
+    "catching": {"min": 72, "max": 85, "mean": 78, "std_dev": 5},
+    "route_running": {"min": 68, "max": 82, "mean": 75, "std_dev": 5},
+    "blocking": {"min": 70, "max": 85, "mean": 77, "std_dev": 6}
+  },
+  "overall_range": {"min": 70, "max": 85, "mean": 77, "std_dev": 5},
+  "frequency": 0.30,
+  "peak_age_range": [26, 29],
+  "development_curve": "normal"
+}

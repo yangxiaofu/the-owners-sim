@@ -1,0 +1,28 @@
+{
+  "archetype_id": "run_stuffer_dt",
+  "position": "DT",
+  "name": "Run Stuffer",
+  "description": "Two-gap space eater who clogs running lanes. Elite strength and run defense but limited pass rush.",
+  "physical_attributes": {
+    "speed": {"min": 60, "max": 75, "mean": 67, "std_dev": 5},
+    "strength": {"min": 90, "max": 99, "mean": 94, "std_dev": 4},
+    "agility": {"min": 55, "max": 70, "mean": 62, "std_dev": 6},
+    "stamina": {"min": 70, "max": 85, "mean": 77, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 65, "max": 82, "mean": 73, "std_dev": 6},
+    "discipline": {"min": 70, "max": 85, "mean": 77, "std_dev": 6},
+    "composure": {"min": 65, "max": 80, "mean": 72, "std_dev": 6},
+    "experience": {"min": 40, "max": 62, "mean": 51, "std_dev": 8},
+    "penalty_technique": {"min": 68, "max": 82, "mean": 75, "std_dev": 6}
+  },
+  "position_attributes": {
+    "pass_rush": {"min": 55, "max": 72, "mean": 63, "std_dev": 6},
+    "run_defense": {"min": 85, "max": 96, "mean": 90, "std_dev": 5},
+    "technique": {"min": 72, "max": 88, "mean": 80, "std_dev": 6}
+  },
+  "overall_range": {"min": 70, "max": 88, "mean": 79, "std_dev": 6},
+  "frequency": 0.25,
+  "peak_age_range": [27, 31],
+  "development_curve": "normal"
+}

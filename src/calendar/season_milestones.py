@@ -40,6 +40,7 @@ class MilestoneType(Enum):
     MANDATORY_MINICAMP = "mandatory_minicamp"
     FRANCHISE_TAG_EXTENSION_DEADLINE = "franchise_tag_extension_deadline"
     WAIVER_CLAIM_DEADLINE = "waiver_claim_deadline"
+    PRESEASON_START = "preseason_start"
 
 
 @dataclass(frozen=True)
@@ -298,6 +299,17 @@ class SeasonMilestoneCalculator:
             offset_calculator=self._calculate_waiver_claim_deadline,
             conditions={"fixed_date": (8, 27), "time": "12:00 ET"},
             priority=18
+        )
+
+        # Preseason Start - First Thursday in August
+        self.milestone_definitions[MilestoneType.PRESEASON_START] = MilestoneDefinition(
+            milestone_type=MilestoneType.PRESEASON_START,
+            name="Preseason Start",
+            description="NFL Preseason begins (Hall of Fame Game)",
+            base_phase=SeasonPhase.OFFSEASON,
+            offset_calculator=self._calculate_preseason_start,
+            conditions={"first_thursday_august": True},
+            priority=19
         )
 
     def calculate_milestones_for_season(self, season_year: int,
@@ -598,6 +610,36 @@ class SeasonMilestoneCalculator:
         """Calculate Waiver Claim Deadline (August 27 Noon ET, fixed date)."""
         season_year = context.get("season_year", 2024)
         return Date(season_year, 8, 27)  # August 27 of current season year
+
+    def _calculate_preseason_start(self, base_date: Optional[Date], context: Dict[str, Any]) -> Date:
+        """
+        Calculate preseason start date (first Thursday in August).
+
+        NFL preseason traditionally starts on the first Thursday in August with the
+        Hall of Fame Game. This date varies by year depending on the calendar.
+
+        Examples:
+            2024: Aug 1 (Thursday)
+            2025: Aug 7 (Thursday)
+            2026: Aug 6 (Thursday)
+        """
+        season_year = context.get('season_year', base_date.year if base_date else 2025)
+        next_year = season_year + 1
+
+        # Start with August 1st of next year
+        aug_1 = Date(next_year, 8, 1)
+        py_date = aug_1.to_python_date()
+
+        # Get weekday (0=Monday, 1=Tuesday, ..., 3=Thursday, ..., 6=Sunday)
+        weekday = py_date.weekday()
+
+        # Calculate days until first Thursday
+        if weekday <= 3:  # Monday through Thursday
+            days_to_thursday = 3 - weekday
+        else:  # Friday through Sunday
+            days_to_thursday = 7 - weekday + 3
+
+        return aug_1.add_days(days_to_thursday)
 
     def add_custom_milestone(self, milestone_def: MilestoneDefinition) -> None:
         """Add a custom milestone definition."""

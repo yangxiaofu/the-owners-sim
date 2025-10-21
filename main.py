@@ -78,6 +78,23 @@ def main():
         )
         return 1
 
+    # Apply transaction schema migration (idempotent - safe to run multiple times)
+    try:
+        from database.connection import DatabaseConnection
+
+        migration_path = Path(__file__).parent / "src" / "database" / "migrations" / "003_player_transactions_table.sql"
+        if migration_path.exists():
+            db_conn = DatabaseConnection(db_path)
+            with open(migration_path, 'r') as f:
+                migration_sql = f.read()
+            db_conn.execute_script(migration_sql)
+            print(f"[INFO] Applied transaction schema migration: {migration_path.name}")
+    except Exception as e:
+        # Non-fatal: Log error but continue
+        print(f"[WARNING] Failed to apply transaction schema migration: {e}")
+        import traceback
+        traceback.print_exc()
+
     # Create and show main window with dynasty context
     window = MainWindow(db_path=db_path, dynasty_id=dynasty_id, season=season)
     window.show()

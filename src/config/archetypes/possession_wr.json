@@ -1,0 +1,28 @@
+{
+  "archetype_id": "possession_wr",
+  "position": "WR",
+  "name": "Possession Receiver",
+  "description": "Reliable chain-mover with sure hands. Excellent route running but moderate speed.",
+  "physical_attributes": {
+    "speed": {"min": 82, "max": 90, "mean": 86, "std_dev": 4},
+    "strength": {"min": 62, "max": 78, "mean": 70, "std_dev": 6},
+    "agility": {"min": 78, "max": 90, "mean": 84, "std_dev": 5},
+    "stamina": {"min": 75, "max": 90, "mean": 82, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 75, "max": 90, "mean": 82, "std_dev": 6},
+    "discipline": {"min": 72, "max": 88, "mean": 80, "std_dev": 6},
+    "composure": {"min": 72, "max": 88, "mean": 80, "std_dev": 6},
+    "experience": {"min": 42, "max": 62, "mean": 52, "std_dev": 7},
+    "penalty_technique": {"min": 70, "max": 85, "mean": 77, "std_dev": 6}
+  },
+  "position_attributes": {
+    "catching": {"min": 80, "max": 95, "mean": 87, "std_dev": 5},
+    "route_running": {"min": 80, "max": 94, "mean": 87, "std_dev": 5},
+    "release": {"min": 72, "max": 88, "mean": 80, "std_dev": 6}
+  },
+  "overall_range": {"min": 75, "max": 90, "mean": 82, "std_dev": 5},
+  "frequency": 0.25,
+  "peak_age_range": [26, 29],
+  "development_curve": "normal"
+}

@@ -99,9 +99,10 @@ class DynastyStateAPI:
             self.delete_state(dynasty_id, season)
 
             # Insert fresh state
+            # IMPORTANT: Quote "current_date" to avoid SQLite auto-fill with CURRENT_DATE
             query = """
                 INSERT INTO dynasty_state
-                (dynasty_id, season, current_date, current_week, current_phase)
+                (dynasty_id, season, "current_date", current_week, current_phase)
                 VALUES (?, ?, ?, ?, ?)
             """
 
@@ -147,9 +148,10 @@ class DynastyStateAPI:
             True if successful, False otherwise
         """
         try:
+            # IMPORTANT: Quote "current_date" to avoid SQLite auto-fill with CURRENT_DATE
             query = """
                 INSERT OR REPLACE INTO dynasty_state
-                (dynasty_id, season, current_date, current_phase, current_week,
+                (dynasty_id, season, "current_date", current_phase, current_week,
                  last_simulated_game_id, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """

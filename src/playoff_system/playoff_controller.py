@@ -121,8 +121,12 @@ class PlayoffController:
 
         # Ensure dynasty exists in database (auto-create if needed)
         from database.connection import DatabaseConnection
+        from database.api import DatabaseAPI
         db_conn = DatabaseConnection(database_path)
         db_conn.ensure_dynasty_exists(dynasty_id)
+
+        # Initialize DatabaseAPI for clean data access
+        self.database_api = DatabaseAPI(database_path)
 
         # Initialize core components
         self.calendar = CalendarComponent(
@@ -327,17 +331,10 @@ class PlayoffController:
                     print(f"[DEBUG] Games played today: {day_result['games_played']}")
 
                 # DATABASE VERIFICATION: Confirm playoff events exist after round completion
-                import sqlite3
-                verify_conn = sqlite3.connect(self.database_path)
-                verify_cursor = verify_conn.cursor()
-                verify_cursor.execute("""
-                    SELECT COUNT(*) FROM events
-                    WHERE dynasty_id = ?
-                      AND event_type = 'GAME'
-                      AND game_id LIKE ?
-                """, (self.dynasty_id, f"playoff_{self.season_year}_%"))
-                playoff_event_count = verify_cursor.fetchone()[0]
-                verify_conn.close()
+                playoff_event_count = self.database_api.count_playoff_events(
+                    dynasty_id=self.dynasty_id,
+                    season_year=self.season_year
+                )
 
                 print(f"[PLAYOFF_VERIFICATION] Round '{self.state.current_round}' complete!")
                 print(f"[PLAYOFF_VERIFICATION] Database check: {playoff_event_count} playoff events exist for dynasty '{self.dynasty_id}'")

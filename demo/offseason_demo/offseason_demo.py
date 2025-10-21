@@ -12,12 +12,25 @@ This demo allows you to:
 - Advance the calendar day-by-day or jump to deadlines
 
 Usage:
+    python demo/offseason_demo/offseason_demo.py
+
+    OR
+
     PYTHONPATH=src python demo/offseason_demo/offseason_demo.py
 """
 
+import sys
+import os
 from datetime import datetime
 from typing import Optional
-import sys
+
+# Add src directory to path if not already there
+# This allows the demo to be run from anywhere
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(os.path.dirname(current_dir))
+src_path = os.path.join(project_root, 'src')
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
 
 from offseason.offseason_controller import OffseasonController
 from offseason.offseason_phases import OffseasonPhase

@@ -587,6 +587,42 @@ class DatabaseAPI:
         #     LIMIT ?
         # '''
 
+    def count_playoff_events(self, dynasty_id: str, season_year: int) -> int:
+        """
+        Count playoff events for a specific dynasty and season.
+
+        Useful for diagnostics and verification that playoff games were persisted.
+        This method provides a clean abstraction for controllers that need to
+        verify playoff event existence without direct database access.
+
+        Args:
+            dynasty_id: Dynasty identifier
+            season_year: NFL season year (e.g., 2024)
+
+        Returns:
+            Number of playoff events found in database
+
+        Example:
+            >>> api = DatabaseAPI("nfl_simulation.db")
+            >>> count = api.count_playoff_events("my_dynasty", 2024)
+            >>> print(f"Found {count} playoff games")
+        """
+        query = '''
+            SELECT COUNT(*) as count
+            FROM events
+            WHERE dynasty_id = ?
+              AND event_type = 'GAME'
+              AND game_id LIKE ?
+        '''
+
+        game_id_pattern = f"playoff_{season_year}_%"
+        results = self.db_connection.execute_query(query, (dynasty_id, game_id_pattern))
+
+        if not results:
+            return 0
+
+        return results[0]['count']
+
     def get_upcoming_games(self, start_date_str: str, days: int = 7) -> List[Dict[str, Any]]:
         """
         Get games scheduled in the next N days from events table.

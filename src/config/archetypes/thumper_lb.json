@@ -1,0 +1,28 @@
+{
+  "archetype_id": "thumper_lb",
+  "position": "LB",
+  "name": "Thumper",
+  "description": "Traditional run-stopping linebacker. Elite tackling and run defense but limited coverage ability.",
+  "physical_attributes": {
+    "speed": {"min": 78, "max": 88, "mean": 83, "std_dev": 4},
+    "strength": {"min": 80, "max": 94, "mean": 87, "std_dev": 6},
+    "agility": {"min": 70, "max": 82, "mean": 76, "std_dev": 5},
+    "stamina": {"min": 75, "max": 90, "mean": 82, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 70, "max": 88, "mean": 79, "std_dev": 6},
+    "discipline": {"min": 72, "max": 88, "mean": 80, "std_dev": 6},
+    "composure": {"min": 68, "max": 82, "mean": 75, "std_dev": 6},
+    "experience": {"min": 40, "max": 62, "mean": 51, "std_dev": 8},
+    "penalty_technique": {"min": 70, "max": 85, "mean": 77, "std_dev": 6}
+  },
+  "position_attributes": {
+    "coverage": {"min": 60, "max": 78, "mean": 69, "std_dev": 6},
+    "run_defense": {"min": 85, "max": 96, "mean": 90, "std_dev": 5},
+    "tackling": {"min": 85, "max": 96, "mean": 90, "std_dev": 5}
+  },
+  "overall_range": {"min": 72, "max": 90, "mean": 81, "std_dev": 6},
+  "frequency": 0.30,
+  "peak_age_range": [26, 30],
+  "development_curve": "normal"
+}

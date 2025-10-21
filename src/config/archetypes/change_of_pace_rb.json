@@ -1,0 +1,28 @@
+{
+  "archetype_id": "change_of_pace_rb",
+  "position": "RB",
+  "name": "Change of Pace",
+  "description": "Complementary back who spells the starter. Moderate overall with good agility and elusiveness.",
+  "physical_attributes": {
+    "speed": {"min": 82, "max": 90, "mean": 86, "std_dev": 4},
+    "strength": {"min": 58, "max": 75, "mean": 66, "std_dev": 6},
+    "agility": {"min": 75, "max": 88, "mean": 81, "std_dev": 5},
+    "stamina": {"min": 65, "max": 82, "mean": 73, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 58, "max": 75, "mean": 66, "std_dev": 6},
+    "discipline": {"min": 60, "max": 78, "mean": 69, "std_dev": 6},
+    "composure": {"min": 58, "max": 75, "mean": 66, "std_dev": 6},
+    "experience": {"min": 40, "max": 58, "mean": 49, "std_dev": 7},
+    "penalty_technique": {"min": 60, "max": 75, "mean": 67, "std_dev": 6}
+  },
+  "position_attributes": {
+    "carrying": {"min": 62, "max": 78, "mean": 70, "std_dev": 6},
+    "vision": {"min": 60, "max": 78, "mean": 69, "std_dev": 6},
+    "elusiveness": {"min": 70, "max": 85, "mean": 77, "std_dev": 6}
+  },
+  "overall_range": {"min": 60, "max": 75, "mean": 67, "std_dev": 5},
+  "frequency": 0.15,
+  "peak_age_range": [24, 27],
+  "development_curve": "normal"
+}

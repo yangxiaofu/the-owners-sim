@@ -1,0 +1,28 @@
+{
+  "archetype_id": "edge_rusher_de",
+  "position": "DE",
+  "name": "Edge Rusher",
+  "description": "Elite pass rusher who gets after the quarterback. High speed and pass rush moves.",
+  "physical_attributes": {
+    "speed": {"min": 80, "max": 94, "mean": 87, "std_dev": 5},
+    "strength": {"min": 70, "max": 85, "mean": 77, "std_dev": 6},
+    "agility": {"min": 75, "max": 90, "mean": 82, "std_dev": 6},
+    "stamina": {"min": 72, "max": 88, "mean": 80, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 65, "max": 82, "mean": 73, "std_dev": 6},
+    "discipline": {"min": 62, "max": 80, "mean": 71, "std_dev": 6},
+    "composure": {"min": 65, "max": 82, "mean": 73, "std_dev": 6},
+    "experience": {"min": 40, "max": 62, "mean": 51, "std_dev": 8},
+    "penalty_technique": {"min": 62, "max": 80, "mean": 71, "std_dev": 6}
+  },
+  "position_attributes": {
+    "pass_rush": {"min": 85, "max": 96, "mean": 90, "std_dev": 5},
+    "run_defense": {"min": 65, "max": 80, "mean": 72, "std_dev": 6},
+    "technique": {"min": 75, "max": 90, "mean": 82, "std_dev": 6}
+  },
+  "overall_range": {"min": 75, "max": 92, "mean": 83, "std_dev": 6},
+  "frequency": 0.30,
+  "peak_age_range": [26, 30],
+  "development_curve": "normal"
+}

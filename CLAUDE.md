@@ -2,17 +2,48 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Quick Start for Claude Code
+
+**New to this codebase? Start here:**
+1. Run the desktop UI: `python main.py` (requires `pip install -r requirements-ui.txt`)
+2. Run a full season simulation: `PYTHONPATH=src python demo/full_season_demo/full_season_sim.py`
+3. Run tests: `python -m pytest tests/`
+4. Database location: `data/database/nfl_simulation.db`
+
+**Most Important Demos:**
+- **Full Season (PRIMARY)**: `demo/full_season_demo/` - Complete season cycle with playoffs and offseason
+- **Interactive Season**: `demo/interactive_season_sim/` - Regular season only (terminal-based)
+- **Offseason**: `demo/offseason_demo/` - Franchise tags, free agency, draft, roster cuts
+
 ## Project Overview
 
 This is "The Owners Sim" - a comprehensive NFL football simulation engine written in Python. The project simulates realistic NFL gameplay with detailed player statistics, penalty systems, team management, and formation-based play calling.
+
+## Current Development Status
+
+**Production Ready:**
+- Desktop UI (Phase 1 complete - foundation, tabs, MVC architecture)
+- Season simulation (regular season, playoffs, offseason cycle)
+- Salary cap system (full CBA compliance, event integration)
+- Calendar and event systems
+- Statistics and persistence systems
+
+**In Active Development:**
+- Desktop UI Phase 2 (Season/Team views with data integration)
+- Player Generation System (archetype-based procedural generation)
+
+**Stable Features:**
+- Play engine, game simulation, coaching staff
+- Playoff seeding and bracket management
+- Database persistence with dynasty isolation
 
 ## Development Environment
 
 - **Python Version**: 3.13.5 (required, venv configured)
 - **Virtual Environment**: `.venv/` (Note: Python 3.13 binary path may need reconfiguration)
+- **Database**: `data/database/nfl_simulation.db` (SQLite3 with dynasty-based isolation)
 - **Dependencies**: SQLite3 support via better-sqlite3 (Node.js binding)
 - **Package Manager**: npm for Node.js dependencies, pip for Python
-- **Database**: SQLite3 with dynasty-based isolation support
 
 ## Core Commands
 
@@ -108,8 +139,8 @@ PYTHONPATH=src python demo/player_generator_demo/player_generator_demo.py  # Int
 # Demonstrates: archetype-based generation, position-specific attributes, draft class generation
 
 # Offseason System Demos
-PYTHONPATH=src python demo/offseason_demo/offseason_demo.py  # Interactive NFL offseason simulation demo
-# Terminal-based interactive NFL offseason simulation:
+python demo/offseason_demo/offseason_demo.py  # Interactive NFL offseason simulation demo
+# Terminal-based interactive NFL offseason simulation (no PYTHONPATH needed!):
 # - Navigate through all offseason phases (franchise tags → free agency → draft → roster cuts)
 # - Test franchise/transition tag operations with salary cap integration
 # - Browse and sign free agents with contract validation
@@ -184,6 +215,65 @@ mypy src/
 pylint src/
 
 # Note: These tools can be installed individually as needed for development
+```
+
+## Common Development Tasks
+
+### Running Your First Simulation
+```bash
+# Option 1: Desktop UI (recommended for new users)
+python main.py
+
+# Option 2: Terminal-based full season
+PYTHONPATH=src python demo/full_season_demo/full_season_sim.py
+
+# Option 3: Single game simulation
+PYTHONPATH=src python demo/play_demos/play_engine_demo.py
+```
+
+### Debugging a Failing Test
+```bash
+# Run specific test with verbose output
+python -m pytest tests/calendar/test_calendar_manager.py -v -s
+
+# Run with debugging on first failure
+python -m pytest tests/ -x --pdb
+
+# Run single test function
+python -m pytest tests/salary_cap/test_cap_calculator.py::test_cap_calculation -v
+```
+
+### Checking Database Contents
+```bash
+# View database schema
+sqlite3 data/database/nfl_simulation.db ".schema"
+
+# Query player stats for specific dynasty
+sqlite3 data/database/nfl_simulation.db "SELECT * FROM player_stats WHERE dynasty_id='your_dynasty' LIMIT 10;"
+
+# View standings
+sqlite3 data/database/nfl_simulation.db "SELECT * FROM standings WHERE dynasty_id='your_dynasty';"
+
+# Check database tables
+sqlite3 data/database/nfl_simulation.db ".tables"
+```
+
+### Working with Dynasty Contexts
+```python
+# Create a new dynasty simulation
+from game_management.full_game_simulator import FullGameSimulator
+
+# Initialize with custom dynasty
+sim = FullGameSimulator(
+    away_team_id=7,
+    home_team_id=9,
+    dynasty_id="my_custom_dynasty",
+    database_path="data/database/nfl_simulation.db",
+    enable_persistence=True
+)
+
+# Run the simulation
+result = sim.simulate_game()
 ```
 
 ## Architecture Overview

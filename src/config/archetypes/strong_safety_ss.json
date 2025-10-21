@@ -1,0 +1,29 @@
+{
+  "archetype_id": "strong_safety_ss",
+  "position": "SS",
+  "name": "Strong Safety (In the Box)",
+  "description": "Run support safety who plays like hybrid linebacker. Elite tackling and run defense.",
+  "physical_attributes": {
+    "speed": {"min": 82, "max": 90, "mean": 86, "std_dev": 4},
+    "strength": {"min": 80, "max": 92, "mean": 86, "std_dev": 6},
+    "agility": {"min": 75, "max": 88, "mean": 81, "std_dev": 6},
+    "stamina": {"min": 75, "max": 90, "mean": 82, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 72, "max": 88, "mean": 80, "std_dev": 6},
+    "discipline": {"min": 72, "max": 88, "mean": 80, "std_dev": 6},
+    "composure": {"min": 70, "max": 85, "mean": 77, "std_dev": 6},
+    "experience": {"min": 40, "max": 62, "mean": 51, "std_dev": 8},
+    "penalty_technique": {"min": 70, "max": 85, "mean": 77, "std_dev": 6}
+  },
+  "position_attributes": {
+    "coverage": {"min": 70, "max": 85, "mean": 77, "std_dev": 6},
+    "range": {"min": 72, "max": 85, "mean": 78, "std_dev": 6},
+    "ball_skills": {"min": 68, "max": 82, "mean": 75, "std_dev": 6},
+    "tackling": {"min": 85, "max": 96, "mean": 90, "std_dev": 5}
+  },
+  "overall_range": {"min": 75, "max": 90, "mean": 82, "std_dev": 6},
+  "frequency": 0.35,
+  "peak_age_range": [26, 29],
+  "development_curve": "normal"
+}

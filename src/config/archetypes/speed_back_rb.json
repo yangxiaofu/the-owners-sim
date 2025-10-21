@@ -1,0 +1,28 @@
+{
+  "archetype_id": "speed_back_rb",
+  "position": "RB",
+  "name": "Speed Back",
+  "description": "Home run threat with elite speed. Lower strength and carrying ability.",
+  "physical_attributes": {
+    "speed": {"min": 85, "max": 99, "mean": 92, "std_dev": 5},
+    "strength": {"min": 50, "max": 72, "mean": 61, "std_dev": 7},
+    "agility": {"min": 80, "max": 95, "mean": 87, "std_dev": 5},
+    "stamina": {"min": 68, "max": 85, "mean": 76, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 58, "max": 78, "mean": 68, "std_dev": 6},
+    "discipline": {"min": 60, "max": 80, "mean": 70, "std_dev": 6},
+    "composure": {"min": 60, "max": 78, "mean": 69, "std_dev": 6},
+    "experience": {"min": 40, "max": 60, "mean": 50, "std_dev": 8},
+    "penalty_technique": {"min": 62, "max": 78, "mean": 70, "std_dev": 6}
+  },
+  "position_attributes": {
+    "carrying": {"min": 60, "max": 78, "mean": 69, "std_dev": 6},
+    "vision": {"min": 62, "max": 80, "mean": 71, "std_dev": 6},
+    "elusiveness": {"min": 80, "max": 95, "mean": 87, "std_dev": 5}
+  },
+  "overall_range": {"min": 68, "max": 88, "mean": 78, "std_dev": 6},
+  "frequency": 0.20,
+  "peak_age_range": [24, 26],
+  "development_curve": "early"
+}

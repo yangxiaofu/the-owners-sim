@@ -1,0 +1,28 @@
+{
+  "archetype_id": "precision_punter_p",
+  "position": "P",
+  "name": "Precision Punter",
+  "description": "Coffin corner specialist with elite accuracy. Great hang time but moderate power.",
+  "physical_attributes": {
+    "speed": {"min": 50, "max": 65, "mean": 57, "std_dev": 6},
+    "strength": {"min": 60, "max": 75, "mean": 67, "std_dev": 6},
+    "agility": {"min": 50, "max": 65, "mean": 57, "std_dev": 6},
+    "stamina": {"min": 70, "max": 85, "mean": 77, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 68, "max": 85, "mean": 76, "std_dev": 6},
+    "discipline": {"min": 70, "max": 85, "mean": 77, "std_dev": 6},
+    "composure": {"min": 68, "max": 85, "mean": 76, "std_dev": 6},
+    "experience": {"min": 40, "max": 60, "mean": 50, "std_dev": 7},
+    "penalty_technique": {"min": 70, "max": 85, "mean": 77, "std_dev": 6}
+  },
+  "position_attributes": {
+    "punt_power": {"min": 70, "max": 85, "mean": 77, "std_dev": 6},
+    "punt_accuracy": {"min": 90, "max": 99, "mean": 94, "std_dev": 4},
+    "hang_time": {"min": 80, "max": 92, "mean": 86, "std_dev": 5}
+  },
+  "overall_range": {"min": 70, "max": 88, "mean": 79, "std_dev": 6},
+  "frequency": 0.50,
+  "peak_age_range": [28, 33],
+  "development_curve": "normal"
+}

@@ -100,13 +100,20 @@ class DeadlineEvent(BaseEvent):
         )
 ```
 
-**Deadline Types Needed**:
-- `FRANCHISE_TAG_DEADLINE` - March 4, 4PM ET
-- `SALARY_CAP_COMPLIANCE` - March 12, 4PM ET
+**Deadline Types Implemented** (`src/events/deadline_event.py`):
+- ✅ `FRANCHISE_TAG` - March 4, 4PM ET (marker with validation)
+- ✅ `TRANSITION_TAG` - Related to franchise tag deadline (marker only)
+- ✅ `RFA_TENDER` - Related to RFA deadlines (marker only)
+- ✅ `DRAFT_DECLARATION` - Mid-January draft declaration (marker only)
+- ✅ `SALARY_CAP_COMPLIANCE` - March 12, 4PM ET (full cap validation across all 32 teams)
+- ✅ `JUNE_1_RELEASES` - June 1 release designation (marker only)
+- ✅ `ROOKIE_CONTRACT_SIGNING` - Post-draft rookie signings (marker only)
+- ✅ `FINAL_ROSTER_CUTS` - August 26, 4PM ET (marker only)
+
+**Deadline Types Still Needed**:
 - `RFA_OFFER_SHEET_DEADLINE` - April 22
 - `FIFTH_YEAR_OPTION_DEADLINE` - May 1-2
 - `FRANCHISE_TAG_EXTENSION_DEADLINE` - Mid-July
-- `ROSTER_CUTS_DEADLINE` - August 26, 4PM ET
 - `WAIVER_CLAIM_DEADLINE` - August 27, Noon ET
 
 ---
@@ -1121,7 +1128,7 @@ class OffseasonAIManager:
 
 ---
 
-### Phase 2: Business Logic Integration (Week 2-3)
+### Phase 2: Business Logic Integration (Week 2-3) - ✅ COMPLETE
 **Goal**: Implement business logic for contract and salary cap systems
 
 **Tasks**:
@@ -1135,38 +1142,60 @@ class OffseasonAIManager:
    - ✅ Contract creation and modification (`ContractManager` class)
    - ✅ Dead cap calculations (standard & June 1 designation)
    - ✅ Bonus proration logic (5-year maximum rule enforced)
-   - ✅ Franchise tag and RFA tender tracking
-3. ⏳ Integrate business logic with event classes
-   - ⏳ Update `FranchiseTagEvent.simulate()` with real contract logic
-   - ⏳ Update `PlayerReleaseEvent.simulate()` with cap calculations
-   - ⏳ Update `ContractRestructureEvent.simulate()` with restructure logic
-   - ⏳ Update `UFASigningEvent.simulate()` with contract creation
-4. ⏳ Create offseason event factory
-   - Helper methods to create properly configured events
-   - Validation logic for event parameters
-5. ⏳ Test contract events with real business logic
+   - ✅ Franchise tag and RFA tender tracking (`TagManager` class)
+3. ✅ Integrate business logic with event classes
+   - ✅ `FranchiseTagEvent.simulate()` - Full tag application with cap integration via EventCapBridge
+   - ✅ `TransitionTagEvent.simulate()` - Transition tag with cap integration
+   - ✅ `PlayerReleaseEvent.simulate()` - Dead money and cap calculations
+   - ✅ `ContractRestructureEvent.simulate()` - Contract restructure logic
+   - ✅ `UFASigningEvent.simulate()` - UFA contract creation with cap validation
+   - ✅ `RFAOfferSheetEvent.simulate()` - RFA offer sheet matching logic
+4. ✅ Create event-cap integration bridge
+   - ✅ `EventCapBridge` class in `src/salary_cap/event_integration.py` (950+ lines)
+   - ✅ Specialized handlers: `TagEventHandler`, `ContractEventHandler`, `ReleaseEventHandler`, `RFAEventHandler`
+   - ✅ `ValidationMiddleware` for pre-execution cap validation
+   - ✅ Complete integration methods for all contract operations
+5. ✅ Test contract events with real business logic
+   - ✅ All 4 contract events (Franchise Tag, Transition Tag, Player Release, Contract Restructure) execute real cap operations
+   - ✅ All 2 free agency events (UFA Signing, RFA Offer Sheet) with cap validation
+   - ✅ DeadlineEvent for `SALARY_CAP_COMPLIANCE` checks all 32 teams on March 12
 
-**Success Criteria**:
+**Success Criteria Met**:
 - ✅ Salary cap system tracks all 32 teams accurately
-- ✅ Contract events modify database correctly (infrastructure ready)
-- ✅ Cap space validated before signings (validation methods implemented)
-- ✅ Dead cap calculated correctly for releases (calculator complete)
+- ✅ Contract events modify database correctly with full cap integration
+- ✅ Cap space validated before signings (ValidationMiddleware pre-checks all operations)
+- ✅ Dead cap calculated correctly for releases (June 1 designation supported)
+- ✅ EventCapBridge successfully connects event system to cap system
+- ✅ All franchise tag, transition tag, RFA tender operations integrated
 
-**Implementation Status** (October 2025):
-- ✅ **Salary Cap Phase 1 Complete** - Core cap system fully implemented
+**Implementation Complete** (October 2025):
+- ✅ **Salary Cap System** - Core cap system fully implemented
   - `src/salary_cap/cap_calculator.py` (500+ lines) - All calculation formulas
   - `src/salary_cap/cap_database_api.py` (600+ lines) - Complete CRUD operations
   - `src/salary_cap/contract_manager.py` (500+ lines) - Contract lifecycle management
   - `src/salary_cap/cap_validator.py` (400+ lines) - NFL compliance rules
+  - `src/salary_cap/tag_manager.py` (300+ lines) - Franchise/transition tag operations
   - `src/salary_cap/cap_utils.py` (300+ lines) - Display formatting utilities
   - `src/database/migrations/002_salary_cap_schema.sql` (400+ lines) - Complete schema
   - Comprehensive test suite: 2,600+ lines of tests across 4 test files
-  - Real-world validation: Mahomes contract, Russell Wilson dead money scenarios
-- ⏳ **Event Integration Pending** - Business logic ready to integrate with offseason events
-  - Cap system provides all needed APIs for event classes
-  - Contract creation, restructuring, and release methods available
-  - Franchise tag and RFA tender database tables ready
-  - Next: Connect event classes to cap system methods
+
+- ✅ **Event-Cap Integration Bridge** - Complete middleware layer
+  - `src/salary_cap/event_integration.py` (950+ lines) - EventCapBridge and handlers
+  - `ValidationMiddleware` - Pre-execution validation for all cap operations
+  - 4 specialized handlers for different event types (tags, contracts, releases, RFA)
+  - Complete integration with all 6 contract/free agency events
+
+- ✅ **Contract Event Classes** - All events execute real business logic
+  - `FranchiseTagEvent` - Uses `TagManager.apply_franchise_tag()` via EventCapBridge
+  - `TransitionTagEvent` - Uses `TagManager.apply_transition_tag()` via EventCapBridge
+  - `PlayerReleaseEvent` - Uses `ContractManager.release_player()` with dead money calculation
+  - `ContractRestructureEvent` - Uses `ContractManager.restructure_contract()` for cap relief
+  - `UFASigningEvent` - Uses `ContractManager.create_contract()` with cap validation
+  - `RFAOfferSheetEvent` - Uses offer sheet matching logic with cap validation
+
+**Documentation**:
+- See `docs/architecture/event_cap_integration.md` for complete integration architecture
+- See `docs/plans/salary_cap_plan.md` for cap system design and implementation details
 
 ---
 
@@ -1208,6 +1237,9 @@ class OffseasonAIManager:
 - ✅ Placeholder events demonstrate triggering mechanism works
 - ✅ Full season demo supports offseason calendar advancement
 - ✅ Event infrastructure proven ready for Phase 4 (AI decisions + real logic)
+
+**Important Note on Deadline Types**:
+The documentation in Phase 1 originally specified deadline types like `FRANCHISE_TAG_DEADLINE` and `SALARY_CAP_COMPLIANCE`, but the actual implementation in `src/events/deadline_event.py` uses shorter names like `FRANCHISE_TAG`, `RFA_TENDER`, and `SALARY_CAP_COMPLIANCE`. The DeadlineType class provides constants for these deadline types. See **Section 1** above for the full list of implemented deadline types.
 
 **Implementation Details**:
 - **OffseasonEventScheduler** creates events using milestone calculator results
@@ -1576,4 +1608,113 @@ CREATE TABLE draft_picks (
 
 **Dependencies**: None - builds entirely on existing infrastructure
 
-**Current Status**: Foundation complete, ready for business logic integration
+**Current Status**: Foundation and business logic complete. Next: AI Decision Engine (Phase 4) and User Interface (Phase 5).
+
+---
+
+## Current Implementation Status (October 2025)
+
+### ✅ Completed Phases
+
+**Phase 1: Foundation** - Event infrastructure created
+- 16 offseason event classes (DeadlineEvent, WindowEvent, MilestoneEvent + 13 action events)
+- All events follow BaseEvent interface for polymorphic handling
+- Events stored in database via EventDatabaseAPI
+
+**Phase 2: Business Logic Integration** - Salary cap and contract system integrated
+- Complete salary cap system (8 modules, 2,600+ lines of tests)
+- EventCapBridge connects events to cap operations
+- All 6 contract/free agency events execute real business logic
+- DeadlineEvent for SALARY_CAP_COMPLIANCE validates all 32 teams
+
+**Phase 3: Offseason Initialization & Scheduling** - Automatic event scheduling
+- OffseasonEventScheduler creates 25 events after Super Bowl
+- SeasonMilestoneCalculator extended with 14 offseason milestones
+- SeasonCycleController automatically triggers scheduling
+- Full season demo supports offseason calendar advancement
+
+### 🔄 Current Gap: Phase 4 & 5
+
+**What's Missing**:
+1. **AI Decision Engine** (Phase 4) - Computer-controlled teams don't make offseason decisions yet
+   - AI teams don't apply franchise tags
+   - AI teams don't sign free agents
+   - AI teams don't make draft picks
+   - AI teams don't make roster cuts
+
+2. **User Interface** (Phase 5) - No interactive offseason UI for user
+   - Can't manually apply franchise tags
+   - Can't browse/sign free agents
+   - Can't make draft picks
+   - Can't manage roster cuts
+
+**What Works Now**:
+- ✅ Offseason events are scheduled automatically after Super Bowl
+- ✅ Deadline events trigger on correct dates (you can see them in full season demo)
+- ✅ If you manually create and execute a franchise tag event, it will apply the tag with full cap integration
+- ✅ Salary cap compliance deadline checks all 32 teams on March 12
+- ✅ All business logic is ready (just needs AI to make decisions and UI for user control)
+
+### 🎯 Next Steps (Recommended)
+
+**Option A: AI Decision Engine (Phase 4)**
+Build AI decision-making so computer-controlled teams handle their own offseason:
+1. Create `OffseasonAIManager` class in `src/offseason/`
+2. Implement decision methods:
+   - `make_franchise_tag_decisions()` - Called on March 4 deadline
+   - `make_free_agency_decisions()` - Daily during March-August
+   - `make_draft_decisions()` - April 24-26 draft
+   - `make_roster_cut_decisions()` - August 26 cuts
+3. Wire AI decisions to deadline events
+4. Test AI makes reasonable decisions
+
+**Option B: User Interface (Phase 4 alternative)**
+Build interactive offseason UI for dynasty mode:
+1. Create offseason dashboard showing upcoming deadlines
+2. Add franchise tag selection UI
+3. Add free agent browsing and signing
+4. Add draft board and pick selection
+5. Add roster management interface
+
+**Option C: Continue Other Systems**
+If offseason isn't priority, can focus on:
+- Player generation system (already in progress)
+- Desktop UI enhancements (Phase 2+ of UI plan)
+- Other game features
+
+### 📊 What You Can Test Now
+
+Even without AI or UI, you can test the completed phases:
+
+```bash
+# Run full season demo to see offseason event scheduling
+PYTHONPATH=src python demo/full_season_demo/full_season_sim.py
+
+# After Super Bowl, advance into offseason
+# You'll see 25 events scheduled
+# Deadlines will trigger as you advance calendar
+```
+
+**Manual Event Testing**:
+You can manually create and execute contract events to test cap integration:
+```python
+from events.contract_events import FranchiseTagEvent
+from calendar.date_models import Date
+
+# Create franchise tag event
+event = FranchiseTagEvent(
+    team_id=7,  # Detroit Lions
+    player_id="some_player_id",
+    player_position="QB",
+    season_year=2025,
+    tag_type="FRANCHISE_EXCLUSIVE",
+    tag_date=Date(2025, 3, 1),
+    dynasty_id="test_dynasty"
+)
+
+# Execute (will apply tag with full cap integration)
+result = event.simulate()
+print(result.data)  # See tag salary, contract_id, cap impact
+```
+
+This proves the business logic works. Phase 4 will make AI use these events automatically. Phase 5 will let users trigger them via UI.

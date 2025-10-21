@@ -1,0 +1,29 @@
+{
+  "archetype_id": "versatile_safety_s",
+  "position": "S",
+  "name": "Versatile Safety",
+  "description": "Can play either free or strong safety. Balanced attributes without elite traits.",
+  "physical_attributes": {
+    "speed": {"min": 85, "max": 92, "mean": 88, "std_dev": 4},
+    "strength": {"min": 72, "max": 85, "mean": 78, "std_dev": 6},
+    "agility": {"min": 78, "max": 90, "mean": 84, "std_dev": 6},
+    "stamina": {"min": 75, "max": 90, "mean": 82, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 75, "max": 90, "mean": 82, "std_dev": 6},
+    "discipline": {"min": 72, "max": 88, "mean": 80, "std_dev": 6},
+    "composure": {"min": 72, "max": 88, "mean": 80, "std_dev": 6},
+    "experience": {"min": 40, "max": 62, "mean": 51, "std_dev": 8},
+    "penalty_technique": {"min": 70, "max": 85, "mean": 77, "std_dev": 6}
+  },
+  "position_attributes": {
+    "coverage": {"min": 78, "max": 90, "mean": 84, "std_dev": 6},
+    "range": {"min": 78, "max": 90, "mean": 84, "std_dev": 6},
+    "ball_skills": {"min": 75, "max": 88, "mean": 81, "std_dev": 6},
+    "tackling": {"min": 78, "max": 90, "mean": 84, "std_dev": 6}
+  },
+  "overall_range": {"min": 75, "max": 90, "mean": 82, "std_dev": 6},
+  "frequency": 0.30,
+  "peak_age_range": [26, 29],
+  "development_curve": "normal"
+}

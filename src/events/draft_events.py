@@ -5,11 +5,14 @@ Action events for NFL draft-related transactions during the offseason.
 These include draft picks, UDFA signings, and draft-day trades.
 """
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from datetime import datetime
 
 from .base_event import BaseEvent, EventResult
 from calendar.date_models import Date
+
+if TYPE_CHECKING:
+    from persistence.transaction_logger import TransactionLogger
 
 
 class DraftPickEvent(BaseEvent):
@@ -30,7 +33,8 @@ class DraftPickEvent(BaseEvent):
         college: str,
         event_date: Date,
         event_id: Optional[str] = None,
-        dynasty_id: str = "default"
+        dynasty_id: str = "default",
+        transaction_logger: Optional["TransactionLogger"] = None
     ):
         """
         Initialize draft pick event.
@@ -46,6 +50,7 @@ class DraftPickEvent(BaseEvent):
             event_date: Date of selection
             event_id: Unique identifier
             dynasty_id: Dynasty context for isolation
+            transaction_logger: Optional TransactionLogger for automatic logging
         """
         event_datetime = datetime.combine(
             event_date.to_python_date(),
@@ -62,6 +67,7 @@ class DraftPickEvent(BaseEvent):
         self.college = college
         self.event_date = event_date
         self.dynasty_id = dynasty_id
+        self.transaction_logger = transaction_logger
 
     def get_event_type(self) -> str:
         return "DRAFT_PICK"
@@ -70,7 +76,7 @@ class DraftPickEvent(BaseEvent):
         """Execute draft pick (placeholder)."""
         message = f"Team {self.team_id} selected {self.player_name} ({self.position}, {self.college}) with pick #{self.pick_number} (Round {self.round_number})"
 
-        return EventResult(
+        event_result = EventResult(
             event_id=self.event_id,
             event_type=self.get_event_type(),
             success=True,
@@ -88,6 +94,23 @@ class DraftPickEvent(BaseEvent):
                 "message": message
             }
         )
+
+        # Log transaction if logger is provided
+        if self.transaction_logger:
+            try:
+                self.transaction_logger.log_from_event_result(
+                    event_result=event_result,
+                    dynasty_id=self.dynasty_id,
+                    season=self.event_date.year  # Use draft year as season
+                )
+            except Exception as e:
+                # Log error but don't fail the event
+                import logging
+                logging.getLogger(__name__).error(
+                    f"Failed to log draft pick transaction: {e}"
+                )
+
+        return event_result
 
     def _get_parameters(self) -> Dict[str, Any]:
         return {

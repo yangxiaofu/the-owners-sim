@@ -1,0 +1,28 @@
+{
+  "archetype_id": "deep_threat_wr",
+  "position": "WR",
+  "name": "Deep Threat",
+  "description": "Speed burner who stretches defenses vertically. Elite speed but developing route running.",
+  "physical_attributes": {
+    "speed": {"min": 90, "max": 99, "mean": 94, "std_dev": 4},
+    "strength": {"min": 55, "max": 72, "mean": 63, "std_dev": 6},
+    "agility": {"min": 80, "max": 95, "mean": 87, "std_dev": 5},
+    "stamina": {"min": 70, "max": 88, "mean": 79, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 60, "max": 78, "mean": 69, "std_dev": 6},
+    "discipline": {"min": 62, "max": 80, "mean": 71, "std_dev": 6},
+    "composure": {"min": 62, "max": 80, "mean": 71, "std_dev": 6},
+    "experience": {"min": 40, "max": 60, "mean": 50, "std_dev": 7},
+    "penalty_technique": {"min": 62, "max": 78, "mean": 70, "std_dev": 6}
+  },
+  "position_attributes": {
+    "catching": {"min": 65, "max": 82, "mean": 73, "std_dev": 6},
+    "route_running": {"min": 60, "max": 78, "mean": 69, "std_dev": 6},
+    "release": {"min": 75, "max": 92, "mean": 83, "std_dev": 6}
+  },
+  "overall_range": {"min": 70, "max": 88, "mean": 79, "std_dev": 6},
+  "frequency": 0.20,
+  "peak_age_range": [24, 27],
+  "development_curve": "early"
+}

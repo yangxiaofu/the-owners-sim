@@ -1,0 +1,28 @@
+{
+  "archetype_id": "power_kicker_k",
+  "position": "K",
+  "name": "Power Kicker",
+  "description": "Big leg with 60+ yard range. Elite kick power but developing accuracy.",
+  "physical_attributes": {
+    "speed": {"min": 50, "max": 65, "mean": 57, "std_dev": 6},
+    "strength": {"min": 65, "max": 82, "mean": 73, "std_dev": 6},
+    "agility": {"min": 50, "max": 65, "mean": 57, "std_dev": 6},
+    "stamina": {"min": 70, "max": 85, "mean": 77, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 60, "max": 78, "mean": 69, "std_dev": 6},
+    "discipline": {"min": 65, "max": 80, "mean": 72, "std_dev": 6},
+    "composure": {"min": 55, "max": 72, "mean": 63, "std_dev": 6},
+    "experience": {"min": 40, "max": 60, "mean": 50, "std_dev": 7},
+    "penalty_technique": {"min": 65, "max": 80, "mean": 72, "std_dev": 6}
+  },
+  "position_attributes": {
+    "kick_power": {"min": 90, "max": 99, "mean": 94, "std_dev": 4},
+    "kick_accuracy": {"min": 70, "max": 85, "mean": 77, "std_dev": 6},
+    "pressure": {"min": 65, "max": 80, "mean": 72, "std_dev": 6}
+  },
+  "overall_range": {"min": 68, "max": 85, "mean": 76, "std_dev": 6},
+  "frequency": 0.50,
+  "peak_age_range": [28, 33],
+  "development_curve": "normal"
+}

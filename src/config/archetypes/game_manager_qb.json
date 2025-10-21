@@ -1,0 +1,28 @@
+{
+  "archetype_id": "game_manager_qb",
+  "position": "QB",
+  "name": "Game Manager",
+  "description": "Smart QB who makes good decisions and limits mistakes. Reliable but limited ceiling.",
+  "physical_attributes": {
+    "speed": {"min": 60, "max": 75, "mean": 67, "std_dev": 5},
+    "strength": {"min": 68, "max": 82, "mean": 75, "std_dev": 5},
+    "agility": {"min": 62, "max": 78, "mean": 70, "std_dev": 5},
+    "stamina": {"min": 72, "max": 90, "mean": 81, "std_dev": 6}
+  },
+  "mental_attributes": {
+    "awareness": {"min": 75, "max": 92, "mean": 83, "std_dev": 5},
+    "discipline": {"min": 80, "max": 95, "mean": 87, "std_dev": 5},
+    "composure": {"min": 75, "max": 92, "mean": 83, "std_dev": 5},
+    "experience": {"min": 42, "max": 65, "mean": 53, "std_dev": 7},
+    "penalty_technique": {"min": 75, "max": 90, "mean": 82, "std_dev": 5}
+  },
+  "position_attributes": {
+    "accuracy": {"min": 72, "max": 88, "mean": 80, "std_dev": 5},
+    "arm_strength": {"min": 65, "max": 82, "mean": 73, "std_dev": 5},
+    "mobility": {"min": 45, "max": 65, "mean": 55, "std_dev": 6}
+  },
+  "overall_range": {"min": 68, "max": 85, "mean": 76, "std_dev": 5},
+  "frequency": 0.25,
+  "peak_age_range": [27, 31],
+  "development_curve": "normal"
+}
