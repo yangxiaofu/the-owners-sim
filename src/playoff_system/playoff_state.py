@@ -8,7 +8,12 @@ including round progression, game completion tracking, and bracket management.
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
 
-from calendar.date_models import Date
+# Use try/except to handle both production and test imports
+try:
+    from calendar.date_models import Date
+except ModuleNotFoundError:
+    from src.calendar.date_models import Date
+
 from playoff_system.seeding_models import PlayoffSeeding
 from playoff_system.bracket_models import PlayoffBracket
 

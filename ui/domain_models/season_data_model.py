@@ -24,17 +24,12 @@ src_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__
 if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
-# Add demo path for RandomScheduleGenerator
-demo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'demo', 'interactive_season_sim')
-if demo_path not in sys.path:
-    sys.path.insert(0, demo_path)
-
 from team_management.teams.team_loader import TeamDataLoader, Team
 from database.api import DatabaseAPI
 from events.event_database_api import EventDatabaseAPI
 from database.connection import DatabaseConnection
 from database.dynasty_state_api import DynastyStateAPI
-from random_schedule_generator import RandomScheduleGenerator
+from scheduling import RandomScheduleGenerator
 
 
 class SeasonDataModel:
@@ -311,7 +306,7 @@ class SeasonDataModel:
             # Dynasty starts Sept 4, but games start Sept 5 (use generator's default)
             schedule_events = generator.generate_season(
                 season_year=self.season,
-                start_date=None  # Uses RandomScheduleGenerator.DEFAULT_SEASON_START (Sept 5)
+                start_date=None  # Uses dynamic Labor Day calculation (first Thursday after Labor Day)
             )
 
             if schedule_events:

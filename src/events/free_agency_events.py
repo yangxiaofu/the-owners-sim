@@ -9,7 +9,13 @@ from typing import Dict, Any, Optional, TYPE_CHECKING
 from datetime import datetime
 
 from .base_event import BaseEvent, EventResult
-from calendar.date_models import Date
+
+# Use try/except to handle both production and test imports
+try:
+    from calendar.date_models import Date
+except ModuleNotFoundError:
+    from src.calendar.date_models import Date
+
 from salary_cap import EventCapBridge, ContractEventHandler, RFAEventHandler
 
 if TYPE_CHECKING:

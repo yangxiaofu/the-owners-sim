@@ -17,10 +17,18 @@ from events.base_event import EventResult
 from events.game_event import GameEvent
 from play_engine.simulation.stats import PlayerStats
 from game_management.player_stats_query_service import PlayerStatsQueryService
-from persistence.demo.base_demo_persister import DemoPersister
-from persistence.demo.database_demo_persister import DatabaseDemoPersister
-from persistence.demo.game_persistence_orchestrator import GamePersistenceOrchestrator
-from persistence.demo.persistence_result import CompositePersistenceResult, PersistenceStatus
+
+# Use try/except to handle both production and test imports
+try:
+    from persistence.demo.base_demo_persister import DemoPersister
+    from persistence.demo.database_demo_persister import DatabaseDemoPersister
+    from persistence.demo.game_persistence_orchestrator import GamePersistenceOrchestrator
+    from persistence.demo.persistence_result import CompositePersistenceResult, PersistenceStatus
+except ModuleNotFoundError:
+    from src.persistence.demo.base_demo_persister import DemoPersister
+    from src.persistence.demo.database_demo_persister import DatabaseDemoPersister
+    from src.persistence.demo.game_persistence_orchestrator import GamePersistenceOrchestrator
+    from src.persistence.demo.persistence_result import CompositePersistenceResult, PersistenceStatus
 
 from .workflow_result import WorkflowResult, WorkflowConfiguration
 

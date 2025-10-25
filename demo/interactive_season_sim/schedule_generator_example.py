@@ -2,7 +2,7 @@
 """
 Schedule Generator Usage Example
 
-Demonstrates how to use the RandomScheduleGenerator to create
+Demonstrates how to use the scheduling module to create
 and populate a complete NFL season schedule.
 """
 
@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 import logging
-from random_schedule_generator import RandomScheduleGenerator, create_schedule_generator
+from scheduling import RandomScheduleGenerator, create_schedule_generator
 from events.event_database_api import EventDatabaseAPI
 
 

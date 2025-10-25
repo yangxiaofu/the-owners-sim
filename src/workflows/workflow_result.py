@@ -11,7 +11,12 @@ from datetime import datetime
 
 from events.base_event import EventResult
 from play_engine.simulation.stats import PlayerStats
-from persistence.demo.persistence_result import CompositePersistenceResult, PersistenceStatus
+
+# Use try/except to handle both production and test imports
+try:
+    from persistence.demo.persistence_result import CompositePersistenceResult, PersistenceStatus
+except ModuleNotFoundError:
+    from src.persistence.demo.persistence_result import CompositePersistenceResult, PersistenceStatus
 
 
 @dataclass

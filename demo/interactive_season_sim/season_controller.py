@@ -32,12 +32,7 @@ from events import EventDatabaseAPI, GameEvent
 from workflows import SimulationWorkflow
 from database.api import DatabaseAPI
 
-# Import RandomScheduleGenerator from this directory
-try:
-    from .random_schedule_generator import RandomScheduleGenerator
-except ImportError:
-    # Direct execution - use absolute import
-    from random_schedule_generator import RandomScheduleGenerator
+from scheduling import RandomScheduleGenerator
 
 
 class SeasonController:

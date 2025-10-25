@@ -11,7 +11,13 @@ from datetime import datetime
 from .playoff_manager import PlayoffManager
 from .bracket_models import PlayoffBracket, PlayoffGame
 from .seeding_models import PlayoffSeeding
-from calendar.date_models import Date
+
+# Use try/except to handle both production and test imports
+try:
+    from calendar.date_models import Date
+except ModuleNotFoundError:
+    from src.calendar.date_models import Date
+
 from shared.game_result import GameResult
 from events.game_event import GameEvent
 from events.event_database_api import EventDatabaseAPI

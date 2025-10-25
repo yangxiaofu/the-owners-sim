@@ -7,7 +7,12 @@ Eliminates phase desynchronization by providing a single shared reference.
 
 from typing import Callable, List
 import threading
-from calendar.season_phase_tracker import SeasonPhase
+
+# Use try/except to handle both production and test imports
+try:
+    from calendar.season_phase_tracker import SeasonPhase
+except ModuleNotFoundError:
+    from .season_phase_tracker import SeasonPhase
 
 
 class PhaseState:

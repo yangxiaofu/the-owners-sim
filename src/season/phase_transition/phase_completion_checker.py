@@ -1,0 +1,218 @@
+"""
+Phase Completion Checker
+
+Checks if NFL season phases are complete using injectable dependencies.
+
+This module provides a testable phase completion checker that uses protocol-based
+dependency injection instead of direct database access. This enables pure logic
+testing without I/O operations.
+
+Design Principles:
+- Dependency injection via callable protocols
+- Pure logic with no side effects
+- Clear separation of concerns (logic vs data access)
+- Testable without database
+
+Example Usage:
+    # Production usage with real database access
+    checker = PhaseCompletionChecker(
+        get_games_played=lambda: game_db_api.get_games_played_count(dynasty_id),
+        get_current_date=lambda: calendar_manager.get_current_date(),
+        get_last_regular_season_game_date=lambda: Date(2025, 1, 5),
+        is_super_bowl_complete=lambda: playoff_controller.is_super_bowl_complete()
+    )
+
+    if checker.is_regular_season_complete():
+        transition_to_playoffs()
+
+    # Testing with mocks
+    checker = PhaseCompletionChecker(
+        get_games_played=lambda: 272,
+        get_current_date=lambda: Date(2025, 1, 10),
+        get_last_regular_season_game_date=lambda: Date(2025, 1, 5),
+        is_super_bowl_complete=lambda: False
+    )
+
+    assert checker.is_regular_season_complete() is True
+"""
+
+from typing import Callable
+
+# Use src. prefix to avoid collision with Python builtin calendar
+try:
+    from calendar.date_models import Date
+except ModuleNotFoundError:
+    # Fallback for test environment
+    from src.calendar.date_models import Date
+
+
+class PhaseCompletionChecker:
+    """
+    Checks phase completion status with testable, injectable logic.
+
+    This class determines whether NFL season phases (regular season, playoffs)
+    are complete by using injected dependency functions. This design enables
+    unit testing without database access or I/O operations.
+
+    The checker uses two complementary approaches for regular season completion:
+    1. Game count (primary): 272 games = 32 teams × 17 games / 2
+    2. Date check (fallback): Current date past last scheduled game
+
+    For playoffs, completion is determined by Super Bowl completion status.
+
+    Attributes:
+        _get_games_played: Callable that returns count of completed games
+        _get_current_date: Callable that returns current simulation date
+        _get_last_regular_season_game_date: Callable that returns final game date
+        _is_super_bowl_complete: Callable that checks Super Bowl completion
+
+    Thread Safety:
+        This class is thread-safe as it contains no mutable state. All state
+        is retrieved via injected callables at the time of method invocation.
+    """
+
+    # NFL regular season constants
+    REGULAR_SEASON_GAME_COUNT = 272  # 32 teams × 17 games / 2
+
+    def __init__(
+        self,
+        get_games_played: Callable[[], int],
+        get_current_date: Callable[[], Date],
+        get_last_regular_season_game_date: Callable[[], Date],
+        is_super_bowl_complete: Callable[[], bool]
+    ):
+        """
+        Initialize with injectable dependency functions.
+
+        This constructor accepts callable functions instead of concrete objects,
+        enabling flexible dependency injection for both production and testing.
+
+        Args:
+            get_games_played: Function that returns count of games played in
+                current season. Should return 0-272 for regular season.
+                Example: lambda: database_api.count_completed_games(dynasty_id)
+
+            get_current_date: Function that returns current simulation date.
+                Should return Date object representing "today" in simulation.
+                Example: lambda: calendar_manager.get_current_date()
+
+            get_last_regular_season_game_date: Function that returns the date
+                of the final scheduled regular season game (typically early Jan).
+                Example: lambda: Date(2025, 1, 5)
+
+            is_super_bowl_complete: Function that checks if Super Bowl has been
+                played and completed. Should return boolean.
+                Example: lambda: playoff_controller.is_super_bowl_complete()
+
+        Raises:
+            None. Validation occurs at method call time, not initialization.
+
+        Design Notes:
+            Using lambdas or bound methods allows lazy evaluation - dependencies
+            are queried only when needed, not at construction time. This supports
+            dynamic state changes and reduces coupling.
+        """
+        self._get_games_played = get_games_played
+        self._get_current_date = get_current_date
+        self._get_last_regular_season_game_date = get_last_regular_season_game_date
+        self._is_super_bowl_complete = is_super_bowl_complete
+
+    def is_regular_season_complete(self) -> bool:
+        """
+        Check if regular season is complete using pure logic.
+
+        This method determines regular season completion using two complementary
+        criteria (both are checked, either can trigger completion):
+
+        1. Primary Check - Game Count:
+           - NFL regular season = 32 teams × 17 games / 2 = 272 total games
+           - If games_played >= 272, season is definitely complete
+           - Most reliable indicator as it's based on concrete game results
+
+        2. Fallback Check - Date Progression:
+           - If current date > last scheduled game date, season should be complete
+           - Handles edge cases where game counting might be unreliable
+           - Ensures calendar progression triggers transition even if game count off
+
+        The dual-criteria approach provides robustness against data inconsistencies
+        while maintaining clear, testable logic.
+
+        Returns:
+            bool: True if regular season is complete (272+ games OR date past
+                last game), False otherwise.
+
+        Example:
+            >>> checker.is_regular_season_complete()
+            True  # If 272 games played
+
+            >>> checker.is_regular_season_complete()
+            True  # If current date is Jan 10 and last game was Jan 5
+
+            >>> checker.is_regular_season_complete()
+            False  # If 200 games played and current date is Dec 15
+
+        Thread Safety:
+            Thread-safe. No mutable state - all data retrieved via injected
+            callables at invocation time.
+
+        Performance:
+            O(1) time complexity. Performs 2 function calls and 2 comparisons.
+        """
+        # Primary check: Game count (most reliable)
+        games_played = self._get_games_played()
+        if games_played >= self.REGULAR_SEASON_GAME_COUNT:
+            return True
+
+        # Fallback check: Date progression (handles edge cases)
+        current_date = self._get_current_date()
+        last_game_date = self._get_last_regular_season_game_date()
+
+        # Season complete if we've passed the last scheduled game date
+        return current_date > last_game_date
+
+    def is_playoffs_complete(self) -> bool:
+        """
+        Check if playoffs are complete using pure logic.
+
+        This method determines playoff completion by checking if the Super Bowl
+        has been played. The Super Bowl is the final game of the NFL season,
+        so its completion definitively marks the end of the playoff phase.
+
+        Playoff Structure (for context):
+        - Wild Card Round: 6 games (weekend 1)
+        - Divisional Round: 4 games (weekend 2)
+        - Conference Championships: 2 games (weekend 3)
+        - Super Bowl: 1 game (weekend 4)
+        - Total: 13 playoff games
+
+        However, we only check Super Bowl completion as it's the definitive
+        marker of playoff phase completion. Intermediate round completion
+        is not relevant for phase transition logic.
+
+        Returns:
+            bool: True if Super Bowl has been played and completed, False otherwise.
+
+        Example:
+            >>> checker.is_playoffs_complete()
+            True  # If Super Bowl completed
+
+            >>> checker.is_playoffs_complete()
+            False  # If still in Conference Championship round
+
+        Thread Safety:
+            Thread-safe. No mutable state - all data retrieved via injected
+            callable at invocation time.
+
+        Performance:
+            O(1) time complexity. Performs 1 function call.
+
+        Design Notes:
+            We delegate to an injected callable rather than checking game counts
+            or dates because playoff completion logic may vary based on:
+            - Playoff controller implementation details
+            - Database schema for playoff games
+            - Business rules for "completion" (game finished vs awards given, etc.)
+
+            By injecting this dependency, we maintain flexibility and testability.
+        """
+        return self._is_super_bowl_complete()

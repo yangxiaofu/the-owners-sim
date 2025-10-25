@@ -19,9 +19,16 @@ from typing import Dict, List, Any, Optional
 from datetime import datetime
 from pathlib import Path
 
-from calendar.calendar_component import CalendarComponent
-from calendar.simulation_executor import SimulationExecutor
-from calendar.date_models import Date
+# Use try/except to handle both production and test imports
+try:
+    from calendar.calendar_component import CalendarComponent
+    from calendar.simulation_executor import SimulationExecutor
+    from calendar.date_models import Date
+except ModuleNotFoundError:
+    from src.calendar.calendar_component import CalendarComponent
+    from src.calendar.simulation_executor import SimulationExecutor
+    from src.calendar.date_models import Date
+
 from events import EventDatabaseAPI
 from playoff_system.playoff_seeder import PlayoffSeeder
 from playoff_system.playoff_manager import PlayoffManager

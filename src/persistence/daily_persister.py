@@ -13,10 +13,17 @@ from datetime import date, datetime
 from typing import Dict, List, Any, Optional
 import json
 
-from persistence.schema_generator import (
-    generate_player_stats_insert,
-    extract_player_stats_params
-)
+# Use try/except to handle both production and test imports
+try:
+    from persistence.schema_generator import (
+        generate_player_stats_insert,
+        extract_player_stats_params
+    )
+except ModuleNotFoundError:
+    from .schema_generator import (
+        generate_player_stats_insert,
+        extract_player_stats_params
+    )
 
 
 class DailyDataPersister:

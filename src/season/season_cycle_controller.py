@@ -22,16 +22,35 @@ For individual phase control, use SeasonController or PlayoffController directly
 """
 
 import logging
+from datetime import timedelta
 from typing import Dict, List, Any, Optional
 
-from calendar.date_models import Date
-from calendar.season_phase_tracker import SeasonPhase
-from calendar.phase_state import PhaseState
+# Use try/except to handle both production and test imports
+try:
+    from calendar.date_models import Date
+    from calendar.season_phase_tracker import SeasonPhase
+    from calendar.phase_state import PhaseState
+except ModuleNotFoundError:
+    from src.calendar.date_models import Date
+    from src.calendar.season_phase_tracker import SeasonPhase
+    from src.calendar.phase_state import PhaseState
+
 from playoff_system.playoff_controller import PlayoffController
 from playoff_system.playoff_seeder import PlayoffSeeder
 from database.api import DatabaseAPI
 from database.draft_class_api import DraftClassAPI
 from events import EventDatabaseAPI
+from scheduling import RandomScheduleGenerator
+
+# Phase transition system (dependency injection support)
+try:
+    from season.phase_transition.phase_completion_checker import PhaseCompletionChecker
+    from season.phase_transition.phase_transition_manager import PhaseTransitionManager
+    from season.phase_transition.models import PhaseTransition
+except ModuleNotFoundError:
+    from src.season.phase_transition.phase_completion_checker import PhaseCompletionChecker
+    from src.season.phase_transition.phase_transition_manager import PhaseTransitionManager
+    from src.season.phase_transition.models import PhaseTransition
 
 
 class SeasonCycleController:
@@ -72,7 +91,10 @@ class SeasonCycleController:
         start_date: Optional[Date] = None,
         initial_phase: SeasonPhase = SeasonPhase.REGULAR_SEASON,
         enable_persistence: bool = True,
-        verbose_logging: bool = True
+        verbose_logging: bool = True,
+        # Dependency injection (optional - for testing)
+        phase_completion_checker: Optional[PhaseCompletionChecker] = None,
+        phase_transition_manager: Optional[PhaseTransitionManager] = None
     ):
         """
         Initialize season cycle controller.
@@ -87,6 +109,8 @@ class SeasonCycleController:
                           Used when loading saved dynasty mid-season
             enable_persistence: Whether to save stats to database
             verbose_logging: Whether to print progress messages
+            phase_completion_checker: Optional PhaseCompletionChecker for testing
+            phase_transition_manager: Optional PhaseTransitionManager for testing
         """
         self.database_path = database_path
         self.dynasty_id = dynasty_id
@@ -141,6 +165,30 @@ class SeasonCycleController:
 
         # Calculate last scheduled regular season game date for flexible end-of-season detection
         self.last_regular_season_game_date = self._get_last_regular_season_game_date()
+
+        # ============ PHASE TRANSITION SYSTEM ============
+        # Initialize phase completion checker (dependency injection support)
+        if phase_completion_checker is None:
+            # Create default checker with injected dependencies
+            self.phase_completion_checker = PhaseCompletionChecker(
+                get_games_played=lambda: self.total_games_played,
+                get_current_date=lambda: self.calendar.get_current_date(),
+                get_last_regular_season_game_date=lambda: self.last_regular_season_game_date,
+                is_super_bowl_complete=lambda: self._is_super_bowl_complete()
+            )
+        else:
+            self.phase_completion_checker = phase_completion_checker
+
+        # Initialize phase transition manager (dependency injection support)
+        if phase_transition_manager is None:
+            # Create default manager (we'll add handlers later when needed)
+            self.phase_transition_manager = PhaseTransitionManager(
+                phase_state=self.phase_state,
+                completion_checker=self.phase_completion_checker,
+                transition_handlers={}  # Empty dict - handlers added when needed
+            )
+        else:
+            self.phase_transition_manager = phase_transition_manager
 
         # Ensure dynasty record exists (required for foreign key constraints)
         self.database_api.db_connection.ensure_dynasty_exists(
@@ -776,7 +824,10 @@ class SeasonCycleController:
 
     def _check_phase_transition(self) -> Optional[Dict[str, Any]]:
         """
-        Check if phase transition should occur.
+        Check if phase transition should occur using PhaseTransitionManager.
+
+        Uses the new testable phase transition system with dependency injection.
+        Maintains backward compatibility by delegating to existing transition methods.
 
         Returns:
             Transition info if occurred, None otherwise
@@ -784,30 +835,40 @@ class SeasonCycleController:
         if self.verbose_logging:
             print(f"\n[DEBUG] Checking phase transition (current phase: {self.phase_state.phase.value})")
 
-        if self.phase_state.phase == SeasonPhase.REGULAR_SEASON:
-            if self._is_regular_season_complete():
-                self._transition_to_playoffs()
-                return {
-                    "from_phase": "regular_season",
-                    "to_phase": "playoffs",
-                    "trigger": "272_games_complete"
-                }
+        # Check if transition is needed (pure logic, no side effects)
+        transition = self.phase_transition_manager.check_transition_needed()
 
-        elif self.phase_state.phase == SeasonPhase.PLAYOFFS:
-            if self._is_super_bowl_complete():
-                print(f"\n{'='*80}")
-                print(f"[SUPER_BOWL_FLOW] Super Bowl complete detected!")
-                print(f"[SUPER_BOWL_FLOW] Transitioning from PLAYOFFS → OFFSEASON")
-                print(f"{'='*80}")
-                self._transition_to_offseason()
-                return {
-                    "from_phase": "playoffs",
-                    "to_phase": "offseason",
-                    "trigger": "super_bowl_complete"
-                }
-            else:
-                if self.verbose_logging:
+        if transition is None:
+            # No transition needed
+            if self.verbose_logging and self.phase_state.phase == SeasonPhase.PLAYOFFS:
+                if not self._is_super_bowl_complete():
                     print(f"[DEBUG] Super Bowl not yet complete, remaining in PLAYOFFS phase")
+            return None
+
+        # Transition needed - execute it
+        if self.verbose_logging:
+            print(f"\n[PHASE_TRANSITION] {transition}")
+
+        # Execute transition using existing methods (backward compatible)
+        if transition.from_phase == SeasonPhase.REGULAR_SEASON and transition.to_phase == SeasonPhase.PLAYOFFS:
+            self._transition_to_playoffs()
+            return {
+                "from_phase": "regular_season",
+                "to_phase": "playoffs",
+                "trigger": transition.trigger
+            }
+
+        elif transition.from_phase == SeasonPhase.PLAYOFFS and transition.to_phase == SeasonPhase.OFFSEASON:
+            print(f"\n{'='*80}")
+            print(f"[SUPER_BOWL_FLOW] Super Bowl complete detected!")
+            print(f"[SUPER_BOWL_FLOW] Transitioning from PLAYOFFS → OFFSEASON")
+            print(f"{'='*80}")
+            self._transition_to_offseason()
+            return {
+                "from_phase": "playoffs",
+                "to_phase": "offseason",
+                "trigger": transition.trigger
+            }
 
         return None
 
@@ -1428,32 +1489,131 @@ class SeasonCycleController:
 
         Steps:
         1. Increment season_year
-        2. Generate new 272-game schedule
-        3. Reset all 32 team standings to 0-0-0
-        4. Update dynasty_state
-        5. Transition phase to REGULAR_SEASON
-        6. Reinitialize season_controller
-
-        TODO: Implement full season initialization
-        See docs/plans/season_cycle_controller_implementation_plan.md for details
+        2. Generate preseason schedule (3 weeks, 48 games)
+        3. Generate regular season schedule (17 weeks, 272 games)
+        4. Reset all 32 team standings to 0-0-0
+        5. Update dynasty_state
+        6. Transition phase to PRESEASON
+        7. Reinitialize season_controller
         """
         if self.verbose_logging:
-            print(f"[TODO] _initialize_next_season() - Current year: {self.season_year}")
-            print(f"  Would increment to {self.season_year + 1}")
-            print(f"  Would generate new schedule")
-            print(f"  Would reset standings")
+            print(f"\n{'='*80}")
+            print(f"{'INITIALIZING NEXT SEASON'.center(80)}")
+            print(f"{'='*80}")
+
+        # Step 1: Increment season year
+        old_year = self.season_year
+        self.season_year += 1
+
+        if self.verbose_logging:
+            print(f"[NEW_SEASON] Season year: {old_year} → {self.season_year}")
+
+        try:
+            # Step 2: Generate preseason schedule
+            from ui.domain_models.season_data_model import SeasonDataModel
+
+            season_model = SeasonDataModel(
+                db_path=self.database_path,
+                dynasty_id=self.dynasty_id,
+                season=self.season_year
+            )
+
+            # Generate preseason games (3 weeks, 48 total games)
+            generator = RandomScheduleGenerator(
+                event_db=self.event_db,
+                dynasty_id=self.dynasty_id
+            )
+
+            preseason_games = generator.generate_preseason(season_year=self.season_year)
+
+            if self.verbose_logging:
+                print(f"[NEW_SEASON] Generated {len(preseason_games)} preseason games (3 weeks)")
+
+            # Step 3: Generate regular season schedule (17 weeks, 272 games)
+            # Dynasty starts day before first preseason game
+            preseason_start = generator._calculate_preseason_start(self.season_year)
+            dynasty_start = preseason_start - timedelta(days=1)
+
+            success, error = season_model.generate_initial_schedule(dynasty_start)
+
+            if not success:
+                raise Exception(f"Failed to generate regular season schedule: {error}")
+
+            if self.verbose_logging:
+                print(f"[NEW_SEASON] Generated 272 regular season games (17 weeks)")
+
+            # Step 4: Reset standings
+            self._reset_all_standings()
+
+            if self.verbose_logging:
+                print(f"[NEW_SEASON] Reset all 32 team standings to 0-0-0")
+
+            # Step 5: Update dynasty state
+            self.dynasty_api.update_state(
+                dynasty_id=self.dynasty_id,
+                current_date=str(self.calendar.get_current_date()),
+                current_week=0,  # Preseason is week 0
+                current_phase='preseason'
+            )
+
+            if self.verbose_logging:
+                print(f"[NEW_SEASON] Updated dynasty_state to preseason")
+
+            # Step 6: Transition phase to PRESEASON
+            self.phase_state.phase = SeasonPhase.PRESEASON
+            self.active_controller = self.season_controller
+
+            if self.verbose_logging:
+                print(f"[NEW_SEASON] Phase: OFFSEASON → PRESEASON")
+                print(f"[NEW_SEASON] Season {self.season_year} ready!")
+                print(f"{'='*80}\n")
+
+            # Step 7: Update season controller's year
+            self.season_controller.season_year = self.season_year
+
+        except Exception as e:
+            # Rollback season year on failure
+            self.season_year = old_year
+
+            # Log error
+            self.logger.error(f"Failed to initialize season {old_year + 1}: {e}")
+
+            if self.verbose_logging:
+                print(f"❌ Season initialization failed: {e}")
+                import traceback
+                traceback.print_exc()
+
+            # Re-raise with context
+            raise Exception(f"Season initialization failed: {e}") from e
 
     def _reset_all_standings(self):
         """
         Reset all 32 teams to 0-0-0 records for new season.
 
         Updates standings table with fresh records for new season_year.
-
-        TODO: Implement standings reset
-        See docs/plans/season_cycle_controller_implementation_plan.md for details
         """
-        if self.verbose_logging:
-            print(f"[TODO] _reset_all_standings() for season {self.season_year}")
+        conn = self.database_api.db_connection.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            for team_id in range(1, 33):
+                cursor.execute('''
+                    INSERT OR REPLACE INTO standings
+                    (dynasty_id, season, team_id, wins, losses, ties,
+                     points_for, points_against, division_wins, division_losses,
+                     conference_wins, conference_losses, home_wins, home_losses,
+                     away_wins, away_losses)
+                    VALUES (?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+                ''', (self.dynasty_id, self.season_year, team_id))
+
+            conn.commit()
+
+            if self.verbose_logging:
+                print(f"[STANDINGS_RESET] All 32 teams reset to 0-0-0 for season {self.season_year}")
+
+        except Exception as e:
+            conn.rollback()
+            raise Exception(f"Failed to reset standings: {e}") from e
 
     # ==================== Dunder Methods ====================
 

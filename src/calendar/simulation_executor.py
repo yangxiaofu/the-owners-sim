@@ -26,9 +26,17 @@ Supported Event Types:
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from calendar.calendar_component import CalendarComponent
-from calendar.season_phase_tracker import GameCompletionEvent, PhaseTransition
-from calendar.date_models import Date
+
+# Use try/except to handle both production and test imports
+try:
+    from calendar.calendar_component import CalendarComponent
+    from calendar.season_phase_tracker import GameCompletionEvent, PhaseTransition
+    from calendar.date_models import Date
+except ModuleNotFoundError:
+    from .calendar_component import CalendarComponent
+    from .season_phase_tracker import GameCompletionEvent, PhaseTransition
+    from .date_models import Date
+
 from events import EventDatabaseAPI, GameEvent, EventResult
 from events.contract_events import FranchiseTagEvent, TransitionTagEvent, PlayerReleaseEvent, ContractRestructureEvent
 from events.free_agency_events import UFASigningEvent, RFAOfferSheetEvent
