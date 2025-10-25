@@ -241,7 +241,7 @@ class EventDatabaseAPI:
             verify_cursor = verify_conn.cursor()
 
             # Count preseason events for this dynasty
-            if len(events) > 0 and 'preseason' in events[0].game_id:
+            if len(events) > 0 and 'preseason' in events[0].get_game_id():
                 dynasty_id = events[0].dynasty_id
                 verify_cursor.execute(
                     "SELECT COUNT(*) FROM events WHERE game_id LIKE 'preseason_%' AND dynasty_id = ?",
