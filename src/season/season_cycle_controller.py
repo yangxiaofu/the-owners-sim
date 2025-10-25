@@ -46,12 +46,12 @@ from scheduling import RandomScheduleGenerator
 try:
     from season.phase_transition.phase_completion_checker import PhaseCompletionChecker
     from season.phase_transition.phase_transition_manager import PhaseTransitionManager
-    from season.phase_transition.models import PhaseTransition
+    from season.phase_transition.models import PhaseTransition, TransitionHandlerKey
     from season.phase_transition.transition_handlers.offseason_to_preseason import OffseasonToPreseasonHandler
 except ModuleNotFoundError:
     from src.season.phase_transition.phase_completion_checker import PhaseCompletionChecker
     from src.season.phase_transition.phase_transition_manager import PhaseTransitionManager
-    from src.season.phase_transition.models import PhaseTransition
+    from src.season.phase_transition.models import PhaseTransition, TransitionHandlerKey
     from src.season.phase_transition.transition_handlers.offseason_to_preseason import OffseasonToPreseasonHandler
 
 
@@ -201,7 +201,7 @@ class SeasonCycleController:
                 phase_state=self.phase_state,
                 completion_checker=self.phase_completion_checker,
                 transition_handlers={
-                    "OFFSEASON_to_PRESEASON": offseason_to_preseason_handler.execute
+                    TransitionHandlerKey.OFFSEASON_TO_PRESEASON: offseason_to_preseason_handler.execute
                 }
             )
         else:

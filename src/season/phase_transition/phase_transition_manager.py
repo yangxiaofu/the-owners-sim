@@ -15,7 +15,7 @@ except ModuleNotFoundError:
     from src.calendar.phase_state import PhaseState
     from src.calendar.season_phase_tracker import SeasonPhase
 
-from .models import PhaseTransition, TransitionFailedError
+from .models import PhaseTransition, TransitionFailedError, TransitionHandlerKey
 from .phase_completion_checker import PhaseCompletionChecker
 
 
@@ -54,7 +54,7 @@ class PhaseTransitionManager:
         self,
         phase_state: PhaseState,
         completion_checker: PhaseCompletionChecker,
-        transition_handlers: Dict[str, Callable[[PhaseTransition], None]]
+        transition_handlers: Dict[TransitionHandlerKey, Callable[[PhaseTransition], None]]
     ):
         """
         Initialize manager with injected dependencies.
@@ -62,8 +62,8 @@ class PhaseTransitionManager:
         Args:
             phase_state: Shared phase state object (single source of truth)
             completion_checker: Checker for determining if transitions should occur
-            transition_handlers: Map of transition names to handler functions
-                Format: {"transition_name": handler_function}
+            transition_handlers: Map of transition handler keys to handler functions
+                Format: {TransitionHandlerKey.OFFSEASON_TO_PRESEASON: handler_function}
                 Handler signature: handler(transition: PhaseTransition) -> None
         """
         self.phase_state = phase_state
@@ -172,7 +172,7 @@ class PhaseTransitionManager:
 
         if handler_key not in self.handlers:
             raise TransitionFailedError(
-                f"No handler registered for transition: {handler_key}"
+                f"No handler registered for transition: {handler_key.value}"
             )
 
         try:
@@ -194,7 +194,7 @@ class PhaseTransitionManager:
                 original_exception=e
             )
 
-    def _get_handler_key(self, transition: PhaseTransition) -> str:
+    def _get_handler_key(self, transition: PhaseTransition) -> TransitionHandlerKey:
         """
         Get handler key for a transition.
 
@@ -202,11 +202,15 @@ class PhaseTransitionManager:
             transition: The transition
 
         Returns:
-            Handler key string (e.g., "regular_to_playoffs")
+            TransitionHandlerKey enum for the given phase transition
+
+        Raises:
+            ValueError: If transition is not supported
         """
-        from_phase = transition.from_phase.value
-        to_phase = transition.to_phase.value
-        return f"{from_phase}_to_{to_phase}"
+        return TransitionHandlerKey.from_phases(
+            transition.from_phase,
+            transition.to_phase
+        )
 
     def _rollback_phase(self) -> None:
         """
@@ -220,16 +224,14 @@ class PhaseTransitionManager:
 
     def register_handler(
         self,
-        from_phase: SeasonPhase,
-        to_phase: SeasonPhase,
+        handler_key: TransitionHandlerKey,
         handler: Callable[[PhaseTransition], None]
     ) -> None:
         """
         Register a transition handler dynamically.
 
         Args:
-            from_phase: Phase transitioning from
-            to_phase: Phase transitioning to
+            handler_key: TransitionHandlerKey enum identifying the transition
             handler: Handler function for this transition
 
         Example:
@@ -238,33 +240,33 @@ class PhaseTransitionManager:
                 # Do transition work...
 
             manager.register_handler(
-                SeasonPhase.REGULAR_SEASON,
-                SeasonPhase.PLAYOFFS,
+                TransitionHandlerKey.REGULAR_SEASON_TO_PLAYOFFS,
                 custom_handler
             )
         """
-        handler_key = f"{from_phase.value}_to_{to_phase.value}"
         self.handlers[handler_key] = handler
 
-    def get_registered_handlers(self) -> Dict[str, Callable[[PhaseTransition], None]]:
+    def get_registered_handlers(self) -> Dict[TransitionHandlerKey, Callable[[PhaseTransition], None]]:
         """
         Get all registered handlers.
 
         Returns:
-            Copy of handlers dictionary
+            Copy of handlers dictionary mapping TransitionHandlerKey to handler functions
         """
         return self.handlers.copy()
 
-    def has_handler(self, from_phase: SeasonPhase, to_phase: SeasonPhase) -> bool:
+    def has_handler(self, handler_key: TransitionHandlerKey) -> bool:
         """
         Check if handler exists for a transition.
 
         Args:
-            from_phase: Phase transitioning from
-            to_phase: Phase transitioning to
+            handler_key: TransitionHandlerKey enum
 
         Returns:
             True if handler exists
+
+        Example:
+            if manager.has_handler(TransitionHandlerKey.OFFSEASON_TO_PRESEASON):
+                print("Preseason transition handler is registered")
         """
-        handler_key = f"{from_phase.value}_to_{to_phase.value}"
         return handler_key in self.handlers

@@ -150,15 +150,21 @@ class OffseasonToPreseasonHandler:
             - Updates dynasty_state phase to PRESEASON
         """
         # Validate transition
-        if transition.from_phase != "OFFSEASON":
+        # Import SeasonPhase for validation
+        try:
+            from calendar.season_phase_tracker import SeasonPhase
+        except ModuleNotFoundError:
+            from src.calendar.season_phase_tracker import SeasonPhase
+
+        if transition.from_phase != SeasonPhase.OFFSEASON:
             raise ValueError(
-                f"Invalid transition: expected from_phase='OFFSEASON', "
-                f"got '{transition.from_phase}'"
+                f"Invalid transition: expected from_phase=SeasonPhase.OFFSEASON, "
+                f"got {transition.from_phase}"
             )
-        if transition.to_phase != "PRESEASON":
+        if transition.to_phase != SeasonPhase.PRESEASON:
             raise ValueError(
-                f"Invalid transition: expected to_phase='PRESEASON', "
-                f"got '{transition.to_phase}'"
+                f"Invalid transition: expected to_phase=SeasonPhase.PRESEASON, "
+                f"got {transition.to_phase}"
             )
 
         self._log(
