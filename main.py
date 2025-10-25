@@ -80,15 +80,20 @@ def main():
 
     # Apply transaction schema migration (idempotent - safe to run multiple times)
     try:
-        from database.connection import DatabaseConnection
+        import sqlite3
 
         migration_path = Path(__file__).parent / "src" / "database" / "migrations" / "003_player_transactions_table.sql"
         if migration_path.exists():
-            db_conn = DatabaseConnection(db_path)
-            with open(migration_path, 'r') as f:
-                migration_sql = f.read()
-            db_conn.execute_script(migration_sql)
-            print(f"[INFO] Applied transaction schema migration: {migration_path.name}")
+            # Execute migration directly using sqlite3
+            conn = sqlite3.connect(db_path)
+            try:
+                with open(migration_path, 'r') as f:
+                    migration_sql = f.read()
+                conn.executescript(migration_sql)
+                conn.commit()
+                print(f"[INFO] Applied transaction schema migration: {migration_path.name}")
+            finally:
+                conn.close()
     except Exception as e:
         # Non-fatal: Log error but continue
         print(f"[WARNING] Failed to apply transaction schema migration: {e}")
