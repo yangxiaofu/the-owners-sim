@@ -667,9 +667,9 @@ class RandomScheduleGenerator:
 
         if len(games) > 0:
             print(f"  First game details:")
-            print(f"    game_id: {games[0].game_id}")
+            print(f"    game_id: {games[0].get_game_id()}")
             print(f"    dynasty_id: {games[0].dynasty_id}")
-            print(f"    event_type: {games[0].event_type}")
+            print(f"    event_type: {games[0].get_event_type()}")
 
         try:
             # Use batch insert for performance (10-50x faster than individual inserts)

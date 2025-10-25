@@ -206,8 +206,8 @@ class OffseasonToPreseasonHandler:
                 print(f"  First game type: {type(preseason_games[0])}")
                 if isinstance(preseason_games[0], dict):
                     print(f"  First game_id: {preseason_games[0].get('game_id', 'N/A')}")
-                elif hasattr(preseason_games[0], 'game_id'):
-                    print(f"  First game_id: {preseason_games[0].game_id}")
+                elif hasattr(preseason_games[0], 'get_game_id'):
+                    print(f"  First game_id: {preseason_games[0].get_game_id()}")
 
             if len(preseason_games) != 48:
                 raise RuntimeError(
