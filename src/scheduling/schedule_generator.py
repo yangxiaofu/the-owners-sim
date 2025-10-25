@@ -322,8 +322,16 @@ class RandomScheduleGenerator:
 
             all_preseason_games.extend(week_games)
 
+            # [PRESEASON_DEBUG Point 6a] Store Games Call
+            print(f"\n[PRESEASON_DEBUG Point 6a] Storing Week {week_number} games...")
+            print(f"  Games to store: {len(week_games)}")
+            print(f"  Dynasty ID: {self.dynasty_id}")
+            print(f"  Event DB: {self.event_db}")
+
             # Store in database
             self._store_games(week_games)
+
+            print(f"[PRESEASON_DEBUG Point 6a] ✅ Week {week_number} games stored")
 
             self.logger.info(f"Preseason Week {week_number} complete: {len(week_games)} games")
 
@@ -652,12 +660,29 @@ class RandomScheduleGenerator:
         Raises:
             Exception: If database storage fails
         """
+        # [PRESEASON_DEBUG Point 6b] _store_games Method
+        print(f"\n[PRESEASON_DEBUG Point 6b] _store_games() called...")
+        print(f"  Games count: {len(games)}")
+        print(f"  Event DB path: {self.event_db.db_path}")
+
+        if len(games) > 0:
+            print(f"  First game details:")
+            print(f"    game_id: {games[0].game_id}")
+            print(f"    dynasty_id: {games[0].dynasty_id}")
+            print(f"    event_type: {games[0].event_type}")
+
         try:
             # Use batch insert for performance (10-50x faster than individual inserts)
             self.event_db.insert_events(games)
+
+            print(f"[PRESEASON_DEBUG Point 6b] ✅ insert_events() completed successfully")
+            print(f"  Stored {len(games)} games in database")
+
             self.logger.debug(f"Stored {len(games)} games in database")
 
         except Exception as e:
+            print(f"[PRESEASON_DEBUG Point 6b] ❌ insert_events() FAILED!")
+            print(f"  Error: {e}")
             self.logger.error(f"Failed to store games: {e}")
             raise
 

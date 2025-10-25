@@ -191,7 +191,23 @@ class OffseasonToPreseasonHandler:
 
             # Step 3: Generate preseason schedule
             self._log("[Step 3/5] Generating preseason schedule (48 games)...")
+
+            # [PRESEASON_DEBUG Point 5] Handler Execution
+            print(f"\n[PRESEASON_DEBUG Point 5] Generating preseason schedule...")
+            print(f"  Season year: {self._new_season_year}")
+            print(f"  Dynasty ID: {self._dynasty_id}")
+
             preseason_games = self._generate_preseason(self._new_season_year)
+
+            print(f"[PRESEASON_DEBUG Point 5] Preseason generation result:")
+            print(f"  Games returned: {len(preseason_games)}")
+            print(f"  Expected: 48")
+            if len(preseason_games) > 0:
+                print(f"  First game type: {type(preseason_games[0])}")
+                if isinstance(preseason_games[0], dict):
+                    print(f"  First game_id: {preseason_games[0].get('game_id', 'N/A')}")
+                elif hasattr(preseason_games[0], 'game_id'):
+                    print(f"  First game_id: {preseason_games[0].game_id}")
 
             if len(preseason_games) != 48:
                 raise RuntimeError(

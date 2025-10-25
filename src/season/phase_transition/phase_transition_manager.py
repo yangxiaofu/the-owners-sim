@@ -170,15 +170,25 @@ class PhaseTransitionManager:
         # Get handler key based on transition
         handler_key = self._get_handler_key(transition)
 
+        # [PRESEASON_DEBUG Point 4] Handler Registration Check
+        print(f"\n[PRESEASON_DEBUG Point 4] Handler lookup...")
+        print(f"  Handler key: {handler_key.value}")
+        print(f"  Registered handlers: {[k.value for k in self.handlers.keys()]}")
+        print(f"  Handler exists: {handler_key in self.handlers}")
+
         if handler_key not in self.handlers:
             raise TransitionFailedError(
                 f"No handler registered for transition: {handler_key.value}"
             )
 
+        print(f"[PRESEASON_DEBUG Point 4] ✅ Handler found, executing...")
+
         try:
             # Execute the transition handler
             handler = self.handlers[handler_key]
             handler(transition)
+
+            print(f"[PRESEASON_DEBUG Point 4] ✅ Handler executed successfully")
 
             # Update phase state (this notifies all listeners)
             self.phase_state.phase = transition.to_phase

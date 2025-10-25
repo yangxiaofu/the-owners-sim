@@ -852,8 +852,22 @@ class SeasonCycleController:
         if self.verbose_logging:
             print(f"\n[DEBUG] Checking phase transition (current phase: {self.phase_state.phase.value})")
 
+        # [PRESEASON_DEBUG Point 1] Transition Detection Check
+        print(f"\n[PRESEASON_DEBUG Point 1] Checking transition detection...")
+        print(f"  Current phase: {self.phase_state.phase.value}")
+        print(f"  Current date: {self.calendar.get_current_date()}")
+        print(f"  Dynasty ID: {self.dynasty_id}")
+
         # Check if transition is needed (pure logic, no side effects)
         transition = self.phase_transition_manager.check_transition_needed()
+
+        print(f"[PRESEASON_DEBUG Point 1] Transition result: {transition}")
+        if transition:
+            print(f"  From: {transition.from_phase.value}")
+            print(f"  To: {transition.to_phase.value}")
+            print(f"  Trigger: {transition.trigger}")
+        else:
+            print(f"  No transition needed")
 
         if transition is None:
             # No transition needed
@@ -888,6 +902,12 @@ class SeasonCycleController:
             }
 
         elif transition.from_phase == SeasonPhase.OFFSEASON and transition.to_phase == SeasonPhase.PRESEASON:
+            # [PRESEASON_DEBUG Point 2] OFFSEASON→PRESEASON Case Match
+            print(f"\n[PRESEASON_DEBUG Point 2] ✅ OFFSEASON→PRESEASON case matched!")
+            print(f"  Current year: {self.season_year}")
+            print(f"  New season year: {self.season_year + 1}")
+            print(f"  Dynasty ID: {self.dynasty_id}")
+
             print(f"\n{'='*80}")
             print(f"[NEW_SEASON_FLOW] Offseason complete detected!")
             print(f"[NEW_SEASON_FLOW] Current date: {self.calendar.get_current_date()}")
@@ -898,6 +918,11 @@ class SeasonCycleController:
             print(f"{'='*80}")
 
             try:
+                # [PRESEASON_DEBUG Point 3] Execute Transition Call
+                print(f"\n[PRESEASON_DEBUG Point 3] Calling execute_transition()...")
+                print(f"  Transition: {transition}")
+                print(f"  Handler registered: {self.phase_transition_manager.has_handler(TransitionHandlerKey.OFFSEASON_TO_PRESEASON)}")
+
                 # Execute the transition via PhaseTransitionManager
                 # This calls OffseasonToPreseasonHandler.execute() which:
                 # - Generates 48 preseason games
@@ -905,6 +930,9 @@ class SeasonCycleController:
                 # - Resets all team standings to 0-0-0
                 # - Updates database phase to PRESEASON
                 result = self.phase_transition_manager.execute_transition(transition)
+
+                print(f"[PRESEASON_DEBUG Point 3] ✅ execute_transition() completed successfully")
+                print(f"  Result keys: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
 
                 # Increment season year for new season
                 old_year = self.season_year
@@ -1662,11 +1690,24 @@ class SeasonCycleController:
         Returns:
             List of 48 preseason game event dictionaries
         """
+        # [PRESEASON_DEBUG Point 5.1] Helper Method
+        print(f"\n[PRESEASON_DEBUG Point 5.1] Creating RandomScheduleGenerator...")
+        print(f"  Season year: {season_year}")
+        print(f"  Dynasty ID: {self.dynasty_id}")
+        print(f"  Event DB: {self.event_db}")
+
         generator = RandomScheduleGenerator(
             event_db=self.event_db,
             dynasty_id=self.dynasty_id
         )
-        return generator.generate_preseason(season_year=season_year)
+
+        print(f"[PRESEASON_DEBUG Point 5.1] Calling generate_preseason()...")
+        games = generator.generate_preseason(season_year=season_year)
+
+        print(f"[PRESEASON_DEBUG Point 5.1] ✅ generate_preseason() completed")
+        print(f"  Games returned: {len(games)}")
+
+        return games
 
     def _generate_regular_season_schedule_for_handler(
         self,

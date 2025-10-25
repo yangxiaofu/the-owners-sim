@@ -190,7 +190,13 @@ class EventDatabaseAPI:
         Raises:
             Exception: If database operation fails (rolls back transaction)
         """
+        # [PRESEASON_DEBUG Point 6c] Database Commit
+        print(f"\n[PRESEASON_DEBUG Point 6c] EventDatabaseAPI.insert_events() called...")
+        print(f"  Events count: {len(events)}")
+        print(f"  Database path: {self.db_path}")
+
         if not events:
+            print(f"[PRESEASON_DEBUG Point 6c] ⚠️ No events to insert")
             self.logger.debug("No events to insert")
             return []
 
@@ -198,9 +204,11 @@ class EventDatabaseAPI:
 
         try:
             # Start transaction
+            print(f"[PRESEASON_DEBUG Point 6c] Starting transaction...")
             conn.execute('BEGIN TRANSACTION')
 
             # Insert all events
+            inserted_count = 0
             for event in events:
                 event_data = event.to_database_format()
                 self._validate_event_data(event_data)
@@ -216,16 +224,44 @@ class EventDatabaseAPI:
                     event_data['dynasty_id'],
                     json.dumps(event_data['data'])
                 ))
+                inserted_count += 1
 
             # Commit transaction
+            print(f"[PRESEASON_DEBUG Point 6c] Committing transaction...")
+            print(f"  Inserted {inserted_count} events")
+
             conn.execute('COMMIT')
             conn.close()
+
+            print(f"[PRESEASON_DEBUG Point 6c] ✅ COMMIT successful!")
+            print(f"  {len(events)} events persisted to database")
+
+            # Verification query
+            verify_conn = sqlite3.connect(self.db_path)
+            verify_cursor = verify_conn.cursor()
+
+            # Count preseason events for this dynasty
+            if len(events) > 0 and 'preseason' in events[0].game_id:
+                dynasty_id = events[0].dynasty_id
+                verify_cursor.execute(
+                    "SELECT COUNT(*) FROM events WHERE game_id LIKE 'preseason_%' AND dynasty_id = ?",
+                    (dynasty_id,)
+                )
+                preseason_count = verify_cursor.fetchone()[0]
+                print(f"[PRESEASON_DEBUG Point 6c] Verification query:")
+                print(f"  Total preseason events in DB for dynasty '{dynasty_id}': {preseason_count}")
+
+            verify_conn.close()
 
             self.logger.info(f"Batch inserted {len(events)} events")
 
             return events
 
         except Exception as e:
+            print(f"[PRESEASON_DEBUG Point 6c] ❌ Database insert FAILED!")
+            print(f"  Error: {e}")
+            print(f"  Rolling back transaction...")
+
             # Rollback on error
             conn.execute('ROLLBACK')
             conn.close()
