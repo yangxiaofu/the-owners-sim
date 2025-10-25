@@ -41,12 +41,14 @@ class TestPhaseCompletionChecker:
         get_current_date = lambda: self.Date(year=2024, month=12, day=30)
         get_last_game_date = lambda: self.Date(year=2025, month=1, day=7)
         is_super_bowl_complete = lambda: False
+        calculate_preseason_start = lambda: self.Date(year=2025, month=8, day=5)
 
         checker = self.PhaseCompletionChecker(
             get_games_played=get_games_played,
             get_current_date=get_current_date,
             get_last_regular_season_game_date=get_last_game_date,
-            is_super_bowl_complete=is_super_bowl_complete
+            is_super_bowl_complete=is_super_bowl_complete,
+            calculate_preseason_start=calculate_preseason_start
         )
 
         # Act
@@ -67,7 +69,8 @@ class TestPhaseCompletionChecker:
             get_games_played=get_games_played,
             get_current_date=get_current_date,
             get_last_regular_season_game_date=get_last_game_date,
-            is_super_bowl_complete=is_super_bowl_complete
+            is_super_bowl_complete=is_super_bowl_complete,
+            calculate_preseason_start=lambda: self.Date(year=2025, month=8, day=5)
         )
 
         # Act
@@ -88,7 +91,8 @@ class TestPhaseCompletionChecker:
             get_games_played=get_games_played,
             get_current_date=get_current_date,
             get_last_regular_season_game_date=get_last_game_date,
-            is_super_bowl_complete=is_super_bowl_complete
+            is_super_bowl_complete=is_super_bowl_complete,
+            calculate_preseason_start=lambda: self.Date(year=2025, month=8, day=5)
         )
 
         # Act
@@ -109,7 +113,8 @@ class TestPhaseCompletionChecker:
             get_games_played=get_games_played,
             get_current_date=get_current_date,
             get_last_regular_season_game_date=get_last_game_date,
-            is_super_bowl_complete=is_super_bowl_complete
+            is_super_bowl_complete=is_super_bowl_complete,
+            calculate_preseason_start=lambda: self.Date(year=2025, month=8, day=5)
         )
 
         # Act
@@ -130,7 +135,8 @@ class TestPhaseCompletionChecker:
             get_games_played=get_games_played,
             get_current_date=get_current_date,
             get_last_regular_season_game_date=get_last_game_date,
-            is_super_bowl_complete=is_super_bowl_complete
+            is_super_bowl_complete=is_super_bowl_complete,
+            calculate_preseason_start=lambda: self.Date(year=2025, month=8, day=5)
         )
 
         # Act
@@ -151,7 +157,8 @@ class TestPhaseCompletionChecker:
             get_games_played=get_games_played,
             get_current_date=get_current_date,
             get_last_regular_season_game_date=get_last_game_date,
-            is_super_bowl_complete=is_super_bowl_complete
+            is_super_bowl_complete=is_super_bowl_complete,
+            calculate_preseason_start=lambda: self.Date(year=2025, month=8, day=5)
         )
 
         # Act
@@ -172,7 +179,8 @@ class TestPhaseCompletionChecker:
             get_games_played=get_games_played,
             get_current_date=get_current_date,
             get_last_regular_season_game_date=get_last_game_date,
-            is_super_bowl_complete=is_super_bowl_complete
+            is_super_bowl_complete=is_super_bowl_complete,
+            calculate_preseason_start=lambda: self.Date(year=2025, month=8, day=5)
         )
 
         # Act
@@ -197,7 +205,8 @@ class TestPhaseCompletionChecker:
             get_games_played=get_games_played,
             get_current_date=get_current_date,
             get_last_regular_season_game_date=get_last_game_date,
-            is_super_bowl_complete=is_super_bowl_complete
+            is_super_bowl_complete=is_super_bowl_complete,
+            calculate_preseason_start=lambda: self.Date(year=2025, month=8, day=5)
         )
 
         # Act
@@ -218,7 +227,8 @@ class TestPhaseCompletionChecker:
             get_games_played=get_games_played,
             get_current_date=get_current_date,
             get_last_regular_season_game_date=get_last_game_date,
-            is_super_bowl_complete=is_super_bowl_complete
+            is_super_bowl_complete=is_super_bowl_complete,
+            calculate_preseason_start=lambda: self.Date(year=2025, month=8, day=5)
         )
 
         # Act
@@ -243,7 +253,8 @@ class TestPhaseCompletionChecker:
             get_games_played=get_games_played,
             get_current_date=get_current_date,
             get_last_regular_season_game_date=get_last_game_date,
-            is_super_bowl_complete=is_super_bowl_complete
+            is_super_bowl_complete=is_super_bowl_complete,
+            calculate_preseason_start=lambda: self.Date(year=2025, month=8, day=5)
         )
 
         # Act & Assert
@@ -262,7 +273,8 @@ class TestPhaseCompletionChecker:
             get_games_played=get_games_played,
             get_current_date=get_current_date,
             get_last_regular_season_game_date=get_last_game_date,
-            is_super_bowl_complete=is_super_bowl_complete
+            is_super_bowl_complete=is_super_bowl_complete,
+            calculate_preseason_start=lambda: self.Date(year=2025, month=8, day=5)
         )
 
         # Act & Assert
@@ -281,7 +293,8 @@ class TestPhaseCompletionChecker:
             get_games_played=get_games_played,
             get_current_date=get_current_date,
             get_last_regular_season_game_date=get_last_game_date,
-            is_super_bowl_complete=is_super_bowl_complete
+            is_super_bowl_complete=is_super_bowl_complete,
+            calculate_preseason_start=lambda: self.Date(year=2025, month=8, day=5)
         )
 
         # Act & Assert
@@ -304,7 +317,8 @@ class TestPhaseCompletionChecker:
             get_games_played=get_games_played,
             get_current_date=get_current_date,
             get_last_regular_season_game_date=get_last_game_date,
-            is_super_bowl_complete=is_super_bowl_complete
+            is_super_bowl_complete=is_super_bowl_complete,
+            calculate_preseason_start=lambda: self.Date(year=2025, month=8, day=5)
         )
 
         # Act
@@ -325,7 +339,8 @@ class TestPhaseCompletionChecker:
             get_games_played=get_games_played,
             get_current_date=get_current_date,
             get_last_regular_season_game_date=get_last_game_date,
-            is_super_bowl_complete=is_super_bowl_complete
+            is_super_bowl_complete=is_super_bowl_complete,
+            calculate_preseason_start=lambda: self.Date(year=2025, month=8, day=5)
         )
 
         # Act
@@ -364,7 +379,8 @@ class TestPhaseCompletionChecker:
             get_games_played=tracked_get_games_played,
             get_current_date=tracked_get_current_date,
             get_last_regular_season_game_date=tracked_get_last_game_date,
-            is_super_bowl_complete=tracked_is_super_bowl_complete
+            is_super_bowl_complete=tracked_is_super_bowl_complete,
+            calculate_preseason_start=lambda: self.Date(year=2025, month=8, day=5)
         )
 
         # Act
@@ -393,7 +409,8 @@ class TestPhaseCompletionChecker:
             get_games_played=get_games_played,
             get_current_date=get_current_date,
             get_last_regular_season_game_date=get_last_game_date,
-            is_super_bowl_complete=is_super_bowl_complete
+            is_super_bowl_complete=is_super_bowl_complete,
+            calculate_preseason_start=lambda: self.Date(year=2025, month=8, day=5)
         )
 
         # Act & Assert
@@ -412,7 +429,8 @@ class TestPhaseCompletionChecker:
             get_games_played=get_games_played,
             get_current_date=get_current_date,
             get_last_regular_season_game_date=get_last_game_date,
-            is_super_bowl_complete=is_super_bowl_complete
+            is_super_bowl_complete=is_super_bowl_complete,
+            calculate_preseason_start=lambda: self.Date(year=2025, month=8, day=5)
         )
 
         # Act & Assert
@@ -431,7 +449,8 @@ class TestPhaseCompletionChecker:
             get_games_played=get_games_played,
             get_current_date=get_current_date,
             get_last_regular_season_game_date=get_last_game_date,
-            is_super_bowl_complete=is_super_bowl_complete
+            is_super_bowl_complete=is_super_bowl_complete,
+            calculate_preseason_start=lambda: self.Date(year=2025, month=8, day=5)
         )
 
         # Act & Assert

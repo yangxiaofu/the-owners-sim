@@ -112,10 +112,14 @@ class PhaseTransitionManager:
                     metadata={}
                 )
 
-        # Note: Offseason completion checking would require additional
-        # completion checker methods (is_offseason_complete) which are
-        # not currently implemented. Offseason-to-Regular transitions
-        # are typically handled by calendar dates, not completion logic.
+        elif current_phase == SeasonPhase.OFFSEASON:
+            if self.completion_checker.is_offseason_complete():
+                return PhaseTransition(
+                    from_phase=SeasonPhase.OFFSEASON,
+                    to_phase=SeasonPhase.PRESEASON,
+                    trigger="offseason_complete",
+                    metadata={}
+                )
 
         # No transition needed
         return None

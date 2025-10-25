@@ -65,6 +65,7 @@ class PhaseCompletionChecker:
         _get_current_date: Callable that returns current simulation date
         _get_last_regular_season_game_date: Callable that returns final game date
         _is_super_bowl_complete: Callable that checks Super Bowl completion
+        _calculate_preseason_start: Callable that calculates preseason start date
 
     Thread Safety:
         This class is thread-safe as it contains no mutable state. All state
@@ -79,7 +80,8 @@ class PhaseCompletionChecker:
         get_games_played: Callable[[], int],
         get_current_date: Callable[[], Date],
         get_last_regular_season_game_date: Callable[[], Date],
-        is_super_bowl_complete: Callable[[], bool]
+        is_super_bowl_complete: Callable[[], bool],
+        calculate_preseason_start: Callable[[], Date]
     ):
         """
         Initialize with injectable dependency functions.
@@ -104,6 +106,10 @@ class PhaseCompletionChecker:
                 played and completed. Should return boolean.
                 Example: lambda: playoff_controller.is_super_bowl_complete()
 
+            calculate_preseason_start: Function that calculates the preseason
+                start date for the upcoming season (typically early August).
+                Example: lambda: schedule_generator.calculate_preseason_start_date()
+
         Raises:
             None. Validation occurs at method call time, not initialization.
 
@@ -116,6 +122,7 @@ class PhaseCompletionChecker:
         self._get_current_date = get_current_date
         self._get_last_regular_season_game_date = get_last_regular_season_game_date
         self._is_super_bowl_complete = is_super_bowl_complete
+        self._calculate_preseason_start = calculate_preseason_start
 
     def is_regular_season_complete(self) -> bool:
         """
@@ -216,3 +223,53 @@ class PhaseCompletionChecker:
             By injecting this dependency, we maintain flexibility and testability.
         """
         return self._is_super_bowl_complete()
+
+    def is_offseason_complete(self) -> bool:
+        """
+        Check if offseason is complete and ready for preseason using pure logic.
+
+        This method determines offseason completion by checking if the current
+        simulation date has reached or passed the preseason start date (typically
+        early August). When this condition is met, the system should transition
+        from OFFSEASON to PRESEASON phase and initialize the new season.
+
+        Offseason typically includes:
+        - Free agency period (March-April)
+        - NFL Draft (late April)
+        - Rookie mini-camp and OTAs (May-June)
+        - Training camp preparation (July)
+        - Preseason begins (early August)
+
+        Returns:
+            bool: True if current date >= preseason start date, False otherwise.
+
+        Example:
+            >>> # Current date is August 10, preseason starts August 5
+            >>> checker.is_offseason_complete()
+            True
+
+            >>> # Current date is July 15, preseason starts August 5
+            >>> checker.is_offseason_complete()
+            False
+
+        Thread Safety:
+            Thread-safe. No mutable state - all data retrieved via injected
+            callables at invocation time.
+
+        Performance:
+            O(1) time complexity. Performs 2 function calls and 1 comparison.
+
+        Design Notes:
+            Unlike regular season (which checks game count + date) and playoffs
+            (which checks Super Bowl completion), offseason completion is purely
+            date-based. The offseason has no "games" to count, so calendar
+            progression is the natural completion trigger.
+
+            The preseason start date is typically calculated as the first Thursday
+            in August, which aligns with the traditional NFL preseason schedule.
+        """
+        current_date = self._get_current_date()
+        preseason_start = self._calculate_preseason_start()
+
+        # Offseason is complete when we've reached preseason start date
+        return current_date >= preseason_start

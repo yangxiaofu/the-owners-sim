@@ -22,7 +22,7 @@ For individual phase control, use SeasonController or PlayoffController directly
 """
 
 import logging
-from datetime import timedelta
+from datetime import timedelta, datetime
 from typing import Dict, List, Any, Optional
 
 # Use try/except to handle both production and test imports
@@ -47,10 +47,12 @@ try:
     from season.phase_transition.phase_completion_checker import PhaseCompletionChecker
     from season.phase_transition.phase_transition_manager import PhaseTransitionManager
     from season.phase_transition.models import PhaseTransition
+    from season.phase_transition.transition_handlers.offseason_to_preseason import OffseasonToPreseasonHandler
 except ModuleNotFoundError:
     from src.season.phase_transition.phase_completion_checker import PhaseCompletionChecker
     from src.season.phase_transition.phase_transition_manager import PhaseTransitionManager
     from src.season.phase_transition.models import PhaseTransition
+    from src.season.phase_transition.transition_handlers.offseason_to_preseason import OffseasonToPreseasonHandler
 
 
 class SeasonCycleController:
@@ -174,18 +176,33 @@ class SeasonCycleController:
                 get_games_played=lambda: self.total_games_played,
                 get_current_date=lambda: self.calendar.get_current_date(),
                 get_last_regular_season_game_date=lambda: self.last_regular_season_game_date,
-                is_super_bowl_complete=lambda: self._is_super_bowl_complete()
+                is_super_bowl_complete=lambda: self._is_super_bowl_complete(),
+                calculate_preseason_start=lambda: self._calculate_preseason_start_for_handler(self.season_year + 1)
             )
         else:
             self.phase_completion_checker = phase_completion_checker
 
         # Initialize phase transition manager (dependency injection support)
         if phase_transition_manager is None:
-            # Create default manager (we'll add handlers later when needed)
+            # Create OFFSEASON → PRESEASON handler
+            offseason_to_preseason_handler = OffseasonToPreseasonHandler(
+                generate_preseason=self._generate_preseason_schedule_for_handler,
+                generate_regular_season=self._generate_regular_season_schedule_for_handler,
+                reset_standings=self._reset_standings_for_handler,
+                calculate_preseason_start=self._calculate_preseason_start_for_handler,
+                update_database_phase=self._update_database_phase_for_handler,
+                dynasty_id=dynasty_id,
+                new_season_year=season_year + 1,  # Next season
+                verbose_logging=verbose_logging
+            )
+
+            # Create default manager with registered handlers
             self.phase_transition_manager = PhaseTransitionManager(
                 phase_state=self.phase_state,
                 completion_checker=self.phase_completion_checker,
-                transition_handlers={}  # Empty dict - handlers added when needed
+                transition_handlers={
+                    "OFFSEASON_to_PRESEASON": offseason_to_preseason_handler.execute
+                }
             )
         else:
             self.phase_transition_manager = phase_transition_manager
@@ -869,6 +886,52 @@ class SeasonCycleController:
                 "to_phase": "offseason",
                 "trigger": transition.trigger
             }
+
+        elif transition.from_phase == SeasonPhase.OFFSEASON and transition.to_phase == SeasonPhase.PRESEASON:
+            print(f"\n{'='*80}")
+            print(f"[NEW_SEASON_FLOW] Offseason complete detected!")
+            print(f"[NEW_SEASON_FLOW] Current date: {self.calendar.get_current_date()}")
+            print(f"[NEW_SEASON_FLOW] Preseason start: {self._calculate_preseason_start_for_handler(self.season_year + 1)}")
+            print(f"[NEW_SEASON_FLOW] Transitioning from OFFSEASON → PRESEASON")
+            print(f"[NEW_SEASON_FLOW] Generating preseason schedule (48 games)...")
+            print(f"[NEW_SEASON_FLOW] Generating regular season schedule (272 games)...")
+            print(f"{'='*80}")
+
+            try:
+                # Execute the transition via PhaseTransitionManager
+                # This calls OffseasonToPreseasonHandler.execute() which:
+                # - Generates 48 preseason games
+                # - Generates 272 regular season games
+                # - Resets all team standings to 0-0-0
+                # - Updates database phase to PRESEASON
+                result = self.phase_transition_manager.execute_transition(transition)
+
+                # Increment season year for new season
+                old_year = self.season_year
+                self.season_year += 1
+
+                print(f"\n{'='*80}")
+                print(f"[NEW_SEASON_SUCCESS] New season initialized!")
+                print(f"  Season: {old_year} → {self.season_year}")
+                print(f"  Phase: OFFSEASON → PRESEASON")
+                print(f"  Preseason games: 48")
+                print(f"  Regular season games: 272")
+                print(f"  Teams reset: 32")
+                print(f"{'='*80}\n")
+
+                return {
+                    "from_phase": "offseason",
+                    "to_phase": "preseason",
+                    "trigger": transition.trigger,
+                    "new_season_year": self.season_year
+                }
+
+            except Exception as e:
+                print(f"\n{'='*80}")
+                print(f"[NEW_SEASON_ERROR] Preseason schedule generation failed!")
+                print(f"  Error: {e}")
+                print(f"{'='*80}\n")
+                raise
 
         return None
 
@@ -1585,6 +1648,116 @@ class SeasonCycleController:
 
             # Re-raise with context
             raise Exception(f"Season initialization failed: {e}") from e
+
+    # ========== Phase Transition Helper Methods ==========
+    # These methods are used by OffseasonToPreseasonHandler
+
+    def _generate_preseason_schedule_for_handler(self, season_year: int) -> List[Dict[str, Any]]:
+        """
+        Generate preseason schedule for phase transition handler.
+
+        Args:
+            season_year: The season year for schedule generation
+
+        Returns:
+            List of 48 preseason game event dictionaries
+        """
+        generator = RandomScheduleGenerator(
+            event_db=self.event_db,
+            dynasty_id=self.dynasty_id
+        )
+        return generator.generate_preseason(season_year=season_year)
+
+    def _generate_regular_season_schedule_for_handler(
+        self,
+        season_year: int,
+        start_date: datetime
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate regular season schedule for phase transition handler.
+
+        Args:
+            season_year: The season year for schedule generation
+            start_date: The first regular season game date (Thursday after Labor Day)
+
+        Returns:
+            List of 272 regular season game event dictionaries
+        """
+        from ui.domain_models.season_data_model import SeasonDataModel
+
+        season_model = SeasonDataModel(
+            db_path=self.database_path,
+            dynasty_id=self.dynasty_id,
+            season=season_year
+        )
+
+        # Use existing schedule generation
+        dynasty_start = start_date - timedelta(days=1)
+        success, error = season_model.generate_initial_schedule(dynasty_start)
+
+        if not success:
+            raise RuntimeError(f"Failed to generate regular season schedule: {error}")
+
+        # Retrieve the generated games from event database
+        all_events = self.event_db.get_events_by_type("GAME")
+        regular_season_games = [
+            e for e in all_events
+            if e.get('dynasty_id') == self.dynasty_id
+            and not e.get('game_id', '').startswith('playoff_')
+            and not e.get('game_id', '').startswith('preseason_')
+        ]
+
+        return regular_season_games
+
+    def _reset_standings_for_handler(self, season_year: int) -> None:
+        """
+        Reset all team standings for phase transition handler.
+
+        Args:
+            season_year: The season year for standings reset
+        """
+        # Temporarily update season_year for reset operation
+        old_season_year = self.season_year
+        self.season_year = season_year
+
+        try:
+            self._reset_all_standings()
+        finally:
+            # Restore original season_year
+            self.season_year = old_season_year
+
+    def _calculate_preseason_start_for_handler(self, season_year: int) -> datetime:
+        """
+        Calculate preseason start date for phase transition handler.
+
+        Args:
+            season_year: The season year
+
+        Returns:
+            datetime representing preseason start date (typically first Thursday in August)
+        """
+        generator = RandomScheduleGenerator(
+            event_db=self.event_db,
+            dynasty_id=self.dynasty_id
+        )
+        return generator._calculate_preseason_start(season_year)
+
+    def _update_database_phase_for_handler(self, phase: str, season_year: int) -> None:
+        """
+        Update database phase for phase transition handler.
+
+        Args:
+            phase: The new phase name (e.g., "PRESEASON", "OFFSEASON")
+            season_year: The season year
+        """
+        self.dynasty_api.update_state(
+            dynasty_id=self.dynasty_id,
+            current_date=str(self.calendar.get_current_date()),
+            current_week=0 if phase == "PRESEASON" else None,
+            current_phase=phase.lower()
+        )
+
+    # ========== Existing Helper Methods ==========
 
     def _reset_all_standings(self):
         """
