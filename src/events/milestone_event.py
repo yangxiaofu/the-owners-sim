@@ -144,6 +144,45 @@ class MilestoneEvent(BaseEvent):
             f"event_date={self.event_date}, season_year={self.season_year})"
         )
 
+    @classmethod
+    def from_database(cls, event_data: Dict[str, Any]) -> 'MilestoneEvent':
+        """
+        Reconstruct MilestoneEvent from database data.
+
+        Args:
+            event_data: Dictionary from EventDatabaseAPI with:
+                - dynasty_id: At top level (from events table column)
+                - data: Nested dict with parameters/results/metadata
+
+        Returns:
+            Reconstructed MilestoneEvent instance
+        """
+        data = event_data['data']
+
+        # Handle three-part structure (parameters/results/metadata)
+        if 'parameters' in data:
+            params = data['parameters']
+        else:
+            params = data
+
+        # Dynasty ID from top-level event_data (events.dynasty_id column)
+        dynasty_id = event_data.get('dynasty_id', params.get('dynasty_id', 'default'))
+
+        # Parse event_date from string
+        event_date_str = params.get('event_date', '')
+        event_date_parts = event_date_str.split('-')
+        event_date = Date(int(event_date_parts[0]), int(event_date_parts[1]), int(event_date_parts[2]))
+
+        return cls(
+            milestone_type=params.get('milestone_type', 'UNKNOWN'),
+            description=params.get('description', ''),
+            season_year=params.get('season_year', 2025),
+            event_date=event_date,
+            dynasty_id=dynasty_id,
+            event_id=event_data.get('event_id'),
+            metadata=params.get('metadata')
+        )
+
 
 # Common milestone type constants for convenience
 class MilestoneType:

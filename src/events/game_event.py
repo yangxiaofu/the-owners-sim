@@ -278,7 +278,7 @@ class GameEvent(BaseEvent):
             return False, f"Invalid season_type: {self.season_type} (must be one of {valid_season_types})"
 
         # Overtime type validation
-        valid_overtime_types = ["regular_season", "playoffs"]
+        valid_overtime_types = ["preseason", "regular_season", "playoffs"]
         if self.overtime_type not in valid_overtime_types:
             return False, f"Invalid overtime_type: {self.overtime_type} (must be one of {valid_overtime_types})"
 

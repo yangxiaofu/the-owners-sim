@@ -179,7 +179,60 @@ class DatabaseAPI:
             'overall': overall_teams,
             'playoff_picture': {}  # TODO: Add playoff calculation if needed
         }
-    
+
+    def reset_all_standings(self, dynasty_id: str, season_year: int) -> None:
+        """
+        Reset all 32 teams to 0-0-0 records for new season.
+
+        This method initializes or resets the standings table with fresh records
+        for all NFL teams at the start of a new season. All statistics are zeroed
+        and all playoff flags are cleared.
+
+        Args:
+            dynasty_id: Dynasty identifier for isolation
+            season_year: Season year to reset standings for
+
+        Raises:
+            Exception: If database operation fails
+        """
+        conn = self.db_connection.get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # Reset all 32 NFL teams (team_id 1-32)
+            for team_id in range(1, 33):
+                cursor.execute('''
+                    INSERT OR REPLACE INTO standings
+                    (dynasty_id, season, team_id,
+                     wins, losses, ties,
+                     division_wins, division_losses, division_ties,
+                     conference_wins, conference_losses, conference_ties,
+                     home_wins, home_losses, home_ties,
+                     away_wins, away_losses, away_ties,
+                     points_for, points_against, point_differential,
+                     current_streak, division_rank, conference_rank, league_rank,
+                     playoff_seed, made_playoffs, made_wild_card, won_wild_card,
+                     won_division_round, won_conference, won_super_bowl)
+                    VALUES (?, ?, ?,
+                            0, 0, 0,
+                            0, 0, 0,
+                            0, 0, 0,
+                            0, 0, 0,
+                            0, 0, 0,
+                            0, 0, 0,
+                            NULL, NULL, NULL, NULL,
+                            NULL, 0, 0, 0,
+                            0, 0, 0)
+                ''', (dynasty_id, season_year, team_id))
+
+            conn.commit()
+            self.logger.info(f"Reset standings for all 32 teams (dynasty={dynasty_id}, season={season_year})")
+
+        except Exception as e:
+            conn.rollback()
+            self.logger.error(f"Failed to reset standings: {e}")
+            raise Exception(f"Failed to reset standings for dynasty {dynasty_id}, season {season_year}: {e}") from e
+
     def get_game_results(self, dynasty_id: str, week: int, season: int) -> List[Dict[str, Any]]:
         """
         Get game results for a specific week.

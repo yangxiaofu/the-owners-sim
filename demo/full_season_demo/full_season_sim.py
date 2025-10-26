@@ -86,11 +86,13 @@ class InteractiveFullSeasonSimulator:
         self.dynasty_id = dynasty_id
 
         # Create season cycle controller
+        # Phase 2: No season_year parameter - loads from database (SINGLE SOURCE OF TRUTH)
+        # For new dynasties, defaults to 2024
         try:
             self.controller = SeasonCycleController(
                 database_path=database_path,
                 dynasty_id=dynasty_id,
-                season_year=2024,
+                # season_year removed - Phase 2: loads from database or defaults to 2024
                 start_date=Date(2024, 9, 4),  # September 4, 2024 (Wednesday - day before first game)
                 enable_persistence=True,
                 verbose_logging=True

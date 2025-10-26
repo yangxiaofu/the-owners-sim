@@ -977,9 +977,16 @@ class EventDatabaseAPI:
 
             # Verify season_year matches (data contains season info in parameters section)
             # Events store data in structure: {"parameters": {...}, "results": {...}, "metadata": {...}}
+            # Accept events within ±1 year to handle transition states where controller's
+            # season_year may increment before all milestones are consumed
             params = event_data.get('parameters', {})
-            if params.get('season_year') != season_year:
-                return None
+            event_season_year = params.get('season_year')
+            if event_season_year is not None:
+                year_diff = abs(event_season_year - season_year)
+                if year_diff > 1:
+                    # More than 1 year off - definitely wrong season
+                    return None
+                # Within 1 year - accept it (handles transition edge cases)
 
             # Extract event-specific fields from parameters section
             event_type = event_dict['event_type']
@@ -1012,6 +1019,75 @@ class EventDatabaseAPI:
                 'description': params.get('description', ''),
                 'data': event_data
             }
+
+        finally:
+            conn.close()
+
+    def get_milestone_by_type(
+        self,
+        milestone_type: str,
+        dynasty_id: str,
+        season_year: int,
+        year_tolerance: int = 1
+    ) -> Optional['Date']:
+        """
+        Get milestone date by type with tolerant season_year matching.
+
+        Finds a specific milestone type (e.g., PRESEASON_START) for the dynasty,
+        using tolerant season_year matching to handle phase transition edge cases
+        where the controller's season_year may increment before all milestones
+        are consumed.
+
+        Args:
+            milestone_type: Type of milestone (e.g., "PRESEASON_START", "DRAFT")
+            dynasty_id: Dynasty identifier
+            season_year: Season year to search for
+            year_tolerance: Accept milestones within ±N years (default: 1)
+
+        Returns:
+            Date of the milestone, or None if not found
+
+        Example:
+            >>> date = api.get_milestone_by_type('PRESEASON_START', 'dynasty1', 2025)
+            >>> print(date)  # Date(2026, 8, 6)
+        """
+        import json
+        from datetime import datetime
+        from calendar.date_models import Date
+
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        try:
+            # Query all MILESTONE events for this dynasty
+            # No timestamp filtering - we want to find the milestone even if we're past it
+            cursor.execute('''
+                SELECT * FROM events
+                WHERE dynasty_id = ?
+                  AND event_type = 'MILESTONE'
+                ORDER BY timestamp ASC
+            ''', (dynasty_id,))
+
+            rows = cursor.fetchall()
+
+            for row in rows:
+                data = json.loads(row['data'])
+                params = data.get('parameters', {})
+
+                # Check milestone type
+                if params.get('milestone_type') == milestone_type:
+                    # Check season_year with tolerance
+                    event_season = params.get('season_year', 0)
+                    year_diff = abs(event_season - season_year)
+
+                    if year_diff <= year_tolerance:
+                        # Found it! Convert timestamp to Date
+                        timestamp_ms = row['timestamp']
+                        dt = datetime.fromtimestamp(timestamp_ms / 1000)
+                        return Date(dt.year, dt.month, dt.day)
+
+            return None
 
         finally:
             conn.close()

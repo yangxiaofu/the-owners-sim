@@ -13,6 +13,7 @@ from calendar.season_milestones import SeasonMilestoneCalculator, MilestoneType
 from events.deadline_event import DeadlineEvent, DeadlineType
 from events.window_event import WindowEvent, WindowName
 from events.milestone_event import MilestoneEvent
+from events.schedule_release_event import ScheduleReleaseEvent
 from events.event_database_api import EventDatabaseAPI
 
 
@@ -368,16 +369,16 @@ class OffseasonEventScheduler:
         # Create dictionary for easy lookup
         milestone_dict = {m.milestone_type: m for m in milestones}
 
-        # Define which milestone types should create MilestoneEvents
+        # Define which milestone types should create basic MilestoneEvents
+        # NOTE: SCHEDULE_RELEASE excluded - uses custom ScheduleReleaseEvent
         milestone_type_map = {
             MilestoneType.DRAFT: "DRAFT",
-            MilestoneType.SCHEDULE_RELEASE: "SCHEDULE_RELEASE",
             MilestoneType.NEW_LEAGUE_YEAR: "NEW_LEAGUE_YEAR",
             MilestoneType.SCOUTING_COMBINE: "COMBINE_START",
             MilestoneType.ROOKIE_MINICAMP: "ROOKIE_MINICAMP",
         }
 
-        # Schedule milestone events from calculator
+        # Schedule basic milestone events from calculator
         for milestone_type, event_type in milestone_type_map.items():
             if milestone_type in milestone_dict:
                 milestone = milestone_dict[milestone_type]
@@ -391,6 +392,27 @@ class OffseasonEventScheduler:
                 )
                 event_db.insert_event(milestone_event)
                 count += 1
+
+        # Special case: Schedule Release - uses custom event that generates games
+        schedule_release_milestone = milestone_dict.get(MilestoneType.SCHEDULE_RELEASE)
+        if schedule_release_milestone:
+            # Get preseason start date for schedule generation
+            preseason_start_milestone = milestone_dict.get(MilestoneType.PRESEASON_START)
+            if not preseason_start_milestone:
+                raise RuntimeError(
+                    f"PRESEASON_START milestone required for schedule generation"
+                )
+
+            schedule_release_event = ScheduleReleaseEvent(
+                season_year=season_year,  # Use season parameter (consistent with other milestones)
+                event_date=schedule_release_milestone.date,
+                dynasty_id=dynasty_id,
+                event_db=event_db,
+                preseason_start_date=preseason_start_milestone.date,
+                metadata=schedule_release_milestone.calculation_metadata
+            )
+            event_db.insert_event(schedule_release_event)
+            count += 1
 
         # Add Scouting Combine End (1 week after start)
         combine_milestone = milestone_dict.get(MilestoneType.SCOUTING_COMBINE)
@@ -422,18 +444,20 @@ class OffseasonEventScheduler:
         count += 1
 
         # Add Preseason Start (first Thursday in August - target for "Skip to New Season")
-        # Calculate dynamically using SeasonMilestoneCalculator
+        # Must be provided by SeasonMilestoneCalculator - no fallback
         preseason_start_milestone = milestone_dict.get(MilestoneType.PRESEASON_START)
-        if preseason_start_milestone:
-            preseason_date = preseason_start_milestone.date
-        else:
-            # Fallback calculation if not in milestone_dict
-            preseason_date = self._calculate_first_thursday_august(season_year + 1)
+        if not preseason_start_milestone:
+            raise RuntimeError(
+                f"PRESEASON_START milestone not calculated by SeasonMilestoneCalculator "
+                f"for season {season_year}. Check milestone calculator implementation."
+            )
+
+        preseason_date = preseason_start_milestone.date
 
         preseason_start_event = MilestoneEvent(
             milestone_type="PRESEASON_START",
             description=f"Preseason Begins - First Thursday in August ({preseason_date})",
-            season_year=season_year,
+            season_year=season_year,  # Use season parameter (consistent with other events)
             event_date=preseason_date,
             dynasty_id=dynasty_id,
             metadata={"calculation": "first_thursday_august"}

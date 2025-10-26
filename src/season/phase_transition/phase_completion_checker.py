@@ -271,5 +271,11 @@ class PhaseCompletionChecker:
         current_date = self._get_current_date()
         preseason_start = self._calculate_preseason_start()
 
+        # Debug logging to diagnose comparison issue
+        print(f"\n[OFFSEASON_COMPLETE_CHECK]")
+        print(f"  current_date: {current_date} (type: {type(current_date).__name__})")
+        print(f"  preseason_start: {preseason_start} (type: {type(preseason_start).__name__})")
+        print(f"  current_date >= preseason_start: {current_date >= preseason_start}")
+
         # Offseason is complete when we've reached preseason start date
         return current_date >= preseason_start

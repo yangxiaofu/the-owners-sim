@@ -41,6 +41,9 @@ from events import EventDatabaseAPI, GameEvent, EventResult
 from events.contract_events import FranchiseTagEvent, TransitionTagEvent, PlayerReleaseEvent, ContractRestructureEvent
 from events.free_agency_events import UFASigningEvent, RFAOfferSheetEvent
 from events.deadline_event import DeadlineEvent
+from events.milestone_event import MilestoneEvent
+from events.schedule_release_event import ScheduleReleaseEvent
+from events.window_event import WindowEvent
 from workflows import SimulationWorkflow
 
 
@@ -154,6 +157,13 @@ class SimulationExecutor:
 
         print(f"\n📅 Found {len(events_for_day)} event(s) scheduled for {target_date}")
 
+        # DEBUG: Check if SCHEDULE_RELEASE is in the query results
+        for evt in events_for_day:
+            if evt.get('event_type') == 'SCHEDULE_RELEASE':
+                print(f"[SCHEDULE_RELEASE_TRIGGERED] ✅ SCHEDULE_RELEASE event found in database query")
+                print(f"[SCHEDULE_RELEASE_TRIGGERED]   Event ID: {evt.get('event_id')}")
+                print(f"[SCHEDULE_RELEASE_TRIGGERED]   Event Data: {evt.get('data', {}).get('parameters', {})}")
+
         # Simulate each event
         events_completed = []
         phase_transitions = []
@@ -168,13 +178,31 @@ class SimulationExecutor:
                 event_type = event_data.get('event_type', 'GAME')
                 print(f"Event Type: {event_type}")
 
+                # DEBUG: Check if we're processing SCHEDULE_RELEASE
+                if event_type == 'SCHEDULE_RELEASE':
+                    print(f"[SCHEDULE_RELEASE_TRIGGERED] 🎯 About to reconstruct SCHEDULE_RELEASE event")
+
                 # Reconstruct appropriate event class based on type
                 event = self._reconstruct_event(event_data, event_type)
 
                 # Validate preconditions
                 is_valid, error_msg = event.validate_preconditions()
                 if not is_valid:
-                    errors.append(f"Event {event.get_game_id()}: Validation failed - {error_msg}")
+                    error_full = f"Event {event.get_game_id()}: Validation failed - {error_msg}"
+                    errors.append(error_full)
+
+                    # DIAGNOSTIC: Print validation failure details
+                    print(f"❌ {error_full}")
+                    print(f"[VALIDATION_FAILURE] Game ID: {event.get_game_id()}")
+                    print(f"[VALIDATION_FAILURE] Event Type: {event_type}")
+                    print(f"[VALIDATION_FAILURE] Validation Error: {error_msg}")
+                    if hasattr(event, 'season'):
+                        print(f"[VALIDATION_FAILURE] Game Season: {event.season}")
+                    if hasattr(event, 'away_team_id') and hasattr(event, 'home_team_id'):
+                        print(f"[VALIDATION_FAILURE] Matchup: {event.away_team_id} @ {event.home_team_id}")
+                    if hasattr(event, 'game_date'):
+                        print(f"[VALIDATION_FAILURE] Game Date: {event.game_date}")
+
                     continue
 
                 # Execute event (different handling for games vs other events)
@@ -184,7 +212,14 @@ class SimulationExecutor:
                     result = workflow_result.simulation_result
                 else:
                     # Other events simulate directly (no workflow needed)
+                    # DEBUG: Confirm we're about to simulate SCHEDULE_RELEASE
+                    if event_type == 'SCHEDULE_RELEASE':
+                        print(f"[SCHEDULE_RELEASE_TRIGGERED] 🚀 About to call SCHEDULE_RELEASE.simulate()")
                     result = event.simulate()
+                    # DEBUG: Confirm simulate() returned
+                    if event_type == 'SCHEDULE_RELEASE':
+                        print(f"[SCHEDULE_RELEASE_TRIGGERED] ✅ SCHEDULE_RELEASE.simulate() returned: {result.success}")
+                        print(f"[SCHEDULE_RELEASE_TRIGGERED]   Result data: {result.data}")
 
                 # Record completion and handle results
                 if result.success:
@@ -202,7 +237,18 @@ class SimulationExecutor:
                     # Update event in database with results
                     self.event_db.update_event(event)
                 else:
-                    errors.append(f"Event {event.get_game_id()}: Simulation failed - {result.error_message}")
+                    # DIAGNOSTIC: Print detailed failure information
+                    error_msg = f"Event {event.get_game_id()}: Simulation failed - {result.error_message}"
+                    errors.append(error_msg)
+                    print(f"❌ {error_msg}")
+                    print(f"[SIMULATION_FAILURE] Game ID: {event.get_game_id()}")
+                    print(f"[SIMULATION_FAILURE] Event Type: {event_type}")
+                    print(f"[SIMULATION_FAILURE] Error Message: {result.error_message}")
+                    if hasattr(event, 'season'):
+                        print(f"[SIMULATION_FAILURE] Game Season: {event.season}")
+                    if hasattr(event, 'away_team_id') and hasattr(event, 'home_team_id'):
+                        print(f"[SIMULATION_FAILURE] Matchup: {event.away_team_id} @ {event.home_team_id}")
+
                     events_completed.append({
                         "event_id": event.get_game_id(),
                         "event_type": event_type,
@@ -211,9 +257,22 @@ class SimulationExecutor:
                     })
 
             except Exception as e:
+                import traceback
                 error_msg = f"Event {i}: Unexpected error - {str(e)}"
                 errors.append(error_msg)
                 print(f"❌ {error_msg}")
+                print(f"[ERROR_DETAIL] Full traceback:")
+                traceback.print_exc()
+                print(f"[ERROR_DETAIL] Event game_id: {event_data.get('game_id', 'unknown')}")
+                print(f"[ERROR_DETAIL] Event type: {event_data.get('event_type', 'unknown')}")
+                if 'data' in event_data and 'parameters' in event_data['data']:
+                    params = event_data['data']['parameters']
+                    print(f"[ERROR_DETAIL] Event parameters:")
+                    print(f"  - season: {params.get('season', 'NOT SET')}")
+                    print(f"  - week: {params.get('week', 'NOT SET')}")
+                    print(f"  - away_team: {params.get('away_team_id', 'NOT SET')}")
+                    print(f"  - home_team: {params.get('home_team_id', 'NOT SET')}")
+                    print(f"  - game_date: {params.get('game_date', 'NOT SET')}")
 
         # Summary
         print(f"\n{'='*80}")
@@ -272,6 +331,18 @@ class SimulationExecutor:
             return RFAOfferSheetEvent.from_database(event_data)
         elif event_type == "DEADLINE":
             return DeadlineEvent.from_database(event_data)
+        elif event_type == "SCHEDULE_RELEASE":
+            # DEBUG: Confirm reconstruction
+            print(f"[SCHEDULE_RELEASE_TRIGGERED] 🔧 Reconstructing SCHEDULE_RELEASE from database")
+            print(f"[SCHEDULE_RELEASE_TRIGGERED]   Dynasty: {event_data.get('dynasty_id')}")
+            print(f"[SCHEDULE_RELEASE_TRIGGERED]   Event ID: {event_data.get('event_id')}")
+            # Top-level event type for schedule generation (promoted from nested MILESTONE)
+            return ScheduleReleaseEvent.from_database(event_data)
+        elif event_type == "MILESTONE":
+            # Generic informational milestones (DRAFT, COMBINE, etc.)
+            return MilestoneEvent.from_database(event_data)
+        elif event_type == "WINDOW":
+            return WindowEvent.from_database(event_data)
         else:
             raise ValueError(f"Unknown event type: {event_type}")
 
@@ -384,18 +455,31 @@ class SimulationExecutor:
             dynasty_id=self.dynasty_id,
             event_type="GAME"
         )
+
+        # During OFFSEASON, preseason games are for NEXT season (season_year + 1)
+        # During PRESEASON/regular season, games are for current season
+        phase_info = self.calendar.get_phase_info()
+        current_phase = phase_info.get("current_phase", "")
+        preseason_season = self.season_year + 1 if current_phase == "offseason" else self.season_year
+
         preseason_events = [
             e for e in all_preseason_events
-            if e.get('game_id', '').startswith(f'preseason_{self.season_year}_')
+            if e.get('game_id', '').startswith(f'preseason_{preseason_season}_')
         ]
         all_events_for_dynasty.extend(preseason_events)
 
         # Get regular season game events for this specific dynasty
+        # During OFFSEASON, regular season games are for NEXT year (e.g., game_2026*)
+        # During regular season, games are for current year (e.g., game_2025*)
+        regular_season_year = self.season_year + 1 if current_phase == "offseason" else self.season_year
+        year_prefix = f"game_{regular_season_year}"
+
         all_game_events = self.event_db.get_events_by_type("GAME")
         regular_season_events = [
             e for e in all_game_events
             if not e.get('game_id', '').startswith('playoff_')
             and not e.get('game_id', '').startswith('preseason_')
+            and e.get('game_id', '').startswith(year_prefix)
             and e.get('dynasty_id') == self.dynasty_id
         ]
         all_events_for_dynasty.extend(regular_season_events)
@@ -422,6 +506,30 @@ class SimulationExecutor:
             if e['data'].get('parameters', {}).get('dynasty_id', 'default') == self.dynasty_id
         ]
         all_events_for_dynasty.extend(dynasty_deadline_events)
+
+        # Get schedule release events (dynasty-specific)
+        schedule_release_events = self.event_db.get_events_by_type("SCHEDULE_RELEASE")
+        dynasty_schedule_release_events = [
+            e for e in schedule_release_events
+            if e.get('dynasty_id') == self.dynasty_id
+        ]
+        all_events_for_dynasty.extend(dynasty_schedule_release_events)
+
+        # Get window events (dynasty-specific)
+        window_events = self.event_db.get_events_by_type("WINDOW")
+        dynasty_window_events = [
+            e for e in window_events
+            if e.get('dynasty_id') == self.dynasty_id
+        ]
+        all_events_for_dynasty.extend(dynasty_window_events)
+
+        # Get milestone events (dynasty-specific)
+        milestone_events = self.event_db.get_events_by_type("MILESTONE")
+        dynasty_milestone_events = [
+            e for e in milestone_events
+            if e.get('dynasty_id') == self.dynasty_id
+        ]
+        all_events_for_dynasty.extend(dynasty_milestone_events)
 
         # Filter by date
         events_for_date = []

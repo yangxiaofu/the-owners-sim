@@ -353,9 +353,12 @@ class SeasonMilestoneCalculator:
 
                 milestones.append(milestone)
 
-            except Exception:
-                # Skip milestones that can't be calculated
-                continue
+            except Exception as e:
+                # NO FALLBACKS - fail loudly with clear error message
+                raise RuntimeError(
+                    f"Failed to calculate milestone {milestone_def.milestone_type.value}: {e}. "
+                    f"Season year: {season_year}, Super Bowl date: {super_bowl_date}"
+                ) from e
 
         # Sort by date
         milestones.sort(key=lambda m: m.date)

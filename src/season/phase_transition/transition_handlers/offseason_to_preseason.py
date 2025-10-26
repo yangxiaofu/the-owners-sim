@@ -183,89 +183,29 @@ class OffseasonToPreseasonHandler:
             completed_steps.append("rollback_state_saved")
             self._log("✓ Rollback state saved")
 
-            # Step 2: Calculate preseason start date
-            self._log("[Step 2/5] Calculating preseason start date...")
-            preseason_start = self._calculate_preseason_start(self._new_season_year)
-            result["preseason_start_date"] = preseason_start
-            self._log(f"✓ Preseason starts: {preseason_start.strftime('%Y-%m-%d')}")
+            # NOTE: Game generation moved to SCHEDULE_RELEASE milestone (mid-May)
+            # Games are now generated 3 months before preseason starts (NFL realistic!)
+            # This transition only handles phase change + standings reset
 
-            # Step 3: Generate preseason schedule
-            self._log("[Step 3/5] Generating preseason schedule (48 games)...")
-
-            # [PRESEASON_DEBUG Point 5] Handler Execution
-            print(f"\n[PRESEASON_DEBUG Point 5] Generating preseason schedule...")
-            print(f"  Season year: {self._new_season_year}")
-            print(f"  Dynasty ID: {self._dynasty_id}")
-
-            preseason_games = self._generate_preseason(self._new_season_year)
-
-            print(f"[PRESEASON_DEBUG Point 5] Preseason generation result:")
-            print(f"  Games returned: {len(preseason_games)}")
-            print(f"  Expected: 48")
-            if len(preseason_games) > 0:
-                print(f"  First game type: {type(preseason_games[0])}")
-                if isinstance(preseason_games[0], dict):
-                    print(f"  First game_id: {preseason_games[0].get('game_id', 'N/A')}")
-                elif hasattr(preseason_games[0], 'get_game_id'):
-                    print(f"  First game_id: {preseason_games[0].get_game_id()}")
-
-            if len(preseason_games) != 48:
-                raise RuntimeError(
-                    f"Preseason schedule generation failed: expected 48 games, "
-                    f"got {len(preseason_games)}"
-                )
-
-            result["preseason_games"] = preseason_games
-            completed_steps.append("preseason_schedule_generated")
-            self._log(f"✓ Preseason schedule generated: {len(preseason_games)} games")
-
-            # Step 4: Generate regular season schedule
-            self._log("[Step 4/5] Generating regular season schedule (272 games)...")
-            regular_season_games = self._generate_regular_season(
-                self._new_season_year,
-                preseason_start
-            )
-
-            if len(regular_season_games) != 272:
-                raise RuntimeError(
-                    f"Regular season schedule generation failed: expected 272 games, "
-                    f"got {len(regular_season_games)}"
-                )
-
-            result["regular_season_games"] = regular_season_games
-            result["regular_season_start_date"] = regular_season_games[0]["game_date"]
-            completed_steps.append("regular_season_schedule_generated")
-            self._log(
-                f"✓ Regular season schedule generated: {len(regular_season_games)} games"
-            )
-            self._log(
-                f"  Regular season starts: "
-                f"{regular_season_games[0]['game_date'].strftime('%Y-%m-%d')}"
-            )
-
-            # Step 5: Reset all team standings
-            self._log("[Step 5/5] Resetting all team standings to 0-0-0...")
+            # Step 2: Reset all team standings
+            self._log("[Step 2/2] Resetting all team standings to 0-0-0...")
             self._reset_standings(self._new_season_year)
             result["teams_reset"] = 32  # All 32 NFL teams
             completed_steps.append("standings_reset")
             self._log("✓ All team standings reset to 0-0-0")
 
-            # Step 6: Update database phase
-            self._log("[Step 6/6] Updating database phase to PRESEASON...")
-            self._update_database_phase("PRESEASON", self._new_season_year)
-            completed_steps.append("database_phase_updated")
-            self._log("✓ Database phase updated to PRESEASON")
+            # Database phase update handled by SeasonCycleController (before transition)
 
             # Final result summary
             result["new_season_year"] = self._new_season_year
             result["completed_steps"] = completed_steps
 
             self._log(
-                f"\n[SUCCESS] New season {self._new_season_year} initialized:\n"
-                f"  - Preseason: {len(preseason_games)} games\n"
-                f"  - Regular Season: {len(regular_season_games)} games\n"
-                f"  - Teams Reset: 32\n"
-                f"  - Phase: PRESEASON"
+                f"\n[SUCCESS] OFFSEASON → PRESEASON transition complete:\n"
+                f"  - Season Year: {self._new_season_year}\n"
+                f"  - Teams Reset: 32 (all standings → 0-0-0)\n"
+                f"  - Phase: PRESEASON\n"
+                f"  - Note: Games already generated at SCHEDULE_RELEASE (mid-May)"
             )
 
             return result
@@ -418,7 +358,6 @@ class OffseasonToPreseasonHandler:
         self._rollback_state = {
             "from_phase": transition.from_phase,
             "to_phase": transition.to_phase,
-            "transition_date": transition.transition_date,
             "season_year": self._new_season_year,
             "dynasty_id": self._dynasty_id,
             "metadata": transition.metadata,

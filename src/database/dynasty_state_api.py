@@ -70,6 +70,52 @@ class DynastyStateAPI:
 
         return None
 
+    def get_latest_state(
+        self,
+        dynasty_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get the most recent simulation state for a dynasty (without specifying season).
+
+        This is the SINGLE SOURCE OF TRUTH method for loading dynasty state.
+        It retrieves the most recent season's state based on the season column.
+
+        Args:
+            dynasty_id: Dynasty identifier
+
+        Returns:
+            Dict with season, current_date, current_phase, current_week, last_simulated_game_id
+            or None if no state exists for this dynasty
+
+        Examples:
+            >>> api = DynastyStateAPI()
+            >>> state = api.get_latest_state("my_dynasty")
+            >>> if state:
+            ...     print(f"Season: {state['season']}, Phase: {state['current_phase']}")
+        """
+        query = """
+            SELECT season, "current_date", "current_phase", "current_week", last_simulated_game_id
+            FROM dynasty_state
+            WHERE dynasty_id = ?
+            ORDER BY season DESC
+            LIMIT 1
+        """
+
+        result = self.db.execute_query(query, (dynasty_id,))
+
+        if result:
+            row = result[0]
+            state = {
+                'season': row['season'],
+                'current_date': row['current_date'],
+                'current_phase': row['current_phase'],
+                'current_week': row['current_week'],
+                'last_simulated_game_id': row['last_simulated_game_id']
+            }
+            return state
+
+        return None
+
     def initialize_state(
         self,
         dynasty_id: str,

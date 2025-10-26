@@ -266,7 +266,8 @@ class RandomScheduleGenerator:
     def generate_preseason(
         self,
         season_year: int = 2024,
-        seed: int = None
+        seed: int = None,
+        start_date: datetime = None
     ) -> List[GameEvent]:
         """
         Generate complete 3-week preseason schedule (48 total games).
@@ -280,6 +281,7 @@ class RandomScheduleGenerator:
         Args:
             season_year: NFL season year
             seed: Optional random seed for reproducible schedules
+            start_date: Optional preseason start date (defaults to calculated date)
 
         Returns:
             List of all 48 generated GameEvent objects (3 weeks × 16 games)
@@ -296,9 +298,13 @@ class RandomScheduleGenerator:
             random.seed(seed)
             self.logger.info(f"Using random seed: {seed}")
 
-        # Calculate preseason start date
-        preseason_start = self._calculate_preseason_start(season_year)
-        self.logger.info(f"Preseason starts: {preseason_start.strftime('%A, %B %d, %Y')}")
+        # Use provided start date or calculate it
+        if start_date is not None:
+            preseason_start = start_date
+            self.logger.info(f"Using provided preseason start: {preseason_start.strftime('%A, %B %d, %Y')}")
+        else:
+            preseason_start = self._calculate_preseason_start(season_year)
+            self.logger.info(f"Calculated preseason start: {preseason_start.strftime('%A, %B %d, %Y')}")
 
         all_preseason_games = []
 

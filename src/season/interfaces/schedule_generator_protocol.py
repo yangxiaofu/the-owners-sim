@@ -27,7 +27,8 @@ class ScheduleGeneratorProtocol(Protocol):
     def generate_preseason(
         self,
         season_year: int,
-        seed: Optional[int] = None
+        seed: Optional[int] = None,
+        start_date: Optional['datetime'] = None
     ) -> List[GameEvent]:
         """
         Generate complete preseason schedule (48 games, 3 weeks).
@@ -35,6 +36,7 @@ class ScheduleGeneratorProtocol(Protocol):
         Args:
             season_year: NFL season year
             seed: Optional random seed for reproducible schedules
+            start_date: Optional preseason start date (defaults to calculated date)
 
         Returns:
             List of 48 GameEvent objects

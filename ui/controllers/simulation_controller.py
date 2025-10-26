@@ -81,15 +81,18 @@ class SimulationController(QObject):
             initial_phase = SeasonPhase.PLAYOFFS
         elif self.loaded_phase == 'OFFSEASON' or self.loaded_phase == 'offseason':
             initial_phase = SeasonPhase.OFFSEASON
+        elif self.loaded_phase == 'PRESEASON' or self.loaded_phase == 'preseason':
+            initial_phase = SeasonPhase.PRESEASON
         else:
             initial_phase = SeasonPhase.REGULAR_SEASON
 
         # Pass initial_phase to constructor so it starts in correct phase
         # This prevents regular season game scheduling when loading mid-playoffs
+        # Phase 2: No season_year parameter - SeasonCycleController loads from database (SINGLE SOURCE OF TRUTH)
         self.season_controller = SeasonCycleController(
             database_path=self.db_path,
             dynasty_id=self.dynasty_id,
-            season_year=self.season,
+            # season_year removed - Phase 2: loads from database automatically
             start_date=start_date,
             initial_phase=initial_phase,
             enable_persistence=True,
