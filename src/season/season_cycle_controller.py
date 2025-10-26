@@ -335,6 +335,9 @@ class SeasonCycleController:
         # GENERATE DRAFT CLASS FOR THIS SEASON
         self._generate_draft_class_if_needed()
 
+        # Phase 5: Auto-recovery guard after controller initialization
+        self._auto_recover_year_from_database("After controller initialization")
+
         # State tracking - set active controller based on initial phase
         # IMPORTANT: This comes AFTER database_api initialization because _restore_playoff_controller() needs it
         if initial_phase == SeasonPhase.PLAYOFFS:
@@ -378,6 +381,9 @@ class SeasonCycleController:
                 "success": bool
             }
         """
+        # Phase 5: Auto-recovery guard before daily simulation
+        self._auto_recover_year_from_database("Before daily simulation")
+
         # Handle offseason case
         if self.phase_state.phase == SeasonPhase.OFFSEASON:
             # Execute any scheduled offseason events for this day
@@ -463,6 +469,9 @@ class SeasonCycleController:
         Returns:
             Dictionary with weekly summary
         """
+        # Phase 5: Auto-recovery guard before weekly simulation
+        self._auto_recover_year_from_database("Before weekly simulation")
+
         if self.phase_state.phase == SeasonPhase.OFFSEASON:
             # Advance offseason by 7 days, collecting any triggered events
             events_triggered = []
@@ -1012,6 +1021,95 @@ class SeasonCycleController:
                 f"Dynasty: {self.dynasty_id}"
             )
 
+    def _auto_recover_year_from_database(self, context: str = "Unknown") -> bool:
+        """
+        Auto-recover season_year from database if drift detected (Phase 5: Protective Guards).
+
+        This protective guard detects when in-memory season_year has drifted
+        from the database source of truth and automatically recovers by loading
+        the correct year from the database.
+
+        Process:
+        1. Validate current year against database
+        2. If drift detected and recovery possible:
+           - Log warning with drift details
+           - Load correct year from database
+           - Update in-memory season_year via synchronizer
+           - Return True (recovery performed)
+        3. If no drift or recovery not possible:
+           - Return False (no recovery needed/possible)
+
+        Args:
+            context: Context string for logging (e.g., "Before phase transition")
+
+        Returns:
+            True if recovery was performed, False if not needed or not possible
+
+        Examples:
+            >>> # Before critical operation
+            >>> if self._auto_recover_year_from_database("Before game simulation"):
+            ...     print("Year drift was auto-corrected")
+        """
+        is_synced, db_year, can_recover = self.season_year_validator.validate_with_recovery(
+            controller_year=self.season_year,
+            dynasty_id=self.dynasty_id,
+            dynasty_api=self.dynasty_api
+        )
+
+        if is_synced:
+            # No drift detected - all good
+            return False
+
+        if not can_recover:
+            # Drift detected but no database state to recover from
+            self.logger.error(
+                f"[AUTO_RECOVERY_FAILED] Season year drift detected but cannot recover:\n"
+                f"  Context: {context}\n"
+                f"  Controller Year: {self.season_year}\n"
+                f"  Database Year: {db_year}\n"
+                f"  Reason: No valid database state found\n"
+                f"  Action: Continuing with controller year (may cause issues)"
+            )
+            return False
+
+        # Drift detected and recovery is possible
+        drift_amount = abs(self.season_year - db_year)
+        drift_direction = "ahead" if self.season_year > db_year else "behind"
+
+        self.logger.warning(
+            f"[AUTO_RECOVERY] Season year drift detected - auto-recovering:\n"
+            f"  Context: {context}\n"
+            f"  Controller Year (WRONG): {self.season_year}\n"
+            f"  Database Year (CORRECT): {db_year}\n"
+            f"  Drift: {drift_amount} year(s) {drift_direction}\n"
+            f"  Dynasty: {self.dynasty_id}\n"
+            f"  Action: Loading correct year from database"
+        )
+
+        if self.verbose_logging:
+            print(f"\n{'='*80}")
+            print(f"⚠️  AUTO-RECOVERY: Season year drift detected!")
+            print(f"{'='*80}")
+            print(f"Context: {context}")
+            print(f"Wrong value (in-memory): {self.season_year}")
+            print(f"Correct value (database): {db_year}")
+            print(f"Recovering to database value...")
+            print(f"{'='*80}\n")
+
+        # Perform recovery - use synchronizer for atomic update
+        old_year = self.season_year
+        self.year_synchronizer.synchronize_year(
+            db_year,
+            f"Auto-recovery from drift (was {old_year}, corrected to {db_year}) - {context}"
+        )
+
+        self.logger.info(
+            f"[AUTO_RECOVERY_SUCCESS] ✓ Season year recovered: "
+            f"{old_year} → {db_year} ({context})"
+        )
+
+        return True
+
     def _update_database_year(self, new_year: int) -> None:
         """
         Update database dynasty_state.season to new year (Phase 3: Atomic Synchronization).
@@ -1083,6 +1181,9 @@ class SeasonCycleController:
             dynasty_api=self.dynasty_api,
             context="Before phase transition check"
         )
+
+        # Phase 5: Auto-recovery guard before phase transition
+        self._auto_recover_year_from_database("Before phase transition check")
 
         if self.verbose_logging:
             print(f"\n[DEBUG] Checking phase transition (current phase: {self.phase_state.phase.value})")
@@ -2119,6 +2220,9 @@ class SeasonCycleController:
         Returns:
             List of 48 preseason game event dictionaries
         """
+        # Phase 5: Auto-recovery guard before schedule generation
+        self._auto_recover_year_from_database("Before preseason schedule generation")
+
         # Check if preseason schedule already exists (prevent duplicates)
         all_events = self.event_db.get_events_by_dynasty(
             dynasty_id=self.dynasty_id,
@@ -2191,6 +2295,9 @@ class SeasonCycleController:
         Returns:
             List of 272 regular season game event dictionaries
         """
+        # Phase 5: Auto-recovery guard before schedule generation
+        self._auto_recover_year_from_database("Before regular season schedule generation")
+
         # Check if regular season schedule already exists (prevent duplicates)
         all_events = self.event_db.get_events_by_dynasty(
             dynasty_id=self.dynasty_id,
@@ -2313,6 +2420,9 @@ class SeasonCycleController:
             phase: The new phase name (e.g., "PRESEASON", "OFFSEASON")
             season_year: The season year
         """
+        # Phase 5: Auto-recovery guard before database phase update
+        self._auto_recover_year_from_database("Before database phase update")
+
         self.dynasty_api.update_state(
             dynasty_id=self.dynasty_id,
             current_date=str(self.calendar.get_current_date()),
