@@ -138,9 +138,17 @@ class PlayoffsToOffseasonHandler:
         if verbose_logging:
             self._logger.setLevel(logging.DEBUG)
 
-    def execute(self, transition: PhaseTransition) -> Dict[str, Any]:
+    def execute(
+        self,
+        transition: PhaseTransition,
+        season_year: Optional[int] = None
+    ) -> Dict[str, Any]:
         """
         Execute PLAYOFFS → OFFSEASON transition.
+
+        **Phase 4: Dynamic Handlers** - Now accepts season_year at execution time
+        for maximum flexibility and testability. If not provided, uses the year
+        specified at construction.
 
         This method orchestrates the complete transition from playoffs to offseason:
         1. Saves rollback state (current phase)
@@ -154,6 +162,10 @@ class PlayoffsToOffseasonHandler:
 
         Args:
             transition: PhaseTransition object containing from_phase and to_phase
+            season_year: Optional season year to use for this transition.
+                If not provided, uses the year from construction.
+                This allows the same handler instance to be reused
+                for multiple years (Phase 4: Dynamic Handlers).
 
         Returns:
             Dict containing transition results:
@@ -176,7 +188,13 @@ class PlayoffsToOffseasonHandler:
             >>> print(f"Champion: Team {result['champion_team_id']}")
             Champion: Team 7
         """
-        self._log_info(f"Starting PLAYOFFS → OFFSEASON transition for dynasty {self._dynasty_id}")
+        # Phase 4: Use execution-time year if provided, otherwise use constructor year
+        effective_year = season_year if season_year is not None else self._season_year
+
+        self._log_info(
+            f"Starting PLAYOFFS → OFFSEASON transition for dynasty {self._dynasty_id}, "
+            f"season {effective_year}"
+        )
 
         # Validate transition
         if transition.from_phase != "PLAYOFFS":
@@ -209,8 +227,8 @@ class PlayoffsToOffseasonHandler:
             )
 
             # Step 4: Schedule offseason events
-            self._log_debug(f"Scheduling offseason events for {self._season_year}...")
-            self._schedule_offseason_events(self._season_year)
+            self._log_debug(f"Scheduling offseason events for {effective_year}...")
+            self._schedule_offseason_events(effective_year)
             self._log_info("Offseason events scheduled successfully")
 
             # Step 5: Update database phase
@@ -227,7 +245,7 @@ class PlayoffsToOffseasonHandler:
                 "database_updated": True,
                 "timestamp": datetime.now().isoformat(),
                 "dynasty_id": self._dynasty_id,
-                "season_year": self._season_year
+                "season_year": effective_year
             }
 
             self._log_info("PLAYOFFS → OFFSEASON transition completed successfully")

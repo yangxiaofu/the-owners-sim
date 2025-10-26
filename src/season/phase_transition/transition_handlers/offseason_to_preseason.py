@@ -110,9 +110,17 @@ class OffseasonToPreseasonHandler:
         # Rollback state tracking
         self._rollback_state: Dict[str, Any] = {}
 
-    def execute(self, transition: PhaseTransition) -> Dict[str, Any]:
+    def execute(
+        self,
+        transition: PhaseTransition,
+        season_year: Optional[int] = None
+    ) -> Dict[str, Any]:
         """
         Execute the OFFSEASON → PRESEASON transition.
+
+        **Phase 4: Dynamic Handlers** - Now accepts season_year at execution time
+        for maximum flexibility and testability. If not provided, uses the year
+        specified at construction.
 
         This method orchestrates the new season initialization process:
         1. Save rollback state (current phase, schedules, standings)
@@ -130,6 +138,10 @@ class OffseasonToPreseasonHandler:
                 - to_phase: "PRESEASON"
                 - transition_date: Date of transition
                 - metadata: Optional additional context
+            season_year: Optional season year to use for this transition.
+                If not provided, uses the year from construction.
+                This allows the same handler instance to be reused
+                for multiple years (Phase 4: Dynamic Handlers).
 
         Returns:
             Dict containing:
@@ -149,6 +161,8 @@ class OffseasonToPreseasonHandler:
             - Resets standings for all 32 NFL teams
             - Updates dynasty_state phase to PRESEASON
         """
+        # Phase 4: Use execution-time year if provided, otherwise use constructor year
+        effective_year = season_year if season_year is not None else self._new_season_year
         # Validate transition
         # Import SeasonPhase for validation
         try:
@@ -169,7 +183,7 @@ class OffseasonToPreseasonHandler:
 
         self._log(
             f"[OFFSEASON → PRESEASON] Starting new season initialization "
-            f"for year {self._new_season_year} (Dynasty: {self._dynasty_id})"
+            f"for year {effective_year} (Dynasty: {self._dynasty_id})"
         )
 
         # Track completed steps for rollback
@@ -179,7 +193,7 @@ class OffseasonToPreseasonHandler:
         try:
             # Step 1: Save rollback state
             self._log("[Step 1/5] Saving rollback state...")
-            self._save_rollback_state(transition)
+            self._save_rollback_state(transition, effective_year)
             completed_steps.append("rollback_state_saved")
             self._log("✓ Rollback state saved")
 
@@ -189,7 +203,7 @@ class OffseasonToPreseasonHandler:
 
             # Step 2: Reset all team standings
             self._log("[Step 2/2] Resetting all team standings to 0-0-0...")
-            self._reset_standings(self._new_season_year)
+            self._reset_standings(effective_year)
             result["teams_reset"] = 32  # All 32 NFL teams
             completed_steps.append("standings_reset")
             self._log("✓ All team standings reset to 0-0-0")
@@ -197,12 +211,12 @@ class OffseasonToPreseasonHandler:
             # Database phase update handled by SeasonCycleController (before transition)
 
             # Final result summary
-            result["new_season_year"] = self._new_season_year
+            result["new_season_year"] = effective_year
             result["completed_steps"] = completed_steps
 
             self._log(
                 f"\n[SUCCESS] OFFSEASON → PRESEASON transition complete:\n"
-                f"  - Season Year: {self._new_season_year}\n"
+                f"  - Season Year: {effective_year}\n"
                 f"  - Teams Reset: 32 (all standings → 0-0-0)\n"
                 f"  - Phase: PRESEASON\n"
                 f"  - Note: Games already generated at SCHEDULE_RELEASE (mid-May)"
@@ -343,7 +357,11 @@ class OffseasonToPreseasonHandler:
             )
             # Don't re-raise - rollback is best-effort
 
-    def _save_rollback_state(self, transition: PhaseTransition) -> None:
+    def _save_rollback_state(
+        self,
+        transition: PhaseTransition,
+        season_year: int
+    ) -> None:
         """
         Save current state for potential rollback.
 
@@ -354,11 +372,12 @@ class OffseasonToPreseasonHandler:
 
         Args:
             transition: Current phase transition
+            season_year: The effective season year for this transition
         """
         self._rollback_state = {
             "from_phase": transition.from_phase,
             "to_phase": transition.to_phase,
-            "season_year": self._new_season_year,
+            "season_year": season_year,
             "dynasty_id": self._dynasty_id,
             "metadata": transition.metadata,
         }
