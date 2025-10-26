@@ -1177,13 +1177,8 @@ class SeasonCycleController:
                 # Clear playoff controller (removes previous season's bracket data)
                 self.playoff_controller = None
 
-                # TODO: Archive previous season statistics
-                # When statistics archival is implemented:
-                # 1. Query all stats for old_year from database
-                # 2. Mark them as "archived" or move to historical table
-                # 3. Keep database history intact (DO NOT DELETE)
-                # 4. UI will query only current season_year stats
-                # This preserves historical data while showing fresh season in UI
+                # NOTE: Season statistics are archived during PLAYOFFS→OFFSEASON transition
+                # See _transition_to_offseason() method for archival implementation
 
                 if self.verbose_logging:
                     print(f"[NEW_SEASON_INIT] Previous season ({old_year}) state cleared")
@@ -1691,7 +1686,87 @@ class SeasonCycleController:
             # 3. Generate season summary
             self.season_summary = self._generate_season_summary()
 
-            # 4. Notify user
+            # 4. Archive season statistics (Phase 2: Statistics Preservation System)
+            if self.enable_persistence:
+                try:
+                    if self.verbose_logging:
+                        print(f"\n{'='*80}")
+                        print(f"{'ARCHIVING SEASON STATISTICS'.center(80)}")
+                        print(f"{'='*80}")
+
+                    # Extract playoff champions
+                    afc_champion_id = None
+                    nfc_champion_id = None
+
+                    # Get conference championship results
+                    conference_games = self.playoff_controller.get_round_games('conference_championship')
+                    for game in conference_games:
+                        winner_id = game.get('winner_id')
+                        # Determine conference by team ID (AFC: 1-16, NFC: 17-32)
+                        if winner_id:
+                            if 1 <= winner_id <= 16:
+                                afc_champion_id = winner_id
+                            elif 17 <= winner_id <= 32:
+                                nfc_champion_id = winner_id
+
+                    # Import and initialize archiver
+                    from statistics.statistics_archiver import StatisticsArchiver
+
+                    archiver = StatisticsArchiver(
+                        database_path=self.database_path,
+                        dynasty_id=self.dynasty_id,
+                        logger=self.logger
+                    )
+
+                    # Archive the completed season
+                    archival_result = archiver.archive_season(
+                        completed_season=self.season_year,
+                        season_type="regular_season",
+                        super_bowl_champion=champion_id,
+                        afc_champion=afc_champion_id,
+                        nfc_champion=nfc_champion_id,
+                        awards={}  # TODO: Implement award selection system
+                    )
+
+                    # Log archival results
+                    if archival_result.success:
+                        self.logger.info(
+                            f"✅ Season {self.season_year} statistics archived successfully:\n"
+                            f"  - Player stats aggregated: {archival_result.player_stats_aggregated}\n"
+                            f"  - Duration: {archival_result.duration_seconds:.2f}s"
+                        )
+                        if self.verbose_logging:
+                            print(f"\n📊 Season Statistics Archived:")
+                            print(f"   Player Season Records: {archival_result.player_stats_aggregated}")
+                            print(f"   Games Archived (deleted): {archival_result.games_archived}")
+                            print(f"   Player Game Stats Archived (deleted): {archival_result.game_stats_archived}")
+                            print(f"   Archival Duration: {archival_result.duration_seconds:.2f}s")
+                            if archival_result.warnings:
+                                print(f"   Warnings: {len(archival_result.warnings)}")
+                                for warning in archival_result.warnings:
+                                    print(f"     ⚠️  {warning}")
+                    else:
+                        self.logger.error(
+                            f"❌ Season {self.season_year} statistics archival failed:\n"
+                            f"  - Errors: {archival_result.errors}"
+                        )
+                        if self.verbose_logging:
+                            print(f"\n⚠️  Statistics Archival Failed:")
+                            for error in archival_result.errors:
+                                print(f"   ❌ {error}")
+                        # Don't block offseason transition on archival failure
+
+                except Exception as e:
+                    self.logger.error(
+                        f"Unexpected error during statistics archival: {e}",
+                        exc_info=True
+                    )
+                    if self.verbose_logging:
+                        print(f"\n⚠️  Statistics archival error: {e}")
+                        print(f"   Continuing with offseason transition...")
+                    # Don't block offseason transition on archival failure
+
+            # 5. Notify user
             if self.verbose_logging:
                 if champion_id:
                     from team_management.teams.team_loader import get_team_by_id

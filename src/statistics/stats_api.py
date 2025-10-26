@@ -273,14 +273,137 @@ class StatsAPI:
         """
         Get career totals across all seasons.
 
+        Queries player_season_stats table for fast aggregation of career totals.
+        This works with archived data - seasons beyond retention window are
+        included via their summaries.
+
         Args:
             player_id: Player identifier
 
         Returns:
-            Dict with career totals
+            Dict with career totals including:
+            - seasons_played: Number of seasons
+            - games_played: Total games across all seasons
+            - career_passing_yards: Total passing yards
+            - career_rushing_yards: Total rushing yards
+            - career_receiving_yards: Total receiving yards
+            - (and all other career totals)
+
+        Example:
+            >>> stats_api = StatsAPI(dynasty_id="my_dynasty")
+            >>> career = stats_api.get_player_career_stats("QB_KC_001")
+            >>> print(f"{career['seasons_played']} seasons, {career['career_passing_yards']} yards")
         """
-        # TODO: Implement when multi-season support is added
-        raise NotImplementedError("Career stats coming in future update")
+        query = """
+            SELECT
+                COUNT(DISTINCT season) as seasons_played,
+                SUM(games_played) as games_played,
+
+                -- Career passing totals
+                SUM(passing_yards) as career_passing_yards,
+                SUM(passing_tds) as career_passing_tds,
+                SUM(passing_completions) as career_passing_completions,
+                SUM(passing_attempts) as career_passing_attempts,
+                SUM(passing_interceptions) as career_interceptions,
+
+                -- Career rushing totals
+                SUM(rushing_yards) as career_rushing_yards,
+                SUM(rushing_tds) as career_rushing_tds,
+                SUM(rushing_attempts) as career_rushing_attempts,
+
+                -- Career receiving totals
+                SUM(receiving_yards) as career_receiving_yards,
+                SUM(receiving_tds) as career_receiving_tds,
+                SUM(receptions) as career_receptions,
+                SUM(targets) as career_targets,
+
+                -- Career defense totals
+                SUM(tackles_total) as career_tackles,
+                SUM(sacks) as career_sacks,
+                SUM(interceptions) as career_interceptions_def,
+                SUM(forced_fumbles) as career_forced_fumbles,
+
+                -- Career special teams totals
+                SUM(field_goals_made) as career_field_goals_made,
+                SUM(field_goals_attempted) as career_field_goals_attempted,
+                SUM(extra_points_made) as career_extra_points_made,
+                SUM(extra_points_attempted) as career_extra_points_attempted,
+
+                -- First and last season
+                MIN(season) as rookie_season,
+                MAX(season) as last_season
+
+            FROM player_season_stats
+            WHERE player_id = ? AND dynasty_id = ?
+        """
+
+        result = self.database_api.execute_query(query, (player_id, self.dynasty_id))
+
+        if result and result[0]['seasons_played'] > 0:
+            return dict(result[0])
+
+        # Player not found or no seasons played
+        return {
+            'seasons_played': 0,
+            'games_played': 0,
+            'career_passing_yards': 0,
+            'career_rushing_yards': 0,
+            'career_receiving_yards': 0
+        }
+
+    def get_player_season_history(
+        self,
+        player_id: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Get season-by-season breakdown for a player.
+
+        Returns list of all seasons with stats and awards. Works with
+        archived data - includes seasons beyond retention window.
+
+        Args:
+            player_id: Player identifier
+
+        Returns:
+            List of dicts with season stats, sorted by season (oldest first)
+
+        Example:
+            >>> stats_api = StatsAPI(dynasty_id="my_dynasty")
+            >>> history = stats_api.get_player_season_history("QB_KC_001")
+            >>> for season in history:
+            ...     print(f"{season['season']}: {season['passing_yards']} yards")
+        """
+        query = """
+            SELECT
+                season,
+                team_id,
+                position,
+                games_played,
+                passing_yards,
+                passing_tds,
+                passing_attempts,
+                passer_rating,
+                rushing_yards,
+                rushing_tds,
+                rushing_attempts,
+                yards_per_carry,
+                receiving_yards,
+                receiving_tds,
+                receptions,
+                catch_rate,
+                tackles_total,
+                sacks,
+                interceptions,
+                field_goals_made,
+                field_goals_attempted
+            FROM player_season_stats
+            WHERE player_id = ? AND dynasty_id = ?
+            ORDER BY season ASC
+        """
+
+        result = self.database_api.execute_query(query, (player_id, self.dynasty_id))
+
+        return [dict(row) for row in result] if result else []
 
     def get_player_game_log(
         self,
@@ -290,15 +413,39 @@ class StatsAPI:
         """
         Get game-by-game stats for a player.
 
+        NOTE: Only available for seasons within the retention window.
+        Archived seasons (beyond retention) only have season summaries.
+
         Args:
             player_id: Player identifier
             season: Season year
 
         Returns:
-            List of game stats
+            List of game stats (empty if season is archived)
         """
-        # TODO: Implement game-by-game query
-        raise NotImplementedError("Game logs coming in future update")
+        query = """
+            SELECT
+                pgs.game_id,
+                g.game_date,
+                g.week,
+                pgs.passing_yards,
+                pgs.passing_tds,
+                pgs.rushing_yards,
+                pgs.rushing_tds,
+                pgs.receiving_yards,
+                pgs.receiving_tds,
+                pgs.tackles_total,
+                pgs.sacks,
+                pgs.interceptions
+            FROM player_game_stats pgs
+            JOIN games g ON pgs.game_id = g.game_id AND pgs.dynasty_id = g.dynasty_id
+            WHERE pgs.player_id = ? AND pgs.dynasty_id = ? AND g.season = ?
+            ORDER BY g.game_date ASC
+        """
+
+        result = self.database_api.execute_query(query, (player_id, self.dynasty_id, season))
+
+        return [dict(row) for row in result] if result else []
 
     def get_player_splits(
         self,
