@@ -344,37 +344,38 @@ class EventLevelPersister:
 
         Args:
             conn: Database connection
-            game_data: Game result data
+            game_data: Game result data (must include season_type for proper isolation)
         """
         away_team_id = game_data['away_team_id']
         home_team_id = game_data['home_team_id']
         away_score = game_data['away_score']
         home_score = game_data['home_score']
         winning_team_id = game_data.get('winning_team_id')
+        season_type = game_data.get('season_type', 'regular_season')
 
         # Determine win/loss/tie
         if away_score > home_score:
             # Away team wins
-            self._update_team_record(conn, away_team_id, wins=1)
-            self._update_team_record(conn, home_team_id, losses=1)
+            self._update_team_record(conn, away_team_id, wins=1, season_type=season_type)
+            self._update_team_record(conn, home_team_id, losses=1, season_type=season_type)
         elif home_score > away_score:
             # Home team wins
-            self._update_team_record(conn, home_team_id, wins=1)
-            self._update_team_record(conn, away_team_id, losses=1)
+            self._update_team_record(conn, home_team_id, wins=1, season_type=season_type)
+            self._update_team_record(conn, away_team_id, losses=1, season_type=season_type)
         else:
             # Tie game
-            self._update_team_record(conn, away_team_id, ties=1)
-            self._update_team_record(conn, home_team_id, ties=1)
+            self._update_team_record(conn, away_team_id, ties=1, season_type=season_type)
+            self._update_team_record(conn, home_team_id, ties=1, season_type=season_type)
 
         # Update points for/against
-        self._update_team_points(conn, away_team_id, points_for=away_score, points_against=home_score)
-        self._update_team_points(conn, home_team_id, points_for=home_score, points_against=away_score)
+        self._update_team_points(conn, away_team_id, points_for=away_score, points_against=home_score, season_type=season_type)
+        self._update_team_points(conn, home_team_id, points_for=home_score, points_against=away_score, season_type=season_type)
 
-        self.logger.debug(f"Updated standings for teams {away_team_id} and {home_team_id}")
+        self.logger.debug(f"Updated standings for teams {away_team_id} and {home_team_id} (season_type={season_type})")
 
-    def _update_team_record(self, conn, team_id: int, wins: int = 0, losses: int = 0, ties: int = 0):
+    def _update_team_record(self, conn, team_id: int, wins: int = 0, losses: int = 0, ties: int = 0, season_type: str = "regular_season"):
         """
-        Update team win/loss/tie record.
+        Update team win/loss/tie record for a specific season type.
 
         Args:
             conn: Database connection
@@ -382,33 +383,35 @@ class EventLevelPersister:
             wins: Number of wins to add
             losses: Number of losses to add
             ties: Number of ties to add
+            season_type: "preseason", "regular_season", or "playoffs" (default: "regular_season")
         """
         conn.execute("""
-            INSERT OR IGNORE INTO standings (dynasty_id, team_id, season, wins, losses, ties, points_for, points_against)
-            VALUES (?, ?, ?, 0, 0, 0, 0, 0)
-        """, (self.dynasty_id, team_id, 2024))
+            INSERT OR IGNORE INTO standings (dynasty_id, team_id, season, season_type, wins, losses, ties, points_for, points_against)
+            VALUES (?, ?, ?, ?, 0, 0, 0, 0, 0)
+        """, (self.dynasty_id, team_id, 2024, season_type))
 
         conn.execute("""
             UPDATE standings
             SET wins = wins + ?, losses = losses + ?, ties = ties + ?
-            WHERE dynasty_id = ? AND team_id = ? AND season = ?
-        """, (wins, losses, ties, self.dynasty_id, team_id, 2024))
+            WHERE dynasty_id = ? AND team_id = ? AND season = ? AND season_type = ?
+        """, (wins, losses, ties, self.dynasty_id, team_id, 2024, season_type))
 
-    def _update_team_points(self, conn, team_id: int, points_for: int = 0, points_against: int = 0):
+    def _update_team_points(self, conn, team_id: int, points_for: int = 0, points_against: int = 0, season_type: str = "regular_season"):
         """
-        Update team points for/against.
+        Update team points for/against for a specific season type.
 
         Args:
             conn: Database connection
             team_id: Team identifier
             points_for: Points scored by this team
             points_against: Points scored against this team
+            season_type: "preseason", "regular_season", or "playoffs" (default: "regular_season")
         """
         conn.execute("""
             UPDATE standings
             SET points_for = points_for + ?, points_against = points_against + ?
-            WHERE dynasty_id = ? AND team_id = ? AND season = ?
-        """, (points_for, points_against, self.dynasty_id, team_id, 2024))
+            WHERE dynasty_id = ? AND team_id = ? AND season = ? AND season_type = ?
+        """, (points_for, points_against, self.dynasty_id, team_id, 2024, season_type))
 
     def _persist_administrative_event(self, event_result: SimulationResult) -> bool:
         """

@@ -17,8 +17,15 @@ if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
 from season.season_cycle_controller import SeasonCycleController
-from calendar.date_models import Date
-from calendar.season_phase_tracker import SeasonPhase
+
+# Use try/except to handle both production and test imports
+try:
+    from calendar.date_models import Date
+    from calendar.season_phase_tracker import SeasonPhase
+except (ModuleNotFoundError, ImportError):
+    from src.calendar.date_models import Date
+    from src.calendar.season_phase_tracker import SeasonPhase
+
 from ui.domain_models.simulation_data_model import SimulationDataModel
 
 
@@ -39,7 +46,7 @@ class SimulationController(QObject):
     """
 
     # Qt signals for UI updates
-    date_changed = Signal(str, str)  # (date_str, phase)
+    date_changed = Signal(str)  # (date_str)
     games_played = Signal(list)  # (game_results)
     phase_changed = Signal(str, str)  # (old_phase, new_phase)
 
@@ -75,8 +82,7 @@ class SimulationController(QObject):
         start_date = Date.from_string(self.current_date_str)
 
         # Convert loaded phase string to SeasonPhase enum
-        from calendar.season_phase_tracker import SeasonPhase
-
+        # (SeasonPhase already imported at module level)
         if self.loaded_phase == 'PLAYOFFS' or self.loaded_phase == 'playoffs':
             initial_phase = SeasonPhase.PLAYOFFS
         elif self.loaded_phase == 'OFFSEASON' or self.loaded_phase == 'offseason':
@@ -180,7 +186,7 @@ class SimulationController(QObject):
                 self._save_state_to_db(new_date, new_phase, self.current_week)
 
                 # Emit signals
-                self.date_changed.emit(new_date, new_phase)
+                self.date_changed.emit(new_date)
 
                 if games:
                     self.games_played.emit(games)
@@ -235,7 +241,7 @@ class SimulationController(QObject):
 
                 self._save_state_to_db(new_date, new_phase, self.current_week)
 
-                self.date_changed.emit(new_date, new_phase)
+                self.date_changed.emit(new_date)
 
                 return result
 
@@ -267,12 +273,16 @@ class SimulationController(QObject):
 
     def get_current_week(self) -> Optional[int]:
         """
-        Get current week number (regular season only).
+        Get current week number (preseason and regular season).
 
         Returns:
-            Week number or None if not in regular season
+            Week number or None if in playoffs/offseason
         """
-        return self.current_week if self.season_controller.phase_state.phase.value == "regular_season" else None
+        current_phase = self.season_controller.phase_state.phase.value
+        # Show week number for both preseason and regular season
+        if current_phase in ["preseason", "regular_season"]:
+            return self.current_week
+        return None
 
     def get_next_milestone_name(self) -> str:
         """
@@ -324,7 +334,7 @@ class SimulationController(QObject):
                 )
 
                 # Emit signals for UI refresh
-                self.date_changed.emit(self.current_date_str, self.season_controller.phase_state.phase.value)
+                self.date_changed.emit(self.current_date_str)
 
                 # Add friendly message
                 # Detect if this is a milestone stop (offseason) vs phase completion
@@ -395,7 +405,7 @@ class SimulationController(QObject):
                 )
 
                 # Emit signal for UI refresh
-                self.date_changed.emit(self.current_date_str, summary['ending_phase'])
+                self.date_changed.emit(self.current_date_str)
 
             return summary
 
@@ -425,3 +435,37 @@ class SimulationController(QObject):
             "season": self.season,
             "dynasty_id": self.dynasty_id
         }
+
+    def get_transaction_debug_data(self) -> list:
+        """
+        Get collected transaction AI debug data from last simulation.
+
+        Returns debug information collected during daily transaction evaluation,
+        including probability calculations, proposal generation details, and
+        filter results for all 32 teams.
+
+        Returns:
+            List of debug data dicts (one per team evaluation), empty list if no data
+        """
+        try:
+            # Access TransactionAIManager through season_controller
+            if hasattr(self.season_controller, '_transaction_ai'):
+                return self.season_controller._transaction_ai._debug_data
+        except Exception as e:
+            print(f"[WARNING] Failed to get transaction debug data: {e}")
+
+        return []
+
+    def clear_transaction_debug_data(self) -> None:
+        """
+        Clear transaction AI debug data.
+
+        Call this after viewing debug logs to prevent memory buildup
+        during long simulations.
+        """
+        try:
+            # Access TransactionAIManager through season_controller
+            if hasattr(self.season_controller, '_transaction_ai'):
+                self.season_controller._transaction_ai.clear_debug_data()
+        except Exception as e:
+            print(f"[WARNING] Failed to clear transaction debug data: {e}")

@@ -254,18 +254,54 @@ class CalendarModel(QAbstractTableModel):
             away_name = f"{away_team.city} {away_team.nickname}" if away_team else f"Team {away_id}"
             home_name = f"{home_team.city} {home_team.nickname}" if home_team else f"Team {home_id}"
 
-            # Check if this is a playoff game
+            # Determine game type (playoff, preseason, or regular season)
             game_id = event.get('game_id', '')
+            week = parameters.get('week', '?')
+
+            # Check if this is a playoff game
             if game_id.startswith('playoff_'):
                 # Extract playoff round from game_id
                 # Format: playoff_YYYY_round_name_game_number
                 # Examples: playoff_2025_wild_card_1, playoff_2025_divisional_1, playoff_2025_super_bowl
                 round_label = self._extract_playoff_round(game_id)
                 return f"{round_label}: {away_name} @ {home_name}"
-            else:
-                # Regular season game - use week number
-                week = parameters.get('week', '?')
-                return f"Week {week}: {away_name} @ {home_name}"
+
+            # Check if this is a preseason game
+            # Method 1: Check for season_type or game_type parameter
+            season_type = parameters.get('season_type', '')
+            game_type = parameters.get('game_type', '')
+
+            if season_type == 'preseason' or game_type == 'preseason':
+                return f"Preseason Week {week}: {away_name} @ {home_name}"
+
+            # Method 2: Fallback heuristic - check event date
+            # If date is in August or early September (before Week 1), assume preseason
+            event_date_str = event.get('date', event.get('timestamp', ''))
+            if event_date_str:
+                try:
+                    from datetime import datetime
+                    # Parse date string (format: YYYY-MM-DD or ISO format)
+                    if isinstance(event_date_str, str):
+                        if 'T' in event_date_str:
+                            # ISO format with time
+                            event_date = datetime.fromisoformat(event_date_str.replace('Z', '+00:00'))
+                        else:
+                            # Simple date format
+                            event_date = datetime.strptime(event_date_str[:10], '%Y-%m-%d')
+
+                        # Preseason games are in August
+                        # Regular season typically starts in early September
+                        if event_date.month == 8:  # August = preseason
+                            return f"Preseason Week {week}: {away_name} @ {home_name}"
+                        elif event_date.month == 9 and event_date.day < 10 and isinstance(week, int) and week <= 1:
+                            # Early September Week 1 could still be preseason Week 4
+                            # Only if week is explicitly 1 (preseason Week 4 is sometimes labeled as 1)
+                            pass  # Fall through to regular season
+                except (ValueError, TypeError):
+                    pass  # If date parsing fails, fall through to regular season
+
+            # Default: Regular season game
+            return f"Week {week}: {away_name} @ {home_name}"
 
         elif event_type == 'DEADLINE':
             # Use description field from parameters

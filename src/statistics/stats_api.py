@@ -408,7 +408,8 @@ class StatsAPI:
     def get_player_game_log(
         self,
         player_id: str,
-        season: int
+        season: int,
+        season_type: str = "regular_season"
     ) -> List[Dict[str, Any]]:
         """
         Get game-by-game stats for a player.
@@ -419,6 +420,7 @@ class StatsAPI:
         Args:
             player_id: Player identifier
             season: Season year
+            season_type: "preseason", "regular_season", or "playoffs" (default: "regular_season")
 
         Returns:
             List of game stats (empty if season is archived)
@@ -439,11 +441,11 @@ class StatsAPI:
                 pgs.interceptions
             FROM player_game_stats pgs
             JOIN games g ON pgs.game_id = g.game_id AND pgs.dynasty_id = g.dynasty_id
-            WHERE pgs.player_id = ? AND pgs.dynasty_id = ? AND g.season = ?
+            WHERE pgs.player_id = ? AND pgs.dynasty_id = ? AND g.season = ? AND pgs.season_type = ?
             ORDER BY g.game_date ASC
         """
 
-        result = self.database_api.execute_query(query, (player_id, self.dynasty_id, season))
+        result = self.database_api.execute_query(query, (player_id, self.dynasty_id, season, season_type))
 
         return [dict(row) for row in result] if result else []
 
@@ -932,19 +934,20 @@ class StatsAPI:
 
     # === PRIVATE HELPER METHODS ===
 
-    def _get_all_player_stats(self, season: int) -> List[Dict[str, Any]]:
+    def _get_all_player_stats(self, season: int, season_type: str = "regular_season") -> List[Dict[str, Any]]:
         """
         Get all player stats for a season from database.
 
         Args:
             season: Season year to filter stats
+            season_type: "preseason", "regular_season", or "playoffs" (default: "regular_season")
 
         Returns:
             List of player stat dictionaries with season-filtered stats
         """
         # Query database for all player game stats
-        # IMPORTANT: Must JOIN with games table to filter by season since
-        # player_game_stats table doesn't have a season column
+        # IMPORTANT: Must JOIN with games table to filter by season
+        # Also filter by season_type to separate preseason/regular/playoffs
         query = '''
             SELECT
                 pgs.player_id,
@@ -975,13 +978,14 @@ class StatsAPI:
             JOIN games g ON pgs.game_id = g.game_id AND pgs.dynasty_id = g.dynasty_id
             WHERE pgs.dynasty_id = ?
                 AND g.season = ?
+                AND pgs.season_type = ?
             GROUP BY pgs.player_id, pgs.player_name, pgs.team_id, pgs.position
         '''
 
-        results = self.db_api.db_connection.execute_query(query, (self.dynasty_id, season))
+        results = self.db_api.db_connection.execute_query(query, (self.dynasty_id, season, season_type))
 
-        # Convert to list of dicts
-        return [dict(row) for row in results]
+        # Already converted to list of dicts by execute_query()
+        return results
 
     def _calculate_passer_rating(
         self,

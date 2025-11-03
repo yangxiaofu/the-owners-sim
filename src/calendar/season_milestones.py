@@ -301,14 +301,14 @@ class SeasonMilestoneCalculator:
             priority=18
         )
 
-        # Preseason Start - First Thursday in August
+        # Preseason Start - Day BEFORE first preseason game (phase transition trigger)
         self.milestone_definitions[MilestoneType.PRESEASON_START] = MilestoneDefinition(
             milestone_type=MilestoneType.PRESEASON_START,
             name="Preseason Start",
-            description="NFL Preseason begins (Hall of Fame Game)",
+            description="Preseason Phase Begins (day before first preseason game)",
             base_phase=SeasonPhase.OFFSEASON,
             offset_calculator=self._calculate_preseason_start,
-            conditions={"first_thursday_august": True},
+            conditions={"day_before_first_game": True},
             priority=19
         )
 
@@ -616,15 +616,22 @@ class SeasonMilestoneCalculator:
 
     def _calculate_preseason_start(self, base_date: Optional[Date], context: Dict[str, Any]) -> Date:
         """
-        Calculate preseason start date (first Thursday in August).
+        Calculate preseason start milestone date (day BEFORE first preseason game).
 
-        NFL preseason traditionally starts on the first Thursday in August with the
-        Hall of Fame Game. This date varies by year depending on the calendar.
+        CRITICAL: This milestone triggers the OFFSEASON → PRESEASON phase transition.
+        It must be 1 day BEFORE the first preseason game to ensure games don't get
+        skipped during the transition.
+
+        First preseason games are on the first Thursday in August (Hall of Fame Game).
+        This milestone is set to the day before (Wednesday) to avoid conflicts.
 
         Examples:
-            2024: Aug 1 (Thursday)
-            2025: Aug 7 (Thursday)
-            2026: Aug 6 (Thursday)
+            2024: First game Aug 1 (Thu) → Milestone Jul 31 (Wed)
+            2025: First game Aug 7 (Thu) → Milestone Aug 6 (Wed)
+            2026: First game Aug 6 (Thu) → Milestone Aug 5 (Wed)
+
+        Returns:
+            Date representing the day BEFORE first preseason game (phase transition date)
         """
         season_year = context.get('season_year', base_date.year if base_date else 2025)
         next_year = season_year + 1
@@ -636,13 +643,19 @@ class SeasonMilestoneCalculator:
         # Get weekday (0=Monday, 1=Tuesday, ..., 3=Thursday, ..., 6=Sunday)
         weekday = py_date.weekday()
 
-        # Calculate days until first Thursday
+        # Calculate days until first Thursday (first preseason game)
         if weekday <= 3:  # Monday through Thursday
             days_to_thursday = 3 - weekday
         else:  # Friday through Sunday
             days_to_thursday = 7 - weekday + 3
 
-        return aug_1.add_days(days_to_thursday)
+        first_game_date = aug_1.add_days(days_to_thursday)
+
+        # CRITICAL FIX: Return 1 day BEFORE first game
+        # This ensures phase transition happens before games are scheduled to start
+        milestone_date = first_game_date.add_days(-1)
+
+        return milestone_date
 
     def add_custom_milestone(self, milestone_def: MilestoneDefinition) -> None:
         """Add a custom milestone definition."""

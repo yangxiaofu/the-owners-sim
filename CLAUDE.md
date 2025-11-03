@@ -26,16 +26,24 @@ This is "The Owners Sim" - a comprehensive NFL football simulation engine writte
 - Season simulation (regular season, playoffs, offseason cycle)
 - Salary cap system (full CBA compliance, event integration)
 - Calendar and event systems
-- Statistics and persistence systems
+- Statistics preservation system (Phases 1-3 complete with season year tracking)
+- Offseason AI Manager (Phase 2 complete - franchise tags, free agency, roster cuts)
 
 **In Active Development:**
 - Desktop UI Phase 2 (Season/Team views with data integration)
 - Player Generation System (archetype-based procedural generation)
+- Offseason AI Manager Phase 3 (Draft system integration)
 
 **Stable Features:**
 - Play engine, game simulation, coaching staff
 - Playoff seeding and bracket management
 - Database persistence with dynasty isolation
+
+**Recent Major Updates (2024-2025):**
+- Statistics Preservation System: Season year tracking with auto-recovery (complete)
+- Offseason AI Manager Phase 2: AI-controlled franchise tags, free agency, and roster cuts (complete)
+- Season Cycle Controller: Dynamic transition handlers with phase-aware season year management
+- Desktop UI Phase 1: Foundation, tabs, MVC architecture with domain model layer (complete)
 
 ## Development Environment
 
@@ -148,6 +156,14 @@ python demo/offseason_demo/offseason_demo.py  # Interactive NFL offseason simula
 # - Manage roster cuts and finalize 53-man roster
 # - Calendar advancement with automatic deadline triggering
 # See demo/offseason_demo/README.md for detailed usage
+
+# Offseason AI Logic Demos (Phase 2 Complete)
+PYTHONPATH=src python demo/ai_logic/demo_franchise_tag_ai.py  # AI franchise tag candidate evaluation
+PYTHONPATH=src python demo/ai_logic/demo_free_agency_ai.py  # AI free agency simulation (30-day 3-tier system)
+PYTHONPATH=src python demo/ai_logic/demo_roster_cuts_ai.py  # AI roster cuts (90→53 with value scoring)
+PYTHONPATH=src python demo/ai_logic/demo_full_ai_offseason.py  # Complete AI offseason integration
+# See demo/ai_logic/README.md for detailed usage
+# All demos use mock data and run with enable_persistence=False
 
 # Play Demos (Individual Play Mechanics)
 PYTHONPATH=src python demo/play_demos/pass_play_demo.py  # Pass play mechanics with real NFL players
@@ -395,10 +411,18 @@ The simulation follows a layered architecture with clear separation of concerns:
   - Dynasty isolation and flexible persistence control
   - **Recommended for full season simulations**
 
-**14. Offseason System (`src/offseason/`)**
+**14. Offseason System (`src/offseason/`)** - **PHASE 2 COMPLETE**
+- `offseason_controller.py`: API orchestration layer with AI franchise tag evaluation (Gap 4 complete)
+- `free_agency_manager.py`: Free agency operations with 30-day 3-tier AI simulation (Gap 5 complete)
+- `draft_manager.py`: Draft operations (Phase 3 in development)
+- `roster_manager.py`: Roster management with AI 90→53 roster cuts (Gap 7 complete)
+- `team_needs_analyzer.py`: Position-specific team need analysis (Gap 2 complete)
+- `market_value_calculator.py`: Contract value estimation (Gap 3 complete)
 - Offseason event scheduling and management
 - Integration with calendar system for offseason timeline
 - Support for NFL offseason phases and deadlines
+- **AI Decision Making**: All 3 high-priority AI systems operational (franchise tags, free agency, roster cuts)
+- See `docs/plans/offseason_ai_manager_plan.md` for complete architecture
 
 **15. Workflow System (`src/workflows/`)**
 - `simulation_workflow.py`: Reusable 3-stage workflow orchestrator (Simulation → Statistics → Persistence)
@@ -778,12 +802,12 @@ sim2 = FullGameSimulator(..., dynasty_id="user2_dynasty", database_path="shared.
 
 Key architectural updates in the codebase:
 
-1. **PlayoffController Centralization** (Oct 2025): Moved from `demo/` to `src/playoff_system/playoff_controller.py`
+1. **PlayoffController Centralization** (2024): Moved from `demo/` to `src/playoff_system/playoff_controller.py`
    - Now accepts real playoff seeding from regular season standings (via `initial_seeding` parameter)
    - Maintains backward compatibility with random seeding
    - See `GAP1_IMPLEMENTATION_SUMMARY.md` and `docs/architecture/playoff_controller.md`
 
-2. **Full Season Simulation Plan** (Oct 2025): Active development of unified season simulation
+2. **Full Season Simulation Plan** (2024): Active development of unified season simulation
    - Target: Seamless regular season → playoffs → offseason progression
    - See `docs/plans/full_season_simulation_plan.md` for implementation status
    - Integrates `SeasonController` + `PlayoffController` + calendar system
@@ -804,13 +828,13 @@ Key architectural updates in the codebase:
 
 9. **Coaching Staff Integration**: All 32 NFL teams mapped to coaching philosophies in `team_coaching_styles.json`
 
-10. **Offseason Event System** (Oct 2025): Complete offseason event infrastructure implemented
+10. **Offseason Event System** (2024): Complete offseason event infrastructure implemented
    - New event types: `DeadlineEvent`, `WindowEvent`, `MilestoneEvent` in `src/events/`
    - Support for NFL offseason timeline (franchise tags, free agency, draft, roster cuts)
    - Date-driven event triggering via existing `SimulationExecutor`
    - See `docs/plans/offseason_plan.md` for complete architecture and implementation details
 
-11. **Desktop UI Development** (Oct 2025): OOTP-inspired PySide6/Qt desktop application (Phase 1 complete)
+11. **Desktop UI Development** (2024): OOTP-inspired PySide6/Qt desktop application (Phase 1 complete)
    - Complete `ui/` package with tab-based navigation (6 primary tabs)
    - Main window with menu bar, toolbar, and status bar
    - OOTP-inspired QSS stylesheet with professional theme
@@ -818,7 +842,7 @@ Key architectural updates in the codebase:
    - Phase 1 delivered: Foundation complete, Phase 2 (Season/Team views) ready to start
    - See `docs/plans/ui_development_plan.md` and `PHASE_1_COMPLETE.md` for details
 
-12. **Salary Cap System** (Oct 2025): NFL salary cap management system implementation
+12. **Salary Cap System** (2024): NFL salary cap management system implementation
    - New `src/salary_cap/` module with complete cap calculation engine
    - Follows 2024-2025 NFL CBA rules (proration, dead money, June 1 designations)
    - Support for top-51 (offseason) and 53-man (regular season) roster calculations
@@ -828,7 +852,7 @@ Key architectural updates in the codebase:
    - Interactive demo available: `demo/cap_calculator_demo/`
    - See `docs/plans/salary_cap_plan.md` for architecture and `docs/architecture/event_cap_integration.md` for event integration details
 
-13. **Player Generation System** (Oct 2025): **IN DEVELOPMENT** - Procedural player generation system
+13. **Player Generation System** (2024): **IN DEVELOPMENT** - Procedural player generation system
    - New `src/player_generation/` module with archetype-based generation framework
    - Statistical distribution system (normal, beta, bounded) for realistic attribute generation
    - Attribute correlation engine for position-specific trait relationships
@@ -837,6 +861,25 @@ Key architectural updates in the codebase:
    - Sprint-based development approach with comprehensive test coverage
    - See `docs/plans/player_generator_plan.md` and `docs/specifications/player_generator_system.md`
 
+14. **Statistics Preservation System** (2024): **COMPLETE** - Season year tracking and statistics preservation
+   - Phase 1: Single source of truth for `season_year` tracking in `SeasonCycleController`
+   - Phase 2: Dynamic transition handlers for phase-aware season year management
+   - Phase 3: Statistics preservation across all season phases
+   - Phase 4: Season year drift auto-recovery with protective guards
+   - Phase 5: Complete validation and edge case handling
+   - Fixes preseason→regular season transition bugs and standings persistence
+   - See `docs/plans/statistics_preservation.md` for complete architecture
+
+15. **Offseason AI Manager** (2024): **PHASE 2 COMPLETE** - AI-controlled team decision making
+   - Phase 1: Infrastructure (contract expiration queries, team needs analysis, market value calculation)
+   - Phase 2: High-priority AI systems (franchise tags, free agency, roster cuts)
+   - Phase 3: Draft system (in development - draft class generation and AI draft simulation)
+   - AI franchise tag evaluation with cap space validation
+   - 30-day 3-tier free agency simulation (elite/starter/depth phases)
+   - Value-based roster cuts (90→53) with NFL position minimums
+   - Complete mock data system for testing without database dependencies
+   - See `docs/plans/offseason_ai_manager_plan.md` and `PHASE_2_COMPLETE.md` for details
+
 ## Key Implementation Notes
 
 - **Team IDs**: Always use numerical IDs (1-32) via `TeamIDs` constants
@@ -844,3 +887,6 @@ Key architectural updates in the codebase:
 - **Testing**: Use `PYTHONPATH=src` prefix for most test runs
 - **Database**: SQLite with dynasty-based isolation support
 - **UI Dependencies**: PySide6 (Qt for Python) installed via `requirements-ui.txt` for desktop application
+
+Always search for existing API calls before re-creating your own. 
+Avoid Magic Strings and default to enums where possible. 

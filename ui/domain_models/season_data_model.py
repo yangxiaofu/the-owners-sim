@@ -277,10 +277,10 @@ class SeasonDataModel:
                 print(f"Failed: {error}")
         """
         try:
-            # Use default season start date if not provided (Sept 4, 12:00 AM)
-            # Start dynasty one day before first game so Sept 5 games can be simulated
+            # Use default season start date if not provided (Aug 1, 12:00 AM)
+            # Start dynasty at beginning of preseason
             if not season_start_date:
-                season_start_date = datetime(self.season, 9, 4, 0, 0)
+                season_start_date = datetime(self.season, 8, 1, 0, 0)
 
             # ALWAYS initialize dynasty state with season start date
             # This ensures dynasty_state exists even if schedule already generated
@@ -302,8 +302,20 @@ class SeasonDataModel:
                 dynasty_id=self.dynasty_id
             )
 
-            # Generate 272 games (17 weeks × 16 games per week)
-            # Dynasty starts Sept 4, but games start Sept 5 (use generator's default)
+            # === STEP 1: Generate PRESEASON schedule (48 games, 3 weeks) ===
+            print(f"📅 Generating preseason schedule ({self.season})...")
+            preseason_events = generator.generate_preseason(
+                season_year=self.season,
+                start_date=None  # Uses calculated preseason start (~3.5 weeks before regular season)
+            )
+
+            if not preseason_events:
+                return (False, "Preseason schedule generation returned no events")
+
+            print(f"✅ Preseason schedule generated: {len(preseason_events)} games")
+
+            # === STEP 2: Generate REGULAR SEASON schedule (272 games, 17 weeks) ===
+            print(f"📅 Generating regular season schedule ({self.season})...")
             schedule_events = generator.generate_season(
                 season_year=self.season,
                 start_date=None  # Uses dynamic Labor Day calculation (first Thursday after Labor Day)
@@ -343,12 +355,14 @@ class SeasonDataModel:
         date_str = season_start_date.strftime('%Y-%m-%d')
 
         # Use DynastyStateAPI to initialize state (includes defensive delete + verification)
+        # Start phase is PRESEASON because season_start_date is August 1 (preseason start)
+        # Regular season starts in early September
         success = self.dynasty_api.initialize_state(
             dynasty_id=self.dynasty_id,
             season=self.season,
             start_date=date_str,
             start_week=1,
-            start_phase='regular_season'
+            start_phase='preseason'  # August 1 start = preseason, not regular season
         )
 
         if not success:

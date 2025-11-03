@@ -212,7 +212,7 @@ CREATE TABLE games (
 | `dynasty_id` | TEXT | NOT NULL, FK | Dynasty isolation key |
 | `season` | INTEGER | NOT NULL | Season year |
 | `week` | INTEGER | NOT NULL | Week number (1-18 regular, 19+ playoffs) |
-| `season_type` | TEXT | NOT NULL, DEFAULT 'regular_season' | **NEW**: 'regular_season' or 'playoffs' for stat separation |
+| `season_type` | TEXT | NOT NULL, DEFAULT 'regular_season' | **UPDATED**: 'preseason', 'regular_season', or 'playoffs' for complete stat separation |
 | `game_type` | TEXT | DEFAULT 'regular' | Detailed game type: 'regular', 'wildcard', 'divisional', 'conference', 'super_bowl' |
 | `home_team_id` | INTEGER | NOT NULL | Home team ID (1-32) |
 | `away_team_id` | INTEGER | NOT NULL | Away team ID (1-32) |
@@ -269,7 +269,7 @@ CREATE TABLE player_game_stats (
 
     -- Season type for stat filtering and separation
     season_type TEXT NOT NULL DEFAULT 'regular_season',
-    -- Values: 'regular_season' | 'playoffs'
+    -- Values: 'preseason' | 'regular_season' | 'playoffs'
 
     player_id TEXT NOT NULL,
     player_name TEXT NOT NULL,
@@ -411,7 +411,7 @@ CREATE TABLE standings (
 | `dynasty_id` | TEXT | NOT NULL | Dynasty isolation |
 | `team_id` | INTEGER | NOT NULL | Team ID (1-32) |
 | `season` | INTEGER | NOT NULL | Season year |
-| `season_type` | TEXT | NOT NULL, DEFAULT 'regular_season' | **NEW v2.4.0**: Season type for record separation ('regular_season' or 'playoffs') |
+| `season_type` | TEXT | NOT NULL, DEFAULT 'regular_season' | **UPDATED v2.4.1**: Season type for record separation ('preseason', 'regular_season', or 'playoffs') |
 | `wins` | INTEGER | DEFAULT 0 | Total wins for this season type |
 | `losses` | INTEGER | DEFAULT 0 | Total losses for this season type |
 | `ties` | INTEGER | DEFAULT 0 | Total ties for this season type |

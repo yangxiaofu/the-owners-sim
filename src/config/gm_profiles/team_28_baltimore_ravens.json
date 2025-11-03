@@ -1,0 +1,9 @@
+{
+  "team_id": 28,
+  "team_name": "Baltimore Ravens",
+  "base_archetype": "Star Chaser",
+  "customizations": {
+    "draft_pick_value": 0.5
+  },
+  "notes": "Builds around elite QB while maintaining draft value"
+}

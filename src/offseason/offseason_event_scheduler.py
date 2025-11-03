@@ -8,8 +8,14 @@ after the Super Bowl completes.
 from typing import Dict, List, Any
 from datetime import datetime
 
-from calendar.date_models import Date
-from calendar.season_milestones import SeasonMilestoneCalculator, MilestoneType
+# Use try/except to handle both production and test imports
+try:
+    from calendar.date_models import Date
+    from calendar.season_milestones import SeasonMilestoneCalculator, MilestoneType
+except (ModuleNotFoundError, ImportError):
+    from src.calendar.date_models import Date
+    from src.calendar.season_milestones import SeasonMilestoneCalculator, MilestoneType
+
 from events.deadline_event import DeadlineEvent, DeadlineType
 from events.window_event import WindowEvent, WindowName
 from events.milestone_event import MilestoneEvent
@@ -318,26 +324,61 @@ class OffseasonEventScheduler:
         event_db.insert_event(training_camp_end_event)
         count += 1
 
-        # 6. Preseason Games (August 10 → August 25)
-        preseason_start = Date(season_year + 1, 8, 10)
+        # 6. Preseason Games Window (Dynamic: day before first game → last game date)
+        # Try to query actual preseason game dates first (if games already generated)
+        first_game_date, last_game_date = self._get_preseason_game_date_range(
+            event_db=event_db,
+            season_year=season_year,
+            dynasty_id=dynasty_id
+        )
+
+        if first_game_date and last_game_date:
+            # Games exist - use actual dates
+            # Window START = day before first game (allows user to simulate from day before)
+            preseason_window_start = first_game_date.add_days(-1)
+            # Window END = last game date (simulation completes on final game day)
+            preseason_window_end = last_game_date
+
+            print(f"[PRESEASON_WINDOW] Using actual game dates from database:")
+            print(f"  First game: {first_game_date}")
+            print(f"  Window START (first game - 1): {preseason_window_start}")
+            print(f"  Last game: {last_game_date}")
+            print(f"  Window END (last game): {preseason_window_end}")
+        else:
+            # Games don't exist yet - calculate fallback dates
+            # Get PRESEASON_START milestone for calculation baseline
+            preseason_start_milestone = milestone_dict.get(MilestoneType.PRESEASON_START)
+            if not preseason_start_milestone:
+                raise RuntimeError(
+                    f"PRESEASON_START milestone required for window calculation but not found. "
+                    f"Check SeasonMilestoneCalculator for season {season_year}."
+                )
+
+            preseason_window_start, preseason_window_end = self._calculate_preseason_window_dates(
+                preseason_start_milestone=preseason_start_milestone.date
+            )
+
+            print(f"[PRESEASON_WINDOW] Games not yet generated - using calculated fallback dates")
+
+        # Create window START event
         preseason_start_event = WindowEvent(
             window_name=WindowName.PRESEASON,
             window_type="START",
-            description="Preseason Begins - Preseason games start",
+            description=f"Preseason Game Simulation Begins - Games can be simulated starting {preseason_window_start}",
             season_year=season_year,
-            event_date=preseason_start,
+            event_date=preseason_window_start,
             dynasty_id=dynasty_id
         )
         event_db.insert_event(preseason_start_event)
         count += 1
 
-        preseason_end = Date(season_year + 1, 8, 25)
+        # Create window END event
         preseason_end_event = WindowEvent(
             window_name=WindowName.PRESEASON,
             window_type="END",
-            description="Preseason Ends - Preseason games conclude",
+            description=f"Preseason Game Simulation Ends - Final preseason game on {preseason_window_end}",
             season_year=season_year,
-            event_date=preseason_end,
+            event_date=preseason_window_end,
             dynasty_id=dynasty_id
         )
         event_db.insert_event(preseason_end_event)
@@ -466,6 +507,118 @@ class OffseasonEventScheduler:
         count += 1
 
         return count
+
+    def _get_preseason_game_date_range(
+        self,
+        event_db: EventDatabaseAPI,
+        season_year: int,
+        dynasty_id: str
+    ) -> tuple[Date | None, Date | None]:
+        """
+        Query first and last preseason game dates from database.
+
+        This method queries the event database for all preseason games in the upcoming
+        season and returns the date range (earliest to latest). Used to dynamically
+        calculate PRESEASON window boundaries.
+
+        Args:
+            event_db: Event database API for querying games
+            season_year: Current season year (games are for season_year + 1)
+            dynasty_id: Dynasty context for isolation
+
+        Returns:
+            Tuple of (first_game_date, last_game_date) as Date objects,
+            or (None, None) if no preseason games exist yet
+
+        Example:
+            >>> first, last = self._get_preseason_game_date_range(event_db, 2025, "test")
+            >>> print(f"Preseason: {first} to {last}")
+            Preseason: 2026-08-06 to 2026-08-27
+        """
+        from events.event_database_api import EventDatabaseAPI
+        import sqlite3
+
+        conn = sqlite3.connect(event_db.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        try:
+            # Query for MIN and MAX timestamps of preseason games for upcoming season
+            # Games are generated with season_year + 1 (e.g., 2026 games during 2025 offseason)
+            query = '''
+                SELECT
+                    MIN(timestamp) as first_game_timestamp,
+                    MAX(timestamp) as last_game_timestamp
+                FROM events
+                WHERE dynasty_id = ?
+                  AND event_type = 'GAME'
+                  AND json_extract(data, '$.parameters.season_type') = 'preseason'
+                  AND json_extract(data, '$.parameters.season') = ?
+            '''
+
+            cursor.execute(query, (dynasty_id, season_year + 1))
+            row = cursor.fetchone()
+
+            if row and row['first_game_timestamp'] and row['last_game_timestamp']:
+                # Convert timestamps (milliseconds) to Date objects
+                first_datetime = datetime.fromtimestamp(row['first_game_timestamp'] / 1000)
+                last_datetime = datetime.fromtimestamp(row['last_game_timestamp'] / 1000)
+
+                first_date = Date(first_datetime.year, first_datetime.month, first_datetime.day)
+                last_date = Date(last_datetime.year, last_datetime.month, last_datetime.day)
+
+                print(f"[PRESEASON_WINDOW] Found {season_year + 1} preseason games in database:")
+                print(f"  First game: {first_date}")
+                print(f"  Last game: {last_date}")
+
+                return (first_date, last_date)
+            else:
+                print(f"[PRESEASON_WINDOW] No preseason games found for {season_year + 1} season yet")
+                return (None, None)
+
+        except Exception as e:
+            print(f"[PRESEASON_WINDOW] Error querying preseason game dates: {e}")
+            return (None, None)
+
+        finally:
+            conn.close()
+
+    def _calculate_preseason_window_dates(
+        self,
+        preseason_start_milestone: Date
+    ) -> tuple[Date, Date]:
+        """
+        Calculate preseason window dates when games don't exist yet (fallback).
+
+        Uses conservative estimates based on NFL preseason structure:
+        - 3 weeks of preseason games (Hall of Fame game may start earlier)
+        - Typically runs early-mid August
+
+        Args:
+            preseason_start_milestone: Official preseason start date (first Thursday in August)
+
+        Returns:
+            Tuple of (window_start, window_end) as Date objects
+
+        Example:
+            >>> milestone = Date(2026, 8, 8)  # First Thursday
+            >>> start, end = self._calculate_preseason_window_dates(milestone)
+            >>> print(f"Window: {start} to {end}")
+            Window: 2026-08-05 to 2026-08-29
+        """
+        # Window START: 3 days before milestone to catch Hall of Fame game and any early games
+        # (Hall of Fame game typically Thursday before official preseason week 1)
+        window_start = preseason_start_milestone.add_days(-3)
+
+        # Window END: 21 days after milestone (3 full weeks of preseason games)
+        window_end = preseason_start_milestone.add_days(21)
+
+        print(f"[PRESEASON_WINDOW] Calculated fallback window dates:")
+        print(f"  Milestone (first Thursday): {preseason_start_milestone}")
+        print(f"  Window START (milestone - 3 days): {window_start}")
+        print(f"  Window END (milestone + 21 days): {window_end}")
+
+        return (window_start, window_end)
 
     def _calculate_first_thursday_august(self, year: int) -> Date:
         """

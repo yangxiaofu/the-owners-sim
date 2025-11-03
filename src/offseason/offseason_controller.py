@@ -7,6 +7,7 @@ Manages franchise tags, free agency, draft, and roster finalization.
 
 from datetime import datetime
 from typing import Optional, Dict, List, Any
+import logging
 
 from offseason.offseason_phases import OffseasonPhase
 from offseason.draft_manager import DraftManager
@@ -69,12 +70,18 @@ class OffseasonController:
         self.enable_persistence = enable_persistence
         self.verbose_logging = verbose_logging
 
+        # Initialize logger
+        self.logger = logging.getLogger(__name__)
+
         # Calendar management
         if calendar:
             self.calendar = calendar
         else:
             # If no calendar provided, start at Super Bowl + 1 week
-            from calendar.calendar_component import CalendarComponent
+            try:
+                from calendar.calendar_component import CalendarComponent
+            except (ModuleNotFoundError, ImportError):
+                from src.calendar.calendar_component import CalendarComponent
             start_date = super_bowl_date or datetime(season_year + 1, 2, 9)
             self.calendar = CalendarComponent(start_date, season_year)
 
@@ -1482,3 +1489,133 @@ class OffseasonController:
             picks_by_round[round_num].append(pick)
 
         return picks_by_round
+
+    # ========== Public API: AI Offseason Simulation ==========
+
+    def simulate_ai_full_offseason(self, user_team_id: int) -> Dict[str, Any]:
+        """
+        Simulate complete AI offseason for all non-user teams.
+
+        Executes:
+        1. Franchise tags for all AI teams
+        2. 30-day free agency simulation
+        3. Roster cuts (90 → 53) for all teams
+
+        Args:
+            user_team_id: User's team ID (will be skipped)
+
+        Returns:
+            Dictionary with:
+                - franchise_tags_applied: Number of tags applied
+                - free_agent_signings: Number of FA signings
+                - roster_cuts_made: Number of cuts across all teams
+                - total_transactions: Total transaction count
+                - summary_by_team: Per-team transaction breakdown
+        """
+        ai_teams = [t for t in range(1, 33) if t != user_team_id]
+
+        franchise_tags_count = 0
+        fa_signings_count = 0
+        roster_cuts_count = 0
+
+        if self.verbose_logging:
+            print("\n" + "=" * 80)
+            print("  AI OFFSEASON SIMULATION")
+            print("=" * 80)
+            print(f"Simulating offseason for {len(ai_teams)} AI teams...")
+            print()
+
+        # Step 1: Franchise Tag Period (all AI teams)
+        if self.verbose_logging:
+            print("STEP 1: Franchise Tags")
+            print("-" * 80)
+
+        for team_id in ai_teams:
+            try:
+                # Get tag candidates
+                candidates = self.get_franchise_tag_candidates(team_id)
+
+                # AI applies tag to top candidate if available
+                if candidates:
+                    top_candidate = candidates[0]
+                    if top_candidate['recommendation'] == 'TAG':
+                        # Apply franchise tag
+                        result = self.apply_franchise_tag(
+                            player_id=top_candidate['player_id'],
+                            team_id=team_id,
+                            tag_type="NON_EXCLUSIVE"
+                        )
+                        franchise_tags_count += 1
+
+                        if self.verbose_logging:
+                            print(f"  Team {team_id}: Tagged {top_candidate['player_name']} "
+                                  f"({top_candidate['position']}) - ${result['tag_salary']:,}")
+            except Exception as e:
+                self.logger.error(f"Error applying franchise tag for team {team_id}: {e}")
+                continue
+
+        if self.verbose_logging:
+            print(f"\n✅ Applied {franchise_tags_count} franchise tags\n")
+
+        # Step 2: Free Agency (30-day simulation)
+        if self.verbose_logging:
+            print("STEP 2: Free Agency")
+            print("-" * 80)
+
+        try:
+            fa_signings = self.simulate_ai_free_agency(
+                user_team_id=user_team_id,
+                days_to_simulate=30
+            )
+            fa_signings_count = len(fa_signings)
+
+            if self.verbose_logging:
+                print(f"✅ AI teams made {fa_signings_count} free agent signings\n")
+        except Exception as e:
+            self.logger.error(f"Error in free agency simulation: {e}")
+
+        # Step 3: Roster Cuts (90 → 53)
+        if self.verbose_logging:
+            print("STEP 3: Roster Cuts")
+            print("-" * 80)
+
+        for team_id in ai_teams:
+            try:
+                # AI performs roster cuts
+                cut_result = self.roster_manager.finalize_53_man_roster_ai(team_id)
+
+                cuts_made = cut_result.get('total_cut', 0)
+                roster_cuts_count += cuts_made
+
+                if self.verbose_logging and cuts_made > 0:
+                    print(f"  Team {team_id}: Cut {cuts_made} players (90 → 53)")
+            except Exception as e:
+                self.logger.error(f"Error in roster cuts for team {team_id}: {e}")
+                continue
+
+        if self.verbose_logging:
+            print(f"\n✅ Made {roster_cuts_count} roster cuts across all teams\n")
+
+        # Summary
+        total_transactions = franchise_tags_count + fa_signings_count + roster_cuts_count
+
+        result = {
+            'franchise_tags_applied': franchise_tags_count,
+            'free_agent_signings': fa_signings_count,
+            'roster_cuts_made': roster_cuts_count,
+            'total_transactions': total_transactions,
+            'ai_teams_processed': len(ai_teams)
+        }
+
+        if self.verbose_logging:
+            print("=" * 80)
+            print("  OFFSEASON SIMULATION COMPLETE")
+            print("=" * 80)
+            print(f"  Total Transactions: {total_transactions}")
+            print(f"  - Franchise Tags: {franchise_tags_count}")
+            print(f"  - Free Agency: {fa_signings_count}")
+            print(f"  - Roster Cuts: {roster_cuts_count}")
+            print("=" * 80)
+            print()
+
+        return result

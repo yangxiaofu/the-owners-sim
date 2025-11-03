@@ -254,6 +254,42 @@ class CapDatabaseAPI:
 
             return results
 
+    def get_player_contract(
+        self,
+        player_id: str,
+        team_id: int,
+        season: int,
+        dynasty_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get active contract for a specific player on a specific team.
+
+        Args:
+            player_id: Player ID
+            team_id: Team ID
+            season: Season year
+            dynasty_id: Dynasty identifier for proper isolation
+
+        Returns:
+            Contract dict or None if not found
+        """
+        with sqlite3.connect(self.database_path) as conn:
+            conn.row_factory = sqlite3.Row
+
+            cursor = conn.execute('''
+                SELECT * FROM player_contracts
+                WHERE player_id = ?
+                  AND team_id = ?
+                  AND dynasty_id = ?
+                  AND start_year <= ?
+                  AND end_year >= ?
+                  AND is_active = TRUE
+                LIMIT 1
+            ''', (player_id, team_id, dynasty_id, season, season))
+
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
     def get_contract_year_details(
         self,
         contract_id: int,

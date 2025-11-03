@@ -94,7 +94,16 @@ class PhaseTransitionManager:
         current_phase = self.phase_state.phase
 
         # Check completion based on current phase
-        if current_phase == SeasonPhase.REGULAR_SEASON:
+        if current_phase == SeasonPhase.PRESEASON:
+            if self.completion_checker.is_preseason_complete():
+                return PhaseTransition(
+                    from_phase=SeasonPhase.PRESEASON,
+                    to_phase=SeasonPhase.REGULAR_SEASON,
+                    trigger="preseason_complete",
+                    metadata={}
+                )
+
+        elif current_phase == SeasonPhase.REGULAR_SEASON:
             if self.completion_checker.is_regular_season_complete():
                 return PhaseTransition(
                     from_phase=SeasonPhase.REGULAR_SEASON,

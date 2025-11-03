@@ -230,7 +230,7 @@ class PlayerRosterAPI:
         """
         query = "SELECT COUNT(*) as cnt FROM players WHERE dynasty_id = ?"
         result = self.db_connection.execute_query(query, (dynasty_id,))
-        return result[0]['cnt'] > 0
+        return dict(result[0])['cnt'] > 0 if result else False
 
     def get_team_roster(self, dynasty_id: str, team_id: int) -> List[Dict[str, Any]]:
         """
@@ -278,7 +278,7 @@ class PlayerRosterAPI:
                 f"   Database is not initialized. Create a new dynasty to load rosters."
             )
 
-        return roster
+        return roster  # Already converted to dicts by execute_query()
 
     def get_free_agents(self, dynasty_id: str) -> List[Dict[str, Any]]:
         """
@@ -310,7 +310,7 @@ class PlayerRosterAPI:
         """
 
         free_agents = self.db_connection.execute_query(query, (dynasty_id,))
-        return free_agents
+        return free_agents  # Already converted to dicts by execute_query()
 
     def get_player_by_id(self, dynasty_id: str, player_id: int) -> Optional[Dict[str, Any]]:
         """
@@ -330,7 +330,7 @@ class PlayerRosterAPI:
         """
 
         result = self.db_connection.execute_query(query, (dynasty_id, player_id))
-        return result[0] if result else None
+        return result[0] if result else None  # Already converted to dict by execute_query()
 
     def get_roster_count(self, dynasty_id: str, team_id: int) -> int:
         """
@@ -350,7 +350,7 @@ class PlayerRosterAPI:
         """
 
         result = self.db_connection.execute_query(query, (dynasty_id, team_id))
-        return result[0]['cnt'] if result else 0
+        return dict(result[0])['cnt'] if result else 0
 
     def update_player_team(self, dynasty_id: str, player_id: int, new_team_id: int) -> None:
         """

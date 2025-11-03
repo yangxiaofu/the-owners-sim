@@ -1,0 +1,10 @@
+{
+  "team_id": 23,
+  "team_name": "Philadelphia Eagles",
+  "base_archetype": "Win-Now",
+  "customizations": {
+    "trade_frequency": 0.75,
+    "risk_tolerance": 0.75
+  },
+  "notes": "Aggressive championship pursuit, highly active front office"
+}

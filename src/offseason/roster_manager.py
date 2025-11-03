@@ -9,9 +9,11 @@ Handles NFL roster management operations including:
 """
 
 from typing import Optional, List, Dict, Any
+from datetime import date
 
 from database.player_roster_api import PlayerRosterAPI
 from salary_cap.cap_database_api import CapDatabaseAPI
+from persistence.transaction_logger import TransactionLogger
 
 
 class RosterManager:
@@ -50,6 +52,7 @@ class RosterManager:
         # Initialize database APIs
         self.player_api = PlayerRosterAPI(database_path)
         self.cap_api = CapDatabaseAPI(database_path)
+        self.transaction_logger = TransactionLogger(database_path)
 
         # Will be initialized when needed
         self.roster_limits = {
@@ -168,6 +171,30 @@ class RosterManager:
         # Step 4: Identify cuts
         final_53_ids = {p['player_id'] for p in final_53}
         cuts = [p for p in roster_90 if p['player_id'] not in final_53_ids]
+
+        # Step 5: Log roster cut transactions
+        if self.enable_persistence:
+            for player in cuts:
+                try:
+                    self.transaction_logger.log_transaction(
+                        dynasty_id=self.dynasty_id,
+                        season=self.season_year,
+                        transaction_type="ROSTER_CUT",
+                        player_id=player['player_id'],
+                        player_name=player.get('player_name', f"Player {player['player_id']}"),
+                        transaction_date=date.today(),
+                        position=player.get('position'),
+                        from_team_id=team_id,
+                        to_team_id=None,
+                        details={
+                            "cut_type": "53_MAN_ROSTER_FINALIZATION",
+                            "reason": "Did not make final 53-man roster",
+                            "value_score": player.get('value_score', 0)
+                        }
+                    )
+                except Exception as e:
+                    # Don't fail the whole operation if logging fails
+                    pass
 
         return {
             'final_roster': final_53,

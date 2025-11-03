@@ -1136,6 +1136,106 @@ class EventDatabaseAPI:
         }
         return MILESTONE_NAMES.get(milestone_type, milestone_type.replace('_', ' ').title())
 
+    def get_first_game_date_of_phase(
+        self,
+        dynasty_id: str,
+        phase_name: str,
+        current_date: str
+    ) -> Optional[str]:
+        """
+        Get the date of the first upcoming game in specified phase.
+
+        This method looks ahead in the calendar to find when the next phase begins,
+        allowing simulation to stop BEFORE entering a new phase (giving user control).
+
+        Args:
+            dynasty_id: Dynasty identifier for data isolation
+            phase_name: Phase to search for ("preseason", "regular_season", "playoffs")
+            current_date: Current simulation date (YYYY-MM-DD format)
+
+        Returns:
+            Date string (YYYY-MM-DD) of first upcoming game in that phase,
+            or None if no games found
+
+        Example:
+            # Find when regular season starts
+            first_game = api.get_first_game_date_of_phase(
+                dynasty_id="my_dynasty",
+                phase_name="regular_season",
+                current_date="2025-08-20"
+            )
+            # Returns: "2025-09-05" (first regular season game date)
+
+        SQL Logic:
+            - Filters by dynasty_id and event_type='GAME'
+            - Filters by season_type/game_type parameter matching phase_name
+            - Only games on or after current_date
+            - Only games not yet played (no results stored)
+            - Orders by timestamp ascending, returns first match
+        """
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        try:
+            # Convert current_date to timestamp for comparison
+            # Note: Cannot use strptime() due to calendar module shadowing issue
+            # (src/calendar/ shadows Python's standard library calendar module)
+            # Parse manually: "YYYY-MM-DD" -> datetime
+            try:
+                year, month, day = map(int, current_date.split('-'))
+                current_datetime = datetime(year, month, day)
+                current_timestamp_ms = int(current_datetime.timestamp() * 1000)
+            except (ValueError, AttributeError) as parse_error:
+                self.logger.error(f"Invalid date format '{current_date}': {parse_error}")
+                return None
+
+            # Query for first GAME event in the phase on or after current date
+            # Uses json_extract to check season_type or game_type in event parameters
+            query = '''
+                SELECT timestamp FROM events
+                WHERE dynasty_id = ?
+                  AND event_type = 'GAME'
+                  AND (
+                      json_extract(data, '$.parameters.season_type') = ?
+                      OR json_extract(data, '$.parameters.game_type') = ?
+                  )
+                  AND timestamp >= ?
+                  AND json_extract(data, '$.results') IS NULL
+                ORDER BY timestamp ASC
+                LIMIT 1
+            '''
+
+            cursor.execute(query, (dynasty_id, phase_name, phase_name, current_timestamp_ms))
+            row = cursor.fetchone()
+
+            if row and row['timestamp'] is not None:
+                # Convert timestamp back to date string (YYYY-MM-DD)
+                game_datetime = datetime.fromtimestamp(row['timestamp'] / 1000)
+                date_str = game_datetime.strftime('%Y-%m-%d')
+
+                self.logger.debug(
+                    f"First {phase_name} game for dynasty '{dynasty_id}' on or after "
+                    f"{current_date}: {date_str}"
+                )
+
+                return date_str
+
+            self.logger.debug(
+                f"No upcoming {phase_name} games found for dynasty '{dynasty_id}' "
+                f"on or after {current_date}"
+            )
+            return None
+
+        except Exception as e:
+            import traceback
+            self.logger.error(f"Error querying first game date for phase {phase_name}: {e}")
+            self.logger.error(f"Traceback:\n{traceback.format_exc()}")
+            return None
+
+        finally:
+            conn.close()
+
     def __str__(self) -> str:
         """String representation"""
         return f"EventDatabaseAPI(db_path='{self.db_path}')"

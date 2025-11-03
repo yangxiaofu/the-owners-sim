@@ -66,12 +66,12 @@ class DynastyController:
         dynasties = []
         for row in results:
             dynasties.append({
-                'dynasty_id': row[0],
-                'dynasty_name': row[1],
-                'owner_name': row[2],
-                'team_id': row[3],
-                'created_at': row[4],
-                'is_active': bool(row[5])
+                'dynasty_id': row['dynasty_id'],
+                'dynasty_name': row['dynasty_name'],
+                'owner_name': row['owner_name'],
+                'team_id': row['team_id'],
+                'created_at': row['created_at'],
+                'is_active': bool(row['is_active'])
             })
 
         return dynasties
@@ -88,7 +88,7 @@ class DynastyController:
         """
         query = "SELECT COUNT(*) FROM dynasties WHERE dynasty_id = ?"
         result = self.db.execute_query(query, (dynasty_id,))
-        return result[0][0] > 0 if result else False
+        return result[0]['COUNT(*)'] > 0 if result else False
 
     def validate_dynasty_name(self, name: str) -> Tuple[bool, Optional[str]]:
         """
@@ -205,14 +205,31 @@ class DynastyController:
             ''', (dynasty_id, dynasty_name, owner_name, team_id))
 
             # Step 2: Initialize standings for all 32 NFL teams (0-0-0 records)
+            # IMPORTANT: Initialize both preseason AND regular_season standings
+
+            # Initialize PRESEASON standings (separate records for season_type='preseason')
+            print(f"📊 Initializing preseason standings for all 32 teams...")
             for tid in range(1, 33):
                 cursor.execute('''
                     INSERT INTO standings
-                    (dynasty_id, season, team_id, wins, losses, ties,
+                    (dynasty_id, season, team_id, season_type, wins, losses, ties,
                      points_for, points_against, division_wins, division_losses,
                      conference_wins, conference_losses)
-                    VALUES (?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+                    VALUES (?, ?, ?, 'preseason', 0, 0, 0, 0, 0, 0, 0, 0, 0)
                 ''', (dynasty_id, season, tid))
+            print(f"✅ Preseason standings initialized for {season}")
+
+            # Initialize REGULAR SEASON standings (separate records for season_type='regular_season')
+            print(f"📊 Initializing regular season standings for all 32 teams...")
+            for tid in range(1, 33):
+                cursor.execute('''
+                    INSERT INTO standings
+                    (dynasty_id, season, team_id, season_type, wins, losses, ties,
+                     points_for, points_against, division_wins, division_losses,
+                     conference_wins, conference_losses)
+                    VALUES (?, ?, ?, 'regular_season', 0, 0, 0, 0, 0, 0, 0, 0, 0)
+                ''', (dynasty_id, season, tid))
+            print(f"✅ Regular season standings initialized for {season}")
 
             # Step 3: Initialize player rosters from JSON → Database (ONE-TIME)
             print(f"📥 Initializing player rosters for dynasty '{dynasty_id}'...")
@@ -278,13 +295,13 @@ class DynastyController:
                 print(f"[WARNING DynastyController] Dynasty state missing after schedule generation!")
                 print(f"[INFO DynastyController] Creating fallback dynasty_state...")
 
-                # Create dynasty_state as fallback (Sept 4 - one day before first games)
+                # Create dynasty_state as fallback (Aug 1 - preseason start)
                 fallback_success = dynasty_state_api.initialize_state(
                     dynasty_id=dynasty_id,
                     season=season,
-                    start_date=f"{season}-09-04",
+                    start_date=f"{season}-08-01",
                     start_week=1,
-                    start_phase='regular_season'
+                    start_phase='preseason'
                 )
 
                 if fallback_success:
@@ -294,6 +311,40 @@ class DynastyController:
                     print(f"Dynasty '{dynasty_id}' may have persistence issues on next load")
             else:
                 print(f"✅ Dynasty state verified: {state['current_date']}")
+
+            # Step 7: NEW - Simulate AI Offseason for all non-user teams
+            # This populates the player_transactions table with offseason activity
+            try:
+                print(f"🤖 Simulating AI offseason for dynasty '{dynasty_id}'...")
+
+                from offseason.offseason_controller import OffseasonController
+                from datetime import datetime
+
+                # Initialize offseason controller
+                offseason_controller = OffseasonController(
+                    database_path=self.db_path,
+                    dynasty_id=dynasty_id,
+                    season_year=season,
+                    user_team_id=team_id if team_id else 1,  # Default to team 1 if no user team
+                    super_bowl_date=datetime(season + 1, 2, 9),  # Feb 9 after season
+                    enable_persistence=True,
+                    verbose_logging=True
+                )
+
+                # Run full AI offseason simulation
+                offseason_result = offseason_controller.simulate_ai_full_offseason(
+                    user_team_id=team_id if team_id else 1
+                )
+
+                print(f"✅ AI offseason simulation complete:")
+                print(f"   - {offseason_result['franchise_tags_applied']} franchise tags")
+                print(f"   - {offseason_result['free_agent_signings']} free agent signings")
+                print(f"   - {offseason_result['roster_cuts_made']} roster cuts")
+                print(f"   - {offseason_result['total_transactions']} total transactions")
+
+            except Exception as offseason_ex:
+                print(f"[WARNING DynastyController] Offseason simulation error: {offseason_ex}")
+                # Non-critical - dynasty is already committed
 
             return (True, dynasty_id, None)
 
@@ -328,12 +379,12 @@ class DynastyController:
 
         row = result[0]
         return {
-            'dynasty_id': row[0],
-            'dynasty_name': row[1],
-            'owner_name': row[2],
-            'team_id': row[3],
-            'created_at': row[4],
-            'is_active': bool(row[5])
+            'dynasty_id': row['dynasty_id'],
+            'dynasty_name': row['dynasty_name'],
+            'owner_name': row['owner_name'],
+            'team_id': row['team_id'],
+            'created_at': row['created_at'],
+            'is_active': bool(row['is_active'])
         }
 
     def get_dynasty_stats(self, dynasty_id: str) -> Dict[str, Any]:
@@ -354,7 +405,7 @@ class DynastyController:
             ORDER BY season DESC
         """
         seasons_result = self.db.execute_query(seasons_query, (dynasty_id,))
-        seasons_played = [row[0] for row in seasons_result] if seasons_result else []
+        seasons_played = [row['season'] for row in seasons_result] if seasons_result else []
 
         # Query for total games played
         games_query = """
@@ -363,7 +414,7 @@ class DynastyController:
             WHERE dynasty_id = ?
         """
         games_result = self.db.execute_query(games_query, (dynasty_id,))
-        total_games = games_result[0][0] if games_result else 0
+        total_games = games_result[0]['COUNT(*)'] if games_result else 0
 
         return {
             'seasons_played': seasons_played,

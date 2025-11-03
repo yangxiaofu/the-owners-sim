@@ -1,0 +1,120 @@
+{
+  "win_now": {
+    "name": "Win-Now",
+    "description": "Aggressive GM focused on immediate championship contention, willing to sacrifice future assets",
+    "risk_tolerance": 0.7,
+    "win_now_mentality": 0.85,
+    "draft_pick_value": 0.3,
+    "cap_management": 0.4,
+    "trade_frequency": 0.65,
+    "veteran_preference": 0.75,
+    "star_chasing": 0.7,
+    "loyalty": 0.4,
+    "desperation_threshold": 0.65,
+    "patience_years": 2,
+    "deadline_activity": 0.8,
+    "premium_position_focus": 0.7
+  },
+
+  "rebuilder": {
+    "name": "Rebuilder",
+    "description": "Patient GM focused on long-term success through draft and development",
+    "risk_tolerance": 0.35,
+    "win_now_mentality": 0.2,
+    "draft_pick_value": 0.85,
+    "cap_management": 0.7,
+    "trade_frequency": 0.4,
+    "veteran_preference": 0.3,
+    "star_chasing": 0.2,
+    "loyalty": 0.6,
+    "desperation_threshold": 0.8,
+    "patience_years": 5,
+    "deadline_activity": 0.3,
+    "premium_position_focus": 0.8
+  },
+
+  "balanced": {
+    "name": "Balanced",
+    "description": "Steady, methodical GM who balances short and long-term thinking",
+    "risk_tolerance": 0.5,
+    "win_now_mentality": 0.5,
+    "draft_pick_value": 0.5,
+    "cap_management": 0.55,
+    "trade_frequency": 0.5,
+    "veteran_preference": 0.5,
+    "star_chasing": 0.35,
+    "loyalty": 0.5,
+    "desperation_threshold": 0.7,
+    "patience_years": 3,
+    "deadline_activity": 0.5,
+    "premium_position_focus": 0.6
+  },
+
+  "aggressive_trader": {
+    "name": "Aggressive Trader",
+    "description": "Highly active GM who frequently makes moves to improve roster",
+    "risk_tolerance": 0.75,
+    "win_now_mentality": 0.6,
+    "draft_pick_value": 0.45,
+    "cap_management": 0.5,
+    "trade_frequency": 0.85,
+    "veteran_preference": 0.55,
+    "star_chasing": 0.5,
+    "loyalty": 0.3,
+    "desperation_threshold": 0.6,
+    "patience_years": 3,
+    "deadline_activity": 0.9,
+    "premium_position_focus": 0.55
+  },
+
+  "conservative": {
+    "name": "Conservative",
+    "description": "Cautious GM who rarely makes big moves, prefers stability and cap health",
+    "risk_tolerance": 0.25,
+    "win_now_mentality": 0.45,
+    "draft_pick_value": 0.6,
+    "cap_management": 0.85,
+    "trade_frequency": 0.25,
+    "veteran_preference": 0.5,
+    "star_chasing": 0.2,
+    "loyalty": 0.75,
+    "desperation_threshold": 0.75,
+    "patience_years": 4,
+    "deadline_activity": 0.3,
+    "premium_position_focus": 0.5
+  },
+
+  "draft_hoarder": {
+    "name": "Draft Hoarder",
+    "description": "GM obsessed with accumulating draft capital, trades down frequently",
+    "risk_tolerance": 0.4,
+    "win_now_mentality": 0.3,
+    "draft_pick_value": 0.95,
+    "cap_management": 0.65,
+    "trade_frequency": 0.7,
+    "veteran_preference": 0.25,
+    "star_chasing": 0.15,
+    "loyalty": 0.5,
+    "desperation_threshold": 0.85,
+    "patience_years": 6,
+    "deadline_activity": 0.4,
+    "premium_position_focus": 0.7
+  },
+
+  "star_chaser": {
+    "name": "Star Chaser",
+    "description": "GM who pursues elite talent aggressively, building around superstars",
+    "risk_tolerance": 0.8,
+    "win_now_mentality": 0.75,
+    "draft_pick_value": 0.35,
+    "cap_management": 0.3,
+    "trade_frequency": 0.6,
+    "veteran_preference": 0.65,
+    "star_chasing": 0.9,
+    "loyalty": 0.35,
+    "desperation_threshold": 0.6,
+    "patience_years": 2,
+    "deadline_activity": 0.75,
+    "premium_position_focus": 0.85
+  }
+}

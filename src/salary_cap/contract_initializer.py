@@ -71,6 +71,14 @@ class ContractInitializer:
                 team_id = player_data['team_id']
                 json_contract = player_data.get('contract')
 
+                # Defensive validation: Verify team_id consistency
+                # This prevents contract/player team_id mismatches that break trade validation
+                if not isinstance(team_id, int) or team_id < 1 or team_id > 32:
+                    raise ValueError(
+                        f"Invalid team_id={team_id} for player_id={player_id}. "
+                        f"Expected integer 1-32. This indicates a bug in player roster initialization."
+                    )
+
                 # Skip players without contract data
                 if not json_contract:
                     self.logger.warning(f"Player {player_id} has no contract data, skipping")

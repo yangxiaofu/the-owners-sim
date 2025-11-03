@@ -1,0 +1,9 @@
+{
+  "team_id": 17,
+  "team_name": "Los Angeles Rams",
+  "base_archetype": "Aggressive Trader",
+  "customizations": {
+    "draft_pick_value": 0.3
+  },
+  "notes": "All-in mentality, frequently trades picks for proven players"
+}

@@ -1,0 +1,9 @@
+{
+  "team_id": 9,
+  "team_name": "Detroit Lions",
+  "base_archetype": "Draft Hoarder",
+  "customizations": {
+    "win_now_mentality": 0.6
+  },
+  "notes": "Values draft picks highly, now transitioning to competitive phase"
+}

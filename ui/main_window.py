@@ -3,6 +3,9 @@ Main Window for The Owner's Sim
 
 OOTP-inspired main application window with tab-based navigation.
 """
+import sys
+import os
+
 from PySide6.QtWidgets import (
     QMainWindow, QTabWidget, QToolBar, QStatusBar,
     QLabel, QMessageBox
@@ -19,9 +22,6 @@ from ui.views.league_view import LeagueView
 from ui.views.game_view import GameView
 from ui.views.playoff_view import PlayoffView
 from ui.views.transactions_view import TransactionsView
-
-import sys
-import os
 
 # Add src to path for controller imports
 ui_path = os.path.dirname(__file__)
@@ -286,6 +286,20 @@ class MainWindow(QMainWindow):
             "Application preferences"
         ))
 
+        # Debug Menu
+        debug_menu = menubar.addMenu("&Debug")
+        debug_menu.addAction(self._create_action(
+            "Show &Random Team Transactions",
+            self._show_random_team_transactions,
+            "Show transaction activity log for a random team (debugging)"
+        ))
+        debug_menu.addAction(self._create_action(
+            "Show Transaction AI Activity &Log",
+            self._show_transaction_ai_debug_log,
+            "Show complete transaction AI debug log with probability calculations (Ctrl+Shift+T)",
+            "Ctrl+Shift+T"
+        ))
+
         # Help Menu
         help_menu = menubar.addMenu("&Help")
         help_menu.addAction(self._create_action(
@@ -378,6 +392,9 @@ class MainWindow(QMainWindow):
         # Add to status bar
         statusbar.addWidget(self.date_label)
         statusbar.addPermanentWidget(self.phase_label)
+
+        # Initialize phase-dependent button text
+        self._update_phase_button(current_phase)
 
     def _create_action(self, text, slot, tooltip=None, shortcut=None):
         """
@@ -536,14 +553,24 @@ class MainWindow(QMainWindow):
                 # Phase completion - show phase summary
                 title = "Simulation Complete"
                 phase_name = summary['starting_phase'].replace('_', ' ').title()
+
+                # Determine next phase for message (use next_phase if available, otherwise ending_phase)
+                next_phase_display = summary.get('next_phase', summary['ending_phase'])
+
                 msg = (
                     f"{phase_name} Complete!\n\n"
                     f"Weeks Simulated: {summary['weeks_simulated']}\n"
                     f"Games Played: {summary['total_games']}\n"
                     f"End Date: {summary['end_date']}\n\n"
-                    f"Now entering: {summary['ending_phase'].replace('_', ' ').title()}"
+                    f"Now entering: {next_phase_display.replace('_', ' ').title()}"
                 )
             QMessageBox.information(self, title, msg)
+
+            # Automatically advance one day to trigger phase transition
+            # This ensures the phase indicator updates correctly (e.g., Preseason → Regular Season)
+            if summary.get('next_phase') and not summary.get('phase_transition'):
+                # Only advance if we haven't already transitioned (stopped at phase boundary)
+                self.simulation_controller.advance_day()
 
             # Refresh views
             if hasattr(self, 'calendar_view'):
@@ -620,6 +647,87 @@ class MainWindow(QMainWindow):
             "<p>© 2024 OwnersSimDev</p>"
         )
 
+    def _show_random_team_transactions(self):
+        """Show transaction log for a random team (debugging feature)."""
+        import random
+        import sys
+        from pathlib import Path
+
+        # Add src to path for imports
+        src_path = Path(__file__).parent.parent / "src"
+        if str(src_path) not in sys.path:
+            sys.path.insert(0, str(src_path))
+
+        try:
+            from constants.team_ids import TeamIDs
+            from team_management.teams.team_loader import get_team_by_id
+            from persistence.transaction_api import TransactionAPI
+            from ui.dialogs.transaction_log_dialog import TransactionLogDialog
+
+            # Get random team
+            all_team_ids = TeamIDs.get_all_team_ids()
+            random_team_id = random.choice(all_team_ids)
+            team = get_team_by_id(random_team_id)
+
+            # Get transactions
+            api = TransactionAPI(self.db_path)
+            transactions = api.get_team_transactions(
+                team_id=random_team_id,
+                dynasty_id=self.dynasty_id
+            )
+
+            # Show dialog
+            dialog = TransactionLogDialog(
+                team_id=random_team_id,
+                team_name=team.full_name,
+                transactions=transactions,
+                dynasty_id=self.dynasty_id,
+                parent=self
+            )
+            dialog.exec()
+
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            QMessageBox.critical(
+                self,
+                "Transaction Log Error",
+                f"Failed to load transaction log:\n\n{str(e)}\n\n{error_details}"
+            )
+
+    def _show_transaction_ai_debug_log(self):
+        """Show transaction AI activity log with debug information."""
+        try:
+            from ui.dialogs.transaction_ai_debug_dialog import TransactionAIDebugDialog
+
+            # Get debug data from simulation controller
+            debug_data = self.simulation_controller.get_transaction_debug_data()
+
+            if not debug_data:
+                QMessageBox.information(
+                    self,
+                    "No Debug Data",
+                    "No transaction AI activity recorded yet.\n\n"
+                    "Run a simulation (Sim Day/Sim Week) to collect debug data."
+                )
+                return
+
+            # Show dialog
+            dialog = TransactionAIDebugDialog(debug_data, parent=self)
+            dialog.exec()
+
+            # Clear debug data after viewing to prevent memory buildup
+            self.simulation_controller.clear_transaction_debug_data()
+
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            QMessageBox.critical(
+                self,
+                "Transaction AI Debug Log Error",
+                f"Failed to load transaction AI debug log:\n\n{str(e)}\n\n{error_details}"
+            )
+
     def _on_skip_to_new_season(self):
         """Skip remaining offseason events and start new season."""
         # Confirm with user
@@ -649,10 +757,45 @@ class MainWindow(QMainWindow):
                 error_msg = result.get('message', 'Unknown error occurred')
                 QMessageBox.warning(self, "Skip to New Season Failed", error_msg)
 
+    def _update_phase_button(self, phase: str):
+        """
+        Update phase-dependent UI elements based on current phase.
+
+        Args:
+            phase: Current phase ("preseason", "regular_season", "playoffs", "offseason")
+        """
+        # Update phase-end button text dynamically based on current phase
+        if phase == "preseason":
+            self.sim_phase_action.setText("Sim to Regular Season")
+            self.sim_phase_action.setToolTip("Simulate rest of preseason")
+        elif phase == "regular_season":
+            self.sim_phase_action.setText("Sim to Playoffs")
+            self.sim_phase_action.setToolTip("Simulate rest of regular season")
+        elif phase == "playoffs":
+            self.sim_phase_action.setText("Sim to Offseason")
+            self.sim_phase_action.setToolTip("Simulate rest of playoffs")
+        else:  # offseason
+            # Get next milestone name from backend
+            next_milestone = self.simulation_controller.get_next_milestone_name()
+
+            # Update "Sim to Phase End" button text
+            self.sim_phase_action.setText(f"Sim to {next_milestone}")
+            self.sim_phase_action.setToolTip(f"Simulate to next offseason milestone: {next_milestone}")
+
+            # Show "Skip to New Season" button
+            self.skip_to_new_season_action.setVisible(True)
+
+        # Hide "Skip to New Season" button during preseason, regular season, and playoffs
+        if phase != "offseason":
+            self.skip_to_new_season_action.setVisible(False)
+
     # Signal handlers for simulation updates
-    def _on_date_changed(self, date_str: str, phase: str):
+    def _on_date_changed(self, date_str: str):
         """Handle simulation date change."""
         from PySide6.QtWidgets import QApplication
+
+        # Query fresh phase state (single source of truth)
+        phase = self.simulation_controller.get_current_phase()
 
         print(f"[DEBUG MainWindow] _on_date_changed called: date={date_str}, phase={phase}")
 
@@ -676,36 +819,17 @@ class MainWindow(QMainWindow):
 
         print(f"[DEBUG MainWindow] Status bar updated and repainted")
 
-        # Update phase-end button text dynamically based on current phase
-        if phase == "regular_season":
-            self.sim_phase_action.setText("Sim to Playoffs")
-            self.sim_phase_action.setToolTip("Simulate rest of regular season")
-        elif phase == "playoffs":
-            self.sim_phase_action.setText("Sim to Offseason")
-            self.sim_phase_action.setToolTip("Simulate rest of playoffs")
-        else:  # offseason
-            # Get next milestone name from backend
-            next_milestone = self.simulation_controller.get_next_milestone_name()
-
-            # Update "Sim to Phase End" button text
-            self.sim_phase_action.setText(f"Sim to {next_milestone}")
-            self.sim_phase_action.setToolTip(f"Simulate to next offseason milestone: {next_milestone}")
-
-            # Show "Skip to New Season" button
-            self.skip_to_new_season_action.setVisible(True)
-
-        # Hide "Skip to New Season" button during regular season and playoffs
-        if phase != "offseason":
-            self.skip_to_new_season_action.setVisible(False)
+        # Update phase-dependent UI (button text, tab visibility)
+        self._update_phase_button(phase)
 
         # Show/hide Playoffs tab based on phase
-        # Show during playoffs and offseason, hide during regular season
+        # Show during playoffs and offseason, hide during preseason and regular season
         if phase in ["playoffs", "offseason"]:
             self.tabs.setTabVisible(self.playoff_tab_index, True)
             # Refresh view when entering playoffs or offseason phase
             if phase in ["playoffs", "offseason"] and hasattr(self, 'playoff_view'):
                 self.playoff_view.refresh()
-        else:  # regular_season
+        else:  # preseason or regular_season
             self.tabs.setTabVisible(self.playoff_tab_index, False)
 
     def _on_games_played(self, game_results: list):

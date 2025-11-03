@@ -40,9 +40,9 @@ class DatabaseAPI:
         Args:
             dynasty_id: Dynasty identifier
             season: Season year
-            season_type: "regular_season" or "playoffs" (default: "regular_season")
-                        NOTE: This parameter is kept for backward compatibility but is not used in the query.
-                        The standings table does not have a season_type column.
+            season_type: "preseason", "regular_season", or "playoffs" (default: "regular_season")
+                        Filters standings to show only the specified phase.
+                        Each team has separate standings records for each season type.
 
         Returns:
             Formatted standings data matching StandingsStore structure
@@ -53,11 +53,11 @@ class DatabaseAPI:
                    away_wins, away_losses, points_for, points_against,
                    current_streak, division_rank
             FROM standings
-            WHERE dynasty_id = ? AND season = ?
+            WHERE dynasty_id = ? AND season = ? AND season_type = ?
             ORDER BY team_id
         '''
 
-        results = self.db_connection.execute_query(query, (dynasty_id, season))
+        results = self.db_connection.execute_query(query, (dynasty_id, season, season_type))
 
         if not results:
             self.logger.warning(f"No standings found for dynasty {dynasty_id}, season {season}")
@@ -180,17 +180,19 @@ class DatabaseAPI:
             'playoff_picture': {}  # TODO: Add playoff calculation if needed
         }
 
-    def reset_all_standings(self, dynasty_id: str, season_year: int) -> None:
+    def reset_all_standings(self, dynasty_id: str, season_year: int, season_type: str = "regular_season") -> None:
         """
-        Reset all 32 teams to 0-0-0 records for new season.
+        Reset all 32 teams to 0-0-0 records for a specific season type.
 
         This method initializes or resets the standings table with fresh records
-        for all NFL teams at the start of a new season. All statistics are zeroed
+        for all NFL teams at the start of a new season phase. All statistics are zeroed
         and all playoff flags are cleared.
 
         Args:
             dynasty_id: Dynasty identifier for isolation
             season_year: Season year to reset standings for
+            season_type: "preseason", "regular_season", or "playoffs" (default: "regular_season")
+                        Each season type has separate standings records
 
         Raises:
             Exception: If database operation fails
@@ -203,7 +205,7 @@ class DatabaseAPI:
             for team_id in range(1, 33):
                 cursor.execute('''
                     INSERT OR REPLACE INTO standings
-                    (dynasty_id, season, team_id,
+                    (dynasty_id, season, team_id, season_type,
                      wins, losses, ties,
                      division_wins, division_losses, division_ties,
                      conference_wins, conference_losses, conference_ties,
@@ -213,7 +215,7 @@ class DatabaseAPI:
                      current_streak, division_rank, conference_rank, league_rank,
                      playoff_seed, made_playoffs, made_wild_card, won_wild_card,
                      won_division_round, won_conference, won_super_bowl)
-                    VALUES (?, ?, ?,
+                    VALUES (?, ?, ?, ?,
                             0, 0, 0,
                             0, 0, 0,
                             0, 0, 0,
@@ -223,15 +225,15 @@ class DatabaseAPI:
                             NULL, NULL, NULL, NULL,
                             NULL, 0, 0, 0,
                             0, 0, 0)
-                ''', (dynasty_id, season_year, team_id))
+                ''', (dynasty_id, season_year, team_id, season_type))
 
             conn.commit()
-            self.logger.info(f"Reset standings for all 32 teams (dynasty={dynasty_id}, season={season_year})")
+            self.logger.info(f"Reset standings for all 32 teams (dynasty={dynasty_id}, season={season_year}, season_type={season_type})")
 
         except Exception as e:
             conn.rollback()
             self.logger.error(f"Failed to reset standings: {e}")
-            raise Exception(f"Failed to reset standings for dynasty {dynasty_id}, season {season_year}: {e}") from e
+            raise Exception(f"Failed to reset standings for dynasty {dynasty_id}, season {season_year}, season_type={season_type}: {e}") from e
 
     def get_game_results(self, dynasty_id: str, week: int, season: int) -> List[Dict[str, Any]]:
         """
@@ -327,9 +329,8 @@ class DatabaseAPI:
             dynasty_id: Dynasty identifier
             team_id: Team identifier
             season: Season year
-            season_type: "regular_season" or "playoffs" (default: "regular_season")
-                        NOTE: This parameter is kept for backward compatibility but is not used in the query.
-                        The standings table does not have a season_type column.
+            season_type: "preseason", "regular_season", or "playoffs" (default: "regular_season")
+                        Filters to get the standing for the specified phase.
 
         Returns:
             Team standing or None if not found
@@ -340,10 +341,10 @@ class DatabaseAPI:
                    away_wins, away_losses, points_for, points_against,
                    current_streak, division_rank
             FROM standings
-            WHERE dynasty_id = ? AND team_id = ? AND season = ?
+            WHERE dynasty_id = ? AND team_id = ? AND season = ? AND season_type = ?
         '''
 
-        results = self.db_connection.execute_query(query, (dynasty_id, team_id, season))
+        results = self.db_connection.execute_query(query, (dynasty_id, team_id, season, season_type))
         
         if not results:
             return None
@@ -416,7 +417,7 @@ class DatabaseAPI:
             'playoff_picture': {}
         }
 
-    def get_passing_leaders(self, dynasty_id: str, season: int, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_passing_leaders(self, dynasty_id: str, season: int, limit: int = 10, season_type: str = "regular_season") -> List[Dict[str, Any]]:
         """
         Get passing statistics leaders for the season.
 
@@ -427,6 +428,7 @@ class DatabaseAPI:
             dynasty_id: Dynasty identifier
             season: Season year
             limit: Number of top players to return
+            season_type: "preseason", "regular_season", or "playoffs" (default: "regular_season")
 
         Returns:
             List of passing leaders with aggregated stats
@@ -450,14 +452,14 @@ class DatabaseAPI:
             WHERE pss.dynasty_id = ?
                 AND pss.season = ?
                 AND pss.position = ?
-                AND pss.season_type = 'regular_season'
+                AND pss.season_type = ?
                 AND (pss.passing_attempts > 0 OR pss.passing_yards > 0)
             ORDER BY pss.passing_yards DESC
             LIMIT ?
         '''
 
-        results = self.db_connection.execute_query(query, (dynasty_id, season, Position.QB, limit))
-        return [dict(row) for row in results]
+        results = self.db_connection.execute_query(query, (dynasty_id, season, Position.QB, season_type, limit))
+        return results  # Already converted to dicts by execute_query()
 
         # OLD: Query-time aggregation from player_game_stats (100-500ms)
         # Kept for reference/fallback
@@ -490,7 +492,7 @@ class DatabaseAPI:
         #     LIMIT ?
         # '''
 
-    def get_rushing_leaders(self, dynasty_id: str, season: int, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_rushing_leaders(self, dynasty_id: str, season: int, limit: int = 10, season_type: str = "regular_season") -> List[Dict[str, Any]]:
         """
         Get rushing statistics leaders for the season.
 
@@ -501,6 +503,7 @@ class DatabaseAPI:
             dynasty_id: Dynasty identifier
             season: Season year
             limit: Number of top players to return
+            season_type: "preseason", "regular_season", or "playoffs" (default: "regular_season")
 
         Returns:
             List of rushing leaders with aggregated stats
@@ -522,15 +525,15 @@ class DatabaseAPI:
             FROM player_season_stats pss
             WHERE pss.dynasty_id = ?
                 AND pss.season = ?
-                AND pss.season_type = 'regular_season'
+                AND pss.season_type = ?
                 AND (pss.rushing_attempts > 0 OR pss.rushing_yards > 0)
             ORDER BY pss.rushing_yards DESC
             LIMIT ?
         '''
 
-        results = self.db_connection.execute_query(query, (dynasty_id, season, limit))
+        results = self.db_connection.execute_query(query, (dynasty_id, season, season_type, limit))
 
-        return [dict(row) for row in results]
+        return results  # Already converted to dicts by execute_query()
 
         # OLD: Query-time aggregation from player_game_stats (100-500ms)
         # Kept for reference/fallback
@@ -561,7 +564,7 @@ class DatabaseAPI:
         #     LIMIT ?
         # '''
 
-    def get_receiving_leaders(self, dynasty_id: str, season: int, limit: int = 10) -> List[Dict[str, Any]]:
+    def get_receiving_leaders(self, dynasty_id: str, season: int, limit: int = 10, season_type: str = "regular_season") -> List[Dict[str, Any]]:
         """
         Get receiving statistics leaders for the season.
 
@@ -572,6 +575,7 @@ class DatabaseAPI:
             dynasty_id: Dynasty identifier
             season: Season year
             limit: Number of top players to return
+            season_type: "preseason", "regular_season", or "playoffs" (default: "regular_season")
 
         Returns:
             List of receiving leaders with aggregated stats
@@ -595,15 +599,15 @@ class DatabaseAPI:
             FROM player_season_stats pss
             WHERE pss.dynasty_id = ?
                 AND pss.season = ?
-                AND pss.season_type = 'regular_season'
+                AND pss.season_type = ?
                 AND (pss.receptions > 0 OR pss.receiving_yards > 0 OR pss.targets > 0)
             ORDER BY pss.receiving_yards DESC
             LIMIT ?
         '''
 
-        results = self.db_connection.execute_query(query, (dynasty_id, season, limit))
+        results = self.db_connection.execute_query(query, (dynasty_id, season, season_type, limit))
 
-        return [dict(row) for row in results]
+        return results  # Already converted to dicts by execute_query()
 
         # OLD: Query-time aggregation from player_game_stats (100-500ms)
         # Kept for reference/fallback
@@ -793,4 +797,4 @@ class DatabaseAPI:
         params = (dynasty_id, season) + position_params + (limit,)
         results = self.db_connection.execute_query(query, params)
 
-        return [dict(row) for row in results]
+        return results  # Already converted to dicts by execute_query()

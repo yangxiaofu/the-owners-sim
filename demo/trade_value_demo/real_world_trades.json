@@ -1,0 +1,488 @@
+{
+  "trades": [
+    {
+      "name": "Russell Wilson to Broncos",
+      "year": 2022,
+      "description": "Seattle trades franchise QB Russell Wilson to Denver in blockbuster deal",
+      "real_world_verdict": "FAIR",
+      "team1": {
+        "name": "Seattle Seahawks",
+        "assets": [
+          {
+            "type": "player",
+            "name": "Russell Wilson",
+            "position": "quarterback",
+            "overall_rating": 83,
+            "age": 33,
+            "years_pro": 10,
+            "contract_years_remaining": 2,
+            "annual_cap_hit": 37000000
+          }
+        ]
+      },
+      "team2": {
+        "name": "Denver Broncos",
+        "assets": [
+          {
+            "type": "draft_pick",
+            "round": 1,
+            "year": 2022,
+            "overall_pick_projected": 9
+          },
+          {
+            "type": "draft_pick",
+            "round": 2,
+            "year": 2022,
+            "overall_pick_projected": 40
+          },
+          {
+            "type": "draft_pick",
+            "round": 1,
+            "year": 2023,
+            "overall_pick_projected": 20
+          },
+          {
+            "type": "draft_pick",
+            "round": 2,
+            "year": 2023,
+            "overall_pick_projected": 52
+          }
+        ]
+      },
+      "notes": "This trade was considered fair but risky for Denver. Wilson's age (33) and large contract made this a high-stakes gamble."
+    },
+    {
+      "name": "Tyreek Hill to Dolphins",
+      "year": 2022,
+      "description": "Kansas City trades All-Pro WR Tyreek Hill to Miami for significant draft capital",
+      "real_world_verdict": "FAIR",
+      "team1": {
+        "name": "Kansas City Chiefs",
+        "assets": [
+          {
+            "type": "player",
+            "name": "Tyreek Hill",
+            "position": "wide_receiver",
+            "overall_rating": 96,
+            "age": 28,
+            "years_pro": 6,
+            "contract_years_remaining": 1,
+            "annual_cap_hit": 20000000
+          }
+        ]
+      },
+      "team2": {
+        "name": "Miami Dolphins",
+        "assets": [
+          {
+            "type": "draft_pick",
+            "round": 1,
+            "year": 2022,
+            "overall_pick_projected": 29
+          },
+          {
+            "type": "draft_pick",
+            "round": 2,
+            "year": 2022,
+            "overall_pick_projected": 50
+          },
+          {
+            "type": "draft_pick",
+            "round": 4,
+            "year": 2022,
+            "overall_pick_projected": 120
+          },
+          {
+            "type": "draft_pick",
+            "round": 4,
+            "year": 2023,
+            "overall_pick_projected": 125
+          },
+          {
+            "type": "draft_pick",
+            "round": 6,
+            "year": 2023,
+            "overall_pick_projected": 200
+          }
+        ]
+      },
+      "notes": "Elite WR in prime with 1 year remaining on contract. Chiefs got massive haul. Generally considered fair value for All-Pro WR."
+    },
+    {
+      "name": "Davante Adams to Raiders",
+      "year": 2022,
+      "description": "Green Bay trades All-Pro WR Davante Adams to Las Vegas",
+      "real_world_verdict": "SLIGHTLY_UNFAIR",
+      "team1": {
+        "name": "Green Bay Packers",
+        "assets": [
+          {
+            "type": "player",
+            "name": "Davante Adams",
+            "position": "wide_receiver",
+            "overall_rating": 95,
+            "age": 29,
+            "years_pro": 8,
+            "contract_years_remaining": 0,
+            "annual_cap_hit": 0
+          }
+        ]
+      },
+      "team2": {
+        "name": "Las Vegas Raiders",
+        "assets": [
+          {
+            "type": "draft_pick",
+            "round": 1,
+            "year": 2022,
+            "overall_pick_projected": 22
+          },
+          {
+            "type": "draft_pick",
+            "round": 2,
+            "year": 2022,
+            "overall_pick_projected": 53
+          }
+        ]
+      },
+      "notes": "Adams was a free agent, so Raiders had to negotiate new contract. Packers got less than Hill trade due to expiring contract status."
+    },
+    {
+      "name": "Khalil Mack to Bears",
+      "year": 2018,
+      "description": "Oakland trades elite edge rusher Khalil Mack to Chicago for massive haul",
+      "real_world_verdict": "FAIR",
+      "team1": {
+        "name": "Oakland Raiders",
+        "assets": [
+          {
+            "type": "player",
+            "name": "Khalil Mack",
+            "position": "edge_rusher",
+            "overall_rating": 97,
+            "age": 27,
+            "years_pro": 4,
+            "contract_years_remaining": 1,
+            "annual_cap_hit": 13800000
+          }
+        ]
+      },
+      "team2": {
+        "name": "Chicago Bears",
+        "assets": [
+          {
+            "type": "draft_pick",
+            "round": 1,
+            "year": 2019,
+            "overall_pick_projected": 24
+          },
+          {
+            "type": "draft_pick",
+            "round": 1,
+            "year": 2020,
+            "overall_pick_projected": 20
+          },
+          {
+            "type": "draft_pick",
+            "round": 3,
+            "year": 2020,
+            "overall_pick_projected": 85
+          },
+          {
+            "type": "draft_pick",
+            "round": 6,
+            "year": 2019,
+            "overall_pick_projected": 190
+          }
+        ]
+      },
+      "notes": "Elite pass rusher in his prime (27). One of the biggest defensive player trades. Bears paid premium but got All-Pro talent."
+    },
+    {
+      "name": "DeAndre Hopkins to Cardinals",
+      "year": 2020,
+      "description": "Houston trades star WR DeAndre Hopkins to Arizona for minimal return",
+      "real_world_verdict": "VERY_UNFAIR",
+      "team1": {
+        "name": "Houston Texans",
+        "assets": [
+          {
+            "type": "player",
+            "name": "DeAndre Hopkins",
+            "position": "wide_receiver",
+            "overall_rating": 93,
+            "age": 27,
+            "years_pro": 7,
+            "contract_years_remaining": 3,
+            "annual_cap_hit": 16200000
+          }
+        ]
+      },
+      "team2": {
+        "name": "Arizona Cardinals",
+        "assets": [
+          {
+            "type": "draft_pick",
+            "round": 2,
+            "year": 2020,
+            "overall_pick_projected": 40
+          },
+          {
+            "type": "player",
+            "name": "David Johnson",
+            "position": "running_back",
+            "overall_rating": 75,
+            "age": 28,
+            "years_pro": 5,
+            "contract_years_remaining": 2,
+            "annual_cap_hit": 13000000
+          }
+        ]
+      },
+      "notes": "Widely considered one of the worst trades in NFL history. Elite WR for aging RB + 2nd rounder. Cardinals won by massive margin."
+    },
+    {
+      "name": "Jalen Ramsey to Rams",
+      "year": 2019,
+      "description": "Jacksonville trades All-Pro CB Jalen Ramsey to Los Angeles for two first-rounders",
+      "real_world_verdict": "FAIR",
+      "team1": {
+        "name": "Jacksonville Jaguars",
+        "assets": [
+          {
+            "type": "player",
+            "name": "Jalen Ramsey",
+            "position": "cornerback",
+            "overall_rating": 92,
+            "age": 24,
+            "years_pro": 3,
+            "contract_years_remaining": 1,
+            "annual_cap_hit": 3634000
+          }
+        ]
+      },
+      "team2": {
+        "name": "Los Angeles Rams",
+        "assets": [
+          {
+            "type": "draft_pick",
+            "round": 1,
+            "year": 2020,
+            "overall_pick_projected": 20
+          },
+          {
+            "type": "draft_pick",
+            "round": 1,
+            "year": 2021,
+            "overall_pick_projected": 25
+          },
+          {
+            "type": "draft_pick",
+            "round": 4,
+            "year": 2021,
+            "overall_pick_projected": 115
+          }
+        ]
+      },
+      "notes": "Elite CB (24) on rookie contract. Rams paid premium for young All-Pro talent. Trade considered fair value."
+    },
+    {
+      "name": "Stefon Diggs to Bills",
+      "year": 2020,
+      "description": "Minnesota trades Pro Bowl WR Stefon Diggs to Buffalo",
+      "real_world_verdict": "FAIR",
+      "team1": {
+        "name": "Minnesota Vikings",
+        "assets": [
+          {
+            "type": "player",
+            "name": "Stefon Diggs",
+            "position": "wide_receiver",
+            "overall_rating": 90,
+            "age": 26,
+            "years_pro": 5,
+            "contract_years_remaining": 4,
+            "annual_cap_hit": 14400000
+          }
+        ]
+      },
+      "team2": {
+        "name": "Buffalo Bills",
+        "assets": [
+          {
+            "type": "draft_pick",
+            "round": 1,
+            "year": 2020,
+            "overall_pick_projected": 22
+          },
+          {
+            "type": "draft_pick",
+            "round": 5,
+            "year": 2020,
+            "overall_pick_projected": 155
+          },
+          {
+            "type": "draft_pick",
+            "round": 6,
+            "year": 2020,
+            "overall_pick_projected": 190
+          },
+          {
+            "type": "draft_pick",
+            "round": 7,
+            "year": 2021,
+            "overall_pick_projected": 240
+          }
+        ]
+      },
+      "notes": "Pro Bowl WR (26) with 4 years of team control. Bills got missing piece for Josh Allen. Fair value for quality WR."
+    },
+    {
+      "name": "Laremy Tunsil to Texans",
+      "year": 2019,
+      "description": "Miami trades young franchise LT Laremy Tunsil to Houston for massive haul",
+      "real_world_verdict": "FAIR",
+      "team1": {
+        "name": "Miami Dolphins",
+        "assets": [
+          {
+            "type": "player",
+            "name": "Laremy Tunsil",
+            "position": "left_tackle",
+            "overall_rating": 86,
+            "age": 25,
+            "years_pro": 3,
+            "contract_years_remaining": 1,
+            "annual_cap_hit": 10350000
+          }
+        ]
+      },
+      "team2": {
+        "name": "Houston Texans",
+        "assets": [
+          {
+            "type": "draft_pick",
+            "round": 1,
+            "year": 2020,
+            "overall_pick_projected": 25
+          },
+          {
+            "type": "draft_pick",
+            "round": 1,
+            "year": 2021,
+            "overall_pick_projected": 28
+          },
+          {
+            "type": "draft_pick",
+            "round": 2,
+            "year": 2021,
+            "overall_pick_projected": 58
+          }
+        ]
+      },
+      "notes": "Young franchise LT (25). Premium position commanded two first-rounders. Texans paid heavily but got elite blindside protection."
+    },
+    {
+      "name": "Deshaun Watson to Browns",
+      "year": 2022,
+      "description": "Houston trades franchise QB Deshaun Watson to Cleveland for historic haul",
+      "real_world_verdict": "FAIR",
+      "team1": {
+        "name": "Houston Texans",
+        "assets": [
+          {
+            "type": "player",
+            "name": "Deshaun Watson",
+            "position": "quarterback",
+            "overall_rating": 89,
+            "age": 26,
+            "years_pro": 5,
+            "contract_years_remaining": 1,
+            "annual_cap_hit": 10500000
+          }
+        ]
+      },
+      "team2": {
+        "name": "Cleveland Browns",
+        "assets": [
+          {
+            "type": "draft_pick",
+            "round": 1,
+            "year": 2022,
+            "overall_pick_projected": 13
+          },
+          {
+            "type": "draft_pick",
+            "round": 1,
+            "year": 2023,
+            "overall_pick_projected": 15
+          },
+          {
+            "type": "draft_pick",
+            "round": 1,
+            "year": 2024,
+            "overall_pick_projected": 18
+          },
+          {
+            "type": "draft_pick",
+            "round": 3,
+            "year": 2023,
+            "overall_pick_projected": 80
+          },
+          {
+            "type": "draft_pick",
+            "round": 4,
+            "year": 2024,
+            "overall_pick_projected": 115
+          }
+        ]
+      },
+      "notes": "Young franchise QB (26) despite off-field issues. Browns paid historic haul: 3 first-rounders. Massive gamble but fair QB market value."
+    },
+    {
+      "name": "Jamal Adams to Seahawks",
+      "year": 2020,
+      "description": "New York Jets trade All-Pro safety Jamal Adams to Seattle for two first-rounders",
+      "real_world_verdict": "SLIGHTLY_UNFAIR",
+      "team1": {
+        "name": "New York Jets",
+        "assets": [
+          {
+            "type": "player",
+            "name": "Jamal Adams",
+            "position": "safety",
+            "overall_rating": 92,
+            "age": 24,
+            "years_pro": 3,
+            "contract_years_remaining": 1,
+            "annual_cap_hit": 3589000
+          }
+        ]
+      },
+      "team2": {
+        "name": "Seattle Seahawks",
+        "assets": [
+          {
+            "type": "draft_pick",
+            "round": 1,
+            "year": 2021,
+            "overall_pick_projected": 23
+          },
+          {
+            "type": "draft_pick",
+            "round": 1,
+            "year": 2022,
+            "overall_pick_projected": 28
+          },
+          {
+            "type": "draft_pick",
+            "round": 3,
+            "year": 2021,
+            "overall_pick_projected": 86
+          }
+        ]
+      },
+      "notes": "Elite safety (24) on rookie deal. Seattle overpaid slightly - safety position doesn't typically command two 1sts. Jets won this trade."
+    }
+  ]
+}

@@ -63,7 +63,8 @@ class PhaseCompletionChecker:
     Attributes:
         _get_games_played: Callable that returns count of completed games
         _get_current_date: Callable that returns current simulation date
-        _get_last_regular_season_game_date: Callable that returns final game date
+        _get_last_regular_season_game_date: Callable that returns final regular season game date
+        _get_last_preseason_game_date: Callable that returns final preseason game date
         _is_super_bowl_complete: Callable that checks Super Bowl completion
         _calculate_preseason_start: Callable that calculates preseason start date
 
@@ -72,14 +73,16 @@ class PhaseCompletionChecker:
         is retrieved via injected callables at the time of method invocation.
     """
 
-    # NFL regular season constants
+    # NFL season constants
     REGULAR_SEASON_GAME_COUNT = 272  # 32 teams × 17 games / 2
+    PRESEASON_GAME_COUNT = 48  # 32 teams × 3 games / 2
 
     def __init__(
         self,
         get_games_played: Callable[[], int],
         get_current_date: Callable[[], Date],
         get_last_regular_season_game_date: Callable[[], Date],
+        get_last_preseason_game_date: Callable[[], Date],
         is_super_bowl_complete: Callable[[], bool],
         calculate_preseason_start: Callable[[], Date]
     ):
@@ -102,6 +105,10 @@ class PhaseCompletionChecker:
                 of the final scheduled regular season game (typically early Jan).
                 Example: lambda: Date(2025, 1, 5)
 
+            get_last_preseason_game_date: Function that returns the date
+                of the final scheduled preseason game (typically early Sept).
+                Example: lambda: Date(2025, 9, 3)
+
             is_super_bowl_complete: Function that checks if Super Bowl has been
                 played and completed. Should return boolean.
                 Example: lambda: playoff_controller.is_super_bowl_complete()
@@ -121,6 +128,7 @@ class PhaseCompletionChecker:
         self._get_games_played = get_games_played
         self._get_current_date = get_current_date
         self._get_last_regular_season_game_date = get_last_regular_season_game_date
+        self._get_last_preseason_game_date = get_last_preseason_game_date
         self._is_super_bowl_complete = is_super_bowl_complete
         self._calculate_preseason_start = calculate_preseason_start
 
@@ -175,6 +183,59 @@ class PhaseCompletionChecker:
         last_game_date = self._get_last_regular_season_game_date()
 
         # Season complete if we've passed the last scheduled game date
+        return current_date > last_game_date
+
+    def is_preseason_complete(self) -> bool:
+        """
+        Check if preseason is complete using pure logic.
+
+        This method determines preseason completion using two complementary
+        criteria (both are checked, either can trigger completion):
+
+        1. Primary Check - Game Count:
+           - NFL preseason = 32 teams × 3 games / 2 = 48 total games
+           - If games_played >= 48, preseason is definitely complete
+           - Most reliable indicator as it's based on concrete game results
+
+        2. Fallback Check - Date Progression:
+           - If current date > last scheduled preseason game date, preseason should be complete
+           - Handles edge cases where game counting might be unreliable
+           - Ensures calendar progression triggers transition even if game count off
+
+        The dual-criteria approach provides robustness against data inconsistencies
+        while maintaining clear, testable logic.
+
+        Returns:
+            bool: True if preseason is complete (48+ games OR date past
+                last game), False otherwise.
+
+        Example:
+            >>> checker.is_preseason_complete()
+            True  # If 48 games played
+
+            >>> checker.is_preseason_complete()
+            True  # If current date is Sept 5 and last game was Sept 3
+
+            >>> checker.is_preseason_complete()
+            False  # If 30 games played and current date is Aug 25
+
+        Thread Safety:
+            Thread-safe. No mutable state - all data retrieved via injected
+            callables at invocation time.
+
+        Performance:
+            O(1) time complexity. Performs 2 function calls and 2 comparisons.
+        """
+        # Primary check: Game count (most reliable)
+        games_played = self._get_games_played()
+        if games_played >= self.PRESEASON_GAME_COUNT:
+            return True
+
+        # Fallback check: Date progression (handles edge cases)
+        current_date = self._get_current_date()
+        last_game_date = self._get_last_preseason_game_date()
+
+        # Preseason complete if we've passed the last scheduled preseason game date
         return current_date > last_game_date
 
     def is_playoffs_complete(self) -> bool:

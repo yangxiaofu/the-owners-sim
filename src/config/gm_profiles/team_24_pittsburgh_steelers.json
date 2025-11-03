@@ -1,0 +1,9 @@
+{
+  "team_id": 24,
+  "team_name": "Pittsburgh Steelers",
+  "base_archetype": "Balanced",
+  "customizations": {
+    "loyalty": 0.7
+  },
+  "notes": "Stable franchise values loyalty and consistent approach"
+}

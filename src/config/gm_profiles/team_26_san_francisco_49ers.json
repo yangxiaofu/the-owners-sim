@@ -1,0 +1,10 @@
+{
+  "team_id": 26,
+  "team_name": "San Francisco 49ers",
+  "base_archetype": "Win-Now",
+  "customizations": {
+    "trade_frequency": 0.7,
+    "veteran_preference": 0.8
+  },
+  "notes": "Championship window open, aggressive roster management"
+}

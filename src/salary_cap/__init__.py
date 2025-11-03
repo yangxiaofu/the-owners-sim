@@ -28,6 +28,7 @@ from .event_integration import (
     ContractEventHandler,
     ReleaseEventHandler,
     RFAEventHandler,
+    TradeEventHandler,
 )
 
 __version__ = "1.0.0"
@@ -44,4 +45,5 @@ __all__ = [
     "ContractEventHandler",
     "ReleaseEventHandler",
     "RFAEventHandler",
+    "TradeEventHandler",
 ]

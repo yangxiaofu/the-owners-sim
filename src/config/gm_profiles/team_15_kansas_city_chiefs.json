@@ -1,0 +1,9 @@
+{
+  "team_id": 15,
+  "team_name": "Kansas City Chiefs",
+  "base_archetype": "Win-Now",
+  "customizations": {
+    "trade_frequency": 0.7
+  },
+  "notes": "Dynasty window with Mahomes, aggressive championship pursuit"
+}

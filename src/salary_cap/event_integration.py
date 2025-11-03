@@ -12,6 +12,7 @@ from salary_cap.cap_calculator import CapCalculator
 from salary_cap.cap_validator import CapValidator
 from salary_cap.tag_manager import TagManager
 from salary_cap.cap_database_api import CapDatabaseAPI
+from database.player_roster_api import PlayerRosterAPI
 
 
 class ValidationMiddleware:
@@ -91,7 +92,8 @@ class ValidationMiddleware:
         self,
         team_id: int,
         player_id: str,
-        season: int
+        season: int,
+        dynasty_id: str
     ) -> Tuple[bool, Optional[str]]:
         """
         Validate player release.
@@ -103,7 +105,7 @@ class ValidationMiddleware:
             (is_valid, error_message)
         """
         # Check if player has an active contract
-        contract = self.cap_db.get_player_contract(player_id, team_id, season)
+        contract = self.cap_db.get_player_contract(player_id, team_id, season, dynasty_id)
 
         if contract is None:
             return False, f"Player {player_id} does not have an active contract with team {team_id}"
@@ -174,6 +176,157 @@ class ValidationMiddleware:
 
         return True, None
 
+    def validate_player_trade(
+        self,
+        team1_id: int,
+        team2_id: int,
+        team1_player_ids: list,
+        team2_player_ids: list,
+        season: int,
+        dynasty_id: str,
+        trade_date=None,
+        current_phase: Optional[str] = None,
+        current_week: int = 0
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Validate player trade.
+
+        Checks:
+        - Both teams have cap space for incoming players
+        - Trade deadline hasn't passed (uses NFL calendar rules)
+        - Players have active contracts
+        - No duplicate players
+
+        NFL Trade Rules:
+        - Allowed: March 12 through Week 9 Tuesday (early November)
+        - Includes: Offseason, Training Camp, Preseason, Regular Season Weeks 1-9
+
+        Args:
+            team1_id: First team ID
+            team2_id: Second team ID
+            team1_player_ids: Players from team 1
+            team2_player_ids: Players from team 2
+            season: Season year
+            dynasty_id: Dynasty identifier
+            trade_date: Date of trade (optional)
+            current_phase: Current phase ("preseason", "regular_season", etc.) - for proper deadline validation
+            current_week: Current week number (0 if not in regular season)
+
+        Returns:
+            (is_valid, error_message)
+        """
+        # Check for duplicate players
+        all_players = team1_player_ids + team2_player_ids
+        if len(all_players) != len(set(all_players)):
+            return False, "Duplicate players in trade (player appears on both sides)"
+
+        # Validate all players have active contracts
+        for player_id in team1_player_ids:
+            contract = self.cap_db.get_player_contract(player_id, team1_id, season, dynasty_id)
+            if contract is None:
+                return False, f"Player {player_id} does not have an active contract with team {team1_id}"
+            if not contract.get('is_active'):
+                return False, f"Player {player_id} contract is not active"
+
+        for player_id in team2_player_ids:
+            contract = self.cap_db.get_player_contract(player_id, team2_id, season, dynasty_id)
+            if contract is None:
+                return False, f"Player {player_id} does not have an active contract with team {team2_id}"
+            if not contract.get('is_active'):
+                return False, f"Player {player_id} contract is not active"
+
+        # Check cap space for both teams
+        # Team 1 needs space for incoming team2 players
+        team2_incoming_cap = 0
+        for player_id in team2_player_ids:
+            contract = self.cap_db.get_player_contract(player_id, team2_id, season, dynasty_id)
+            if contract:
+                # Get current year cap hit
+                team2_incoming_cap += contract.get('current_year_cap_hit', 0)
+
+        # Team 1 will lose team1 players' cap hits
+        team1_outgoing_cap = 0
+        for player_id in team1_player_ids:
+            contract = self.cap_db.get_player_contract(player_id, team1_id, season, dynasty_id)
+            if contract:
+                team1_outgoing_cap += contract.get('current_year_cap_hit', 0)
+
+        # Net cap change for team 1
+        team1_net_cap_change = team2_incoming_cap - team1_outgoing_cap
+
+        # Check if team 1 has space
+        if team1_net_cap_change > 0:  # They're taking on more cap
+            cap_status = self.cap_calculator.get_team_cap_status(team1_id, season, dynasty_id)
+            cap_space = cap_status['cap_space']
+            if team1_net_cap_change > cap_space:
+                shortfall = team1_net_cap_change - cap_space
+                return False, f"Team {team1_id} insufficient cap space: need ${team1_net_cap_change:,}, have ${cap_space:,} (short ${shortfall:,})"
+
+        # Same check for team 2
+        team1_incoming_cap = 0
+        for player_id in team1_player_ids:
+            contract = self.cap_db.get_player_contract(player_id, team1_id, season, dynasty_id)
+            if contract:
+                team1_incoming_cap += contract.get('current_year_cap_hit', 0)
+
+        team2_outgoing_cap = 0
+        for player_id in team2_player_ids:
+            contract = self.cap_db.get_player_contract(player_id, team2_id, season, dynasty_id)
+            if contract:
+                team2_outgoing_cap += contract.get('current_year_cap_hit', 0)
+
+        team2_net_cap_change = team1_incoming_cap - team2_outgoing_cap
+
+        if team2_net_cap_change > 0:
+            cap_status = self.cap_calculator.get_team_cap_status(team2_id, season, dynasty_id)
+            cap_space = cap_status['cap_space']
+            if team2_net_cap_change > cap_space:
+                shortfall = team2_net_cap_change - cap_space
+                return False, f"Team {team2_id} insufficient cap space: need ${team2_net_cap_change:,}, have ${cap_space:,} (short ${shortfall:,})"
+
+        # Check trade deadline using NFL calendar rules
+        if trade_date is not None:
+            try:
+                from datetime import datetime, date as python_date
+                from transactions.transaction_timing_validator import TransactionTimingValidator
+
+                # Convert trade_date to python date if it's not already
+                if isinstance(trade_date, str):
+                    trade_date_obj = datetime.fromisoformat(trade_date).date()
+                elif isinstance(trade_date, python_date):
+                    trade_date_obj = trade_date
+                elif hasattr(trade_date, 'to_python_date'):
+                    trade_date_obj = trade_date.to_python_date()
+                else:
+                    trade_date_obj = trade_date
+
+                # Use TransactionTimingValidator for proper NFL calendar checking
+                validator = TransactionTimingValidator(season)
+
+                # If current_phase is provided, use full validation
+                # Otherwise, fall back to date-only check (for backward compatibility)
+                if current_phase is not None:
+                    is_allowed, reason = validator.is_trade_allowed(
+                        current_date=trade_date_obj,
+                        current_phase=current_phase,
+                        current_week=current_week
+                    )
+
+                    if not is_allowed:
+                        return False, f"Trade rejected: {reason}"
+                else:
+                    # Fallback: Simple date-based check (before March 12 or after Nov 5)
+                    if trade_date_obj.month < 3 or (trade_date_obj.month == 3 and trade_date_obj.day < 12):
+                        return False, "Trade rejected: Trading period begins March 12 (new league year)"
+                    elif trade_date_obj.month >= 11:
+                        return False, "Trade rejected: Trade deadline has passed (Week 9 Tuesday)"
+
+            except Exception as e:
+                # If date parsing fails, allow trade (fail open for robustness)
+                pass
+
+        return True, None
+
 
 class EventCapBridge:
     """
@@ -200,6 +353,7 @@ class EventCapBridge:
         self.tag_mgr = TagManager(database_path)
         self.cap_db = CapDatabaseAPI(database_path)
         self.validator = CapValidator(database_path)
+        self.roster_api = PlayerRosterAPI(database_path)
         self.logger = logging.getLogger(__name__)
 
     # ========================================================================
@@ -655,6 +809,148 @@ class EventCapBridge:
                 "error_message": str(e)
             }
 
+    # ========================================================================
+    # TRADE OPERATIONS
+    # ========================================================================
+
+    def execute_player_trade(
+        self,
+        team1_id: int,
+        team2_id: int,
+        team1_player_ids: list,
+        team2_player_ids: list,
+        season: int,
+        trade_date,
+        dynasty_id: str = "default"
+    ):
+        """
+        Execute player-for-player trade.
+
+        Transfers player contracts between teams and updates cap accounting.
+
+        Args:
+            team1_id: First team ID
+            team2_id: Second team ID
+            team1_player_ids: List of player IDs from team1 going to team2
+            team2_player_ids: List of player IDs from team2 going to team1
+            season: Season year
+            trade_date: Date trade was executed
+            dynasty_id: Dynasty context
+
+        Returns:
+            Dict with success status, cap impacts, and player details
+        """
+        try:
+            import sqlite3
+            from datetime import datetime
+
+            # Track cap impacts
+            team1_cap_change = 0  # Net cap change for team1 (positive = more cap used)
+            team2_cap_change = 0
+
+            # Track transferred players for return data
+            team1_acquired = []  # Players team1 receives
+            team2_acquired = []  # Players team2 receives
+
+            # Transfer team1 players to team2
+            for player_id in team1_player_ids:
+                # Get contract details before transfer
+                contract = self.cap_db.get_player_contract(player_id, team1_id, season, dynasty_id)
+                if not contract:
+                    raise ValueError(f"Player {player_id} has no active contract with team {team1_id}")
+
+                contract_id = contract['contract_id']
+                cap_hit = contract.get('current_year_cap_hit', 0)
+
+                # Update contract's team_id in database
+                with sqlite3.connect(self.cap_db.database_path) as conn:
+                    conn.execute('''
+                        UPDATE player_contracts
+                        SET team_id = ?
+                        WHERE contract_id = ?
+                    ''', (team2_id, contract_id))
+                    conn.commit()
+
+                # Update player's team_id in roster
+                self.roster_api.update_player_team(dynasty_id, int(player_id), team2_id)
+
+                # Team1 loses this cap hit, team2 gains it
+                team1_cap_change -= cap_hit
+                team2_cap_change += cap_hit
+
+                team2_acquired.append({
+                    "player_id": player_id,
+                    "contract_id": contract_id,
+                    "cap_hit": cap_hit
+                })
+
+            # Transfer team2 players to team1
+            for player_id in team2_player_ids:
+                contract = self.cap_db.get_player_contract(player_id, team2_id, season, dynasty_id)
+                if not contract:
+                    raise ValueError(f"Player {player_id} has no active contract with team {team2_id}")
+
+                contract_id = contract['contract_id']
+                cap_hit = contract.get('current_year_cap_hit', 0)
+
+                # Update contract's team_id
+                with sqlite3.connect(self.cap_db.database_path) as conn:
+                    conn.execute('''
+                        UPDATE player_contracts
+                        SET team_id = ?
+                        WHERE contract_id = ?
+                    ''', (team1_id, contract_id))
+                    conn.commit()
+
+                # Update player's team_id in roster
+                self.roster_api.update_player_team(dynasty_id, int(player_id), team1_id)
+
+                team2_cap_change -= cap_hit
+                team1_cap_change += cap_hit
+
+                team1_acquired.append({
+                    "player_id": player_id,
+                    "contract_id": contract_id,
+                    "cap_hit": cap_hit
+                })
+
+            # Log transactions for both teams
+            self.cap_db.log_transaction(
+                team_id=team1_id,
+                season=season,
+                dynasty_id=dynasty_id,
+                transaction_type="TRADE",
+                transaction_date=trade_date,
+                cap_impact_current=team1_cap_change,
+                description=f"Trade with team {team2_id}: sent {len(team1_player_ids)} player(s), received {len(team2_player_ids)} player(s)"
+            )
+
+            self.cap_db.log_transaction(
+                team_id=team2_id,
+                season=season,
+                dynasty_id=dynasty_id,
+                transaction_type="TRADE",
+                transaction_date=trade_date,
+                cap_impact_current=team2_cap_change,
+                description=f"Trade with team {team1_id}: sent {len(team2_player_ids)} player(s), received {len(team1_player_ids)} player(s)"
+            )
+
+            return {
+                "success": True,
+                "team1_acquired_players": team1_acquired,
+                "team2_acquired_players": team2_acquired,
+                "team1_net_cap_change": team1_cap_change,
+                "team2_net_cap_change": team2_cap_change,
+                "trade_date": trade_date
+            }
+
+        except Exception as e:
+            self.logger.error(f"Failed to execute player trade: {e}")
+            return {
+                "success": False,
+                "error_message": str(e)
+            }
+
 
 # ============================================================================
 # SPECIALIZED EVENT HANDLERS
@@ -937,5 +1233,53 @@ class RFAEventHandler:
             base_salaries=event_data["base_salaries"],
             season=event_data["season"],
             is_matched=event_data["is_matched"],
+            dynasty_id=event_data.get("dynasty_id", "default")
+        )
+
+
+class TradeEventHandler:
+    """
+    Specialized handler for trade events.
+
+    Handles player-for-player trades and player-for-pick trades.
+    """
+
+    def __init__(self, bridge: EventCapBridge):
+        """
+        Initialize trade event handler.
+
+        Args:
+            bridge: EventCapBridge instance to delegate to
+        """
+        self.bridge = bridge
+
+    def handle_player_trade(self, event_data: dict):
+        """
+        Process player-for-player trade event.
+
+        Expected event_data structure:
+        {
+            "team1_id": int,
+            "team2_id": int,
+            "team1_player_ids": list[str],
+            "team2_player_ids": list[str],
+            "season": int,
+            "trade_date": date,
+            "dynasty_id": str (optional)
+        }
+
+        Args:
+            event_data: Event data dictionary
+
+        Returns:
+            Result dict from bridge.execute_player_trade()
+        """
+        return self.bridge.execute_player_trade(
+            team1_id=event_data["team1_id"],
+            team2_id=event_data["team2_id"],
+            team1_player_ids=event_data["team1_player_ids"],
+            team2_player_ids=event_data["team2_player_ids"],
+            season=event_data["season"],
+            trade_date=event_data["trade_date"],
             dynasty_id=event_data.get("dynasty_id", "default")
         )

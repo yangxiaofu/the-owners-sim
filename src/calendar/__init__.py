@@ -36,6 +36,22 @@ Example Usage:
     Advanced to 2024-01-11
 """
 
+# ============================================================================
+# CRITICAL: Provide stdlib calendar attributes for PySide6/Qt compatibility
+# ============================================================================
+# Our custom calendar package shadows Python's stdlib calendar module.
+# PySide6/Qt and other libraries expect stdlib calendar attributes like day_abbr.
+# Solution: Provide compatible attributes directly in our package.
+
+# Standard calendar attributes (compatible with stdlib calendar)
+day_name = ('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')
+day_abbr = ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun')
+month_name = ('', 'January', 'February', 'March', 'April', 'May', 'June',
+              'July', 'August', 'September', 'October', 'November', 'December')
+month_abbr = ('', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+              'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec')
+# ============================================================================
+
 # Core classes
 from .date_models import (
     Date,

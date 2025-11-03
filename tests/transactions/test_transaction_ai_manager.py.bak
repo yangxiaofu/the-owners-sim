@@ -1,0 +1,994 @@
+"""
+Tests for Transaction AI Manager
+
+Phase 1.5 Day 6: Unit tests for probability system and daily evaluation pipeline.
+
+Test Coverage:
+- Category 1: Probability System (8 tests)
+- Category 2: Daily Evaluation Pipeline (10 tests)
+Total: 18 comprehensive tests
+"""
+
+import pytest
+from unittest.mock import Mock, MagicMock, patch
+from datetime import datetime, timedelta
+from typing import List, Dict, Any
+
+from transactions.transaction_ai_manager import (
+    TransactionAIManager,
+    BASE_EVALUATION_PROBABILITY,
+    MAX_TRANSACTIONS_PER_DAY,
+    TRADE_COOLDOWN_DAYS,
+    TRADE_DEADLINE_WEEK,
+    MODIFIER_PLAYOFF_PUSH,
+    MODIFIER_LOSING_STREAK,
+    MODIFIER_POST_TRADE_COOLDOWN,
+    MODIFIER_DEADLINE_PROXIMITY,
+)
+from transactions.trade_proposal_generator import TeamContext
+from transactions.models import TradeProposal, FairnessRating, AssetType, TradeAsset
+from team_management.gm_archetype import GMArchetype
+from offseason.team_needs_analyzer import NeedUrgency
+
+
+# ============================================================================
+# FIXTURES
+# ============================================================================
+
+@pytest.fixture
+def database_path():
+    """Test database path."""
+    return ":memory:"
+
+
+@pytest.fixture
+def dynasty_id():
+    """Test dynasty ID."""
+    return "test_dynasty"
+
+
+@pytest.fixture
+def manager(database_path, dynasty_id):
+    """Transaction AI Manager instance with mocked dependencies."""
+    # Create mocked dependencies BEFORE instantiation
+    mock_calculator = Mock()
+    mock_proposal_generator = Mock()
+    mock_needs_analyzer = Mock()
+    mock_cap_api = Mock()
+
+    # Instantiate with mocked dependencies to avoid __post_init__ errors
+    manager = TransactionAIManager(
+        database_path=database_path,
+        dynasty_id=dynasty_id,
+        calculator=mock_calculator,
+        proposal_generator=mock_proposal_generator,
+        needs_analyzer=mock_needs_analyzer,
+        cap_api=mock_cap_api
+    )
+
+    return manager
+
+
+@pytest.fixture
+def team_context():
+    """Basic team context with realistic record."""
+    return TeamContext(
+        team_id=22,
+        wins=5,
+        losses=3,
+        cap_space=15_000_000,
+        season="regular"
+    )
+
+
+@pytest.fixture
+def gm_conservative():
+    """Conservative GM archetype (low trade frequency)."""
+    return GMArchetype(
+        name="Conservative GM",
+        description="Risk-averse, patient approach",
+        risk_tolerance=0.3,
+        win_now_mentality=0.3,
+        draft_pick_value=0.7,
+        cap_management=0.8,
+        trade_frequency=0.3,  # Low trade frequency
+        veteran_preference=0.5,
+        star_chasing=0.2,
+        loyalty=0.7
+    )
+
+
+@pytest.fixture
+def gm_balanced():
+    """Balanced GM archetype (moderate trade frequency)."""
+    return GMArchetype(
+        name="Balanced GM",
+        description="Balanced approach",
+        risk_tolerance=0.5,
+        win_now_mentality=0.5,
+        draft_pick_value=0.5,
+        cap_management=0.5,
+        trade_frequency=0.5,  # Moderate trade frequency
+        veteran_preference=0.5,
+        star_chasing=0.3,
+        loyalty=0.5
+    )
+
+
+@pytest.fixture
+def gm_aggressive():
+    """Aggressive GM archetype (high trade frequency)."""
+    return GMArchetype(
+        name="Aggressive GM",
+        description="Bold, aggressive approach",
+        risk_tolerance=0.8,
+        win_now_mentality=0.8,
+        draft_pick_value=0.3,
+        cap_management=0.3,
+        trade_frequency=0.9,  # High trade frequency
+        veteran_preference=0.6,
+        star_chasing=0.7,
+        loyalty=0.3
+    )
+
+
+@pytest.fixture
+def mock_trade_proposal():
+    """Create a valid trade proposal for testing."""
+    player_asset = TradeAsset(
+        asset_type=AssetType.PLAYER,
+        player_id=1001,
+        player_name="Test Player",
+        position="WR",
+        overall_rating=85,
+        age=26,
+        years_pro=4,
+        contract_years_remaining=2,
+        annual_cap_hit=5_000_000,
+        trade_value=255.0
+    )
+
+    return TradeProposal(
+        team1_id=22,
+        team1_assets=[player_asset],
+        team1_total_value=255.0,
+        team2_id=9,
+        team2_assets=[player_asset],  # Placeholder
+        team2_total_value=250.0,
+        value_ratio=0.98,
+        fairness_rating=FairnessRating.VERY_FAIR,
+        passes_cap_validation=True,
+        passes_roster_validation=True
+    )
+
+
+def create_mock_need(position: str, urgency: NeedUrgency) -> Dict[str, Any]:
+    """Create mock team need dictionary."""
+    return {
+        "position": position,
+        "urgency": urgency,
+        "current_depth": 1,
+        "ideal_depth": 3,
+        "gap": 2
+    }
+
+
+# ============================================================================
+# CATEGORY 1: PROBABILITY SYSTEM TESTS (8 tests)
+# ============================================================================
+
+def test_base_probability_calculation(manager, team_context, gm_conservative, gm_balanced, gm_aggressive):
+    """
+    Test base probability calculation for different GM types.
+
+    Base probability = gm.trade_frequency * BASE_EVALUATION_PROBABILITY
+    - Conservative GM (0.3): 1.5% per day
+    - Balanced GM (0.5): 2.5% per day
+    - Aggressive GM (0.9): 4.5% per day
+    """
+    # Conservative GM: 0.3 * 0.05 = 0.015 (1.5%)
+    with patch('random.random', return_value=0.014):  # Just below threshold
+        result = manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_conservative,
+            team_context=team_context,
+            season_phase="regular",
+            current_date="2025-09-15",
+            current_week=1
+        )
+        assert result is True
+
+    with patch('random.random', return_value=0.016):  # Just above threshold
+        result = manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_conservative,
+            team_context=team_context,
+            season_phase="regular",
+            current_date="2025-09-15",
+            current_week=1
+        )
+        assert result is False
+
+    # Balanced GM: 0.5 * 0.05 = 0.025 (2.5%)
+    with patch('random.random', return_value=0.024):
+        result = manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_balanced,
+            team_context=team_context,
+            season_phase="regular",
+            current_date="2025-09-15",
+            current_week=1
+        )
+        assert result is True
+
+    # Aggressive GM: 0.9 * 0.05 = 0.045 (4.5%)
+    with patch('random.random', return_value=0.044):
+        result = manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_aggressive,
+            team_context=team_context,
+            season_phase="regular",
+            current_date="2025-09-15",
+            current_week=1
+        )
+        assert result is True
+
+
+def test_trade_frequency_modifier(manager, team_context, gm_conservative, gm_aggressive):
+    """
+    Test that trade frequency affects evaluation likelihood.
+
+    Conservative GM should evaluate less frequently than aggressive GM.
+    """
+    num_trials = 1000
+    conservative_triggers = 0
+    aggressive_triggers = 0
+
+    for _ in range(num_trials):
+        # Conservative GM
+        if manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_conservative,
+            team_context=team_context,
+            season_phase="regular",
+            current_date="2025-09-15",
+            current_week=1
+        ):
+            conservative_triggers += 1
+
+        # Aggressive GM
+        if manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_aggressive,
+            team_context=team_context,
+            season_phase="regular",
+            current_date="2025-09-15",
+            current_week=1
+        ):
+            aggressive_triggers += 1
+
+    # Aggressive GM should trigger significantly more often
+    assert aggressive_triggers > conservative_triggers
+    # Rough approximation: aggressive (4.5%) should be ~3x conservative (1.5%)
+    assert aggressive_triggers > conservative_triggers * 2
+
+
+def test_playoff_push_modifier(manager, gm_balanced):
+    """
+    Test +50% modifier when in playoff hunt (weeks 10+).
+
+    Teams with 0.40-0.60 win% in weeks 10+ get MODIFIER_PLAYOFF_PUSH (1.5x).
+    """
+    # Team in playoff hunt: 5-5 record (0.500 win%)
+    playoff_hunt_context = TeamContext(
+        team_id=22,
+        wins=5,
+        losses=5,
+        cap_space=15_000_000,
+        season="regular"
+    )
+
+    # Week 10+ with playoff hunt should apply modifier
+    with patch('transactions.transaction_ai_manager.random.random', return_value=0.035):
+        # Base: 0.5 * 0.05 = 0.025
+        # With playoff modifier: 0.025 * 1.5 = 0.0375
+        # Random 0.035 < 0.0375, so should trigger
+        result = manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_balanced,
+            team_context=playoff_hunt_context,
+            season_phase="regular",
+            current_date="2025-11-15",
+            current_week=10
+        )
+        assert result is True
+
+    # Same context in early season (week 5) should NOT apply modifier
+    with patch('transactions.transaction_ai_manager.random.random', return_value=0.035):
+        # Base: 0.5 * 0.05 = 0.025
+        # No modifier in early season
+        # Random 0.035 > 0.025, so should NOT trigger
+        result = manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_balanced,
+            team_context=playoff_hunt_context,
+            season_phase="regular",
+            current_date="2025-10-15",
+            current_week=5
+        )
+        assert result is False
+
+    # Team not in playoff hunt (8-2 record, 0.800 win%) should NOT apply modifier
+    winning_context = TeamContext(
+        team_id=22,
+        wins=8,
+        losses=2,
+        cap_space=15_000_000,
+        season="regular"
+    )
+
+    with patch('random.random', return_value=0.035):
+        result = manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_balanced,
+            team_context=winning_context,
+            season_phase="regular",
+            current_date="2025-11-15",
+            current_week=10
+        )
+        assert result is False
+
+
+def test_losing_streak_modifier(manager, gm_balanced):
+    """
+    Test +25% per game for 3+ game losing streaks.
+
+    MODIFIER_LOSING_STREAK = 1.25 per game in streak.
+    """
+    # Team with 3+ more losses than wins (assumed 3-game streak)
+    losing_streak_context = TeamContext(
+        team_id=22,
+        wins=2,
+        losses=6,  # 4 more losses than wins, triggers streak logic
+        cap_space=15_000_000,
+        season="regular"
+    )
+
+    # Base: 0.5 * 0.05 = 0.025
+    # Streak modifier: 1.25^(3-2) = 1.25
+    # Total: 0.025 * 1.25 = 0.03125
+
+    with patch('random.random', return_value=0.030):
+        result = manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_balanced,
+            team_context=losing_streak_context,
+            season_phase="regular",
+            current_date="2025-10-15",
+            current_week=5
+        )
+        assert result is True
+
+    with patch('random.random', return_value=0.032):
+        result = manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_balanced,
+            team_context=losing_streak_context,
+            season_phase="regular",
+            current_date="2025-10-15",
+            current_week=5
+        )
+        assert result is False
+
+
+def test_post_trade_cooldown_modifier(manager, gm_balanced, team_context):
+    """
+    Test -80% modifier during 7-day cooldown period.
+
+    MODIFIER_POST_TRADE_COOLDOWN = 0.2 (reduces probability by 80%).
+    """
+    # Set up recent trade history
+    current_date = "2025-10-15"
+    recent_trade_date = "2025-10-12"  # 3 days ago (within 7-day cooldown)
+
+    manager._trade_history[22] = recent_trade_date
+
+    # Base: 0.5 * 0.05 = 0.025
+    # Cooldown modifier: 0.025 * 0.2 = 0.005
+
+    with patch('random.random', return_value=0.004):
+        result = manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_balanced,
+            team_context=team_context,
+            season_phase="regular",
+            current_date=current_date,
+            current_week=5
+        )
+        assert result is True
+
+    with patch('random.random', return_value=0.006):
+        result = manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_balanced,
+            team_context=team_context,
+            season_phase="regular",
+            current_date=current_date,
+            current_week=5
+        )
+        assert result is False
+
+    # Trade 8 days ago (outside cooldown) should NOT apply modifier
+    old_trade_date = "2025-10-07"  # 8 days ago
+    manager._trade_history[22] = old_trade_date
+
+    with patch('random.random', return_value=0.024):
+        result = manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_balanced,
+            team_context=team_context,
+            season_phase="regular",
+            current_date=current_date,
+            current_week=5
+        )
+        assert result is True
+
+
+def test_trade_deadline_proximity_modifier(manager, gm_balanced, team_context):
+    """
+    Test +100% modifier in final 3 days before deadline (Week 8).
+
+    MODIFIER_DEADLINE_PROXIMITY = 2.0 (doubles probability).
+    """
+    # Week 8 (trade deadline week)
+    # Base: 0.5 * 0.05 = 0.025
+    # Deadline modifier: 0.025 * 2.0 = 0.05
+
+    with patch('random.random', return_value=0.049):
+        result = manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_balanced,
+            team_context=team_context,
+            season_phase="regular",
+            current_date="2025-10-29",
+            current_week=8
+        )
+        assert result is True
+
+    # Week 7 (not deadline week) should NOT apply modifier
+    with patch('random.random', return_value=0.049):
+        result = manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_balanced,
+            team_context=team_context,
+            season_phase="regular",
+            current_date="2025-10-22",
+            current_week=7
+        )
+        assert result is False
+
+
+def test_multiple_modifiers_stacking(manager, gm_balanced):
+    """
+    Test that multiple modifiers stack correctly.
+
+    Test scenario: Playoff push + losing streak + deadline proximity
+    """
+    # Team in playoff hunt with losing streak during deadline week
+    multi_modifier_context = TeamContext(
+        team_id=22,
+        wins=4,
+        losses=7,  # 0.364 win% (in playoff hunt range), 3+ loss differential (streak)
+        cap_space=15_000_000,
+        season="regular"
+    )
+
+    # Week 10 (playoff push applies) + losing streak + NOT deadline week
+    # Base: 0.5 * 0.05 = 0.025
+    # Playoff modifier: 1.5
+    # Losing streak modifier: 1.25
+    # Total: 0.025 * 1.5 * 1.25 = 0.046875
+
+    with patch('random.random', return_value=0.046):
+        result = manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_balanced,
+            team_context=multi_modifier_context,
+            season_phase="regular",
+            current_date="2025-11-15",
+            current_week=10
+        )
+        assert result is True
+
+    # Now add deadline proximity (not possible in Week 10, but theoretical test)
+    # If we were in Week 8 (can't have playoff modifier, but let's test deadline)
+    # Base: 0.025
+    # Losing streak: 1.25
+    # Deadline: 2.0
+    # Total: 0.025 * 1.25 * 2.0 = 0.0625
+
+    with patch('random.random', return_value=0.062):
+        result = manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_balanced,
+            team_context=multi_modifier_context,
+            season_phase="regular",
+            current_date="2025-10-29",
+            current_week=8
+        )
+        assert result is True
+
+
+def test_probability_edge_cases(manager, gm_aggressive, team_context):
+    """
+    Test probability edge cases and bounds.
+
+    - Probability caps at 100% (1.0)
+    - Probability never goes negative
+    - Only evaluates during regular season
+    """
+    # Test 1: Probability caps at 100%
+    # Even with extreme modifiers, should cap at 1.0
+    extreme_context = TeamContext(
+        team_id=22,
+        wins=1,
+        losses=10,
+        cap_space=15_000_000,
+        season="regular"
+    )
+
+    with patch('random.random', return_value=0.99):
+        result = manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_aggressive,  # High trade frequency
+            team_context=extreme_context,  # Losing streak
+            season_phase="regular",
+            current_date="2025-11-15",
+            current_week=10  # Playoff push potential
+        )
+        assert result is True
+
+    # Test 2: Season phase check - only regular season
+    with patch('random.random', return_value=0.01):  # Very low random
+        # Preseason
+        result = manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_aggressive,
+            team_context=team_context,
+            season_phase="preseason",
+            current_date="2025-08-15",
+            current_week=1
+        )
+        assert result is False
+
+        # Playoffs
+        result = manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_aggressive,
+            team_context=team_context,
+            season_phase="playoffs",
+            current_date="2025-01-15",
+            current_week=1
+        )
+        assert result is False
+
+    # Test 3: After trade deadline (Week 9+)
+    with patch('random.random', return_value=0.01):
+        result = manager._should_evaluate_today(
+            team_id=22,
+            gm=gm_aggressive,
+            team_context=team_context,
+            season_phase="regular",
+            current_date="2025-11-05",
+            current_week=9
+        )
+        assert result is False
+
+
+# ============================================================================
+# CATEGORY 2: DAILY EVALUATION TESTS (10 tests)
+# ============================================================================
+
+def test_no_evaluation_most_days(manager, gm_balanced):
+    """
+    Test that most days return empty list (realistic NFL behavior).
+
+    With balanced GM (2.5% daily probability), ~97.5% of days should return empty.
+    """
+    manager.needs_analyzer.analyze_team_needs.return_value = []
+    manager.cap_api.get_available_cap_space.return_value = 15_000_000
+
+    # Mock should_evaluate_today to return False
+    with patch.object(manager, '_should_evaluate_today', return_value=False):
+        result = manager.evaluate_daily_transactions(
+            team_id=22,
+            current_date="2025-09-15",
+            season_phase="regular",
+            team_record={"wins": 5, "losses": 3, "ties": 0},
+            current_week=1
+        )
+
+        assert result == []
+        assert manager._evaluation_count == 1
+
+
+def test_full_pipeline_execution_when_triggered(manager, gm_balanced, mock_trade_proposal):
+    """
+    Test full pipeline execution when evaluation is triggered.
+
+    Verify all pipeline steps are called in correct order.
+    """
+    # Setup mocks
+    manager.needs_analyzer.analyze_team_needs.return_value = [
+        create_mock_need("WR", NeedUrgency.HIGH)
+    ]
+    manager.cap_api.get_available_cap_space.return_value = 15_000_000
+    manager.proposal_generator.generate_trade_proposals.return_value = [mock_trade_proposal]
+
+    # Force evaluation to trigger
+    with patch.object(manager, '_should_evaluate_today', return_value=True):
+        result = manager.evaluate_daily_transactions(
+            team_id=22,
+            current_date="2025-09-15",
+            season_phase="regular",
+            team_record={"wins": 5, "losses": 3, "ties": 0},
+            current_week=1
+        )
+
+        # Verify pipeline steps called
+        assert manager.needs_analyzer.analyze_team_needs.called
+        assert manager.cap_api.get_available_cap_space.called
+        assert manager.proposal_generator.generate_trade_proposals.called
+
+        # Verify result
+        assert len(result) == 1
+        assert result[0] == mock_trade_proposal
+
+
+def test_empty_proposal_list_when_no_needs(manager, gm_balanced):
+    """
+    Test that empty needs list results in no proposals.
+
+    Even if evaluation triggers, no proposals generated without needs.
+    """
+    # Setup mocks
+    manager.needs_analyzer.analyze_team_needs.return_value = []  # No needs
+    manager.cap_api.get_available_cap_space.return_value = 15_000_000
+
+    # Force evaluation to trigger
+    with patch.object(manager, '_should_evaluate_today', return_value=True):
+        result = manager.evaluate_daily_transactions(
+            team_id=22,
+            current_date="2025-09-15",
+            season_phase="regular",
+            team_record={"wins": 5, "losses": 3, "ties": 0},
+            current_week=1
+        )
+
+        # Should return empty list (no needs = no trades)
+        assert result == []
+
+        # Proposal generator should NOT be called
+        assert not manager.proposal_generator.generate_trade_proposals.called
+
+
+def test_proposal_generation_integration(manager, gm_balanced, mock_trade_proposal):
+    """
+    Test proposal generator integration with correct parameters.
+    """
+    # Setup mocks
+    team_needs = [create_mock_need("WR", NeedUrgency.HIGH)]
+    manager.needs_analyzer.analyze_team_needs.return_value = team_needs
+    manager.cap_api.get_available_cap_space.return_value = 15_000_000
+    manager.proposal_generator.generate_trade_proposals.return_value = [mock_trade_proposal]
+
+    # Force evaluation to trigger
+    with patch.object(manager, '_should_evaluate_today', return_value=True):
+        result = manager.evaluate_daily_transactions(
+            team_id=22,
+            current_date="2025-09-15",
+            season_phase="regular",
+            team_record={"wins": 5, "losses": 3, "ties": 0},
+            current_week=1
+        )
+
+        # Verify generator called with correct parameters
+        call_args = manager.proposal_generator.generate_trade_proposals.call_args
+        assert call_args[1]['team_id'] == 22
+        assert call_args[1]['needs'] == team_needs
+        assert call_args[1]['season'] == 2025
+
+        # Verify result
+        assert len(result) == 1
+
+
+def test_gm_philosophy_filtering_called(manager, gm_balanced, mock_trade_proposal):
+    """
+    Test that GM philosophy filtering is called during pipeline.
+    """
+    # Setup mocks
+    manager.needs_analyzer.analyze_team_needs.return_value = [
+        create_mock_need("WR", NeedUrgency.HIGH)
+    ]
+    manager.cap_api.get_available_cap_space.return_value = 15_000_000
+    manager.proposal_generator.generate_trade_proposals.return_value = [mock_trade_proposal]
+
+    # Mock the filter method
+    with patch.object(manager, '_filter_by_gm_philosophy', return_value=[mock_trade_proposal]) as mock_filter:
+        with patch.object(manager, '_should_evaluate_today', return_value=True):
+            result = manager.evaluate_daily_transactions(
+                team_id=22,
+                current_date="2025-09-15",
+                season_phase="regular",
+                team_record={"wins": 5, "losses": 3, "ties": 0},
+                current_week=1
+            )
+
+            # Verify filter was called
+            assert mock_filter.called
+
+            # Verify filtered proposals returned
+            assert len(result) == 1
+
+
+def test_validation_called(manager, gm_balanced, mock_trade_proposal):
+    """
+    Test that validation filters out invalid proposals.
+    """
+    # Create invalid proposal (fails cap validation)
+    invalid_proposal = TradeProposal(
+        team1_id=22,
+        team1_assets=[],
+        team1_total_value=0,
+        team2_id=9,
+        team2_assets=[],
+        team2_total_value=0,
+        value_ratio=1.0,
+        fairness_rating=FairnessRating.VERY_FAIR,
+        passes_cap_validation=False,  # Invalid
+        passes_roster_validation=True
+    )
+
+    # Setup mocks
+    manager.needs_analyzer.analyze_team_needs.return_value = [
+        create_mock_need("WR", NeedUrgency.HIGH)
+    ]
+    manager.cap_api.get_available_cap_space.return_value = 15_000_000
+    manager.proposal_generator.generate_trade_proposals.return_value = [
+        mock_trade_proposal,  # Valid
+        invalid_proposal      # Invalid
+    ]
+
+    # Force evaluation to trigger
+    with patch.object(manager, '_should_evaluate_today', return_value=True):
+        result = manager.evaluate_daily_transactions(
+            team_id=22,
+            current_date="2025-09-15",
+            season_phase="regular",
+            team_record={"wins": 5, "losses": 3, "ties": 0},
+            current_week=1
+        )
+
+        # Should only return valid proposal
+        assert len(result) == 1
+        assert result[0] == mock_trade_proposal
+
+
+def test_max_2_transactions_per_day_limit(manager, gm_balanced, mock_trade_proposal):
+    """
+    Test that only max 2 proposals are returned per day.
+
+    Even if more valid proposals exist, limit to MAX_TRANSACTIONS_PER_DAY.
+    """
+    # Create 5 valid proposals
+    proposals = []
+    for i in range(5):
+        proposal = TradeProposal(
+            team1_id=22,
+            team1_assets=[TradeAsset(
+                asset_type=AssetType.PLAYER,
+                player_id=1000 + i,
+                player_name=f"Player {i}",
+                position="WR",
+                overall_rating=80 + i,
+                age=25,
+                contract_years_remaining=2,
+                annual_cap_hit=3_000_000,
+                trade_value=200.0
+            )],
+            team1_total_value=200.0,
+            team2_id=9,
+            team2_assets=[TradeAsset(
+                asset_type=AssetType.PLAYER,
+                player_id=2000 + i,
+                trade_value=200.0
+            )],
+            team2_total_value=200.0,
+            value_ratio=1.0,
+            fairness_rating=FairnessRating.VERY_FAIR,
+            passes_cap_validation=True,
+            passes_roster_validation=True
+        )
+        proposals.append(proposal)
+
+    # Setup mocks
+    manager.needs_analyzer.analyze_team_needs.return_value = [
+        create_mock_need("WR", NeedUrgency.HIGH)
+    ]
+    manager.cap_api.get_available_cap_space.return_value = 15_000_000
+    manager.proposal_generator.generate_trade_proposals.return_value = proposals
+
+    # Force evaluation to trigger
+    with patch.object(manager, '_should_evaluate_today', return_value=True):
+        result = manager.evaluate_daily_transactions(
+            team_id=22,
+            current_date="2025-09-15",
+            season_phase="regular",
+            team_record={"wins": 5, "losses": 3, "ties": 0},
+            current_week=1
+        )
+
+        # Should only return max 2 proposals
+        assert len(result) == MAX_TRANSACTIONS_PER_DAY
+        assert len(result) == 2
+
+
+def test_team_assessment_accuracy(manager, gm_balanced):
+    """
+    Test that team assessment retrieves correct data.
+    """
+    team_id = 22
+    team_needs = [create_mock_need("WR", NeedUrgency.HIGH)]
+    cap_space = 20_000_000
+
+    # Setup mocks
+    manager.needs_analyzer.analyze_team_needs.return_value = team_needs
+    manager.cap_api.get_available_cap_space.return_value = cap_space
+
+    # Call assessment directly
+    needs, cap, gm, context = manager._assess_team_situation(
+        team_id=team_id,
+        team_record={"wins": 6, "losses": 2, "ties": 0}
+    )
+
+    # Verify correct team_id passed
+    manager.needs_analyzer.analyze_team_needs.assert_called_once_with(team_id)
+    manager.cap_api.get_available_cap_space.assert_called_once_with(team_id)
+
+    # Verify returned data
+    assert needs == team_needs
+    assert cap == cap_space
+    assert context.team_id == team_id
+    assert context.wins == 6
+    assert context.losses == 2
+    assert context.cap_space == cap_space
+
+
+def test_season_phase_awareness(manager, gm_balanced):
+    """
+    Test that manager only evaluates during regular season.
+    """
+    # Setup mocks
+    manager.needs_analyzer.analyze_team_needs.return_value = [
+        create_mock_need("WR", NeedUrgency.HIGH)
+    ]
+    manager.cap_api.get_available_cap_space.return_value = 15_000_000
+
+    # Test preseason - should return empty
+    result = manager.evaluate_daily_transactions(
+        team_id=22,
+        current_date="2025-08-15",
+        season_phase="preseason",
+        team_record={"wins": 0, "losses": 0, "ties": 0},
+        current_week=1
+    )
+    assert result == []
+
+    # Test playoffs - should return empty
+    result = manager.evaluate_daily_transactions(
+        team_id=22,
+        current_date="2025-01-15",
+        season_phase="playoffs",
+        team_record={"wins": 10, "losses": 7, "ties": 0},
+        current_week=1
+    )
+    assert result == []
+
+    # Test regular season - should potentially evaluate
+    # (will depend on probability, but at least won't be auto-rejected)
+    with patch.object(manager, '_should_evaluate_today', return_value=False):
+        result = manager.evaluate_daily_transactions(
+            team_id=22,
+            current_date="2025-09-15",
+            season_phase="regular",
+            team_record={"wins": 5, "losses": 3, "ties": 0},
+            current_week=1
+        )
+        # evaluation_count should increment (shows we checked)
+        assert manager._evaluation_count > 0
+
+
+def test_performance_metrics_tracking(manager, gm_balanced, mock_trade_proposal):
+    """
+    Test that performance metrics are tracked correctly.
+    """
+    # Reset metrics
+    manager.reset_metrics()
+    assert manager._evaluation_count == 0
+    assert manager._proposal_count == 0
+
+    # Setup mocks
+    manager.needs_analyzer.analyze_team_needs.return_value = [
+        create_mock_need("WR", NeedUrgency.HIGH)
+    ]
+    manager.cap_api.get_available_cap_space.return_value = 15_000_000
+    manager.proposal_generator.generate_trade_proposals.return_value = [mock_trade_proposal]
+
+    # Run evaluation with trigger
+    with patch.object(manager, '_should_evaluate_today', return_value=True):
+        manager.evaluate_daily_transactions(
+            team_id=22,
+            current_date="2025-09-15",
+            season_phase="regular",
+            team_record={"wins": 5, "losses": 3, "ties": 0},
+            current_week=1
+        )
+
+    # Verify metrics incremented
+    assert manager._evaluation_count == 1
+    assert manager._proposal_count == 1  # 1 proposal generated
+    assert manager._total_evaluation_time_ms > 0
+
+    # Run another evaluation without trigger
+    with patch.object(manager, '_should_evaluate_today', return_value=False):
+        manager.evaluate_daily_transactions(
+            team_id=22,
+            current_date="2025-09-16",
+            season_phase="regular",
+            team_record={"wins": 5, "losses": 3, "ties": 0},
+            current_week=1
+        )
+
+    # Verify metrics
+    assert manager._evaluation_count == 2
+    assert manager._proposal_count == 1  # No new proposals
+
+    # Get performance metrics
+    metrics = manager.get_performance_metrics()
+    assert metrics['evaluation_count'] == 2
+    assert metrics['proposal_count'] == 1
+    assert metrics['avg_time_ms'] > 0
+    assert metrics['proposals_per_evaluation'] == 0.5
+
+
+# ============================================================================
+# TEST SUMMARY
+# ============================================================================
+
+"""
+TEST SUMMARY:
+
+Category 1: Probability System Tests (8 tests)
+1. test_base_probability_calculation - Base probability formula for 3 GM types
+2. test_trade_frequency_modifier - Conservative vs aggressive GM frequency
+3. test_playoff_push_modifier - +50% modifier in weeks 10+ for playoff teams
+4. test_losing_streak_modifier - +25% per game in 3+ losing streaks
+5. test_post_trade_cooldown_modifier - -80% during 7-day cooldown
+6. test_trade_deadline_proximity_modifier - +100% in Week 8 deadline
+7. test_multiple_modifiers_stacking - Multiple modifiers applied together
+8. test_probability_edge_cases - Caps at 100%, season phase checks
+
+Category 2: Daily Evaluation Tests (10 tests)
+9. test_no_evaluation_most_days - Most days return empty (realistic)
+10. test_full_pipeline_execution_when_triggered - Complete pipeline runs
+11. test_empty_proposal_list_when_no_needs - No needs = no proposals
+12. test_proposal_generation_integration - Generator called correctly
+13. test_gm_philosophy_filtering_called - Philosophy filter runs
+14. test_validation_called - Invalid proposals filtered out
+15. test_max_2_transactions_per_day_limit - Max 2 proposals per day
+16. test_team_assessment_accuracy - Correct data retrieval
+17. test_season_phase_awareness - Only regular season evaluations
+18. test_performance_metrics_tracking - Metrics tracked correctly
+
+TOTAL: 18 comprehensive tests
+"""

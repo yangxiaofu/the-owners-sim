@@ -16,6 +16,7 @@ import logging
 
 from .cap_database_api import CapDatabaseAPI
 from .contract_manager import ContractManager
+from persistence.transaction_logger import TransactionLogger
 
 
 class TagManager:
@@ -57,6 +58,7 @@ class TagManager:
         """
         self.db_api = CapDatabaseAPI(database_path)
         self.contract_manager = ContractManager(database_path)
+        self.transaction_logger = TransactionLogger(database_path)
         self.logger = logging.getLogger(__name__)
 
     # ========================================================================
@@ -251,6 +253,29 @@ class TagManager:
             f"(Tag #{consecutive_tag_number}): ${tag_salary:,}"
         )
 
+        # Log transaction to player_transactions table
+        try:
+            self.transaction_logger.log_transaction(
+                dynasty_id=dynasty_id,
+                season=season,
+                transaction_type="FRANCHISE_TAG",
+                player_id=player_id,
+                player_name=f"Player {player_id}",  # Would get from player data in real implementation
+                transaction_date=tag_date,
+                position=position,
+                from_team_id=None,
+                to_team_id=team_id,
+                details={
+                    "tag_type": tag_type,
+                    "tag_salary": tag_salary,
+                    "consecutive_tag_number": consecutive_tag_number,
+                    "cap_impact": tag_salary
+                },
+                contract_id=contract_id
+            )
+        except Exception as e:
+            self.logger.warning(f"Failed to log franchise tag transaction: {e}")
+
         return tag_salary
 
     def apply_transition_tag(
@@ -327,6 +352,27 @@ class TagManager:
         self.logger.info(
             f"Applied transition tag to player {player_id}: ${tag_salary:,}"
         )
+
+        # Log transaction to player_transactions table
+        try:
+            self.transaction_logger.log_transaction(
+                dynasty_id=dynasty_id,
+                season=season,
+                transaction_type="TRANSITION_TAG",
+                player_id=player_id,
+                player_name=f"Player {player_id}",  # Would get from player data in real implementation
+                transaction_date=tag_date,
+                position=position,
+                from_team_id=None,
+                to_team_id=team_id,
+                details={
+                    "tag_salary": tag_salary,
+                    "cap_impact": tag_salary
+                },
+                contract_id=contract_id
+            )
+        except Exception as e:
+            self.logger.warning(f"Failed to log transition tag transaction: {e}")
 
         return tag_salary
 

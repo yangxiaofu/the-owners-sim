@@ -207,29 +207,31 @@ class DatabaseConnection:
             )
         ''')
         
-        # Standings table with dynasty_id
+        # Standings table with dynasty_id and season_type support
+        # Allows separate standings for preseason, regular_season, and playoffs
         conn.execute('''
             CREATE TABLE IF NOT EXISTS standings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 dynasty_id TEXT NOT NULL,
                 team_id INTEGER NOT NULL,
                 season INTEGER NOT NULL,
-                
+                season_type TEXT NOT NULL DEFAULT 'regular_season',
+
                 -- Regular season record
                 wins INTEGER DEFAULT 0,
                 losses INTEGER DEFAULT 0,
                 ties INTEGER DEFAULT 0,
-                
+
                 -- Division record
                 division_wins INTEGER DEFAULT 0,
                 division_losses INTEGER DEFAULT 0,
                 division_ties INTEGER DEFAULT 0,
-                
+
                 -- Conference record
                 conference_wins INTEGER DEFAULT 0,
                 conference_losses INTEGER DEFAULT 0,
                 conference_ties INTEGER DEFAULT 0,
-                
+
                 -- Home/Away splits
                 home_wins INTEGER DEFAULT 0,
                 home_losses INTEGER DEFAULT 0,
@@ -237,18 +239,18 @@ class DatabaseConnection:
                 away_wins INTEGER DEFAULT 0,
                 away_losses INTEGER DEFAULT 0,
                 away_ties INTEGER DEFAULT 0,
-                
+
                 -- Points and differentials
                 points_for INTEGER DEFAULT 0,
                 points_against INTEGER DEFAULT 0,
                 point_differential INTEGER DEFAULT 0,
-                
+
                 -- Streaks and rankings
                 current_streak TEXT,
                 division_rank INTEGER,
                 conference_rank INTEGER,
                 league_rank INTEGER,
-                
+
                 -- Playoff information
                 playoff_seed INTEGER,
                 made_playoffs BOOLEAN DEFAULT FALSE,
@@ -257,12 +259,35 @@ class DatabaseConnection:
                 won_division_round BOOLEAN DEFAULT FALSE,
                 won_conference BOOLEAN DEFAULT FALSE,
                 won_super_bowl BOOLEAN DEFAULT FALSE,
-                
+
                 last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                
-                FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id),
-                UNIQUE(dynasty_id, team_id, season)
+
+                FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id)
+                -- NOTE: UNIQUE constraint created as index below (not inline)
             )
+        ''')
+
+        # Create indexes for standings table
+        # CRITICAL: UNIQUE index includes season_type to allow separate preseason/regular/playoff standings
+        conn.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_standings_unique
+            ON standings(dynasty_id, team_id, season, season_type)
+        ''')
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_standings_dynasty
+            ON standings(dynasty_id, season)
+        ''')
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_standings_team
+            ON standings(team_id, season)
+        ''')
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_standings_season_type
+            ON standings(dynasty_id, season, season_type)
+        ''')
+        conn.execute('''
+            CREATE INDEX IF NOT EXISTS idx_standings_team_season_type
+            ON standings(team_id, season, season_type)
         ''')
         
         # Schedules table with dynasty_id
@@ -846,18 +871,19 @@ class DatabaseConnection:
                         existing_teams = {row[0] for row in cursor.fetchall()}
 
                         # Insert missing teams (1-32)
+                        # NOTE: Always initialize as 'regular_season' - other season_types created separately
                         for team_id in range(1, 33):
                             if team_id not in existing_teams:
                                 cursor.execute('''
                                     INSERT INTO standings (
-                                        dynasty_id, team_id, season,
+                                        dynasty_id, team_id, season, season_type,
                                         wins, losses, ties,
                                         division_wins, division_losses, division_ties,
                                         conference_wins, conference_losses, conference_ties,
                                         home_wins, home_losses, home_ties,
                                         away_wins, away_losses, away_ties,
                                         points_for, points_against, point_differential
-                                    ) VALUES (?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+                                    ) VALUES (?, ?, ?, 'regular_season', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
                                 ''', (dynasty_id, team_id, season))
 
                         conn.commit()
@@ -911,7 +937,8 @@ class DatabaseConnection:
                 cursor.execute(query)
             
             results = cursor.fetchall()
-            return results
+            # Convert sqlite3.Row objects to dicts for consistent API
+            return [dict(row) for row in results]
             
         finally:
             conn.close()

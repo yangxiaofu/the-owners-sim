@@ -111,6 +111,47 @@ class CapCalculator:
 
         return cap_space
 
+    def get_team_cap_status(
+        self,
+        team_id: int,
+        season: int,
+        dynasty_id: str,
+        roster_mode: str = "regular_season"
+    ) -> dict:
+        """
+        Get comprehensive cap status for a team.
+
+        Args:
+            team_id: Team ID
+            season: Season year
+            dynasty_id: Dynasty identifier
+            roster_mode: "regular_season" (53-man) or "offseason" (top-51)
+
+        Returns:
+            Dict with cap_space, is_over_cap, active_contracts_total, salary_cap
+        """
+        cap_space = self.calculate_team_cap_space(team_id, season, dynasty_id, roster_mode)
+
+        # Try to get cap summary, but don't fail if view doesn't exist (e.g., in tests)
+        active_contracts_total = 0
+        salary_cap = 255400000  # Default NFL salary cap
+
+        try:
+            cap_summary = self.db_api.get_team_cap_summary(team_id, season, dynasty_id)
+            if cap_summary:
+                active_contracts_total = cap_summary.get('total_cap_spending', 0)
+                salary_cap = cap_summary.get('salary_cap_limit', 255400000)
+        except Exception:
+            # View might not exist (e.g., in test environment)
+            pass
+
+        return {
+            'cap_space': cap_space,
+            'is_over_cap': cap_space < 0,
+            'active_contracts_total': active_contracts_total,
+            'salary_cap': salary_cap
+        }
+
     def calculate_top_51_total(
         self,
         team_id: int,
