@@ -1243,3 +1243,423 @@ class EventDatabaseAPI:
     def __repr__(self) -> str:
         """Detailed representation"""
         return f"EventDatabaseAPI(database_path='{self.db_path}')"
+
+
+# ============================================================================
+# DEPRECATED: Backward Compatibility Wrapper
+# ============================================================================
+
+import warnings
+from database.unified_api import UnifiedDatabaseAPI
+
+
+class EventDatabaseAPI_DEPRECATED:
+    """
+    DEPRECATED: Use UnifiedDatabaseAPI instead.
+
+    Backward compatibility wrapper for event operations.
+
+    This class wraps UnifiedDatabaseAPI to maintain API compatibility with
+    existing code that uses EventDatabaseAPI. All methods forward to the
+    corresponding UnifiedDatabaseAPI methods.
+
+    Migration Guide:
+    ----------------
+    Old code:
+        from events.event_database_api import EventDatabaseAPI
+        api = EventDatabaseAPI(db_path)
+        api.insert_event(event)
+
+    New code:
+        from database.unified_api import UnifiedDatabaseAPI
+        api = UnifiedDatabaseAPI(database_path=db_path, dynasty_id="your_dynasty")
+        api.events_insert(event_id, event_type, timestamp, game_id, data)
+    """
+
+    def __init__(self, db_path: str):
+        """
+        Initialize deprecated EventDatabaseAPI wrapper.
+
+        Args:
+            db_path: Path to SQLite database file
+
+        Raises:
+            DeprecationWarning: Always warns on instantiation
+        """
+        warnings.warn(
+            "EventDatabaseAPI is deprecated. Use UnifiedDatabaseAPI instead. "
+            "See class docstring for migration guide.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        self._unified = UnifiedDatabaseAPI(database_path=db_path)
+        self.db_path = db_path
+
+    def insert_event(self, event) -> bool:
+        """
+        DEPRECATED: Forward to UnifiedDatabaseAPI.events_insert()
+
+        Args:
+            event: Event object implementing BaseEvent interface
+
+        Returns:
+            The original event object (for backward compatibility)
+        """
+        event_data = event.to_database_format()
+        result = self._unified.events_insert(
+            event_id=event_data['event_id'],
+            event_type=event_data['event_type'],
+            timestamp=int(event_data['timestamp'].timestamp() * 1000),
+            game_id=event_data['game_id'],
+            data=json.dumps(event_data['data'])
+        )
+        return event if result else None
+
+    def insert_events(self, events: List) -> List:
+        """
+        DEPRECATED: Forward to UnifiedDatabaseAPI.events_insert_batch()
+
+        Args:
+            events: List of event objects implementing BaseEvent interface
+
+        Returns:
+            List of inserted events
+        """
+        return self._unified.events_insert_batch(events)
+
+    def get_event_by_id(self, event_id: str) -> Optional[Dict[str, Any]]:
+        """
+        DEPRECATED: Forward to UnifiedDatabaseAPI.events_get_by_id()
+
+        Args:
+            event_id: Unique identifier of the event
+
+        Returns:
+            Event dictionary if found, None if not found
+        """
+        return self._unified.events_get_by_id(event_id)
+
+    def get_events_by_game_id(self, game_id: str) -> List[Dict[str, Any]]:
+        """
+        DEPRECATED: Forward to UnifiedDatabaseAPI.events_get_by_game_id()
+
+        Args:
+            game_id: Game identifier
+
+        Returns:
+            List of event dictionaries
+        """
+        return self._unified.events_get_by_game_id(game_id)
+
+    def get_events_by_game_id_and_dynasty(
+        self,
+        game_id: str,
+        dynasty_id: str
+    ) -> List[Dict[str, Any]]:
+        """
+        DEPRECATED: Use UnifiedDatabaseAPI with dynasty_id constructor parameter
+
+        This method is not directly supported in UnifiedDatabaseAPI.
+        Create separate instances with different dynasty_id values instead.
+
+        Args:
+            game_id: Game identifier
+            dynasty_id: Dynasty identifier
+
+        Returns:
+            List of event dictionaries for that game/dynasty combo
+        """
+        # Create unified API with specific dynasty for this query
+        unified = UnifiedDatabaseAPI(database_path=self.db_path, dynasty_id=dynasty_id)
+        return unified.events_get_by_game_id(game_id)
+
+    def delete_playoff_events_by_dynasty(
+        self,
+        dynasty_id: str,
+        season: int
+    ) -> int:
+        """
+        DEPRECATED: Forward to UnifiedDatabaseAPI.events_delete_playoff_by_dynasty()
+
+        Args:
+            dynasty_id: Dynasty identifier
+            season: Season year
+
+        Returns:
+            Number of events deleted
+        """
+        unified = UnifiedDatabaseAPI(database_path=self.db_path, dynasty_id=dynasty_id)
+        return unified.events_delete_playoff_by_dynasty(season)
+
+    def get_events_by_type(
+        self,
+        event_type: str,
+        limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        DEPRECATED: Forward to UnifiedDatabaseAPI.events_get_by_type()
+
+        Args:
+            event_type: Type of events to retrieve
+            limit: Optional limit on number of results
+
+        Returns:
+            List of event dictionaries matching the type
+        """
+        return self._unified.events_get_by_type(event_type)
+
+    def get_events_by_dynasty(
+        self,
+        dynasty_id: str,
+        event_type: Optional[str] = None,
+        limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        DEPRECATED: Use UnifiedDatabaseAPI with dynasty_id constructor parameter
+
+        Args:
+            dynasty_id: Dynasty identifier
+            event_type: Optional filter by event type
+            limit: Optional limit on results
+
+        Returns:
+            List of event dictionaries for this dynasty
+        """
+        unified = UnifiedDatabaseAPI(database_path=self.db_path, dynasty_id=dynasty_id)
+
+        # If event_type is specified, use events_get_by_type (auto-filters by dynasty)
+        if event_type:
+            results = unified.events_get_by_type(event_type)
+        else:
+            # Get all events for this dynasty (no type filter)
+            query = "SELECT * FROM events WHERE dynasty_id = ? ORDER BY timestamp DESC"
+            params = [dynasty_id]
+
+            if limit:
+                query += " LIMIT ?"
+                params.append(limit)
+
+            results = unified._execute_query(query, tuple(params))
+
+        # Apply limit if specified and not already applied in query
+        if limit and event_type:
+            results = results[:limit]
+
+        return results
+
+    def get_events_by_dynasty_and_timestamp(
+        self,
+        dynasty_id: str,
+        start_timestamp_ms: int,
+        end_timestamp_ms: int,
+        event_type: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        DEPRECATED: Forward to UnifiedDatabaseAPI.events_get_by_date_range()
+
+        Args:
+            dynasty_id: Dynasty identifier
+            start_timestamp_ms: Start of range (Unix ms)
+            end_timestamp_ms: End of range (Unix ms)
+            event_type: Optional filter by event type
+
+        Returns:
+            List of event dictionaries within the range
+        """
+        unified = UnifiedDatabaseAPI(database_path=self.db_path, dynasty_id=dynasty_id)
+        return unified.events_get_by_date_range(start_timestamp_ms, end_timestamp_ms)
+
+    def get_events_by_game_id_prefix(
+        self,
+        prefix: str,
+        event_type: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        DEPRECATED: Not supported in UnifiedDatabaseAPI
+
+        Use get_events_by_dynasty() or filter results manually instead.
+
+        Args:
+            prefix: Game ID prefix to match
+            event_type: Optional filter by event type
+
+        Returns:
+            List of event dictionaries (not implemented)
+        """
+        warnings.warn(
+            "get_events_by_game_id_prefix() is deprecated. Use get_events_by_dynasty() instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        # This method is not directly supported - would need to return empty list
+        return []
+
+    def get_events_by_timestamp_range(
+        self,
+        start_timestamp_ms: int,
+        end_timestamp_ms: int,
+        event_type: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        DEPRECATED: Forward to UnifiedDatabaseAPI.events_get_by_date_range()
+
+        Args:
+            start_timestamp_ms: Start of range (Unix ms)
+            end_timestamp_ms: End of range (Unix ms)
+            event_type: Optional filter by event type
+
+        Returns:
+            List of event dictionaries in the range
+        """
+        return self._unified.events_get_by_date_range(start_timestamp_ms, end_timestamp_ms)
+
+    def count_events(self, game_id: Optional[str] = None) -> int:
+        """
+        DEPRECATED: Not directly supported in UnifiedDatabaseAPI
+
+        Query events and count results instead.
+
+        Args:
+            game_id: Optional game identifier to filter by
+
+        Returns:
+            Count of events (0 for now)
+        """
+        if game_id:
+            events = self._unified.events_get_by_game_id(game_id)
+            return len(events)
+        return 0
+
+    def update_event(self, event) -> bool:
+        """
+        DEPRECATED: Forward to UnifiedDatabaseAPI.events_update()
+
+        Args:
+            event: Event object with updated data
+
+        Returns:
+            True if update successful, False otherwise
+        """
+        return self._unified.events_update(event)
+
+    def delete_events_by_game_id(self, game_id: str) -> int:
+        """
+        DEPRECATED: Forward to UnifiedDatabaseAPI.events_delete_by_game_id()
+
+        Args:
+            game_id: Game identifier
+
+        Returns:
+            Number of events deleted
+        """
+        return self._unified.events_delete_by_game_id(game_id)
+
+    def get_statistics(self) -> Dict[str, Any]:
+        """
+        DEPRECATED: Not supported in UnifiedDatabaseAPI
+
+        Returns empty statistics dictionary.
+
+        Returns:
+            Dictionary with statistics about stored events
+        """
+        warnings.warn(
+            "get_statistics() is deprecated and not supported in UnifiedDatabaseAPI",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return {
+            'total_events': 0,
+            'unique_games': 0,
+            'events_by_type': {}
+        }
+
+    def get_next_offseason_milestone(
+        self,
+        current_date,
+        season_year: int,
+        dynasty_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        DEPRECATED: Forward to UnifiedDatabaseAPI.events_get_next_offseason_milestone()
+
+        Args:
+            current_date: Current calendar date (Date object)
+            season_year: Season year for filtering
+            dynasty_id: Dynasty identifier for isolation
+
+        Returns:
+            Dict with milestone info or None
+        """
+        unified = UnifiedDatabaseAPI(database_path=self.db_path, dynasty_id=dynasty_id)
+
+        # Convert Date to string format
+        if hasattr(current_date, 'to_python_date'):
+            py_date = current_date.to_python_date()
+            date_str = py_date.strftime('%Y-%m-%d')
+        else:
+            date_str = str(current_date)
+
+        return unified.events_get_next_offseason_milestone(date_str, season_year)
+
+    def get_milestone_by_type(
+        self,
+        milestone_type: str,
+        dynasty_id: str,
+        season_year: int,
+        year_tolerance: int = 1
+    ) -> Optional['Date']:
+        """
+        DEPRECATED: Not directly supported in UnifiedDatabaseAPI
+
+        Query events manually or use events_get_by_type() and filter.
+
+        Args:
+            milestone_type: Type of milestone
+            dynasty_id: Dynasty identifier
+            season_year: Season year to search for
+            year_tolerance: Accept milestones within ±N years
+
+        Returns:
+            Date of the milestone, or None if not found
+        """
+        warnings.warn(
+            "get_milestone_by_type() is deprecated. Use UnifiedDatabaseAPI.events_get_by_type() and filter manually.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        return None
+
+    def get_first_game_date_of_phase(
+        self,
+        dynasty_id: str,
+        phase_name: str,
+        current_date: str
+    ) -> Optional[str]:
+        """
+        DEPRECATED: Forward to UnifiedDatabaseAPI.events_get_first_game_date()
+
+        Args:
+            dynasty_id: Dynasty identifier
+            phase_name: Phase to search for
+            current_date: Current simulation date (YYYY-MM-DD)
+
+        Returns:
+            Date string (YYYY-MM-DD) of first upcoming game in that phase, or None
+        """
+        unified = UnifiedDatabaseAPI(database_path=self.db_path, dynasty_id=dynasty_id)
+        # Extract season year from current date for compatibility
+        year = int(current_date.split('-')[0])
+        return unified.events_get_first_game_date(phase_name, year, current_date)
+
+    def __str__(self) -> str:
+        """String representation"""
+        return f"EventDatabaseAPI(db_path='{self.db_path}') [DEPRECATED]"
+
+    def __repr__(self) -> str:
+        """Detailed representation"""
+        return f"EventDatabaseAPI_DEPRECATED(database_path='{self.db_path}')"
+
+
+# Create alias for backward compatibility
+EventDatabaseAPI = EventDatabaseAPI_DEPRECATED

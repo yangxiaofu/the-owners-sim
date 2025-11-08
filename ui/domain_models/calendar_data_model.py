@@ -232,23 +232,36 @@ class CalendarDataModel:
             for i, game in enumerate(completed_games[:5]):  # Show first 5
                 print(f"  Game {i+1}: game_id={game.get('game_id', 'N/A')}, season_type={game.get('season_type', 'N/A')}")
 
-            # Track seen game_ids for efficient deduplication (O(1) lookup)
+            # Track BOTH game_ids and event_ids for robust deduplication (O(1) lookup)
+            # This handles cases where:
+            # 1. Events have event_id = game_id (scheduled games)
+            # 2. Events have event_id = "completed_{game_id}" (from games table)
+            # 3. Events have different event_id but same game_id
             seen_game_ids = {e.get('game_id') for e in all_items if e.get('game_id')}
-            print(f"[CALENDAR_DEBUG] Deduplication: {len(seen_game_ids)} game_ids already seen from events table")
+            seen_event_ids = {e.get('event_id') for e in all_items if e.get('event_id')}
+            print(f"[CALENDAR_DEBUG] Deduplication: {len(seen_game_ids)} game_ids, {len(seen_event_ids)} event_ids already seen from events table")
 
             # Convert game records to event-like format for calendar display
             games_added_from_table = 0
             games_skipped_duplicate = 0
             for game in completed_games:
                 game_id = game.get('game_id')
+                computed_event_id = f"completed_{game_id}"
 
-                # Skip if this game already exists in events (avoid duplicates)
-                if game_id in seen_game_ids:
+                # Skip if ANY of these conditions are true (comprehensive deduplication):
+                # 1. game_id already exists (same game from events table)
+                # 2. computed_event_id already exists (duplicate from games table)
+                # 3. game_id exists as event_id (scheduled game in events table where event_id == game_id)
+                if (game_id in seen_game_ids or
+                    computed_event_id in seen_event_ids or
+                    game_id in seen_event_ids):
                     games_skipped_duplicate += 1
+                    print(f"[CALENDAR_DEBUG] Skipping duplicate: game_id={game_id} (already in events)")
                     continue
 
-                # Mark as seen
+                # Mark as seen to prevent duplicates within this loop
                 seen_game_ids.add(game_id)
+                seen_event_ids.add(computed_event_id)
                 games_added_from_table += 1
 
                 # Convert game to event format
@@ -281,6 +294,30 @@ class CalendarDataModel:
 
             print(f"[CALENDAR_DEBUG] Games from games table: {games_added_from_table} added, {games_skipped_duplicate} skipped (duplicates)")
             print(f"[CALENDAR_DEBUG] Final item count before sorting: {len(all_items)}")
+
+        # FINAL SAFETY CHECK: Deduplicate all_items by game_id to ensure no duplicates slip through
+        # This handles edge cases where duplicates might come from multiple sources
+        items_before_final_dedup = len(all_items)
+        seen_final = set()
+        deduplicated_items = []
+        for item in all_items:
+            game_id = item.get('game_id')
+            event_id = item.get('event_id')
+            # Use game_id as primary identifier, event_id as fallback
+            identifier = game_id if game_id else event_id
+            if identifier and identifier not in seen_final:
+                seen_final.add(identifier)
+                deduplicated_items.append(item)
+            elif not identifier:
+                # No identifier - keep it (non-game event)
+                deduplicated_items.append(item)
+            else:
+                print(f"[CALENDAR_DEBUG] Final dedup: Removed duplicate {identifier}")
+
+        all_items = deduplicated_items
+        items_removed_final = items_before_final_dedup - len(all_items)
+        if items_removed_final > 0:
+            print(f"[CALENDAR_DEBUG] Final deduplication removed {items_removed_final} duplicate(s)")
 
         # Sort all items by timestamp (handle both datetime and milliseconds)
         def get_sort_key(item):

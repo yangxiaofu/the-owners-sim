@@ -235,6 +235,7 @@ class DynastyController:
             print(f"📥 Initializing player rosters for dynasty '{dynasty_id}'...")
             print(f"   Loading from JSON files (one-time migration)...")
 
+            # Use PlayerRosterAPI with shared connection for transaction safety
             from database.player_roster_api import PlayerRosterAPI
             # Pass shared connection so all operations use same transaction
             roster_api = PlayerRosterAPI(self.db_path, connection=conn)

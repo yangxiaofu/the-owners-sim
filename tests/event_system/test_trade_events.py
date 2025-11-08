@@ -22,7 +22,7 @@ sys.path.insert(0, src_path)
 
 from events.trade_events import PlayerForPlayerTradeEvent
 from events.base_event import EventResult
-from calendar.date_models import Date
+from src.calendar.date_models import Date
 from salary_cap import EventCapBridge, TradeEventHandler
 from salary_cap.event_integration import ValidationMiddleware
 

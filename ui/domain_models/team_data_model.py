@@ -175,7 +175,12 @@ class TeamDataModel:
         """
         # Parse positions JSON (stored as string in database)
         try:
-            positions = json.loads(player['positions']) if isinstance(player['positions'], str) else player['positions']
+            positions_raw = player['positions']
+            if isinstance(positions_raw, str):
+                # Handle empty strings by using default
+                positions = json.loads(positions_raw) if positions_raw.strip() else []
+            else:
+                positions = positions_raw
             primary_position = positions[0] if positions else "UNK"
             # Convert to NFL abbreviation (e.g., "wide_receiver" → "WR")
             primary_position = get_position_abbreviation(primary_position)
@@ -184,7 +189,12 @@ class TeamDataModel:
 
         # Parse attributes JSON to extract overall rating
         try:
-            attributes = json.loads(player['attributes']) if isinstance(player['attributes'], str) else player['attributes']
+            attributes_raw = player['attributes']
+            if isinstance(attributes_raw, str):
+                # Handle empty strings by using default
+                attributes = json.loads(attributes_raw) if attributes_raw.strip() else {}
+            else:
+                attributes = attributes_raw
             overall = attributes.get('overall', 0)
         except (json.JSONDecodeError, KeyError):
             overall = 0
@@ -413,7 +423,12 @@ class TeamDataModel:
         """
         # Parse player position
         try:
-            positions = json.loads(player['positions']) if isinstance(player['positions'], str) else player['positions']
+            positions_raw = player['positions']
+            if isinstance(positions_raw, str):
+                # Handle empty strings by using default
+                positions = json.loads(positions_raw) if positions_raw.strip() else []
+            else:
+                positions = positions_raw
             primary_position = positions[0] if positions else "UNK"
             primary_position = get_position_abbreviation(primary_position)
         except (json.JSONDecodeError, KeyError, IndexError):

@@ -38,7 +38,9 @@ class CalendarComponent:
 
     def __init__(self, start_date: Union[Date, PyDate, str], season_year: Optional[int] = None,
                  publisher: Optional[CalendarEventPublisher] = None,
-                 phase_state: Optional['PhaseState'] = None):
+                 phase_state: Optional['PhaseState'] = None,
+                 database_api: Optional[Any] = None,
+                 dynasty_id: str = "default"):
         """
         Initialize calendar component.
 
@@ -47,6 +49,8 @@ class CalendarComponent:
             season_year: NFL season year (e.g., 2024 for 2024-25 season)
             publisher: Optional event publisher for calendar notifications
             phase_state: Optional shared PhaseState object for phase tracking
+            database_api: Optional database API for event-based phase detection
+            dynasty_id: Dynasty context for database queries
 
         Raises:
             InvalidDateException: If start_date is invalid
@@ -71,8 +75,13 @@ class CalendarComponent:
         # Use shared phase_state if provided, otherwise create SeasonPhaseTracker
         self._external_phase_state = phase_state
         if phase_state is None:
-            # Backward compatibility: create internal phase tracker
-            self._season_phase_tracker = SeasonPhaseTracker(self._current_date, season_year)
+            # Backward compatibility: create internal phase tracker with event-based detection
+            self._season_phase_tracker = SeasonPhaseTracker(
+                self._current_date,
+                season_year,
+                database_api=database_api,
+                dynasty_id=dynasty_id
+            )
         else:
             # Use external phase state (preferred for new code)
             self._season_phase_tracker = None  # Don't need tracker for phase

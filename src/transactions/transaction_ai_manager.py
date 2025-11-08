@@ -18,36 +18,17 @@ from transactions.trade_proposal_generator import TradeProposalGenerator, TeamCo
 from transactions.trade_value_calculator import TradeValueCalculator
 from transactions.trade_evaluator import TradeEvaluator
 from transactions.models import TradeProposal, TradeDecision, TradeDecisionType, AssetType
+from transactions.transaction_constants import (
+    TransactionProbability,
+    ProbabilityModifiers,
+    GMPhilosophyThresholds
+)
 from team_management.gm_archetype import GMArchetype
 from offseason.team_needs_analyzer import TeamNeedsAnalyzer
-from salary_cap.cap_database_api import CapDatabaseAPI
+from database.unified_api import UnifiedDatabaseAPI
 from calendar.season_phase_tracker import SeasonPhase
 
 
-# Configuration Constants
-BASE_EVALUATION_PROBABILITY = 0.05  # 5% per day baseline
-MAX_TRANSACTIONS_PER_DAY = 2  # Maximum proposals per team per day
-TRADE_COOLDOWN_DAYS = 7  # Days after trade before next evaluation
-TRADE_DEADLINE_WEEK = 8  # NFL trade deadline (Week 8 Tuesday)
-
-# Probability Modifiers
-MODIFIER_PLAYOFF_PUSH = 1.5  # +50% if in wild card hunt (weeks 10+)
-MODIFIER_LOSING_STREAK = 1.25  # +25% per game in 3+ game losing streak
-MODIFIER_INJURY_EMERGENCY = 3.0  # +200% if critical starter injured
-MODIFIER_POST_TRADE_COOLDOWN = 0.2  # -80% for 7 days after trade
-MODIFIER_DEADLINE_PROXIMITY = 2.0  # +100% in final 3 days before deadline
-
-# GM Philosophy Filter Thresholds
-STAR_CHASING_HIGH = 0.6  # Above this: prefer 85+ OVR
-STAR_CHASING_LOW = 0.4  # Below this: avoid 88+ OVR
-VETERAN_PREF_HIGH = 0.7  # Above this: prefer age 27+
-VETERAN_PREF_LOW = 0.3  # Below this: prefer age <29
-DRAFT_PICK_VALUE_HIGH = 0.6  # Above this: reluctant to trade picks
-CAP_MGMT_HIGH = 0.7  # Above this: max 50% cap consumption
-CAP_MGMT_MEDIUM = 0.4  # 0.4-0.7: max 70% cap consumption
-LOYALTY_HIGH = 0.7  # Above this: avoid trading 5+ year veterans
-WIN_NOW_HIGH = 0.7  # Above this: prefer proven talent over picks
-REBUILD_LOW = 0.3  # Below this: prefer picks/youth over veterans
 
 
 @dataclass
@@ -76,12 +57,12 @@ class TransactionAIManager:
     calculator: Optional[TradeValueCalculator] = None
     proposal_generator: Optional[TradeProposalGenerator] = None
     needs_analyzer: Optional[TeamNeedsAnalyzer] = None
-    cap_api: Optional[CapDatabaseAPI] = None
+    cap_api: Optional[UnifiedDatabaseAPI] = None
 
     # Configuration
-    base_evaluation_probability: float = BASE_EVALUATION_PROBABILITY
-    max_transactions_per_day: int = MAX_TRANSACTIONS_PER_DAY
-    trade_cooldown_days: int = TRADE_COOLDOWN_DAYS
+    base_evaluation_probability: float = TransactionProbability.BASE_EVALUATION_RATE
+    max_transactions_per_day: int = TransactionProbability.MAX_DAILY_PROPOSALS
+    trade_cooldown_days: int = TransactionProbability.TRADE_COOLDOWN_DAYS
     debug_mode: bool = False
 
     # Trade history tracking (team_id -> last_trade_date)
@@ -125,7 +106,7 @@ class TransactionAIManager:
             self.needs_analyzer = TeamNeedsAnalyzer(self.database_path, self.dynasty_id)
 
         if self.cap_api is None:
-            self.cap_api = CapDatabaseAPI(self.database_path)
+            self.cap_api = UnifiedDatabaseAPI(self.database_path, self.dynasty_id)
 
         # Load trade history from database (if available)
         self._load_trade_history()
@@ -197,10 +178,10 @@ class TransactionAIManager:
 
         # Check trade deadline (Week 8 Tuesday - no trades AFTER deadline week)
         # Allow trades through the end of Week 8, block starting Week 9
-        if current_week > TRADE_DEADLINE_WEEK:
+        if current_week > TransactionProbability.TRADE_DEADLINE_WEEK:
             if self.debug_mode:
                 debug_data['decision'] = 'NO_EVALUATE'
-                debug_data['reason'] = f'After trade deadline (week {current_week} > {TRADE_DEADLINE_WEEK})'
+                debug_data['reason'] = f'After trade deadline (week {current_week} > {TransactionProbability.TRADE_DEADLINE_WEEK})'
             return False, debug_data
 
         # Calculate base probability
@@ -219,12 +200,12 @@ class TransactionAIManager:
         is_playoff_push = False
         if current_week >= 10:
             if self._is_in_playoff_hunt(team_context):
-                modifier *= MODIFIER_PLAYOFF_PUSH
+                modifier *= ProbabilityModifiers.PLAYOFF_PUSH
                 is_playoff_push = True
                 if self.debug_mode:
                     debug_data['modifiers']['playoff_push'] = {
                         'applied': True,
-                        'value': MODIFIER_PLAYOFF_PUSH,
+                        'value': ProbabilityModifiers.PLAYOFF_PUSH,
                         'reason': f'In playoff hunt (week {current_week})'
                     }
         if self.debug_mode and not is_playoff_push:
@@ -234,7 +215,7 @@ class TransactionAIManager:
         losing_streak_games = self._get_losing_streak_length(team_context)
         if losing_streak_games >= 3:
             # +25% per game in streak
-            streak_modifier = MODIFIER_LOSING_STREAK ** (losing_streak_games - 2)
+            streak_modifier = ProbabilityModifiers.LOSING_STREAK ** (losing_streak_games - 2)
             modifier *= streak_modifier
             if self.debug_mode:
                 debug_data['modifiers']['losing_streak'] = {
@@ -252,11 +233,11 @@ class TransactionAIManager:
         # 4. Post-trade cooldown modifier
         is_cooldown = self._is_in_trade_cooldown(team_id, current_date)
         if is_cooldown:
-            modifier *= MODIFIER_POST_TRADE_COOLDOWN
+            modifier *= ProbabilityModifiers.POST_TRADE_COOLDOWN
             if self.debug_mode:
                 debug_data['modifiers']['cooldown'] = {
                     'applied': True,
-                    'value': MODIFIER_POST_TRADE_COOLDOWN,
+                    'value': ProbabilityModifiers.POST_TRADE_COOLDOWN,
                     'reason': f'Recent trade (cooldown: {self.trade_cooldown_days} days)'
                 }
         elif self.debug_mode:
@@ -265,11 +246,11 @@ class TransactionAIManager:
         # 5. Trade deadline proximity (final 3 days before deadline)
         is_near_deadline = self._is_near_trade_deadline(current_week, current_date)
         if is_near_deadline:
-            modifier *= MODIFIER_DEADLINE_PROXIMITY
+            modifier *= ProbabilityModifiers.DEADLINE_PROXIMITY
             if self.debug_mode:
                 debug_data['modifiers']['deadline_proximity'] = {
                     'applied': True,
-                    'value': MODIFIER_DEADLINE_PROXIMITY,
+                    'value': ProbabilityModifiers.DEADLINE_PROXIMITY,
                     'reason': 'Within 3 days of trade deadline'
                 }
         elif self.debug_mode:
@@ -372,7 +353,7 @@ class TransactionAIManager:
         """
         # Simple check: if Week 8, assume within deadline proximity
         # More sophisticated implementation would check actual date
-        return current_week == TRADE_DEADLINE_WEEK
+        return current_week == TransactionProbability.TRADE_DEADLINE_WEEK
 
 
     def _get_days_since_last_trade(self, team_id: int, current_date: str) -> Optional[int]:
@@ -642,7 +623,7 @@ class TransactionAIManager:
 
         Uses existing systems to gather:
         - Team needs (via TeamNeedsAnalyzer)
-        - Cap space (via CapDatabaseAPI)
+        - Cap space (via UnifiedDatabaseAPI)
         - GM archetype (placeholder - will use GMArchetypeFactory)
         - Team context (constructed from team_record)
 
@@ -659,19 +640,11 @@ class TransactionAIManager:
         # 2. Get cap space
         # Note: For demo purposes, use mock cap space if database doesn't have data
         try:
-            # Try new method if it exists (for testing)
-            if hasattr(self.cap_api, 'get_available_cap_space') and callable(self.cap_api.get_available_cap_space):
-                cap_space = self.cap_api.get_available_cap_space(team_id)
-                # Ensure it's an integer, not a Mock
-                if not isinstance(cap_space, int):
-                    cap_space = 50_000_000
-            else:
-                # Use standard method
-                cap_summary = self.cap_api.get_team_cap_summary(team_id, 2025, self.dynasty_id)
-                if cap_summary and isinstance(cap_summary, dict):
-                    cap_space = cap_summary.get('available_space', 50_000_000)
-                else:
-                    cap_space = 50_000_000
+            # Use UnifiedDatabaseAPI method
+            cap_space = self.cap_api.cap_get_available_space(team_id, 2025)
+            # Ensure it's an integer, not a Mock
+            if not isinstance(cap_space, int):
+                cap_space = 50_000_000
         except:
             # Fallback to mock data for demo
             cap_space = 50_000_000  # $50M default
@@ -840,7 +813,7 @@ class TransactionAIManager:
             # -------------------------------------------------------------------------
             # Filter 1: Star Chasing (preference for elite talent vs cost control)
             # -------------------------------------------------------------------------
-            if gm.star_chasing > STAR_CHASING_HIGH:
+            if gm.star_chasing > GMPhilosophyThresholds.STAR_CHASING_HIGH:
                 # High star chasing: Prefer acquiring 85+ OVR players
                 has_star = False
                 for asset in acquiring_assets:
@@ -853,7 +826,7 @@ class TransactionAIManager:
                 if not has_star:
                     passes_filters = False
 
-            elif gm.star_chasing < STAR_CHASING_LOW:
+            elif gm.star_chasing < GMPhilosophyThresholds.STAR_CHASING_LOW:
                 # Low star chasing: Avoid acquiring 88+ OVR (too expensive)
                 has_expensive_star = False
                 for asset in acquiring_assets:
@@ -869,7 +842,7 @@ class TransactionAIManager:
             # -------------------------------------------------------------------------
             # Filter 2: Veteran Preference (age-based filtering)
             # -------------------------------------------------------------------------
-            if gm.veteran_preference > VETERAN_PREF_HIGH:
+            if gm.veteran_preference > GMPhilosophyThresholds.VETERAN_PREF_HIGH:
                 # High veteran preference: Prefer age 27+ players
                 has_veteran = False
                 for asset in acquiring_assets:
@@ -882,7 +855,7 @@ class TransactionAIManager:
                 if not has_veteran:
                     passes_filters = False
 
-            elif gm.veteran_preference < VETERAN_PREF_LOW:
+            elif gm.veteran_preference < GMPhilosophyThresholds.VETERAN_PREF_LOW:
                 # Low veteran preference: Prefer age <29 players (younger talent)
                 has_old_player = False
                 for asset in acquiring_assets:
@@ -900,7 +873,7 @@ class TransactionAIManager:
             # -------------------------------------------------------------------------
             # Phase 1.5: Placeholder - no draft pick system yet
             # Future implementation: Check if trading away future picks
-            if gm.draft_pick_value > DRAFT_PICK_VALUE_HIGH:
+            if gm.draft_pick_value > GMPhilosophyThresholds.DRAFT_PICK_VALUE_HIGH:
                 # High pick value: Reluctant to trade away future picks
                 # TODO: When draft pick system added, check if giving up picks
                 pass
@@ -915,10 +888,10 @@ class TransactionAIManager:
                     total_cap_hit += asset.annual_cap_hit
 
             # Determine max allowed cap consumption based on GM's cap management trait
-            if gm.cap_management > CAP_MGMT_HIGH:
+            if gm.cap_management > GMPhilosophyThresholds.CAP_MGMT_HIGH:
                 # Conservative: Max 50% of available cap space
                 max_cap_consumption = team_context.cap_space * 0.50
-            elif gm.cap_management >= CAP_MGMT_MEDIUM:
+            elif gm.cap_management >= GMPhilosophyThresholds.CAP_MGMT_MEDIUM:
                 # Moderate: Max 70% of available cap space
                 max_cap_consumption = team_context.cap_space * 0.70
             else:
@@ -934,7 +907,7 @@ class TransactionAIManager:
             # -------------------------------------------------------------------------
             # Phase 1.5: Placeholder - need player tenure data
             # Future implementation: Check if trading away 5+ year veterans
-            if gm.loyalty > LOYALTY_HIGH:
+            if gm.loyalty > GMPhilosophyThresholds.LOYALTY_HIGH:
                 # High loyalty: Avoid trading players with 5+ years on team
                 # TODO: When tenure tracking added, check years_with_team
                 pass
@@ -942,7 +915,7 @@ class TransactionAIManager:
             # -------------------------------------------------------------------------
             # Filter 6: Win-Now vs Rebuild (proven talent vs youth)
             # -------------------------------------------------------------------------
-            if gm.win_now_mentality > WIN_NOW_HIGH:
+            if gm.win_now_mentality > GMPhilosophyThresholds.WIN_NOW_HIGH:
                 # Win-now mode: Prefer proven talent over youth
                 # Reject trades that acquire too many young/unproven players
                 young_player_count = 0
@@ -960,7 +933,7 @@ class TransactionAIManager:
                     if young_ratio > 0.6:  # >60% young players
                         passes_filters = False
 
-            elif gm.win_now_mentality < REBUILD_LOW:
+            elif gm.win_now_mentality < GMPhilosophyThresholds.REBUILD_LOW:
                 # Rebuild mode: Prefer youth (<27) over veterans
                 # Reject trades that acquire too many veterans
                 veteran_count = 0
@@ -1278,3 +1251,16 @@ class TransactionAIManager:
         Note: Only has effect if debug_mode=True was set during initialization.
         """
         self._debug_data = []
+
+
+# Backwards compatibility - export key constants at module level for existing test code
+BASE_EVALUATION_PROBABILITY = TransactionProbability.BASE_EVALUATION_RATE
+MAX_TRANSACTIONS_PER_DAY = TransactionProbability.MAX_DAILY_PROPOSALS
+TRADE_COOLDOWN_DAYS = TransactionProbability.TRADE_COOLDOWN_DAYS
+TRADE_DEADLINE_WEEK = TransactionProbability.TRADE_DEADLINE_WEEK
+
+MODIFIER_PLAYOFF_PUSH = ProbabilityModifiers.PLAYOFF_PUSH
+MODIFIER_LOSING_STREAK = ProbabilityModifiers.LOSING_STREAK
+MODIFIER_INJURY_EMERGENCY = ProbabilityModifiers.INJURY_EMERGENCY
+MODIFIER_POST_TRADE_COOLDOWN = ProbabilityModifiers.POST_TRADE_COOLDOWN
+MODIFIER_DEADLINE_PROXIMITY = ProbabilityModifiers.DEADLINE_PROXIMITY

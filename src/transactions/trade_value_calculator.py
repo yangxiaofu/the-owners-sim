@@ -9,6 +9,11 @@ from typing import Dict, List, Optional
 from datetime import date
 
 from .models import TradeAsset, DraftPick, TradeProposal, AssetType, FairnessRating
+from .transaction_constants import (
+    PositionValueTiers,
+    AgeCurveParameters,
+    TradeValueScaling
+)
 
 
 class TradeValueCalculator:
@@ -46,43 +51,45 @@ class TradeValueCalculator:
         self.needs_analyzer = team_needs_analyzer
 
         # Position value tiers (multipliers) - Calibrated v1.1 (PRODUCTION)
+        # Using PositionValueTiers constants from transaction_constants.py
         self.position_tiers = {
-            # Tier 1: Premium positions (2.0x or calibrated)
-            'quarterback': 2.0, 'qb': 2.0,
-            'edge_rusher': 1.7, 'defensive_end': 1.7, 'de': 1.7,  # Calibrated from 2.0
-            'left_tackle': 2.0, 'lt': 2.0,
-            'right_tackle': 2.0, 'rt': 2.0,
+            # Tier 1: Premium positions
+            'quarterback': PositionValueTiers.QUARTERBACK, 'qb': PositionValueTiers.QUARTERBACK,
+            'edge_rusher': PositionValueTiers.EDGE_RUSHER, 'defensive_end': PositionValueTiers.EDGE_RUSHER, 'de': PositionValueTiers.EDGE_RUSHER,
+            'left_tackle': PositionValueTiers.LEFT_TACKLE, 'lt': PositionValueTiers.LEFT_TACKLE,
+            'right_tackle': PositionValueTiers.RIGHT_TACKLE, 'rt': PositionValueTiers.RIGHT_TACKLE,
 
-            # Tier 2: High value (calibrated)
-            'wide_receiver': 1.15, 'wr': 1.15,  # Calibrated from 1.5
-            'cornerback': 1.3, 'cb': 1.3,  # Calibrated from 1.5
-            'center': 1.5, 'c': 1.5,
+            # Tier 2: High value positions
+            'wide_receiver': PositionValueTiers.WIDE_RECEIVER, 'wr': PositionValueTiers.WIDE_RECEIVER,
+            'cornerback': PositionValueTiers.CORNERBACK, 'cb': PositionValueTiers.CORNERBACK,
+            'center': PositionValueTiers.CENTER, 'c': PositionValueTiers.CENTER,
 
-            # Tier 3: Standard (1.0-1.3x)
-            'running_back': 1.2, 'rb': 1.2, 'fullback': 1.0, 'fb': 1.0,
-            'tight_end': 1.0, 'te': 1.0,
-            'linebacker': 1.2, 'lb': 1.2, 'mike': 1.2, 'sam': 1.2, 'will': 1.2,
-            'safety': 1.1, 'ss': 1.1, 'fs': 1.1,
-            'left_guard': 1.0, 'lg': 1.0,
-            'right_guard': 1.0, 'rg': 1.0,
+            # Tier 3: Standard value positions
+            'running_back': PositionValueTiers.RUNNING_BACK, 'rb': PositionValueTiers.RUNNING_BACK, 'fullback': PositionValueTiers.FULLBACK, 'fb': PositionValueTiers.FULLBACK,
+            'tight_end': PositionValueTiers.TIGHT_END, 'te': PositionValueTiers.TIGHT_END,
+            'linebacker': PositionValueTiers.LINEBACKER, 'lb': PositionValueTiers.LINEBACKER, 'mike': PositionValueTiers.LINEBACKER, 'sam': PositionValueTiers.LINEBACKER, 'will': PositionValueTiers.LINEBACKER,
+            'safety': PositionValueTiers.SAFETY, 'ss': PositionValueTiers.SAFETY, 'fs': PositionValueTiers.SAFETY,
+            'left_guard': PositionValueTiers.GUARD, 'lg': PositionValueTiers.GUARD,
+            'right_guard': PositionValueTiers.GUARD, 'rg': PositionValueTiers.GUARD,
 
-            # Tier 4: Lower value (0.8-1.0x)
-            'defensive_tackle': 0.9, 'dt': 0.9,
-            'nose_tackle': 0.8, 'nt': 0.8,
-            'kicker': 0.8, 'k': 0.8,
-            'punter': 0.8, 'p': 0.8,
+            # Tier 4: Lower value positions
+            'defensive_tackle': PositionValueTiers.DEFENSIVE_TACKLE, 'dt': PositionValueTiers.DEFENSIVE_TACKLE,
+            'nose_tackle': PositionValueTiers.NOSE_TACKLE, 'nt': PositionValueTiers.NOSE_TACKLE,
+            'kicker': PositionValueTiers.KICKER, 'k': PositionValueTiers.KICKER,
+            'punter': PositionValueTiers.PUNTER, 'p': PositionValueTiers.PUNTER,
         }
 
         # Age curves (peak years get 1.0x, decline after) - Calibrated v1.1
+        # Using AgeCurveParameters constants from transaction_constants.py
         self.age_curves = {
-            'quarterback': {'peak_start': 27, 'peak_end': 32, 'decline_rate': 0.08},  # Calibrated from 0.10
-            'running_back': {'peak_start': 23, 'peak_end': 27, 'decline_rate': 0.15},
-            'wide_receiver': {'peak_start': 25, 'peak_end': 29, 'decline_rate': 0.12},
-            'tight_end': {'peak_start': 26, 'peak_end': 30, 'decline_rate': 0.10},
-            'offensive_line': {'peak_start': 26, 'peak_end': 31, 'decline_rate': 0.08},
-            'defensive_line': {'peak_start': 25, 'peak_end': 29, 'decline_rate': 0.12},
-            'linebacker': {'peak_start': 25, 'peak_end': 29, 'decline_rate': 0.12},
-            'defensive_back': {'peak_start': 25, 'peak_end': 29, 'decline_rate': 0.13},
+            'quarterback': AgeCurveParameters.QUARTERBACK,
+            'running_back': AgeCurveParameters.RUNNING_BACK,
+            'wide_receiver': AgeCurveParameters.WIDE_RECEIVER,
+            'tight_end': AgeCurveParameters.TIGHT_END,
+            'offensive_line': AgeCurveParameters.OFFENSIVE_LINE,
+            'defensive_line': AgeCurveParameters.DEFENSIVE_LINE,
+            'linebacker': AgeCurveParameters.LINEBACKER,
+            'defensive_back': AgeCurveParameters.DEFENSIVE_BACK,
         }
 
         # Jimmy Johnson Draft Pick Value Chart
@@ -132,7 +139,7 @@ class TradeValueCalculator:
         # Scale to player value units (100 = starter)
         # Top pick (~3000) should equal elite young QB (~600 value)
         # Mid-1st (~1000) should equal good starter (~200 value)
-        scaled_value = base_value / 10.0  # Calibrated scaling factor (v1.1 PRODUCTION)
+        scaled_value = base_value / TradeValueScaling.DRAFT_PICK_SCALING_FACTOR
 
         return scaled_value
 
@@ -200,10 +207,10 @@ class TradeValueCalculator:
 
         # Step 1: Base value from overall rating
         # Use power curve: 50 OVR = 0, 75 OVR = 100, 85 OVR = 300, 95 OVR = 700
-        if overall_rating <= 50:
+        if overall_rating <= TradeValueScaling.BASE_VALUE_OFFSET:
             base_value = 0.0
         else:
-            base_value = ((overall_rating - 50) ** 1.8) / 3.3  # Calibrated scaling (v1.1 PRODUCTION)
+            base_value = ((overall_rating - TradeValueScaling.BASE_VALUE_OFFSET) ** TradeValueScaling.BASE_VALUE_EXPONENT) / TradeValueScaling.BASE_VALUE_DIVISOR
         base_value = max(0, base_value)  # No negative values
 
         # Step 2: Position tier multiplier

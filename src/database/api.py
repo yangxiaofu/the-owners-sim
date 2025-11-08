@@ -798,3 +798,5 @@ class DatabaseAPI:
         results = self.db_connection.execute_query(query, params)
 
         return results  # Already converted to dicts by execute_query()
+
+

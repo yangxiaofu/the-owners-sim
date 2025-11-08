@@ -5,8 +5,8 @@ Unified controller orchestrating the complete NFL season cycle from
 Week 1 Regular Season → Super Bowl → Offseason.
 
 This controller manages the three distinct phases:
-1. REGULAR_SEASON: 272 games across 18 weeks
-2. PLAYOFFS: 13 games (Wild Card → Super Bowl)
+1. REGULAR_SEASON: 272 games across 18 weeks (SeasonConstants.REGULAR_SEASON_GAME_COUNT, SeasonConstants.REGULAR_SEASON_WEEKS)
+2. PLAYOFFS: 13 games (SeasonConstants.PLAYOFF_GAME_COUNT) (Wild Card → Super Bowl)
 3. OFFSEASON: Post-season state with summary (future: draft, free agency, training camp)
 
 Responsibilities:
@@ -37,15 +37,14 @@ except (ModuleNotFoundError, ImportError):
 
 from playoff_system.playoff_controller import PlayoffController
 from playoff_system.playoff_seeder import PlayoffSeeder
-from database.api import DatabaseAPI
-from database.draft_class_api import DraftClassAPI
-from database.dynasty_state_api import DynastyStateAPI
-from events import EventDatabaseAPI
+from database.unified_api import UnifiedDatabaseAPI
 from scheduling import RandomScheduleGenerator
 from offseason.offseason_event_scheduler import OffseasonEventScheduler
-from season.season_year_validator import SeasonYearValidator
-from season.season_year_synchronizer import SeasonYearSynchronizer
+from src.season.season_year_validator import SeasonYearValidator
+from src.season.season_year_synchronizer import SeasonYearSynchronizer
+from src.season.season_constants import SeasonConstants, PhaseNames, GameIDPrefixes
 from transactions.models import AssetType
+from services import TransactionService, extract_playoff_champions
 
 # Phase transition system (dependency injection support)
 try:
@@ -69,8 +68,8 @@ class SeasonCycleController:
     Unified controller orchestrating complete NFL season simulation cycle.
 
     Manages three distinct phases:
-    1. REGULAR_SEASON: 272 games across 18 weeks
-    2. PLAYOFFS: 13 games (Wild Card → Super Bowl)
+    1. REGULAR_SEASON: 272 games across 18 weeks (SeasonConstants.REGULAR_SEASON_GAME_COUNT, SeasonConstants.REGULAR_SEASON_WEEKS)
+    2. PLAYOFFS: 13 games (SeasonConstants.PLAYOFF_GAME_COUNT) (Wild Card → Super Bowl)
     3. OFFSEASON: Post-season state with summary
 
     Usage:
@@ -139,14 +138,14 @@ class SeasonCycleController:
         print(f"[DYNASTY_TRACE] SeasonCycleController.__init__(): dynasty_id={dynasty_id}")
 
         # ============ PHASE 2: DATABASE-FIRST LOADING ============
-        # Initialize DynastyStateAPI FIRST (needed for loading)
-        self.dynasty_api = DynastyStateAPI(database_path)
+        # Initialize UnifiedDatabaseAPI FIRST (needed for loading)
+        self.db = UnifiedDatabaseAPI(database_path, dynasty_id)
 
         # Initialize SeasonYearValidator for drift detection
         self.season_year_validator = SeasonYearValidator(logger=self.logger)
 
         # Try to load from database (SINGLE SOURCE OF TRUTH)
-        db_state = self.dynasty_api.get_latest_state(dynasty_id)
+        db_state = self.db.dynasty_get_latest_state()
 
         if db_state:
             # Existing dynasty - load from database
@@ -174,10 +173,10 @@ class SeasonCycleController:
             if initial_phase is None:
                 # Map database phase string to SeasonPhase enum
                 phase_map = {
-                    'regular_season': SeasonPhase.REGULAR_SEASON,
-                    'preseason': SeasonPhase.PRESEASON,
-                    'playoffs': SeasonPhase.PLAYOFFS,
-                    'offseason': SeasonPhase.OFFSEASON
+                    PhaseNames.DB_REGULAR_SEASON: SeasonPhase.REGULAR_SEASON,
+                    PhaseNames.DB_PRESEASON: SeasonPhase.PRESEASON,
+                    PhaseNames.DB_PLAYOFFS: SeasonPhase.PLAYOFFS,
+                    PhaseNames.DB_OFFSEASON: SeasonPhase.OFFSEASON
                 }
                 initial_phase = phase_map.get(db_phase, SeasonPhase.REGULAR_SEASON)
 
@@ -234,12 +233,6 @@ class SeasonCycleController:
         # Statistics
         self.total_games_played = 0
         self.total_days_simulated = 0
-
-        # Database API for data retrieval (MUST be initialized before phase-aware initialization)
-        self.database_api = DatabaseAPI(database_path)
-
-        # Initialize EventDatabaseAPI for offseason event execution
-        self.event_db = EventDatabaseAPI(database_path)
 
         # Calculate last scheduled regular season game date for flexible end-of-season detection
         self.last_regular_season_game_date = self._get_last_regular_season_game_date()
@@ -338,8 +331,7 @@ class SeasonCycleController:
         # ============ END PHASE 3 ============
 
         # Ensure dynasty record exists (required for foreign key constraints)
-        self.database_api.db_connection.ensure_dynasty_exists(
-            dynasty_id=dynasty_id,
+        self.db.dynasty_ensure_exists(
             dynasty_name=f"Dynasty {dynasty_id}",
             owner_name=None,
             team_id=None
@@ -471,7 +463,14 @@ class SeasonCycleController:
 
         # Phase 1.7: AI Transaction Evaluation (preseason, regular season, offseason)
         if self.phase_state.phase in [SeasonPhase.PRESEASON, SeasonPhase.REGULAR_SEASON, SeasonPhase.OFFSEASON]:
-            executed_trades = self._evaluate_ai_transactions()
+            # Use TransactionService for evaluation (Phase 3: Service Extraction)
+            service = self._get_transaction_service()
+            current_week = self._calculate_current_week()
+            executed_trades = service.evaluate_daily_for_all_teams(
+                current_phase=self.phase_state.phase.value,
+                current_week=current_week,
+                verbose_logging=self.verbose_logging
+            )
             result['transactions_executed'] = executed_trades
             result['num_trades'] = len(executed_trades)
 
@@ -642,10 +641,10 @@ class SeasonCycleController:
 
         # NEW: Determine next phase and query its first game date
         next_phase_map = {
-            SeasonPhase.PRESEASON: "regular_season",
-            SeasonPhase.REGULAR_SEASON: "playoffs",
-            SeasonPhase.PLAYOFFS: "offseason",
-            SeasonPhase.OFFSEASON: "preseason"  # Complete the cycle for multi-season support
+            SeasonPhase.PRESEASON: PhaseNames.DB_REGULAR_SEASON,
+            SeasonPhase.REGULAR_SEASON: PhaseNames.DB_PLAYOFFS,
+            SeasonPhase.PLAYOFFS: PhaseNames.DB_OFFSEASON,
+            SeasonPhase.OFFSEASON: PhaseNames.DB_PRESEASON  # Complete the cycle for multi-season support
         }
 
         next_phase_name = next_phase_map.get(starting_phase)
@@ -653,8 +652,7 @@ class SeasonCycleController:
 
         if next_phase_name and next_phase_name != "offseason":
             # Query first game of next phase
-            first_game_date = self.event_db.get_first_game_date_of_phase(
-                dynasty_id=self.dynasty_id,
+            first_game_date = self.db.events_get_first_game_date_of_phase(
                 phase_name=next_phase_name,
                 current_date=str(self.calendar.get_current_date())
             )
@@ -676,11 +674,24 @@ class SeasonCycleController:
         while True:
             current_date_str = str(self.calendar.get_current_date())
 
-            # STOP CONDITION 1: Reached target date (day before next phase)
-            if target_stop_date and current_date_str >= target_stop_date:
-                if self.verbose_logging:
-                    print(f"[STOP] Reached target date: {current_date_str} >= {target_stop_date}")
-                break
+            # STOP CONDITION 1: Check if NEXT week would exceed target (prevent overshoot)
+            if target_stop_date:
+                current_py_date = self.calendar.get_current_date().to_python_date()
+                target_py_date = datetime.strptime(target_stop_date, '%Y-%m-%d').date()
+
+                # Estimate where next week would end (current + 7 days)
+                next_week_end_estimate = current_py_date + timedelta(days=7)
+
+                # Stop if current >= target OR next week would exceed target
+                if current_py_date >= target_py_date:
+                    if self.verbose_logging:
+                        print(f"[STOP] Reached target date: {current_date_str} >= {target_stop_date}")
+                    break
+                elif next_week_end_estimate >= target_py_date:
+                    if self.verbose_logging:
+                        print(f"[STOP] Preventing overshoot: current={current_date_str}, target={target_stop_date}")
+                        print(f"[STOP] Next week would end around {next_week_end_estimate}, which exceeds target")
+                    break
 
             # STOP CONDITION 2: Phase already changed (safety fallback)
             if self.phase_state.phase != starting_phase:
@@ -692,7 +703,7 @@ class SeasonCycleController:
             if self.phase_state.phase == SeasonPhase.OFFSEASON:
                 break
 
-            # Advance one week
+            # Advance one week (only if we didn't break above)
             games_before = self.total_games_played
             result = self.advance_week()
             games_after = self.total_games_played
@@ -761,10 +772,9 @@ class SeasonCycleController:
             }
 
         # Query next milestone from event database
-        next_milestone = self.event_db.get_next_offseason_milestone(
+        next_milestone = self.db.events_get_next_offseason_milestone(
             current_date=self.calendar.get_current_date(),
-            season_year=self.season_year,
-            dynasty_id=self.dynasty_id
+            season_year=self.season_year
         )
 
         if not next_milestone:
@@ -932,10 +942,9 @@ class SeasonCycleController:
             return "Next Phase"
 
         current_date = self.calendar.get_current_date()
-        next_milestone = self.event_db.get_next_offseason_milestone(
+        next_milestone = self.db.events_get_next_offseason_milestone(
             current_date=current_date,
-            season_year=self.season_year,
-            dynasty_id=self.dynasty_id
+            season_year=self.season_year
         )
 
         if not next_milestone:
@@ -1019,10 +1028,9 @@ class SeasonCycleController:
         """
         if self.phase_state.phase != SeasonPhase.REGULAR_SEASON:
             # Return final regular season standings from database
-            return self.database_api.get_standings(
-                dynasty_id=self.dynasty_id,
+            return self.db.standings_get(
                 season=self.season_year,
-                season_type="regular_season"
+                season_type=PhaseNames.DB_REGULAR_SEASON
             )
 
         return self.season_controller.get_current_standings()
@@ -1069,6 +1077,40 @@ class SeasonCycleController:
         }
 
     # ========== Private Methods ==========
+
+    def _get_transaction_service(self) -> TransactionService:
+        """
+        Lazy initialization factory for TransactionService.
+
+        Creates TransactionService on first use with dependency injection pattern.
+        The service receives shared dependencies from controller (UnifiedDatabaseAPI,
+        CalendarManager, Logger) to leverage connection pooling and dynasty isolation.
+
+        Returns:
+            TransactionService: Initialized transaction service instance
+        """
+        if not hasattr(self, '_transaction_service'):
+            from transactions.transaction_ai_manager import TransactionAIManager
+
+            # Create AI manager with debug mode
+            transaction_ai = TransactionAIManager(
+                database_path=self.database_path,
+                dynasty_id=self.dynasty_id,
+                debug_mode=True  # Enable debug mode for UI debug log window
+            )
+
+            # Create service with dependency injection
+            self._transaction_service = TransactionService(
+                db=self.db,
+                calendar=self.calendar,
+                transaction_ai=transaction_ai,
+                logger=self.logger,
+                dynasty_id=self.dynasty_id,
+                database_path=self.database_path,
+                season_year=self.season_year
+            )
+
+        return self._transaction_service
 
     def _set_season_year(self, new_year: int, reason: str) -> None:
         """
@@ -1150,7 +1192,7 @@ class SeasonCycleController:
         is_synced, db_year, can_recover = self.season_year_validator.validate_with_recovery(
             controller_year=self.season_year,
             dynasty_id=self.dynasty_id,
-            dynasty_api=self.dynasty_api
+            dynasty_api=self.db  # Phase 2: dynasty_api consolidated into UnifiedDatabaseAPI
         )
 
         if is_synced:
@@ -1223,7 +1265,7 @@ class SeasonCycleController:
         """
         try:
             # Get current state to preserve other fields
-            current_state = self.dynasty_api.get_latest_state(self.dynasty_id)
+            current_state = self.db.dynasty_get_latest_state()
 
             if not current_state:
                 self.logger.warning(
@@ -1231,8 +1273,7 @@ class SeasonCycleController:
                     f"Creating new state with season={new_year}"
                 )
                 # Initialize new state if none exists
-                self.dynasty_api.initialize_state(
-                    dynasty_id=self.dynasty_id,
+                self.db.dynasty_initialize_state(
                     season=new_year,
                     start_date=str(self.calendar.get_current_date()),
                     start_week=0,
@@ -1240,8 +1281,7 @@ class SeasonCycleController:
                 )
             else:
                 # Update existing state with new season
-                self.dynasty_api.update_state(
-                    dynasty_id=self.dynasty_id,
+                self.db.dynasty_update_state(
                     season=new_year,  # Only changing season
                     current_date=current_state['current_date'],
                     current_phase=current_state['current_phase'],
@@ -1275,7 +1315,7 @@ class SeasonCycleController:
         self.season_year_validator.log_validation_report(
             controller_year=self.season_year,
             dynasty_id=self.dynasty_id,
-            dynasty_api=self.dynasty_api,
+            dynasty_api=self.db,  # Phase 2: dynasty_api consolidated into UnifiedDatabaseAPI
             context="Before phase transition check"
         )
 
@@ -1354,8 +1394,8 @@ class SeasonCycleController:
             print(f"[NEW_SEASON_FLOW] Current date: {self.calendar.get_current_date()}")
             print(f"[NEW_SEASON_FLOW] Preseason start: {self._calculate_preseason_start_for_handler(self.season_year + 1)}")
             print(f"[NEW_SEASON_FLOW] Transitioning from OFFSEASON → PRESEASON")
-            print(f"[NEW_SEASON_FLOW] Generating preseason schedule (48 games)...")
-            print(f"[NEW_SEASON_FLOW] Generating regular season schedule (272 games)...")
+            print(f"[NEW_SEASON_FLOW] Generating preseason schedule ({SeasonConstants.PRESEASON_GAME_COUNT} games)...")
+            print(f"[NEW_SEASON_FLOW] Generating regular season schedule ({SeasonConstants.REGULAR_SEASON_GAME_COUNT} games)...")
             print(f"{'='*80}")
 
             try:
@@ -1404,8 +1444,7 @@ class SeasonCycleController:
                 if self.verbose_logging:
                     print(f"[PHASE_TRANSITION] Updating database phase: PRESEASON")
 
-                self.dynasty_api.update_state(
-                    dynasty_id=self.dynasty_id,
+                self.db.dynasty_update_state(
                     season=self.season_year,  # Already updated by synchronizer
                     current_date=str(self.calendar.get_current_date()),
                     current_phase="PRESEASON",
@@ -1417,8 +1456,8 @@ class SeasonCycleController:
 
                 try:
                     # This calls OffseasonToPreseasonHandler.execute() which:
-                    # - Generates 48 preseason games
-                    # - Generates 272 regular season games
+                    # - Generates SeasonConstants.PRESEASON_GAME_COUNT preseason games
+                    # - Generates SeasonConstants.REGULAR_SEASON_GAME_COUNT regular season games
                     # - Resets all team standings to 0-0-0
                     result = self.phase_transition_manager.execute_transition(transition)
 
@@ -1440,8 +1479,7 @@ class SeasonCycleController:
                         print(f"[PHASE_TRANSITION] Transition failed - rolling back database")
 
                     self._set_season_year(old_year, f"Rollback due to transition failure: {e}")
-                    self.dynasty_api.update_state(
-                        dynasty_id=self.dynasty_id,
+                    self.db.dynasty_update_state(
                         season=old_year,
                         current_date=str(self.calendar.get_current_date()),
                         current_phase=old_phase.value,
@@ -1454,8 +1492,8 @@ class SeasonCycleController:
                 print(f"[NEW_SEASON_SUCCESS] New season initialized!")
                 print(f"  Season: {old_year} → {self.season_year}")
                 print(f"  Phase: OFFSEASON → PRESEASON")
-                print(f"  Preseason games: 48")
-                print(f"  Regular season games: 272")
+                print(f"  Preseason games: {SeasonConstants.PRESEASON_GAME_COUNT}")
+                print(f"  Regular season games: {SeasonConstants.REGULAR_SEASON_GAME_COUNT}")
                 print(f"  Teams reset: 32")
                 print(f"{'='*80}\n")
 
@@ -1506,8 +1544,8 @@ class SeasonCycleController:
                 # This ensures Week 15-18 games (January 2026) are included for 2025 season
                 if e.get('data', {}).get('parameters', {}).get('season') == self.season_year
                 # Exclude playoff and preseason games
-                and not e.get('game_id', '').startswith('playoff_')
-                and not e.get('game_id', '').startswith('preseason_')
+                and not e.get('game_id', '').startswith(GameIDPrefixes.PLAYOFF)
+                and not e.get('game_id', '').startswith(GameIDPrefixes.PRESEASON)
                 # CRITICAL: Only include weeks 1-18 (ignore corrupted future games)
                 and 1 <= e.get('data', {}).get('parameters', {}).get('week', 0) <= 18
             ]
@@ -1557,8 +1595,7 @@ class SeasonCycleController:
         """
         try:
             # Use API to get ONLY this dynasty's GAME events (10-100x faster with database filtering)
-            dynasty_game_events = self.event_db.get_events_by_dynasty(
-                dynasty_id=self.dynasty_id,
+            dynasty_game_events = self.db.events_get_by_type(
                 event_type="GAME"
             )
 
@@ -1571,9 +1608,9 @@ class SeasonCycleController:
                 if e.get('data', {}).get('parameters', {}).get('season') == self.season_year
                 # Include preseason games (check both game_id and season_type)
                 and (
-                    e.get('game_id', '').startswith('preseason_')
-                    or e.get('data', {}).get('parameters', {}).get('season_type') == 'preseason'
-                    or e.get('data', {}).get('parameters', {}).get('game_type') == 'preseason'
+                    e.get('game_id', '').startswith(GameIDPrefixes.PRESEASON)
+                    or e.get('data', {}).get('parameters', {}).get('season_type') == PhaseNames.DB_PRESEASON
+                    or e.get('data', {}).get('parameters', {}).get('game_type') == PhaseNames.DB_PRESEASON
                 )
                 # CRITICAL: Only include weeks 1-4 (ignore corrupted future games)
                 and 1 <= e.get('data', {}).get('parameters', {}).get('week', 0) <= 4
@@ -1620,8 +1657,7 @@ class SeasonCycleController:
         """
         try:
             # Use API to get ONLY this dynasty's GAME events (10-100x faster with database filtering)
-            dynasty_game_events = self.event_db.get_events_by_dynasty(
-                dynasty_id=self.dynasty_id,
+            dynasty_game_events = self.db.events_get_by_type(
                 event_type="GAME"
             )
 
@@ -1661,22 +1697,21 @@ class SeasonCycleController:
         """
         try:
             # Use API to get ONLY this dynasty's GAME events (10-100x faster with database filtering)
-            dynasty_game_events = self.event_db.get_events_by_dynasty(
-                dynasty_id=self.dynasty_id,
+            dynasty_game_events = self.db.events_get_by_type(
                 event_type="GAME"
             )
 
             completed_regular_games = [
                 e for e in dynasty_game_events
                 if e.get('data', {}).get('parameters', {}).get('season') == self.season_year
-                and e.get('data', {}).get('parameters', {}).get('season_type') == 'regular_season'
+                and e.get('data', {}).get('parameters', {}).get('season_type') == PhaseNames.DB_REGULAR_SEASON
                 and e.get('data', {}).get('results') is not None  # Must be completed
             ]
 
             count = len(completed_regular_games)
 
             if self.verbose_logging:
-                self.logger.debug(f"Regular season games completed: {count}/272")
+                self.logger.debug(f"Regular season games completed: {count}/{SeasonConstants.REGULAR_SEASON_GAME_COUNT}")
 
             return count
 
@@ -1730,12 +1765,12 @@ class SeasonCycleController:
         Returns:
             True if regular season is complete (either by game count or date)
         """
-        # PRIMARY CHECK: Have all 272 regular season games been played?
+        # PRIMARY CHECK: Have all SeasonConstants.REGULAR_SEASON_GAME_COUNT regular season games been played?
         # This is the most reliable indicator and handles corrupted schedules
         games_played = self.total_games_played
-        if games_played >= 272:
+        if games_played >= SeasonConstants.REGULAR_SEASON_GAME_COUNT:
             if self.verbose_logging:
-                print(f"[DEBUG] Regular season complete: {games_played} games played (threshold: 272)")
+                print(f"[DEBUG] Regular season complete: {games_played} games played (threshold: {SeasonConstants.REGULAR_SEASON_GAME_COUNT})")
             return True
 
         # FALLBACK CHECK: Has date passed last scheduled regular season game?
@@ -1745,7 +1780,7 @@ class SeasonCycleController:
 
         if self.verbose_logging:
             print(f"[DEBUG] Regular season check:")
-            print(f"  - Games played: {games_played}/272")
+            print(f"  - Games played: {games_played}/{SeasonConstants.REGULAR_SEASON_GAME_COUNT}")
             print(f"  - Current date: {current_date}")
             print(f"  - Last scheduled game: {self.last_regular_season_game_date}")
             print(f"  - Date check result: {date_check}")
@@ -1819,10 +1854,9 @@ class SeasonCycleController:
 
         try:
             # 1. Get final regular season standings from database
-            standings_data = self.database_api.get_standings(
-                dynasty_id=self.dynasty_id,
+            standings_data = self.db.standings_get(
                 season=self.season_year,
-                season_type="regular_season"
+                season_type=PhaseNames.DB_REGULAR_SEASON
             )
 
             if not standings_data or not standings_data.get('divisions'):
@@ -1844,7 +1878,7 @@ class SeasonCycleController:
             playoff_seeding = seeder.calculate_seeding(
                 standings=standings_dict,
                 season=self.season_year,
-                week=18
+                week=SeasonConstants.REGULAR_SEASON_WEEKS
             )
 
             if self.verbose_logging:
@@ -1945,7 +1979,7 @@ class SeasonCycleController:
         self.season_year_validator.log_validation_report(
             controller_year=self.season_year,
             dynasty_id=self.dynasty_id,
-            dynasty_api=self.dynasty_api,
+            dynasty_api=self.db,  # Phase 2: dynasty_api consolidated into UnifiedDatabaseAPI
             context="Before playoff controller restoration"
         )
 
@@ -1962,10 +1996,9 @@ class SeasonCycleController:
                 print(f"{'='*80}")
 
             # 1. Query database for final regular season standings (needed for seeding)
-            standings_data = self.database_api.get_standings(
-                dynasty_id=self.dynasty_id,
+            standings_data = self.db.standings_get(
                 season=self.season_year,
-                season_type="regular_season"
+                season_type=PhaseNames.DB_REGULAR_SEASON
             )
 
             if not standings_data or not standings_data.get('divisions'):
@@ -2037,8 +2070,7 @@ class SeasonCycleController:
 
         # CRITICAL DIAGNOSTIC: Verify playoff events exist BEFORE transition
         print(f"\n[PLAYOFF_LIFECYCLE] ===== BEFORE OFFSEASON TRANSITION =====")
-        playoff_count_before = self.database_api.count_playoff_events(
-            dynasty_id=self.dynasty_id,
+        playoff_count_before = self.db.events_count_playoff(
             season_year=self.season_year
         )
         print(f"[PLAYOFF_LIFECYCLE]   Dynasty: {self.dynasty_id}")
@@ -2127,20 +2159,8 @@ class SeasonCycleController:
                         print(f"{'ARCHIVING SEASON STATISTICS'.center(80)}")
                         print(f"{'='*80}")
 
-                    # Extract playoff champions
-                    afc_champion_id = None
-                    nfc_champion_id = None
-
-                    # Get conference championship results
-                    conference_games = self.playoff_controller.get_round_games('conference_championship')
-                    for game in conference_games:
-                        winner_id = game.get('winner_id')
-                        # Determine conference by team ID (AFC: 1-16, NFC: 17-32)
-                        if winner_id:
-                            if 1 <= winner_id <= 16:
-                                afc_champion_id = winner_id
-                            elif 17 <= winner_id <= 32:
-                                nfc_champion_id = winner_id
+                    # Extract playoff champions (Phase 3: Service Extraction)
+                    afc_champion_id, nfc_champion_id = extract_playoff_champions(self.playoff_controller)
 
                     # Import and initialize archiver
                     from statistics.statistics_archiver import StatisticsArchiver
@@ -2154,7 +2174,7 @@ class SeasonCycleController:
                     # Archive the completed season
                     archival_result = archiver.archive_season(
                         completed_season=self.season_year,
-                        season_type="regular_season",
+                        season_type=PhaseNames.DB_REGULAR_SEASON,
                         super_bowl_champion=champion_id,
                         afc_champion=afc_champion_id,
                         nfc_champion=nfc_champion_id,
@@ -2213,8 +2233,7 @@ class SeasonCycleController:
 
             # CRITICAL DIAGNOSTIC: Verify playoff events STILL exist AFTER transition
             print(f"\n[PLAYOFF_LIFECYCLE] ===== AFTER OFFSEASON TRANSITION =====")
-            playoff_count_after = self.database_api.count_playoff_events(
-                dynasty_id=self.dynasty_id,
+            playoff_count_after = self.db.events_count_playoff(
                 season_year=self.season_year
             )
             print(f"[PLAYOFF_LIFECYCLE]   Playoff events in database: {playoff_count_after}")
@@ -2248,18 +2267,18 @@ class SeasonCycleController:
         # regardless of when phase transition is detected
         final_reg_season_date = self.last_regular_season_game_date
 
-        # Add 14 days (2 weeks)
-        wild_card_date = final_reg_season_date.add_days(14)
+        # Add SeasonConstants.PLAYOFF_DELAY_DAYS days (2 weeks)
+        wild_card_date = final_reg_season_date.add_days(SeasonConstants.PLAYOFF_DELAY_DAYS)
 
         # Adjust to next Saturday
-        # Use Python's weekday() where Monday=0, Saturday=5, Sunday=6
-        while wild_card_date.to_python_date().weekday() != 5:  # 5 = Saturday
+        # Use Python's weekday() where Monday=0, Saturday=SeasonConstants.WILD_CARD_WEEKDAY, Sunday=6
+        while wild_card_date.to_python_date().weekday() != SeasonConstants.WILD_CARD_WEEKDAY:  # SeasonConstants.WILD_CARD_WEEKDAY = Saturday
             wild_card_date = wild_card_date.add_days(1)
             # Safety check to prevent infinite loop
-            if wild_card_date.days_until(final_reg_season_date) > 30:
-                # If we've gone more than 30 days, something is wrong
-                # Just use the date 14 days out
-                wild_card_date = final_reg_season_date.add_days(14)
+            if wild_card_date.days_until(final_reg_season_date) > SeasonConstants.DATE_ADJUSTMENT_SAFETY_LIMIT:
+                # If we've gone more than SeasonConstants.DATE_ADJUSTMENT_SAFETY_LIMIT days, something is wrong
+                # Just use the date SeasonConstants.PLAYOFF_DELAY_DAYS days out
+                wild_card_date = final_reg_season_date.add_days(SeasonConstants.PLAYOFF_DELAY_DAYS)
                 break
 
         return wild_card_date
@@ -2273,10 +2292,9 @@ class SeasonCycleController:
         """
         try:
             # Get final regular season standings
-            final_standings = self.database_api.get_standings(
-                dynasty_id=self.dynasty_id,
+            final_standings = self.db.standings_get(
                 season=self.season_year,
-                season_type="regular_season"
+                season_type=PhaseNames.DB_REGULAR_SEASON
             )
 
             # Get Super Bowl winner
@@ -2329,25 +2347,22 @@ class SeasonCycleController:
                  → Draft occurs April 2025
                  → Drafted players join teams for 2025 season
         """
-        draft_api = DraftClassAPI(self.database_path)
-
         # Check if draft class already exists (idempotent)
-        if draft_api.dynasty_has_draft_class(self.dynasty_id, self.season_year):
+        if self.db.draft_has_class(self.season_year):
             if self.verbose_logging:
                 print(f"   Draft class for {self.season_year} already exists")
             return
 
         # Generate draft class (224 prospects = 7 rounds × 32 teams)
         try:
-            draft_class_id = draft_api.generate_draft_class(
-                dynasty_id=self.dynasty_id,
+            draft_class_id = self.db.draft_generate_class(
                 season=self.season_year
             )
 
             if self.verbose_logging:
                 print(f"\n🏈 Draft Class Generated:")
                 print(f"   Season: {self.season_year}")
-                print(f"   Prospects: 224 (7 rounds × 32 teams)")
+                print(f"   Prospects: {SeasonConstants.DRAFT_TOTAL_PROSPECTS} ({SeasonConstants.DRAFT_ROUNDS} rounds × {SeasonConstants.NFL_TEAMS_COUNT} teams)")
                 print(f"   Draft Class ID: {draft_class_id}")
 
         except Exception as e:
@@ -2458,8 +2473,7 @@ class SeasonCycleController:
                 print(f"[NEW_SEASON] Reset all 32 team preseason standings to 0-0-0")
 
             # Step 5: Update dynasty state
-            self.dynasty_api.update_state(
-                dynasty_id=self.dynasty_id,
+            self.db.dynasty_update_state(
                 current_date=str(self.calendar.get_current_date()),
                 current_week=0,  # Preseason is week 0
                 current_phase='preseason'
@@ -2557,14 +2571,13 @@ class SeasonCycleController:
         self._auto_recover_year_from_database("Before preseason schedule generation")
 
         # Check if preseason schedule already exists (prevent duplicates)
-        all_events = self.event_db.get_events_by_dynasty(
-            dynasty_id=self.dynasty_id,
+        all_events = self.db.events_get_by_type(
             event_type="GAME"
         )
 
         preseason_games = [
             e for e in all_events
-            if e.get('game_id', '').startswith('preseason_')
+            if e.get('game_id', '').startswith(GameIDPrefixes.PRESEASON)
             and e.get('data', {}).get('parameters', {}).get('season') == season_year
         ]
 
@@ -2632,19 +2645,18 @@ class SeasonCycleController:
         self._auto_recover_year_from_database("Before regular season schedule generation")
 
         # Check if regular season schedule already exists (prevent duplicates)
-        all_events = self.event_db.get_events_by_dynasty(
-            dynasty_id=self.dynasty_id,
+        all_events = self.db.events_get_by_type(
             event_type="GAME"
         )
 
         regular_season_games = [
             e for e in all_events
-            if not e.get('game_id', '').startswith('playoff_')
-            and not e.get('game_id', '').startswith('preseason_')
+            if not e.get('game_id', '').startswith(GameIDPrefixes.PLAYOFF)
+            and not e.get('game_id', '').startswith(GameIDPrefixes.PRESEASON)
             and e.get('data', {}).get('parameters', {}).get('season') == season_year
         ]
 
-        if len(regular_season_games) == 272:
+        if len(regular_season_games) == SeasonConstants.REGULAR_SEASON_GAME_COUNT:
             if self.verbose_logging:
                 print(f"[SCHEDULE_IDEMPOTENCY] Regular season schedule already exists for {season_year}")
                 print(f"  Found {len(regular_season_games)} games - returning existing")
@@ -2667,21 +2679,20 @@ class SeasonCycleController:
             raise RuntimeError(f"Failed to generate regular season schedule: {error}")
 
         # Retrieve the generated games from event database
-        all_events = self.event_db.get_events_by_dynasty(
-            dynasty_id=self.dynasty_id,
+        all_events = self.db.events_get_by_type(
             event_type="GAME"
         )
 
         regular_season_games = [
             e for e in all_events
-            if not e.get('game_id', '').startswith('playoff_')
-            and not e.get('game_id', '').startswith('preseason_')
+            if not e.get('game_id', '').startswith(GameIDPrefixes.PLAYOFF)
+            and not e.get('game_id', '').startswith(GameIDPrefixes.PRESEASON)
             and e.get('data', {}).get('parameters', {}).get('season') == season_year
         ]
 
         return regular_season_games
 
-    def _reset_standings_for_handler(self, season_year: int, season_type: str = "regular_season") -> None:
+    def _reset_standings_for_handler(self, season_year: int, season_type: str = PhaseNames.DB_REGULAR_SEASON) -> None:
         """
         Reset all team standings for phase transition handler.
 
@@ -2730,9 +2741,8 @@ class SeasonCycleController:
             RuntimeError: If milestone not found in database (should never happen)
         """
         # Use EventDatabaseAPI instead of direct SQL (proper separation of concerns)
-        milestone_date = self.event_db.get_milestone_by_type(
+        milestone_date = self.db.events_get_milestone_by_type(
             milestone_type='PRESEASON_START',
-            dynasty_id=self.dynasty_id,
             season_year=self.season_year,
             year_tolerance=1  # Accept ±1 year to handle phase transitions
         )
@@ -2757,8 +2767,7 @@ class SeasonCycleController:
         # Phase 5: Auto-recovery guard before database phase update
         self._auto_recover_year_from_database("Before database phase update")
 
-        self.dynasty_api.update_state(
-            dynasty_id=self.dynasty_id,
+        self.db.dynasty_update_state(
             current_date=str(self.calendar.get_current_date()),
             current_week=0 if phase == "PRESEASON" else None,
             current_phase=phase.lower()
@@ -2786,289 +2795,19 @@ class SeasonCycleController:
             # Playoffs, offseason, etc.
             return 0
 
-    def _get_team_record(self, team_id: int) -> dict:
-        """
-        Get current win-loss-tie record for a team.
-
-        Uses existing DatabaseAPI.get_team_standing() method.
-
-        Args:
-            team_id: Team ID (1-32)
-
-        Returns:
-            dict: {'wins': int, 'losses': int, 'ties': int}
-        """
-        try:
-            # Use existing, tested API method
-            standing = self.database_api.get_team_standing(
-                dynasty_id=self.dynasty_id,
-                team_id=team_id,
-                season=self.season_year,
-                season_type="regular_season"
-            )
-
-            if standing:
-                return {
-                    'wins': standing.wins,
-                    'losses': standing.losses,
-                    'ties': standing.ties
-                }
-            else:
-                # No record yet - return zeros (common during preseason)
-                return {'wins': 0, 'losses': 0, 'ties': 0}
-
-        except Exception as e:
-            self.logger.error(f"Error getting record for team {team_id}: {e}")
-            return {'wins': 0, 'losses': 0, 'ties': 0}
-
-    def _execute_trade(self, proposal: dict) -> dict:
-        """
-        Execute a trade proposal by creating and simulating a PlayerForPlayerTradeEvent.
-
-        Args:
-            proposal: Trade proposal dict from TransactionAIManager
-                {
-                    'team1_id': int,
-                    'team2_id': int,
-                    'team1_players': [player_ids],
-                    'team2_players': [player_ids],
-                    'fair_value': float
-                }
-
-        Returns:
-            dict: {'success': bool, 'error_message': str, 'trade_details': dict}
-        """
-        try:
-            from events.trade_events import PlayerForPlayerTradeEvent
-            from calendar.date_models import Date
-
-            # Create trade event
-            current_date = self.calendar.get_current_date()
-
-            trade_event = PlayerForPlayerTradeEvent(
-                team1_id=proposal['team1_id'],
-                team2_id=proposal['team2_id'],
-                team1_player_ids=proposal.get('team1_players', []),
-                team2_player_ids=proposal.get('team2_players', []),
-                season=self.season_year,
-                event_date=current_date,
-                dynasty_id=self.dynasty_id,
-                database_path=self.database_path
-            )
-
-            # Execute trade
-            result = trade_event.simulate()
-
-            if result.success:
-                return {
-                    'success': True,
-                    'error_message': None,
-                    'trade_details': {
-                        'team1_id': proposal['team1_id'],
-                        'team2_id': proposal['team2_id'],
-                        'team1_players': proposal.get('team1_players', []),
-                        'team2_players': proposal.get('team2_players', []),
-                        'team1_net_cap_change': result.data.get('team1_net_cap_change', 0),
-                        'team2_net_cap_change': result.data.get('team2_net_cap_change', 0),
-                        'date': str(current_date)
-                    }
-                }
-            else:
-                return {
-                    'success': False,
-                    'error_message': result.error_message,
-                    'trade_details': None
-                }
-
-        except Exception as e:
-            self.logger.error(f"Error executing trade: {e}")
-            return {
-                'success': False,
-                'error_message': str(e),
-                'trade_details': None
-            }
-
-    def _evaluate_ai_transactions(self) -> list:
-        """
-        Run transaction AI for all 32 teams.
-
-        Evaluates potential trades for each team and executes approved proposals.
-        Trades are allowed during: PRESEASON, REGULAR_SEASON (before Week 9 Tuesday deadline).
-
-        NFL Trading Rules:
-        - Allowed: March 12 through Week 9 Tuesday
-        - Includes: Offseason, Training Camp, Preseason, Regular Season Weeks 1-9
-        - NOT allowed: After trade deadline through end of season/playoffs
-
-        Returns:
-            list: List of executed trade dicts
-        """
-        from transactions.transaction_timing_validator import TransactionTimingValidator
-
-        # Log entry point
-        current_date = self.calendar.get_current_date().to_python_date()
-        current_week = self._calculate_current_week()
-
-        print(f"\n[AI_TRANSACTION_REQUEST] Starting AI transaction evaluation")
-        print(f"[AI_TRANSACTION_REQUEST] Date: {current_date} | Phase: {self.phase_state.phase.value} | Week: {current_week}")
-        self.logger.info(
-            f"[AI_TRANSACTION_REQUEST] Starting AI transaction evaluation | "
-            f"Date: {current_date} | Phase: {self.phase_state.phase.value} | Week: {current_week}"
-        )
-
-        # Check if trades are allowed based on NFL calendar
-        validator = TransactionTimingValidator(self.season_year)
-
-        is_allowed, reason = validator.is_trade_allowed(
-            current_date=current_date,
-            current_phase=self.phase_state.phase.value,
-            current_week=current_week
-        )
-
-        print(f"[AI_TRANSACTION_REQUEST] Trade window: {'ALLOWED' if is_allowed else 'BLOCKED'}")
-        if not is_allowed:
-            print(f"[AI_TRANSACTION_REQUEST] Reason: {reason}")
-        self.logger.info(
-            f"[AI_TRANSACTION_REQUEST] Trade window validation: "
-            f"{'ALLOWED' if is_allowed else 'BLOCKED'} | Reason: {reason if not is_allowed else 'Within trading window'}"
-        )
-
-        if not is_allowed:
-            print(f"[AI_TRANSACTION_REQUEST] Exiting - trades not allowed\n")
-            return []
-
-        executed_trades = []
-        total_proposals = 0
-        teams_evaluated = 0
-
-        try:
-            from transactions.transaction_ai_manager import TransactionAIManager
-
-            # Initialize AI manager (lazy initialization)
-            if not hasattr(self, '_transaction_ai'):
-                print("[AI_TRANSACTION_REQUEST] Initializing TransactionAIManager...")
-                self.logger.info("[AI_TRANSACTION_REQUEST] Initializing TransactionAIManager")
-                self._transaction_ai = TransactionAIManager(
-                    database_path=self.database_path,
-                    dynasty_id=self.dynasty_id,
-                    debug_mode=True  # ✅ Enable debug mode for UI debug log window
-                )
-                print("[AI_TRANSACTION_REQUEST] TransactionAIManager initialized with debug mode ✓")
-                self.logger.info("[AI_TRANSACTION_REQUEST] TransactionAIManager initialized successfully with debug mode")
-
-            current_date = self.calendar.get_current_date()
-            current_week = self._calculate_current_week()
-
-            # Evaluate all 32 teams
-            print("[AI_TRANSACTION_REQUEST] Evaluating all 32 teams for trade opportunities...")
-            self.logger.info("[AI_TRANSACTION_REQUEST] Evaluating all 32 teams for trade opportunities")
-            for team_id in range(1, 33):
-                try:
-                    teams_evaluated += 1
-
-                    team_record = self._get_team_record(team_id)
-
-                    # Get trade proposals for this team
-                    proposals, _ = self._transaction_ai.evaluate_daily_transactions(
-                        team_id=team_id,
-                        current_date=str(current_date),
-                        season_phase=self.phase_state.phase,
-                        team_record=team_record,
-                        current_week=current_week
-                    )
-
-                    if len(proposals) > 0:
-                        print(f"[AI_TRANSACTION_REQUEST] Team {team_id}: {len(proposals)} proposal(s)")
-                    self.logger.info(
-                        f"[AI_TRANSACTION_REQUEST] Team {team_id} generated {len(proposals)} trade proposal(s)"
-                    )
-                    total_proposals += len(proposals)
-
-                    # Execute approved proposals
-                    # Track players already traded in this batch to prevent duplicate trades
-                    traded_players = set()
-
-                    for idx, proposal in enumerate(proposals, 1):
-                        # Check if any player in this proposal was already traded
-                        team1_player_ids = {asset.player_id for asset in proposal.team1_assets if asset.asset_type == AssetType.PLAYER}
-                        team2_player_ids = {asset.player_id for asset in proposal.team2_assets if asset.asset_type == AssetType.PLAYER}
-                        all_proposal_players = team1_player_ids | team2_player_ids
-
-                        # Skip if any player already traded
-                        if traded_players & all_proposal_players:
-                            overlapping_players = traded_players & all_proposal_players
-                            print(f"[AI_TRANSACTION_REQUEST] ⚠️  TRADE SKIPPED: Player(s) {overlapping_players} already traded in previous proposal")
-                            self.logger.info(f"[AI_TRANSACTION_REQUEST] Skipping trade {idx}/{len(proposals)}: Player overlap with previous trade")
-                            continue
-
-                        print(f"[AI_TRANSACTION_REQUEST] Executing trade: Team {proposal.team1_id} ↔ Team {proposal.team2_id}")
-                        self.logger.info(
-                            f"[AI_TRANSACTION_REQUEST] Attempting to execute trade {idx}/{len(proposals)} for Team {team_id}: "
-                            f"Team {proposal.team1_id} ↔ Team {proposal.team2_id}"
-                        )
-
-                        # Convert TradeProposal dataclass to dict format expected by _execute_trade()
-                        trade_dict = {
-                            'team1_id': proposal.team1_id,
-                            'team2_id': proposal.team2_id,
-                            'team1_players': [asset.player_id for asset in proposal.team1_assets if asset.asset_type == AssetType.PLAYER],
-                            'team2_players': [asset.player_id for asset in proposal.team2_assets if asset.asset_type == AssetType.PLAYER],
-                            'fair_value': proposal.value_ratio
-                        }
-                        trade_result = self._execute_trade(trade_dict)
-
-                        if trade_result['success']:
-                            # Track these players as traded
-                            traded_players.update(all_proposal_players)
-
-                            executed_trades.append(trade_result['trade_details'])
-                            print(f"[AI_TRANSACTION_REQUEST] ✅ TRADE EXECUTED: Team {proposal.team1_id} ↔ Team {proposal.team2_id}")
-                            self.logger.info(
-                                f"[AI_TRANSACTION_REQUEST] ✅ TRADE EXECUTED: Team {proposal.team1_id} ↔ Team {proposal.team2_id}"
-                            )
-                        else:
-                            print(f"[AI_TRANSACTION_REQUEST] ❌ TRADE REJECTED: {trade_result.get('error_message', 'Unknown error')}")
-                            self.logger.info(
-                                f"[AI_TRANSACTION_REQUEST] ❌ TRADE REJECTED: {trade_result.get('error_message', 'Unknown error')}"
-                            )
-
-                except Exception as e:
-                    print(f"[AI_TRANSACTION_REQUEST] Error evaluating Team {team_id}: {e}")
-                    self.logger.error(f"[AI_TRANSACTION_REQUEST] Error evaluating Team {team_id}: {e}")
-                    continue
-
-        except Exception as e:
-            print(f"[AI_TRANSACTION_REQUEST] FATAL ERROR: {e}")
-            self.logger.error(f"[AI_TRANSACTION_REQUEST] FATAL ERROR in AI transaction evaluation: {e}")
-
-        # Final summary
-        print(f"\n[AI_TRANSACTION_REQUEST] ===== SUMMARY =====")
-        print(f"[AI_TRANSACTION_REQUEST] Teams Evaluated: {teams_evaluated}/32")
-        print(f"[AI_TRANSACTION_REQUEST] Total Proposals: {total_proposals}")
-        print(f"[AI_TRANSACTION_REQUEST] Trades Executed: {len(executed_trades)}\n")
-        self.logger.info(
-            f"[AI_TRANSACTION_REQUEST] ===== SUMMARY ===== | "
-            f"Teams Evaluated: {teams_evaluated}/32 | "
-            f"Total Proposals: {total_proposals} | "
-            f"Trades Executed: {len(executed_trades)}"
-        )
-
-        return executed_trades
-
     # ========== Existing Helper Methods ==========
 
-    def _reset_all_standings(self, season_type: str = "regular_season"):
+    def _reset_all_standings(self, season_type: str = PhaseNames.DB_REGULAR_SEASON):
         """
         Reset all 32 teams to 0-0-0 records for new season.
 
-        Uses DatabaseAPI to reset standings table with fresh records for new season_year.
+        Us1es DatabaseAPI to reset standings table with fresh records for new season_year.
 
         Args:
             season_type: Type of season to reset ("preseason", "regular_season", "playoffs")
         """
         try:
-            self.database_api.reset_all_standings(
-                dynasty_id=self.dynasty_id,
+            self.db.standings_reset(
                 season_year=self.season_year,
                 season_type=season_type
             )
@@ -3078,7 +2817,7 @@ class SeasonCycleController:
 
         except Exception as e:
             raise Exception(f"Failed to reset standings: {e}") from e
-
+\
     # ==================== Dunder Methods ====================
 
     def __str__(self) -> str:
@@ -3092,3 +2831,8 @@ class SeasonCycleController:
         return (f"SeasonCycleController(database_path='{self.database_path}', "
                 f"season_year={self.season_year}, "
                 f"dynasty_id='{self.dynasty_id}')")
+
+    def close(self):
+        """Close database connections"""
+        if hasattr(self, 'db'):
+            self.db.close()

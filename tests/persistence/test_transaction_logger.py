@@ -10,8 +10,8 @@ Tests transaction logging functionality including:
 
 import pytest
 from datetime import date, datetime
-from events.base_event import EventResult
-from persistence.transaction_logger import TransactionLogger
+from src.events.base_event import EventResult
+from src.persistence.transaction_logger import TransactionLogger
 
 
 class TestTransactionLoggerDirectLogging:

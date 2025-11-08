@@ -93,7 +93,9 @@ class SeasonPhaseTracker:
         self,
         initial_date: Date,
         season_year: int,
-        last_regular_season_game_date: Optional[Date] = None
+        last_regular_season_game_date: Optional[Date] = None,
+        database_api: Optional[Any] = None,
+        dynasty_id: str = "default"
     ):
         """
         Initialize season phase tracker.
@@ -104,12 +106,29 @@ class SeasonPhaseTracker:
             last_regular_season_game_date: Optional date of last scheduled regular season game.
                                           If provided, enables date-based season completion
                                           instead of game count (more flexible for schedule changes)
+            database_api: Optional database API for querying scheduled games (enables event-based phase detection)
+            dynasty_id: Dynasty context for database queries
         """
         self._lock = threading.Lock()
 
+        # Store database API for event-based phase detection
+        self.database_api = database_api
+        self.dynasty_id = dynasty_id
+
+        # Validate database API is provided (required for event-based phase detection)
+        if not database_api:
+            raise ValueError(
+                "database_api is required for event-based phase detection. "
+                "SeasonPhaseTracker cannot determine initial phase without access to scheduled games. "
+                f"Received: database_api={database_api}, dynasty_id={dynasty_id}"
+            )
+
+        # Determine initial phase based on scheduled games
+        initial_phase = self._determine_initial_phase_from_schedule(initial_date)
+
         # Initialize state
         self._state = SeasonPhaseState(
-            current_phase=SeasonPhase.OFFSEASON,  # Default to offseason
+            current_phase=initial_phase,
             phase_start_date=initial_date,
             season_year=season_year
         )
@@ -278,6 +297,148 @@ class SeasonPhaseTracker:
             # Clear game tracking
             for game_type in self._games_by_type:
                 self._games_by_type[game_type].clear()
+
+    def _get_first_game_date_for_phase(self, phase_name: str) -> Optional[str]:
+        """
+        Helper method to query first game date for a phase, handling both API types.
+
+        Args:
+            phase_name: Phase to query (preseason, regular_season, playoffs)
+
+        Returns:
+            Date string (YYYY-MM-DD) or None
+        """
+        if not self.database_api:
+            return None
+
+        # Check if this is EventDatabaseAPI (has get_first_game_date_of_phase with dynasty_id param)
+        # or UnifiedDatabaseAPI (has events_get_first_game_date_of_phase without dynasty_id param)
+        if hasattr(self.database_api, 'get_first_game_date_of_phase'):
+            # EventDatabaseAPI
+            return self.database_api.get_first_game_date_of_phase(
+                dynasty_id=self.dynasty_id,
+                phase_name=phase_name,
+                current_date="1900-01-01"
+            )
+        elif hasattr(self.database_api, 'events_get_first_game_date_of_phase'):
+            # UnifiedDatabaseAPI (uses self.dynasty_id internally)
+            return self.database_api.events_get_first_game_date_of_phase(
+                phase_name=phase_name,
+                current_date="1900-01-01"
+            )
+        else:
+            return None
+
+    def _determine_initial_phase_from_schedule(self, initial_date: Date) -> SeasonPhase:
+        """
+        Determine the initial season phase by querying scheduled game events.
+
+        This event-based approach handles year-to-year date fluctuations by querying
+        the actual schedule rather than using hardcoded calendar dates.
+
+        Args:
+            initial_date: Date to determine phase for
+
+        Returns:
+            The season phase that the initial_date falls within
+
+        Raises:
+            ValueError: If database_api is not provided
+        """
+        if not self.database_api:
+            raise ValueError(
+                "database_api is required for event-based phase detection but was not provided. "
+                "This should not happen if __init__() validation is working correctly."
+            )
+
+        initial_date_str = str(initial_date)
+
+        # Query phase boundary dates from scheduled games
+        # Use "1900-01-01" as min date to get first game regardless of current date
+        first_preseason_date = self._get_first_game_date_for_phase("preseason")
+        first_regular_season_date = self._get_first_game_date_for_phase("regular_season")
+
+        # For last regular season game, we need to query all regular season games
+        # and find the maximum date (get_first_game_date_for_phase only gets first)
+        last_regular_season_date = self._query_last_regular_season_game_date()
+
+        first_playoff_date = self._get_first_game_date_for_phase("playoffs")
+
+        # Determine phase based on where initial_date falls
+        # Phase boundaries (in order):
+        # 1. Before first preseason → OFFSEASON
+        # 2. Between first preseason and first regular season → PRESEASON
+        # 3. Between first regular season and last regular season → REGULAR_SEASON
+        # 4. Between last regular season and first playoff → PLAYOFFS (transition window)
+        # 5. After first playoff → PLAYOFFS
+        # 6. After all games → OFFSEASON
+
+        if first_regular_season_date and initial_date_str >= first_regular_season_date:
+            # We're at or after regular season start
+            if last_regular_season_date and initial_date_str <= last_regular_season_date:
+                # During regular season
+                return SeasonPhase.REGULAR_SEASON
+            elif first_playoff_date and initial_date_str >= first_playoff_date:
+                # At or after playoffs
+                return SeasonPhase.PLAYOFFS
+            else:
+                # After regular season but before playoffs (transition window)
+                # Could be end of regular season or start of playoffs
+                # Default to REGULAR_SEASON if playoffs haven't started
+                return SeasonPhase.REGULAR_SEASON
+        elif first_preseason_date and initial_date_str >= first_preseason_date:
+            # We're at or after preseason start but before regular season
+            return SeasonPhase.PRESEASON
+        else:
+            # Before any scheduled games
+            return SeasonPhase.OFFSEASON
+
+    def _query_last_regular_season_game_date(self) -> Optional[str]:
+        """
+        Query database for the date of the last scheduled regular season game.
+
+        Returns:
+            Date string (YYYY-MM-DD) of last regular season game, or None if no games found
+        """
+        if not self.database_api:
+            return None
+
+        try:
+            # Query all GAME events for this dynasty (handle both API types)
+            if hasattr(self.database_api, 'get_events_by_dynasty'):
+                # EventDatabaseAPI
+                all_games = self.database_api.get_events_by_dynasty(
+                    dynasty_id=self.dynasty_id,
+                    event_type="GAME"
+                )
+            elif hasattr(self.database_api, 'events_get_by_type'):
+                # UnifiedDatabaseAPI (uses self.dynasty_id internally)
+                all_games = self.database_api.events_get_by_type("GAME")
+            else:
+                return None
+
+            # Filter for regular season games (season_type='regular_season' or 'regular')
+            regular_season_games = [
+                game for game in all_games
+                if game.get('data', {}).get('parameters', {}).get('season_type') in ['regular_season', 'regular']
+                or (
+                    # Also check for games with regular season week numbers (1-18)
+                    game.get('data', {}).get('parameters', {}).get('week', 0) in range(1, 19)
+                    and not game.get('game_id', '').startswith('playoff_')
+                    and not game.get('game_id', '').startswith('preseason_')
+                )
+            ]
+
+            if not regular_season_games:
+                return None
+
+            # Find the game with the maximum timestamp
+            last_game = max(regular_season_games, key=lambda g: g.get('timestamp', ''))
+            return last_game.get('timestamp', '')[:10]  # Extract YYYY-MM-DD
+
+        except Exception:
+            # If query fails, return None (will fall back to other detection methods)
+            return None
 
     def _validate_game_event(self, game_event: GameCompletionEvent) -> None:
         """Validate a game completion event."""

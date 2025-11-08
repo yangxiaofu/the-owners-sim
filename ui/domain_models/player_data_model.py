@@ -194,11 +194,13 @@ class PlayerDataModel:
         # Parse JSON fields if they're strings
         positions = player.get('positions', '[]')
         if isinstance(positions, str):
-            positions = json.loads(positions)
+            # Handle empty strings by using default
+            positions = json.loads(positions) if positions.strip() else []
 
         attributes = player.get('attributes', '{}')
         if isinstance(attributes, str):
-            attributes = json.loads(attributes)
+            # Handle empty strings by using default
+            attributes = json.loads(attributes) if attributes.strip() else {}
 
         # Get primary position (first in list) and convert to display format
         primary_position_raw = positions[0] if positions else "N/A"

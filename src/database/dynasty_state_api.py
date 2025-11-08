@@ -256,3 +256,5 @@ class DynastyStateAPI:
         if state:
             return state['current_date']
         return None
+
+

@@ -1,0 +1,1592 @@
+"""
+Unified Database API
+
+Single entry point for ALL database operations across the entire simulation engine.
+Consolidates dynasty_state, events, salary cap, draft, roster, and statistics APIs
+into one cohesive interface with connection pooling and transaction support.
+
+This API replaces the pattern of instantiating multiple specialized APIs
+(DatabaseAPI, DynastyStateAPI, CapDatabaseAPI, etc.) with a single unified interface.
+
+Architecture:
+- Connection pooling for performance
+- Transaction support for atomic multi-operation workflows
+- Dynasty isolation built-in
+- Type-safe operations with comprehensive error handling
+- Method groups: dynasty, events, cap, draft, roster, stats
+
+Usage:
+    # Basic usage
+    api = UnifiedDatabaseAPI(database_path="nfl.db", dynasty_id="my_dynasty")
+    state = api.dynasty_get_latest_state()
+    standings = api.standings_get(season=2024)
+
+    # Transaction usage for atomic operations
+    with api.transaction():
+        api.contracts_insert(...)
+        api.cap_update_team_summary(...)
+"""
+
+import sqlite3
+import logging
+from typing import Optional, Dict, Any, List, Tuple
+from pathlib import Path
+from contextlib import contextmanager
+from datetime import datetime
+import threading
+import json
+import uuid
+
+
+class ConnectionPool:
+    """
+    Simple connection pool for SQLite database access.
+
+    Maintains a thread-safe pool of database connections to avoid
+    repeated open/close overhead and support concurrent access.
+    """
+
+    def __init__(self, database_path: str, max_connections: int = 10):
+        """
+        Initialize connection pool.
+
+        Args:
+            database_path: Path to SQLite database
+            max_connections: Maximum number of pooled connections
+        """
+        self.database_path = database_path
+        self.max_connections = max_connections
+        self._pool: List[sqlite3.Connection] = []
+        self._in_use: set = set()
+        self._lock = threading.Lock()
+
+        # Ensure database file exists
+        Path(database_path).parent.mkdir(parents=True, exist_ok=True)
+
+    def get_connection(self) -> sqlite3.Connection:
+        """
+        Get a connection from the pool.
+
+        Returns:
+            SQLite connection object
+        """
+        with self._lock:
+            # Reuse available connection from pool
+            if self._pool:
+                conn = self._pool.pop()
+                self._in_use.add(id(conn))
+                return conn
+
+            # Create new connection if under limit
+            if len(self._in_use) < self.max_connections:
+                conn = self._create_connection()
+                self._in_use.add(id(conn))
+                return conn
+
+            # Pool exhausted - create temporary connection
+            # (will not be returned to pool)
+            return self._create_connection()
+
+    def return_connection(self, conn: sqlite3.Connection) -> None:
+        """
+        Return a connection to the pool.
+
+        Args:
+            conn: Connection to return
+        """
+        with self._lock:
+            conn_id = id(conn)
+
+            if conn_id in self._in_use:
+                self._in_use.remove(conn_id)
+
+                # Return to pool if space available
+                if len(self._pool) < self.max_connections:
+                    self._pool.append(conn)
+                else:
+                    # Pool full - close excess connection
+                    conn.close()
+            else:
+                # Temporary connection - close it
+                conn.close()
+
+    def close_all(self) -> None:
+        """Close all pooled connections."""
+        with self._lock:
+            for conn in self._pool:
+                conn.close()
+            self._pool.clear()
+            self._in_use.clear()
+
+    def _create_connection(self) -> sqlite3.Connection:
+        """
+        Create a new database connection with optimal settings.
+
+        Returns:
+            Configured SQLite connection
+        """
+        conn = sqlite3.connect(self.database_path)
+        conn.row_factory = sqlite3.Row  # Enable column access by name
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        return conn
+
+
+class TransactionContext:
+    """
+    Context manager for database transactions.
+
+    Provides atomic transaction support with automatic commit/rollback.
+    """
+
+    def __init__(self, connection: sqlite3.Connection):
+        """
+        Initialize transaction context.
+
+        Args:
+            connection: Database connection to use for transaction
+        """
+        self.connection = connection
+        self.logger = logging.getLogger(__name__)
+
+    def __enter__(self):
+        """Begin transaction."""
+        self.connection.execute("BEGIN TRANSACTION")
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Commit or rollback transaction based on exception status."""
+        if exc_type is None:
+            # No exception - commit
+            self.connection.commit()
+        else:
+            # Exception occurred - rollback
+            self.connection.rollback()
+            self.logger.error(f"Transaction rolled back due to error: {exc_val}")
+        return False  # Re-raise exception if it occurred
+
+    def commit(self):
+        """Explicitly commit transaction."""
+        self.connection.commit()
+
+    def rollback(self):
+        """Explicitly rollback transaction."""
+        self.connection.rollback()
+
+
+class UnifiedDatabaseAPI:
+    """
+    Unified database API providing single entry point for all database operations.
+
+    This class consolidates all specialized database APIs (dynasty_state, events,
+    salary cap, draft, roster, statistics) into one interface with connection
+    pooling and transaction support.
+
+    Method Naming Convention:
+    - {domain}_{operation}_{target}
+    - Examples: dynasty_get_latest_state(), contracts_insert(), standings_get()
+
+    Method Groups:
+    - Dynasty: dynasty_get_latest_state, dynasty_update_state, dynasty_initialize, etc.
+    - Events: events_insert, events_get_by_game_id, events_get_by_type, etc.
+    - Cap: cap_get_team_summary, contracts_insert, contracts_get_active, etc.
+    - Draft: draft_generate_class, draft_get_prospects, draft_execute_pick, etc.
+    - Roster: roster_get_team, players_get_free_agents, roster_update_depth, etc.
+    - Stats: standings_get, stats_get_passing_leaders, stats_get_team_summary, etc.
+    """
+
+    def __init__(
+        self,
+        database_path: str = "data/database/nfl_simulation.db",
+        dynasty_id: str = "default",
+        pool_size: int = 10
+    ):
+        """
+        Initialize Unified Database API.
+
+        Args:
+            database_path: Path to SQLite database file
+            dynasty_id: Default dynasty identifier for all operations
+            pool_size: Maximum number of pooled connections
+        """
+        self.database_path = database_path
+        self.dynasty_id = dynasty_id
+        self.logger = logging.getLogger(__name__)
+
+        # Initialize connection pool
+        self.pool = ConnectionPool(database_path, max_connections=pool_size)
+
+        # Active transaction tracking (thread-local)
+        self._active_transaction: Optional[sqlite3.Connection] = None
+
+        # Ensure database schema is initialized
+        self._ensure_schemas()
+
+    # ========================================================================
+    # CORE INFRASTRUCTURE
+    # ========================================================================
+
+    def _ensure_schemas(self) -> None:
+        """
+        Initialize all database schemas.
+
+        Checks for required tables and runs migrations if needed.
+        This ensures the database is ready for all operations.
+        """
+        conn = self._get_connection()
+        try:
+            # Check if core tables exist
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='dynasties'"
+            )
+
+            if cursor.fetchone() is None:
+                # Database not initialized - run schema creation
+                self.logger.info("Initializing database schemas...")
+                self._create_all_tables(conn)
+                conn.commit()
+                self.logger.info("Database schemas initialized successfully")
+            else:
+                # Database exists - check for pending migrations
+                self._run_pending_migrations(conn)
+
+        except Exception as e:
+            self.logger.error(f"Error ensuring schemas: {e}", exc_info=True)
+            raise
+        finally:
+            self._return_connection(conn)
+
+    def _create_all_tables(self, conn: sqlite3.Connection) -> None:
+        """
+        Create all database tables.
+
+        Uses the existing DatabaseConnection schema as reference.
+        This is called only if database is completely uninitialized.
+
+        Args:
+            conn: Active database connection
+        """
+        # Import and use existing DatabaseConnection schema
+        from .connection import DatabaseConnection
+        db = DatabaseConnection(self.database_path)
+        db._create_tables(conn)
+        self.logger.info("All tables created successfully")
+
+    def _run_pending_migrations(self, conn: sqlite3.Connection) -> None:
+        """
+        Run any pending database migrations.
+
+        Checks migrations directory and applies any unapplied migrations.
+
+        Args:
+            conn: Active database connection
+        """
+        migrations_dir = Path(__file__).parent / "migrations"
+
+        if not migrations_dir.exists():
+            return
+
+        # Get list of applied migrations (if migration tracking table exists)
+        try:
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
+            )
+
+            if cursor.fetchone() is None:
+                # Create migration tracking table
+                conn.execute("""
+                    CREATE TABLE schema_migrations (
+                        migration_name TEXT PRIMARY KEY,
+                        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                conn.commit()
+        except Exception as e:
+            self.logger.warning(f"Could not check migrations: {e}")
+
+    def _get_connection(self) -> sqlite3.Connection:
+        """
+        Get database connection from pool or active transaction.
+
+        If inside a transaction context, returns the transaction connection.
+        Otherwise, gets a new connection from the pool.
+
+        Returns:
+            SQLite connection object
+        """
+        if self._active_transaction is not None:
+            return self._active_transaction
+
+        return self.pool.get_connection()
+
+    def _return_connection(self, conn: sqlite3.Connection) -> None:
+        """
+        Return connection to pool.
+
+        Does not return transaction connections (managed by transaction context).
+
+        Args:
+            conn: Connection to return
+        """
+        if self._active_transaction is None or conn != self._active_transaction:
+            self.pool.return_connection(conn)
+
+    def _execute_query(
+        self,
+        query: str,
+        params: Optional[Tuple] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Execute SELECT query and return results.
+
+        Automatically handles connection management and result conversion.
+
+        Args:
+            query: SQL SELECT statement
+            params: Query parameters (tuple)
+
+        Returns:
+            List of result dictionaries
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
+
+            results = cursor.fetchall()
+            # Convert sqlite3.Row to dicts
+            return [dict(row) for row in results]
+
+        finally:
+            self._return_connection(conn)
+
+    def _execute_update(
+        self,
+        query: str,
+        params: Optional[Tuple] = None
+    ) -> int:
+        """
+        Execute INSERT/UPDATE/DELETE query.
+
+        Automatically handles connection management, transactions, and commits.
+
+        Args:
+            query: SQL INSERT/UPDATE/DELETE statement
+            params: Query parameters (tuple)
+
+        Returns:
+            Number of affected rows
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
+
+            # Only commit if not in active transaction
+            if self._active_transaction is None:
+                conn.commit()
+
+            return cursor.rowcount
+
+        except Exception as e:
+            # Only rollback if not in active transaction
+            if self._active_transaction is None:
+                conn.rollback()
+            self.logger.error(f"Error executing update: {e}", exc_info=True)
+            raise
+
+        finally:
+            self._return_connection(conn)
+
+    @contextmanager
+    def transaction(self):
+        """
+        Multi-operation atomic transaction context manager.
+
+        All database operations within the context will be part of
+        a single transaction that commits on success or rolls back on error.
+
+        Example:
+            with api.transaction():
+                api.contracts_insert(...)
+                api.cap_update_team_summary(...)
+                # Both operations commit together or rollback together
+
+        Yields:
+            self (UnifiedDatabaseAPI instance for method chaining)
+        """
+        conn = self._get_connection()
+        try:
+            with TransactionContext(conn) as tx:
+                self._active_transaction = conn
+                yield self
+                tx.commit()
+        finally:
+            self._active_transaction = None
+            self._return_connection(conn)
+
+    def close(self) -> None:
+        """
+        Close all pooled connections.
+
+        Should be called when API is no longer needed to clean up resources.
+        """
+        self.pool.close_all()
+        self.logger.info("All database connections closed")
+
+    # ========================================================================
+    # DYNASTY STATE OPERATIONS (8 methods)
+    # ========================================================================
+
+    def dynasty_get_latest_state(self) -> Optional[Dict[str, Any]]:
+        """
+        Get the most recent simulation state for the current dynasty.
+
+        Returns:
+            Dict with season, current_date, current_phase, current_week, last_simulated_game_id
+            or None if no state exists
+        """
+        query = """
+            SELECT season, "current_date", "current_phase", "current_week", last_simulated_game_id
+            FROM dynasty_state
+            WHERE dynasty_id = ?
+            ORDER BY season DESC
+            LIMIT 1
+        """
+
+        results = self._execute_query(query, (self.dynasty_id,))
+
+        if results:
+            row = results[0]
+            return {
+                'season': row['season'],
+                'current_date': row['current_date'],
+                'current_phase': row['current_phase'],
+                'current_week': row['current_week'],
+                'last_simulated_game_id': row['last_simulated_game_id']
+            }
+
+        return None
+
+    def dynasty_get_state(self, season: int) -> Optional[Dict[str, Any]]:
+        """
+        Get simulation state for specific season.
+
+        Args:
+            season: Season year
+
+        Returns:
+            Dict with current_date, current_phase, current_week, last_simulated_game_id
+            or None if no state exists
+        """
+        query = """
+            SELECT "current_date", "current_phase", "current_week", last_simulated_game_id
+            FROM dynasty_state
+            WHERE dynasty_id = ? AND season = ?
+        """
+
+        results = self._execute_query(query, (self.dynasty_id, season))
+
+        if results:
+            row = results[0]
+            return {
+                'current_date': row['current_date'],
+                'current_phase': row['current_phase'],
+                'current_week': row['current_week'],
+                'last_simulated_game_id': row['last_simulated_game_id']
+            }
+
+        return None
+
+    def dynasty_initialize_state(
+        self,
+        season: int,
+        start_date: str,
+        start_week: int = 1,
+        start_phase: str = 'regular_season'
+    ) -> bool:
+        """
+        Initialize fresh dynasty state for a new season.
+
+        ALWAYS deletes any existing state first to ensure clean slate.
+
+        Args:
+            season: Season year
+            start_date: Start date in YYYY-MM-DD format
+            start_week: Starting week number (default: 1)
+            start_phase: Starting phase (default: 'regular_season')
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # DEFENSIVE: Delete any existing state first
+            self.dynasty_delete_state(season)
+
+            # Insert fresh state
+            # IMPORTANT: Quote "current_date" to avoid SQLite auto-fill with CURRENT_DATE
+            query = """
+                INSERT INTO dynasty_state
+                (dynasty_id, season, "current_date", current_week, current_phase)
+                VALUES (?, ?, ?, ?, ?)
+            """
+
+            self._execute_update(
+                query,
+                (self.dynasty_id, season, start_date, start_week, start_phase)
+            )
+
+            # VERIFICATION: Read back what we just wrote
+            verification = self.dynasty_get_state(season)
+
+            if verification and verification['current_date'] == start_date:
+                return True
+            else:
+                self.logger.error(
+                    f"Dynasty state verification failed - expected {start_date}, "
+                    f"got {verification['current_date'] if verification else 'None'}"
+                )
+                return False
+
+        except Exception as e:
+            self.logger.error(f"Error initializing dynasty state: {e}", exc_info=True)
+            return False
+
+    def dynasty_update_state(
+        self,
+        season: int,
+        current_date: str,
+        current_phase: str,
+        current_week: Optional[int] = None,
+        last_simulated_game_id: Optional[str] = None
+    ) -> bool:
+        """
+        Update existing dynasty state.
+
+        Args:
+            season: Season year
+            current_date: Current simulation date (YYYY-MM-DD)
+            current_phase: Current phase (regular_season, playoffs, offseason)
+            current_week: Current week number
+            last_simulated_game_id: ID of last simulated game
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # IMPORTANT: Quote "current_date" to avoid SQLite auto-fill with CURRENT_DATE
+            query = """
+                INSERT OR REPLACE INTO dynasty_state
+                (dynasty_id, season, "current_date", current_phase, current_week,
+                 last_simulated_game_id, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """
+
+            rows_affected = self._execute_update(
+                query,
+                (self.dynasty_id, season, current_date, current_phase, current_week, last_simulated_game_id)
+            )
+
+            return rows_affected > 0
+
+        except Exception as e:
+            self.logger.error(f"Error updating dynasty state: {e}", exc_info=True)
+            return False
+
+    def dynasty_delete_state(self, season: int) -> int:
+        """
+        Delete dynasty state for specific season.
+
+        Args:
+            season: Season year
+
+        Returns:
+            Number of rows deleted
+        """
+        try:
+            query = "DELETE FROM dynasty_state WHERE dynasty_id = ? AND season = ?"
+            rows_deleted = self._execute_update(query, (self.dynasty_id, season))
+            return rows_deleted
+
+        except Exception as e:
+            self.logger.error(f"Error deleting dynasty state: {e}", exc_info=True)
+            return 0
+
+    def dynasty_get_info(self) -> Optional[Dict[str, Any]]:
+        """
+        Get information about the current dynasty.
+
+        Returns:
+            Dict with dynasty_name, owner_name, team_id, total_seasons, championships_won, etc.
+            or None if dynasty does not exist
+        """
+        query = """
+            SELECT dynasty_id, dynasty_name, owner_name, team_id,
+                   total_seasons, championships_won, super_bowls_won,
+                   conference_championships, division_titles,
+                   total_wins, total_losses, total_ties,
+                   created_at, last_played, is_active
+            FROM dynasties
+            WHERE dynasty_id = ?
+        """
+
+        results = self._execute_query(query, (self.dynasty_id,))
+
+        if results:
+            row = results[0]
+            return {
+                'dynasty_id': row['dynasty_id'],
+                'dynasty_name': row['dynasty_name'],
+                'owner_name': row.get('owner_name'),
+                'team_id': row.get('team_id'),
+                'total_seasons': row.get('total_seasons', 0),
+                'championships_won': row.get('championships_won', 0),
+                'super_bowls_won': row.get('super_bowls_won', 0),
+                'conference_championships': row.get('conference_championships', 0),
+                'division_titles': row.get('division_titles', 0),
+                'total_wins': row.get('total_wins', 0),
+                'total_losses': row.get('total_losses', 0),
+                'total_ties': row.get('total_ties', 0),
+                'created_at': row.get('created_at'),
+                'last_played': row.get('last_played'),
+                'is_active': row.get('is_active', True)
+            }
+
+        return None
+
+    def dynasty_create(
+        self,
+        dynasty_name: str,
+        owner_name: str,
+        team_id: int
+    ) -> str:
+        """
+        Create a new dynasty record.
+
+        Args:
+            dynasty_name: Name of the dynasty
+            owner_name: Name of the owner/player
+            team_id: ID of the team (1-32)
+
+        Returns:
+            The generated dynasty_id (UUID)
+
+        Raises:
+            ValueError: If team_id is not in valid range (1-32)
+        """
+        if not (1 <= team_id <= 32):
+            raise ValueError(f"Invalid team_id: {team_id}. Must be between 1 and 32.")
+
+        try:
+            # Generate UUID for dynasty_id
+            new_dynasty_id = str(uuid.uuid4())
+
+            query = """
+                INSERT INTO dynasties
+                (dynasty_id, dynasty_name, owner_name, team_id, total_seasons,
+                 championships_won, super_bowls_won, conference_championships,
+                 division_titles, total_wins, total_losses, total_ties, is_active)
+                VALUES (?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, TRUE)
+            """
+
+            self._execute_update(query, (new_dynasty_id, dynasty_name, owner_name, team_id))
+
+            self.logger.info(f"Created new dynasty: {dynasty_name} (ID: {new_dynasty_id})")
+            return new_dynasty_id
+
+        except Exception as e:
+            self.logger.error(f"Error creating dynasty: {e}", exc_info=True)
+            raise
+
+    def dynasty_ensure_exists(
+        self,
+        dynasty_name: Optional[str] = None,
+        owner_name: Optional[str] = None,
+        team_id: Optional[int] = None
+    ) -> bool:
+        """
+        Ensure current dynasty record exists, creating it if necessary.
+
+        Args:
+            dynasty_name: Name of dynasty (defaults to dynasty_id)
+            owner_name: Optional owner name
+            team_id: Optional team ID
+
+        Returns:
+            True if dynasty exists or was created, False on error
+        """
+        try:
+            # Check if dynasty already exists
+            info = self.dynasty_get_info()
+            if info:
+                return True
+
+            # Dynasty doesn't exist - create it
+            dynasty_name = dynasty_name or self.dynasty_id
+            owner_name = owner_name or "Owner"
+            team_id = team_id or 1  # Default to first team
+
+            query = """
+                INSERT OR IGNORE INTO dynasties
+                (dynasty_id, dynasty_name, owner_name, team_id, total_seasons,
+                 championships_won, super_bowls_won, conference_championships,
+                 division_titles, total_wins, total_losses, total_ties, is_active)
+                VALUES (?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, TRUE)
+            """
+
+            rows_affected = self._execute_update(
+                query,
+                (self.dynasty_id, dynasty_name, owner_name, team_id)
+            )
+
+            if rows_affected > 0:
+                self.logger.info(f"Created dynasty record: {dynasty_name} (ID: {self.dynasty_id})")
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error ensuring dynasty exists: {e}", exc_info=True)
+            return False
+
+    # ========================================================================
+    # EVENTS OPERATIONS (15 methods)
+    # ========================================================================
+
+    def events_insert(
+        self,
+        event_id: str,
+        event_type: str,
+        timestamp: int,
+        game_id: str,
+        data: str
+    ) -> bool:
+        """
+        Insert a new event into the database.
+
+        Args:
+            event_id: Unique event identifier
+            event_type: Event type ('GAME', 'DEADLINE', 'UFA_SIGNING', etc.)
+            timestamp: Unix timestamp in milliseconds
+            game_id: Game/context identifier for grouping
+            data: JSON event data
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            query = """
+                INSERT INTO events (event_id, event_type, timestamp, game_id, dynasty_id, data)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """
+
+            self._execute_update(
+                query,
+                (event_id, event_type, timestamp, game_id, self.dynasty_id, data)
+            )
+
+            self.logger.debug(f"Inserted event: {event_id} ({event_type})")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Error inserting event {event_id}: {e}", exc_info=True)
+            return False
+
+    def events_get_by_game_id(self, game_id: str) -> List[Dict[str, Any]]:
+        """
+        Get all events for a specific game/context.
+
+        Args:
+            game_id: Game/context identifier
+
+        Returns:
+            List of event dictionaries
+        """
+        query = """
+            SELECT * FROM events
+            WHERE game_id = ? AND dynasty_id = ?
+            ORDER BY timestamp ASC
+        """
+
+        results = self._execute_query(query, (game_id, self.dynasty_id))
+
+        # Convert timestamp from milliseconds to datetime
+        for result in results:
+            if 'timestamp' in result and result['timestamp']:
+                result['timestamp'] = datetime.fromtimestamp(result['timestamp'] / 1000)
+            if 'data' in result and isinstance(result['data'], str):
+                result['data'] = json.loads(result['data'])
+
+        self.logger.debug(f"Retrieved {len(results)} events for game_id: {game_id}")
+        return results
+
+    def events_get_by_type(
+        self,
+        event_type: str,
+        start_timestamp: Optional[int] = None,
+        end_timestamp: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all events of a specific type within optional time range.
+
+        Args:
+            event_type: Event type to filter by
+            start_timestamp: Optional start time (milliseconds since epoch)
+            end_timestamp: Optional end time (milliseconds since epoch)
+
+        Returns:
+            List of event dictionaries
+        """
+        if start_timestamp is not None and end_timestamp is not None:
+            query = """
+                SELECT * FROM events
+                WHERE dynasty_id = ? AND event_type = ? AND timestamp BETWEEN ? AND ?
+                ORDER BY timestamp DESC
+            """
+            params = (self.dynasty_id, event_type, start_timestamp, end_timestamp)
+        else:
+            query = """
+                SELECT * FROM events
+                WHERE dynasty_id = ? AND event_type = ?
+                ORDER BY timestamp DESC
+            """
+            params = (self.dynasty_id, event_type)
+
+        results = self._execute_query(query, params)
+
+        # Convert timestamp and data
+        for result in results:
+            if 'timestamp' in result and result['timestamp']:
+                result['timestamp'] = datetime.fromtimestamp(result['timestamp'] / 1000)
+            if 'data' in result and isinstance(result['data'], str):
+                result['data'] = json.loads(result['data'])
+
+        return results
+
+    def events_get_by_date_range(
+        self,
+        start_timestamp: int,
+        end_timestamp: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all events within a date range.
+
+        Args:
+            start_timestamp: Start time (milliseconds since epoch)
+            end_timestamp: End time (milliseconds since epoch)
+
+        Returns:
+            List of event dictionaries sorted by timestamp
+        """
+        query = """
+            SELECT * FROM events
+            WHERE dynasty_id = ? AND timestamp BETWEEN ? AND ?
+            ORDER BY timestamp ASC
+        """
+
+        results = self._execute_query(query, (self.dynasty_id, start_timestamp, end_timestamp))
+
+        # Convert timestamp and data
+        for result in results:
+            if 'timestamp' in result and result['timestamp']:
+                result['timestamp'] = datetime.fromtimestamp(result['timestamp'] / 1000)
+            if 'data' in result and isinstance(result['data'], str):
+                result['data'] = json.loads(result['data'])
+
+        return results
+
+    def events_delete_by_game_id(self, game_id: str) -> int:
+        """
+        Delete all events for a specific game/context.
+
+        Args:
+            game_id: Game/context identifier
+
+        Returns:
+            Number of events deleted
+        """
+        try:
+            query = "DELETE FROM events WHERE game_id = ? AND dynasty_id = ?"
+            deleted_count = self._execute_update(query, (game_id, self.dynasty_id))
+
+            self.logger.info(f"Deleted {deleted_count} events for game_id: {game_id}")
+            return deleted_count
+
+        except Exception as e:
+            self.logger.error(f"Error deleting events: {e}", exc_info=True)
+            raise
+
+    def events_count_by_type(self, event_type: str) -> int:
+        """
+        Count events of a specific type.
+
+        Args:
+            event_type: Event type to count
+
+        Returns:
+            Number of events
+        """
+        conn = self._get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                'SELECT COUNT(*) FROM events WHERE dynasty_id = ? AND event_type = ?',
+                (self.dynasty_id, event_type)
+            )
+            count = cursor.fetchone()[0]
+            return count
+
+        finally:
+            self._return_connection(conn)
+
+    def events_insert_batch(self, events: List[Any]) -> List[Any]:
+        """
+        Insert multiple events in a single transaction.
+
+        All inserts succeed or all fail (atomic operation).
+        Significantly faster than multiple events_insert() calls.
+
+        Args:
+            events: List of event objects implementing BaseEvent interface
+                   (or list of dicts with event_id, event_type, timestamp, game_id, data)
+
+        Returns:
+            List of inserted events
+
+        Raises:
+            Exception: If database operation fails (rolls back transaction)
+        """
+        if not events:
+            self.logger.debug("No events to insert")
+            return []
+
+        conn = self._get_connection()
+        manually_managed = (self._active_transaction is None)
+
+        try:
+            # Start transaction if not already in one
+            if manually_managed:
+                conn.execute('BEGIN TRANSACTION')
+
+            # Insert all events
+            for event in events:
+                # Support both BaseEvent objects and dict format
+                if hasattr(event, 'to_database_format'):
+                    event_data = event.to_database_format()
+                    conn.execute('''
+                        INSERT INTO events (event_id, event_type, timestamp, game_id, dynasty_id, data)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (
+                        event_data['event_id'],
+                        event_data['event_type'],
+                        int(event_data['timestamp'].timestamp() * 1000),
+                        event_data['game_id'],
+                        event_data['dynasty_id'],
+                        json.dumps(event_data['data'])
+                    ))
+                else:
+                    # Assume dict format
+                    conn.execute('''
+                        INSERT INTO events (event_id, event_type, timestamp, game_id, dynasty_id, data)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ''', (
+                        event['event_id'],
+                        event['event_type'],
+                        event['timestamp'],
+                        event['game_id'],
+                        self.dynasty_id,
+                        event['data'] if isinstance(event['data'], str) else json.dumps(event['data'])
+                    ))
+
+            # Commit transaction if we started it
+            if manually_managed:
+                conn.execute('COMMIT')
+
+            self.logger.info(f"Batch inserted {len(events)} events")
+            return events
+
+        except Exception as e:
+            # Rollback on error if we started the transaction
+            if manually_managed:
+                conn.execute('ROLLBACK')
+            self.logger.error(f"Error in batch insert: {e}", exc_info=True)
+            raise
+
+        finally:
+            if manually_managed:
+                self._return_connection(conn)
+
+    def events_get_by_id(self, event_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve a specific event by its ID.
+
+        Args:
+            event_id: Unique identifier of the event
+
+        Returns:
+            Event dictionary if found, None if not found
+        """
+        query = "SELECT * FROM events WHERE event_id = ?"
+        results = self._execute_query(query, (event_id,))
+
+        if results:
+            result = results[0]
+            # Convert timestamp and data
+            if 'timestamp' in result and result['timestamp']:
+                result['timestamp'] = datetime.fromtimestamp(result['timestamp'] / 1000)
+            if 'data' in result and isinstance(result['data'], str):
+                result['data'] = json.loads(result['data'])
+            return result
+
+        return None
+
+    def events_delete_playoff_by_dynasty(self, season: int) -> int:
+        """
+        Delete all playoff events for the current dynasty and season.
+
+        Useful for cleanup before rescheduling playoffs or resetting dynasty state.
+
+        Args:
+            season: Season year
+
+        Returns:
+            Number of events deleted
+        """
+        try:
+            # Delete all playoff games for this dynasty/season
+            query = """
+                DELETE FROM events
+                WHERE dynasty_id = ?
+                AND game_id LIKE ?
+            """
+
+            deleted_count = self._execute_update(query, (self.dynasty_id, f'playoff_{season}_%'))
+
+            self.logger.info(
+                f"Deleted {deleted_count} playoff events for dynasty: {self.dynasty_id}, season: {season}"
+            )
+
+            return deleted_count
+
+        except Exception as e:
+            self.logger.error(f"Error deleting playoff events: {e}", exc_info=True)
+            raise
+
+    def events_update(self, event: Any) -> bool:
+        """
+        Update an existing event in the database.
+
+        Typically used to add results after simulation.
+
+        Args:
+            event: Event object (BaseEvent) or dict with updated data
+
+        Returns:
+            True if update successful, False otherwise
+        """
+        try:
+            # Support both BaseEvent objects and dict format
+            if hasattr(event, 'to_database_format'):
+                event_data = event.to_database_format()
+                query = """
+                    UPDATE events
+                    SET event_type = ?,
+                        timestamp = ?,
+                        game_id = ?,
+                        dynasty_id = ?,
+                        data = ?
+                    WHERE event_id = ?
+                """
+                params = (
+                    event_data['event_type'],
+                    int(event_data['timestamp'].timestamp() * 1000),
+                    event_data['game_id'],
+                    event_data['dynasty_id'],
+                    json.dumps(event_data['data']),
+                    event_data['event_id']
+                )
+            else:
+                # Assume dict format
+                query = """
+                    UPDATE events
+                    SET event_type = ?,
+                        timestamp = ?,
+                        game_id = ?,
+                        dynasty_id = ?,
+                        data = ?
+                    WHERE event_id = ?
+                """
+                params = (
+                    event['event_type'],
+                    event['timestamp'],
+                    event['game_id'],
+                    self.dynasty_id,
+                    event['data'] if isinstance(event['data'], str) else json.dumps(event['data']),
+                    event['event_id']
+                )
+
+            affected_rows = self._execute_update(query, params)
+
+            if affected_rows > 0:
+                self.logger.debug(f"Updated event: {event['event_id'] if isinstance(event, dict) else event.event_id}")
+                return True
+            else:
+                self.logger.warning(f"No event found with ID: {event['event_id'] if isinstance(event, dict) else event.event_id}")
+                return False
+
+        except Exception as e:
+            self.logger.error(f"Error updating event: {e}", exc_info=True)
+            return False
+
+    def events_get_next_offseason_milestone(
+        self,
+        current_date: str,
+        season_year: int
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get next offseason milestone event after current date.
+
+        Queries all three offseason event types (DEADLINE, WINDOW, MILESTONE)
+        and returns the chronologically next event.
+
+        Args:
+            current_date: Current date (YYYY-MM-DD format)
+            season_year: Season year for filtering
+
+        Returns:
+            Dict with milestone info or None if no more milestones
+        """
+        try:
+            # Convert current_date to timestamp
+            year, month, day = map(int, current_date.split('-'))
+            current_datetime = datetime(year, month, day)
+            current_timestamp_ms = int(current_datetime.timestamp() * 1000)
+
+            query = """
+                SELECT * FROM events
+                WHERE dynasty_id = ?
+                  AND timestamp > ?
+                  AND event_type IN ('DEADLINE', 'WINDOW', 'MILESTONE')
+                ORDER BY timestamp ASC
+                LIMIT 1
+            """
+
+            results = self._execute_query(query, (self.dynasty_id, current_timestamp_ms))
+
+            if not results:
+                return None
+
+            result = results[0]
+
+            # Convert timestamp and data
+            if 'timestamp' in result and result['timestamp']:
+                result['timestamp'] = datetime.fromtimestamp(result['timestamp'] / 1000)
+            if 'data' in result and isinstance(result['data'], str):
+                result['data'] = json.loads(result['data'])
+
+            return result
+
+        except Exception as e:
+            self.logger.error(f"Error getting next offseason milestone: {e}", exc_info=True)
+            return None
+
+    def events_get_first_game_date(
+        self,
+        phase: str,
+        season_year: int,
+        current_date: str
+    ) -> Optional[str]:
+        """
+        Get the date of the first upcoming game in specified phase.
+
+        Args:
+            phase: Phase to search for ("preseason", "regular_season", "playoffs")
+            season_year: Season year
+            current_date: Current simulation date (YYYY-MM-DD format)
+
+        Returns:
+            Date string (YYYY-MM-DD) of first upcoming game in that phase,
+            or None if no games found
+        """
+        try:
+            # Convert current_date to timestamp
+            year, month, day = map(int, current_date.split('-'))
+            current_datetime = datetime(year, month, day)
+            current_timestamp_ms = int(current_datetime.timestamp() * 1000)
+
+            # Query for first GAME event in the phase on or after current date
+            query = """
+                SELECT timestamp FROM events
+                WHERE dynasty_id = ?
+                  AND event_type = 'GAME'
+                  AND (
+                      json_extract(data, '$.parameters.season_type') = ?
+                      OR json_extract(data, '$.parameters.game_type') = ?
+                  )
+                  AND timestamp >= ?
+                  AND json_extract(data, '$.results') IS NULL
+                ORDER BY timestamp ASC
+                LIMIT 1
+            """
+
+            results = self._execute_query(query, (self.dynasty_id, phase, phase, current_timestamp_ms))
+
+            if results and results[0]['timestamp']:
+                # Convert timestamp back to date string (YYYY-MM-DD)
+                game_datetime = datetime.fromtimestamp(results[0]['timestamp'] / 1000)
+                date_str = game_datetime.strftime('%Y-%m-%d')
+
+                self.logger.debug(
+                    f"First {phase} game for dynasty '{self.dynasty_id}' on or after "
+                    f"{current_date}: {date_str}"
+                )
+
+                return date_str
+
+            self.logger.debug(
+                f"No upcoming {phase} games found for dynasty '{self.dynasty_id}' "
+                f"on or after {current_date}"
+            )
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Error querying first game date for phase {phase}: {e}", exc_info=True)
+            return None
+
+    def events_get_upcoming(
+        self,
+        from_date: str,
+        limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Get upcoming events starting from a specific date.
+
+        Args:
+            from_date: Start date (YYYY-MM-DD format)
+            limit: Maximum number of events to return
+
+        Returns:
+            List of event dictionaries, ordered by timestamp ascending
+        """
+        try:
+            # Convert from_date to timestamp
+            year, month, day = map(int, from_date.split('-'))
+            from_datetime = datetime(year, month, day)
+            from_timestamp_ms = int(from_datetime.timestamp() * 1000)
+
+            query = """
+                SELECT * FROM events
+                WHERE dynasty_id = ? AND timestamp >= ?
+                ORDER BY timestamp ASC
+                LIMIT ?
+            """
+
+            results = self._execute_query(query, (self.dynasty_id, from_timestamp_ms, limit))
+
+            # Convert timestamp and data
+            for result in results:
+                if 'timestamp' in result and result['timestamp']:
+                    result['timestamp'] = datetime.fromtimestamp(result['timestamp'] / 1000)
+                if 'data' in result and isinstance(result['data'], str):
+                    result['data'] = json.loads(result['data'])
+
+            return results
+
+        except Exception as e:
+            self.logger.error(f"Error getting upcoming events: {e}", exc_info=True)
+            return []
+
+    def _initialize_events_schema(self) -> None:
+        """
+        Create events table and indexes if they don't exist.
+
+        This is a private helper method called during schema initialization.
+        """
+        conn = self._get_connection()
+        try:
+            # Create events table
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS events (
+                    event_id TEXT PRIMARY KEY,
+                    event_type TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    game_id TEXT NOT NULL,
+                    dynasty_id TEXT NOT NULL,
+                    data TEXT NOT NULL,
+                    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE
+                )
+            ''')
+
+            # Create indexes for performance
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_game_id ON events(game_id)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON events(timestamp)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_event_type ON events(event_type)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_events_dynasty_timestamp ON events(dynasty_id, timestamp)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_events_dynasty_type ON events(dynasty_id, event_type)')
+
+            # Only commit if not in active transaction
+            if self._active_transaction is None:
+                conn.commit()
+
+            self.logger.debug("Events table and indexes initialized successfully")
+
+        except Exception as e:
+            if self._active_transaction is None:
+                conn.rollback()
+            self.logger.error(f"Error initializing events schema: {e}", exc_info=True)
+            raise
+
+        finally:
+            self._return_connection(conn)
+
+    # ========================================================================
+    # SALARY CAP OPERATIONS (40 methods)
+    # ========================================================================
+
+    def cap_get_team_summary(self, team_id: int, season: int) -> Optional[Dict[str, Any]]:
+        """
+        Get salary cap summary for a team in a specific season.
+
+        Args:
+            team_id: Team identifier (1-32)
+            season: Season year
+
+        Returns:
+            Dict with total_cap, cap_space, active_contracts, top_51_cap, etc.
+            or None if no data exists
+
+        TODO: Implement
+        """
+        pass  # TODO: Implement
+
+    def contracts_insert(
+        self,
+        player_id: int,
+        team_id: int,
+        start_year: int,
+        end_year: int,
+        contract_years: int,
+        contract_type: str,
+        total_value: int,
+        signing_bonus: int = 0,
+        guaranteed_at_signing: int = 0,
+        **kwargs
+    ) -> int:
+        """
+        Insert a new player contract.
+
+        Args:
+            player_id: Player ID
+            team_id: Team ID (1-32)
+            start_year: Contract start year
+            end_year: Contract end year
+            contract_years: Number of years
+            contract_type: Contract type ('ROOKIE', 'VETERAN', 'FRANCHISE_TAG', etc.)
+            total_value: Total contract value
+            signing_bonus: Signing bonus amount
+            guaranteed_at_signing: Guaranteed money at signing
+            **kwargs: Additional contract parameters
+
+        Returns:
+            Generated contract_id
+
+        TODO: Implement
+        """
+        pass  # TODO: Implement
+
+    def contracts_get_active(
+        self,
+        team_id: Optional[int] = None,
+        player_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all active contracts, optionally filtered by team or player.
+
+        Args:
+            team_id: Optional team filter (1-32)
+            player_id: Optional player filter
+
+        Returns:
+            List of active contract dictionaries
+
+        TODO: Implement
+        """
+        pass  # TODO: Implement
+
+    def contracts_get_expiring(
+        self,
+        season: int,
+        team_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get contracts expiring at end of specified season.
+
+        Args:
+            season: Season year
+            team_id: Optional team filter (1-32)
+
+        Returns:
+            List of expiring contract dictionaries
+
+        TODO: Implement
+        """
+        pass  # TODO: Implement
+
+    # Additional cap methods (36 more) - stubs for brevity
+    # TODO: Add remaining 36 salary cap operation methods
+    # Examples: contracts_void, contracts_update, cap_calculate_team,
+    #           franchise_tag_calculate, dead_money_calculate, etc.
+
+    # ========================================================================
+    # DRAFT OPERATIONS (15 methods)
+    # ========================================================================
+
+    def draft_generate_class(
+        self,
+        season: int,
+        class_size: int = 250,
+        quality_distribution: str = 'normal'
+    ) -> int:
+        """
+        Generate a new draft class with procedurally generated players.
+
+        Args:
+            season: Draft year
+            class_size: Number of prospects to generate
+            quality_distribution: Distribution type ('normal', 'top_heavy', 'balanced')
+
+        Returns:
+            Number of prospects generated
+
+        TODO: Implement
+        """
+        pass  # TODO: Implement
+
+    def draft_get_prospects(
+        self,
+        season: int,
+        position: Optional[str] = None,
+        min_grade: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get draft prospects for a specific year.
+
+        Args:
+            season: Draft year
+            position: Optional position filter
+            min_grade: Optional minimum draft grade filter
+
+        Returns:
+            List of prospect dictionaries
+
+        TODO: Implement
+        """
+        pass  # TODO: Implement
+
+    def draft_execute_pick(
+        self,
+        season: int,
+        round_num: int,
+        pick_num: int,
+        team_id: int,
+        player_id: int
+    ) -> bool:
+        """
+        Execute a draft pick selection.
+
+        Args:
+            season: Draft year
+            round_num: Round number
+            pick_num: Overall pick number
+            team_id: Selecting team ID
+            player_id: Selected player ID
+
+        Returns:
+            True if successful, False otherwise
+
+        TODO: Implement
+        """
+        pass  # TODO: Implement
+
+    # Additional draft methods (12 more) - stubs for brevity
+    # TODO: Add remaining 12 draft operation methods
+    # Examples: draft_get_order, draft_trade_pick, draft_get_team_picks, etc.
+
+    # ========================================================================
+    # ROSTER OPERATIONS (12 methods)
+    # ========================================================================
+
+    def roster_get_team(
+        self,
+        team_id: int,
+        roster_status: str = 'active'
+    ) -> List[Dict[str, Any]]:
+        """
+        Get team roster with optional status filter.
+
+        Args:
+            team_id: Team ID (1-32)
+            roster_status: Status filter ('active', 'injured_reserve', 'practice_squad', 'all')
+
+        Returns:
+            List of player dictionaries with roster info
+
+        TODO: Implement
+        """
+        pass  # TODO: Implement
+
+    def players_get_free_agents(
+        self,
+        position: Optional[str] = None,
+        min_overall: Optional[int] = None,
+        max_age: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get available free agents with optional filters.
+
+        Args:
+            position: Optional position filter
+            min_overall: Optional minimum overall rating filter
+            max_age: Optional maximum age filter
+
+        Returns:
+            List of free agent player dictionaries
+
+        TODO: Implement
+        """
+        pass  # TODO: Implement
+
+    def roster_update_depth(
+        self,
+        team_id: int,
+        player_id: int,
+        depth_chart_order: int
+    ) -> bool:
+        """
+        Update player's depth chart position.
+
+        Args:
+            team_id: Team ID (1-32)
+            player_id: Player ID
+            depth_chart_order: New depth chart position (lower = higher on chart)
+
+        Returns:
+            True if successful, False otherwise
+
+        TODO: Implement
+        """
+        pass  # TODO: Implement
+
+    # Additional roster methods (9 more) - stubs for brevity
+    # TODO: Add remaining 9 roster operation methods
+    # Examples: roster_add_player, roster_release_player, roster_move_to_ir, etc.
+    # ========================================================================
+    

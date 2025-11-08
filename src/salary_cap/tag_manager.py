@@ -16,7 +16,7 @@ import logging
 
 from .cap_database_api import CapDatabaseAPI
 from .contract_manager import ContractManager
-from persistence.transaction_logger import TransactionLogger
+from src.persistence.transaction_logger import TransactionLogger
 
 
 class TagManager:

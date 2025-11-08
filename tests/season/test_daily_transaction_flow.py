@@ -19,8 +19,8 @@ from pathlib import Path
 src_path = str(Path(__file__).parent.parent.parent / "src")
 sys.path.insert(0, src_path)
 
-from season.season_cycle_controller import SeasonCycleController
-from calendar.date_models import Date
+from src.season.season_cycle_controller import SeasonCycleController
+from src.calendar.date_models import Date
 
 
 # ============================================================================

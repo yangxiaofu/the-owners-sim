@@ -17,7 +17,7 @@ except ModuleNotFoundError:
     from src.calendar.date_models import Date
 
 from salary_cap import EventCapBridge, TradeEventHandler
-from persistence.transaction_logger import TransactionLogger
+from src.persistence.transaction_logger import TransactionLogger
 from database.player_roster_api import PlayerRosterAPI
 from team_management.teams.team_loader import get_team_by_id
 

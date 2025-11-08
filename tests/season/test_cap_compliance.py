@@ -19,8 +19,8 @@ from pathlib import Path
 src_path = str(Path(__file__).parent.parent.parent / "src")
 sys.path.insert(0, src_path)
 
-from season.season_cycle_controller import SeasonCycleController
-from salary_cap import CapCalculator, CapDatabaseAPI
+from src.season.season_cycle_controller import SeasonCycleController
+from src.salary_cap import CapCalculator, CapDatabaseAPI
 
 
 # ============================================================================

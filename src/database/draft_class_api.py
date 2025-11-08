@@ -25,7 +25,7 @@ from pathlib import Path
 import logging
 
 
-class DraftClassAPI:
+class DraftClassAPI_IMPL:
     """
     Database API for draft class system.
 
@@ -686,3 +686,8 @@ class DraftClassAPI:
         self.logger.info(
             f"Deleted draft class {draft_class_id} and all associated prospects"
         )
+
+
+
+# Alias for backward compatibility
+DraftClassAPI = DraftClassAPI_IMPL

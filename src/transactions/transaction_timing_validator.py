@@ -20,6 +20,7 @@ from enum import Enum
 from datetime import date
 from typing import Tuple
 from calendar.season_phase_tracker import SeasonPhase
+from transactions.transaction_constants import NFLCalendarDates, TransactionProbability
 
 
 class TransactionType(Enum):
@@ -50,27 +51,28 @@ class TransactionTimingValidator:
     """
 
     # NFL Trade Deadline: Week 9 Tuesday (early November)
-    TRADE_DEADLINE_WEEK = 9
-    TRADE_DEADLINE_MONTH = 11
-    TRADE_DEADLINE_DAY = 5  # Typically Nov 5, 4 PM ET
+    # Using constants from transaction_constants.py
+    TRADE_DEADLINE_WEEK = TransactionProbability.TRADE_DEADLINE_WEEK
+    TRADE_DEADLINE_MONTH = NFLCalendarDates.TRADE_DEADLINE_MONTH
+    TRADE_DEADLINE_DAY = NFLCalendarDates.TRADE_DEADLINE_DAY
 
     # Franchise Tag Window
-    FRANCHISE_TAG_START_MONTH = 2
-    FRANCHISE_TAG_START_DAY = 18  # Feb 18
-    FRANCHISE_TAG_END_MONTH = 3
-    FRANCHISE_TAG_END_DAY = 4  # Mar 4 (4 PM ET)
+    FRANCHISE_TAG_START_MONTH = NFLCalendarDates.FRANCHISE_TAG_START_MONTH
+    FRANCHISE_TAG_START_DAY = NFLCalendarDates.FRANCHISE_TAG_START_DAY
+    FRANCHISE_TAG_END_MONTH = NFLCalendarDates.FRANCHISE_TAG_END_MONTH
+    FRANCHISE_TAG_END_DAY = NFLCalendarDates.FRANCHISE_TAG_END_DAY
 
     # Free Agency Start (New League Year)
-    FREE_AGENCY_START_MONTH = 3
-    FREE_AGENCY_START_DAY = 12  # Mar 12 (4 PM ET)
+    FREE_AGENCY_START_MONTH = NFLCalendarDates.FREE_AGENCY_START_MONTH
+    FREE_AGENCY_START_DAY = NFLCalendarDates.FREE_AGENCY_START_DAY
 
     # RFA Offer Sheet Deadline
-    RFA_DEADLINE_MONTH = 4
-    RFA_DEADLINE_DAY = 18  # Apr 18
+    RFA_DEADLINE_MONTH = NFLCalendarDates.RFA_DEADLINE_MONTH
+    RFA_DEADLINE_DAY = NFLCalendarDates.RFA_DEADLINE_DAY
 
     # Roster Cut Deadline
-    ROSTER_CUT_DEADLINE_MONTH = 8
-    ROSTER_CUT_DEADLINE_DAY = 27  # Aug 27 (4 PM ET)
+    ROSTER_CUT_DEADLINE_MONTH = NFLCalendarDates.ROSTER_CUT_DEADLINE_MONTH
+    ROSTER_CUT_DEADLINE_DAY = NFLCalendarDates.ROSTER_CUT_DEADLINE_DAY
 
     def __init__(self, season_year: int):
         """

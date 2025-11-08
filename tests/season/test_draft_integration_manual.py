@@ -14,9 +14,9 @@ import os
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
-from season.season_cycle_controller import SeasonCycleController
-from database.draft_class_api import DraftClassAPI
-from calendar.season_phase_tracker import SeasonPhase
+from src.season.season_cycle_controller import SeasonCycleController
+from src.database.draft_class_api import DraftClassAPI
+from src.calendar.season_phase_tracker import SeasonPhase
 
 
 def test_draft_class_generated_at_season_start():

@@ -37,7 +37,6 @@ from transactions.models import (
 def neutral_gm():
     """Neutral GM archetype (all traits at 0.5)"""
     return GMArchetype(
-        description="Neutral GM archetype",
         name="Neutral GM",
         description="Balanced approach to all decisions",
         risk_tolerance=0.5,
@@ -179,7 +178,6 @@ def create_simple_proposal(team1_id, team1_assets, team1_total_value,
 def create_neutral_gm():
     """Helper to create neutral GM for non-fixture tests"""
     return GMArchetype(
-        description="Neutral GM archetype",
         name="Neutral GM",
         description="Balanced approach",
         risk_tolerance=0.5,
@@ -858,7 +856,6 @@ class TestPersonalityIntegration:
         """Draft-focused GM prioritizes draft picks in counters"""
         # Create GM with high draft_pick_value
         draft_focused_gm = GMArchetype(
-            description="Draft Focused GM archetype",
             name="Draft Focused GM",
             description="Values draft picks highly",
             risk_tolerance=0.5,
@@ -913,7 +910,6 @@ class TestPersonalityIntegration:
     ):
         """Star-chasing GM prefers elite players in counters"""
         star_chasing_gm = GMArchetype(
-            description="Star Chasing GM archetype",
             name="Star Chasing GM",
             description="Pursues elite talent",
             risk_tolerance=0.7,
@@ -971,7 +967,6 @@ class TestPersonalityIntegration:
     ):
         """Win-now GM filters out young players when acquiring"""
         win_now_gm = GMArchetype(
-            description="Win Now GM archetype",
             name="Win Now GM",
             description="Championship urgency",
             risk_tolerance=0.6,
@@ -1025,7 +1020,6 @@ class TestPersonalityIntegration:
     ):
         """Cap-conscious GM filters out expensive contracts"""
         cap_conscious_gm = GMArchetype(
-            description="Cap Conscious GM archetype",
             name="Cap Conscious GM",
             description="Strict cap discipline",
             risk_tolerance=0.4,
@@ -1079,7 +1073,6 @@ class TestPersonalityIntegration:
     ):
         """Conservative GM (low risk tolerance) avoids young players"""
         conservative_gm = GMArchetype(
-            description="Conservative GM archetype",
             name="Conservative GM",
             description="Risk-averse approach",
             risk_tolerance=0.2,  # Very low risk tolerance
@@ -1133,7 +1126,6 @@ class TestPersonalityIntegration:
     ):
         """GM prioritizes assets that fill team needs"""
         neutral_gm = GMArchetype(
-            description="Neutral GM archetype",
             name="Neutral GM",
             description="Balanced",
             risk_tolerance=0.5,
@@ -1205,7 +1197,6 @@ class TestPersonalityIntegration:
     ):
         """Veteran-preferring GM prioritizes older players"""
         veteran_preference_gm = GMArchetype(
-            description="Veteran Preference GM archetype",
             name="Veteran Preference GM",
             description="Prefers experienced players",
             risk_tolerance=0.5,
@@ -1266,7 +1257,6 @@ class TestPersonalityIntegration:
     ):
         """Premium position-focused GM prioritizes QB/Edge/OT/CB"""
         premium_focused_gm = GMArchetype(
-            description="Premium Position GM archetype",
             name="Premium Position GM",
             description="Focuses on premium positions",
             risk_tolerance=0.5,

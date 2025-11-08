@@ -16,7 +16,7 @@ import tempfile
 import os
 from pathlib import Path
 from playoff_system.playoff_controller import PlayoffController
-from calendar.date_models import Date
+from src.calendar.date_models import Date
 from database.connection import DatabaseConnection
 
 

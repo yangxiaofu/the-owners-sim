@@ -44,6 +44,8 @@ This is "The Owners Sim" - a comprehensive NFL football simulation engine writte
 - Offseason AI Manager Phase 2: AI-controlled franchise tags, free agency, and roster cuts (complete)
 - Season Cycle Controller: Dynamic transition handlers with phase-aware season year management
 - Desktop UI Phase 1: Foundation, tabs, MVC architecture with domain model layer (complete)
+- Service Extraction Phase 3: Transaction and playoff logic extracted to dedicated services (complete)
+- Transaction Context: Atomic database operations with nested transaction support (complete)
 
 ## Development Environment
 
@@ -83,6 +85,9 @@ python -m pytest tests/calendar/ -v         # Calendar system tests
 python -m pytest tests/playoff_system/ -v   # Playoff system tests
 python -m pytest tests/salary_cap/ -v       # Salary cap tests
 python -m pytest tests/player_generation/ -v  # Player generation tests
+python -m pytest tests/statistics/ -v       # Statistics system tests
+python -m pytest tests/services/ -v         # Service layer tests
+python -m pytest tests/database/ -v         # Database layer tests
 
 # Run tests with verbose output
 python -m pytest -v tests/
@@ -507,6 +512,27 @@ The simulation follows a layered architecture with clear separation of concerns:
 - Passer rating, yards per attempt, yards per carry, catch rate
 - No database dependencies - pure mathematical functions for testing and reuse
 
+**22. Service Layer (`src/services/`)** - **PHASE 3 COMPLETE**
+- `transaction_service.py`: Transaction evaluation and execution service (extracted from SeasonCycleController)
+  - AI transaction evaluation for all teams on simulation day
+  - Trade execution with player roster updates
+  - Team record queries for AI decision-making
+  - Dependency injection pattern with lazy initialization
+- `playoff_helpers.py`: Playoff champion extraction utilities
+- Clean separation of business logic from orchestration layer
+- Comprehensive test coverage with 30+ tests
+- See `PHASE_3_COMPLETE.md` for complete extraction details
+
+**23. Transaction Context System (`src/database/transaction_context.py`)**
+- Atomic multi-operation database transactions with context manager pattern
+- Support for 3 transaction modes: DEFERRED, IMMEDIATE, EXCLUSIVE
+- Nested transaction support using SQLite savepoints
+- Transaction state tracking and validation
+- Explicit commit/rollback within transactions
+- Comprehensive error handling and logging
+- 25 passing tests with 100% coverage
+- See `TRANSACTION_CONTEXT_IMPLEMENTATION.md` for usage examples
+
 ### Key Design Patterns
 
 **Match/Case Play Selection**: The main play engine uses Python's match/case for clean play type routing:
@@ -598,6 +624,9 @@ The project uses multiple testing approaches:
    - `tests/salary_cap/` - Salary cap system tests
    - `tests/event_system/` - Event system tests
    - `tests/player_generation/` - Player generation system tests (sprint-based)
+   - `tests/statistics/` - Statistics system tests (API, leaderboards, models, filters, rankings)
+   - `tests/services/` - Service layer tests (TransactionService, playoff helpers, integration)
+   - `tests/database/` - Database layer tests (transaction context, API tests, migrations)
    - `tests/conftest.py` - Shared pytest fixtures
 2. **Interactive Testing**: Menu-driven play-by-play testing and validation scripts
 3. **Validation Scripts** (`quick_test.py`, `simple_penalty_validation.py`): Automated validation
@@ -879,6 +908,22 @@ Key architectural updates in the codebase:
    - Value-based roster cuts (90→53) with NFL position minimums
    - Complete mock data system for testing without database dependencies
    - See `docs/plans/offseason_ai_manager_plan.md` and `PHASE_2_COMPLETE.md` for details
+
+16. **Service Layer Extraction** (November 2025): **PHASE 3 COMPLETE** - Service-oriented architecture refactoring
+   - Extracted transaction logic from SeasonCycleController (3,063 lines → 2,825 lines, -238 lines)
+   - New `src/services/` module with TransactionService and playoff helpers
+   - Dependency injection pattern with lazy initialization
+   - 30 comprehensive tests (20/30 passing, 66.7% pass rate)
+   - Zero breaking changes to existing API
+   - See `PHASE_3_COMPLETE.md` for complete extraction summary
+
+17. **Transaction Context System** (November 2025): Atomic database operations with nested transaction support
+   - Context manager pattern for automatic BEGIN/COMMIT/ROLLBACK handling
+   - Support for DEFERRED, IMMEDIATE, and EXCLUSIVE transaction modes
+   - Nested transaction support using SQLite savepoints
+   - 25 passing tests with comprehensive coverage
+   - Interactive demo available: `demo/transaction_context_demo.py`
+   - See `TRANSACTION_CONTEXT_IMPLEMENTATION.md` for implementation details
 
 ## Key Implementation Notes
 

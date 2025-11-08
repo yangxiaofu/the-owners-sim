@@ -75,7 +75,8 @@ class SimulationExecutor:
         dynasty_id: str = "default",
         enable_persistence: bool = True,
         season_year: Optional[int] = None,
-        phase_state: Optional['PhaseState'] = None
+        phase_state: Optional['PhaseState'] = None,
+        verbose_logging: bool = False
     ):
         """
         Initialize simulation executor.
@@ -88,12 +89,14 @@ class SimulationExecutor:
             enable_persistence: Whether to persist game results to database
             season_year: Season year for filtering dynasty-specific events (extracted from calendar if None)
             phase_state: Optional shared PhaseState object for phase reporting (uses calendar if None)
+            verbose_logging: Enable diagnostic logging output (default: False)
         """
         self.calendar = calendar
         self.event_db = event_db
         self.enable_persistence = enable_persistence
         self.dynasty_id = dynasty_id
         self.phase_state = phase_state  # NEW: Store for phase reporting
+        self.verbose_logging = verbose_logging  # Enable diagnostic output
 
         # Extract season year from calendar if not provided
         if season_year is None:
@@ -459,8 +462,21 @@ class SimulationExecutor:
         # During OFFSEASON, preseason games are for NEXT season (season_year + 1)
         # During PRESEASON/regular season, games are for current season
         phase_info = self.calendar.get_phase_info()
-        current_phase = phase_info.get("current_phase", "")
-        preseason_season = self.season_year + 1 if current_phase == "offseason" else self.season_year
+        current_phase = phase_info.get("current_phase", "").lower()
+
+        # FIX: Use season_year from calendar's phase_info instead of cached self.season_year
+        # This ensures we always use the latest season_year, even after phase transitions
+        current_season_year = phase_info.get("season_year", self.season_year)
+        preseason_season = current_season_year + 1 if current_phase == "offseason" else current_season_year
+
+        # DIAGNOSTIC LOGGING
+        if self.verbose_logging:
+            print(f"\n[DIAGNOSTIC] _get_events_for_date() called for {target_date}")
+            print(f"  phase_info keys: {list(phase_info.keys())}")
+            print(f"  phase_info.get('season_year'): {phase_info.get('season_year')}")
+            print(f"  self.season_year (cached): {self.season_year}")
+            print(f"  current_season_year (computed): {current_season_year}")
+            print(f"  current_phase: '{current_phase}'")
 
         preseason_events = [
             e for e in all_preseason_events
@@ -471,17 +487,38 @@ class SimulationExecutor:
         # Get regular season game events for this specific dynasty
         # During OFFSEASON, regular season games are for NEXT year (e.g., game_2026*)
         # During regular season, games are for current year (e.g., game_2025*)
-        regular_season_year = self.season_year + 1 if current_phase == "offseason" else self.season_year
+        regular_season_year = current_season_year + 1 if current_phase == "offseason" else current_season_year
         year_prefix = f"game_{regular_season_year}"
 
-        all_game_events = self.event_db.get_events_by_type("GAME")
+        # DIAGNOSTIC LOGGING
+        if self.verbose_logging:
+            print(f"  regular_season_year: {regular_season_year}")
+            print(f"  year_prefix: '{year_prefix}'")
+
+        # Use dynasty-filtered query for better performance
+        all_game_events = self.event_db.get_events_by_dynasty(
+            dynasty_id=self.dynasty_id,
+            event_type="GAME"
+        )
         regular_season_events = [
             e for e in all_game_events
             if not e.get('game_id', '').startswith('playoff_')
             and not e.get('game_id', '').startswith('preseason_')
             and e.get('game_id', '').startswith(year_prefix)
-            and e.get('dynasty_id') == self.dynasty_id
         ]
+
+        # DIAGNOSTIC LOGGING
+        if self.verbose_logging:
+            print(f"  Total GAME events from DB: {len(all_game_events)}")
+            print(f"  After filtering by prefix '{year_prefix}': {len([e for e in all_game_events if e.get('game_id', '').startswith(year_prefix)])}")
+            print(f"  After all filters (regular_season_events): {len(regular_season_events)}")
+            if len(all_game_events) > 0 and len(regular_season_events) == 0:
+                sample_ids = [e.get('game_id', '')[:25] for e in all_game_events[:5]]
+                print(f"  ❌ WARNING: 0 games found! Sample game_ids from DB: {sample_ids}")
+            elif len(regular_season_events) > 0:
+                sample_ids = [e.get('game_id', '')[:25] for e in regular_season_events[:3]]
+                print(f"  ✅ Found games: {sample_ids}")
+
         all_events_for_dynasty.extend(regular_season_events)
 
         # Get cap-related events (franchise tags, releases, restructures, signings)
@@ -567,6 +604,13 @@ class SimulationExecutor:
 
         if duplicates_removed > 0:
             print(f"⚠️  Removed {duplicates_removed} duplicate event(s) for {target_date}")
+
+        # DIAGNOSTIC LOGGING
+        if self.verbose_logging:
+            print(f"  → Returning {len(deduplicated_events)} events for {target_date}")
+            if len(deduplicated_events) > 0:
+                event_types = [e.get('event_type', 'UNKNOWN') for e in deduplicated_events]
+                print(f"     Event types: {event_types}")
 
         return deduplicated_events
 

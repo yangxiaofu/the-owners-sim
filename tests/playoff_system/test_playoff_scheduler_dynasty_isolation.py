@@ -19,7 +19,7 @@ from playoff_system.playoff_manager import PlayoffManager
 from playoff_system.playoff_seeder import PlayoffSeeder
 from playoff_system.bracket_models import PlayoffBracket, PlayoffGame
 from playoff_system.seeding_models import PlayoffSeeding, ConferenceSeeding, PlayoffSeed
-from calendar.date_models import Date
+from src.calendar.date_models import Date
 
 
 @pytest.fixture

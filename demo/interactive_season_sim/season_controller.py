@@ -111,14 +111,17 @@ class SeasonController:
         # Store phase_state for passing to components
         self.phase_state = phase_state
 
-        # Initialize core components
+        # Initialize event database first (needed by CalendarComponent for phase detection)
+        self.event_db = EventDatabaseAPI(database_path)
+
+        # Initialize core components with database API for event-based phase detection
         self.calendar = CalendarComponent(
             start_date=start_date,
             season_year=season_year,
-            phase_state=phase_state
+            phase_state=phase_state,
+            database_api=self.event_db,
+            dynasty_id=dynasty_id
         )
-
-        self.event_db = EventDatabaseAPI(database_path)
 
         self.simulation_executor = SimulationExecutor(
             calendar=self.calendar,
