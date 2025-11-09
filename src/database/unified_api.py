@@ -1195,13 +1195,56 @@ class UnifiedDatabaseAPI:
 
             result = results[0]
 
-            # Convert timestamp and data
+            # Parse timestamp
             if 'timestamp' in result and result['timestamp']:
-                result['timestamp'] = datetime.fromtimestamp(result['timestamp'] / 1000)
-            if 'data' in result and isinstance(result['data'], str):
-                result['data'] = json.loads(result['data'])
+                event_timestamp = datetime.fromtimestamp(result['timestamp'] / 1000)
+            else:
+                return None
 
-            return result
+            # Parse data JSON
+            if 'data' in result and isinstance(result['data'], str):
+                event_data = json.loads(result['data'])
+            else:
+                event_data = result.get('data', {})
+
+            # Extract event type and parameters
+            event_type = result.get('event_type', '')
+            params = event_data.get('parameters', {})
+
+            # Build display name based on event type
+            if event_type == 'DEADLINE':
+                deadline_type = params.get('deadline_type', '')
+                display_name = self._get_deadline_display_name(deadline_type)
+            elif event_type == 'WINDOW':
+                window_name = params.get('window_name', '')
+                window_type = params.get('window_type', 'START')
+                display_name = self._get_window_display_name(window_name, window_type)
+            elif event_type == 'MILESTONE':
+                milestone_type = params.get('milestone_type', '')
+                display_name = self._get_milestone_display_name(milestone_type)
+            else:
+                display_name = 'Next Milestone'
+
+            # Convert event_date string to Date object
+            from src.calendar.date_models import Date
+            event_date_str = params.get('event_date', '')
+            if event_date_str:
+                year, month, day = map(int, event_date_str.split('-'))
+                event_date = Date(year, month, day)
+            else:
+                # Fallback to timestamp
+                event_date = Date(event_timestamp.year, event_timestamp.month, event_timestamp.day)
+
+            # Return transformed structure with display_name and event_date as top-level keys
+            return {
+                'event_id': result.get('event_id', ''),
+                'event_type': event_type,
+                'event_date': event_date,  # Date object as top-level key
+                'display_name': display_name,  # User-friendly name as top-level key
+                'description': params.get('description', ''),
+                'timestamp': event_timestamp,
+                'data': event_data
+            }
 
         except Exception as e:
             self.logger.error(f"Error getting next offseason milestone: {e}", exc_info=True)
@@ -1268,6 +1311,61 @@ class UnifiedDatabaseAPI:
         except Exception as e:
             self.logger.error(f"Error getting milestone by type '{milestone_type}': {e}", exc_info=True)
             return None
+
+    def _get_deadline_display_name(self, deadline_type: str) -> str:
+        """
+        Get user-friendly display name for deadline event.
+
+        Args:
+            deadline_type: Technical deadline type (e.g., "FRANCHISE_TAG")
+
+        Returns:
+            User-friendly name (e.g., "Franchise Tags")
+        """
+        deadline_names = {
+            'FRANCHISE_TAG': 'Franchise Tags',
+            'TRANSITION_TAG': 'Transition Tags',
+            'SALARY_CAP_COMPLIANCE': 'Cap Compliance',
+            'RFA_TENDER': 'RFA Tenders',
+            'ROSTER_CUT': 'Roster Cuts'
+        }
+        return deadline_names.get(deadline_type, deadline_type.replace('_', ' ').title())
+
+    def _get_window_display_name(self, window_name: str, window_type: str) -> str:
+        """
+        Get user-friendly display name for window event.
+
+        Args:
+            window_name: Technical window name (e.g., "FREE_AGENCY")
+            window_type: Window boundary type ("START" or "END")
+
+        Returns:
+            User-friendly name (e.g., "Free Agency" or "Free Agency Ends")
+        """
+        if window_type == 'END':
+            return f"{window_name.replace('_', ' ').title()} Ends"
+        return window_name.replace('_', ' ').title()
+
+    def _get_milestone_display_name(self, milestone_type: str) -> str:
+        """
+        Get user-friendly display name for milestone event.
+
+        Args:
+            milestone_type: Technical milestone type (e.g., "COMBINE_START")
+
+        Returns:
+            User-friendly name (e.g., "Scouting Combine")
+        """
+        milestone_names = {
+            'COMBINE_START': 'Scouting Combine',
+            'DRAFT': 'Draft',
+            'PRESEASON_START': 'Preseason Starts',
+            'REGULAR_SEASON_START': 'Regular Season Starts',
+            'TRADE_DEADLINE': 'Trade Deadline',
+            'FREE_AGENCY_START': 'Free Agency Opens',
+            'SCHEDULE_RELEASE': 'Schedule Release'
+        }
+        return milestone_names.get(milestone_type, milestone_type.replace('_', ' ').title())
 
     def events_get_first_game_date_of_phase(
         self,
