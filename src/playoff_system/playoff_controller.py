@@ -21,9 +21,9 @@ from pathlib import Path
 
 # Use try/except to handle both production and test imports
 try:
-    from calendar.calendar_component import CalendarComponent
-    from calendar.simulation_executor import SimulationExecutor
-    from calendar.date_models import Date
+    from src.calendar.calendar_component import CalendarComponent
+    from src.calendar.simulation_executor import SimulationExecutor
+    from src.calendar.date_models import Date
 except ModuleNotFoundError:
     from src.calendar.calendar_component import CalendarComponent
     from src.calendar.simulation_executor import SimulationExecutor
@@ -94,7 +94,8 @@ class PlayoffController:
         initial_seeding: Optional[PlayoffSeeding] = None,
         enable_persistence: bool = True,
         verbose_logging: bool = True,
-        phase_state: Optional['PhaseState'] = None
+        phase_state: Optional['PhaseState'] = None,
+        fast_mode: bool = False
     ):
         """
         Initialize playoff controller.
@@ -108,12 +109,14 @@ class PlayoffController:
             enable_persistence: Whether to persist game results to database
             verbose_logging: Whether to print detailed progress messages
             phase_state: Shared PhaseState object for cross-phase state management (optional)
+            fast_mode: Skip actual simulations, generate fake results for ultra-fast testing
         """
         self.database_path = database_path
         self.season_year = season_year
         self.dynasty_id = dynasty_id
         self.enable_persistence = enable_persistence
         self.verbose_logging = verbose_logging
+        self.fast_mode = fast_mode
 
         self.logger = logging.getLogger(self.__class__.__name__)
 
@@ -151,7 +154,8 @@ class PlayoffController:
             dynasty_id=dynasty_id,
             enable_persistence=enable_persistence,
             season_year=season_year,
-            phase_state=phase_state
+            phase_state=phase_state,
+            fast_mode=fast_mode
         )
 
         # Playoff-specific components
@@ -271,6 +275,26 @@ class PlayoffController:
 
         # Check if current round is complete
         round_complete = self._is_round_complete(self.state.current_round)
+
+        # Schedule next round if current round just completed
+        if round_complete and self.state.current_round != 'super_bowl':
+            if self.verbose_logging:
+                print(f"\n[PLAYOFF] Round {self.state.current_round} complete! Scheduling next round...")
+
+            try:
+                self._schedule_next_round()
+            except Exception as e:
+                from src.playoff_system.playoff_exceptions import PlayoffSchedulingException
+                raise PlayoffSchedulingException(
+                    message=f"Failed to schedule next round after {self.state.current_round}",
+                    round_name=self.state.current_round,
+                    operation="auto_advance_to_next_round",
+                    context_dict={
+                        "dynasty_id": self.dynasty_id,
+                        "season": self.season,
+                        "completed_round": self.state.current_round
+                    }
+                ) from e
 
         if self.verbose_logging and games_played > 0:
             print(f"\n✅ Day complete: {games_played} game(s) played")
@@ -526,11 +550,11 @@ class PlayoffController:
         final_date = self.calendar.get_current_date()
         total_games = self.state.total_games_played - initial_games
 
-        # Determine Super Bowl winner
+        # Determine Super Bowl winner (database-first pattern for app restart compatibility)
         super_bowl_winner = None
-        if self.state.completed_games['super_bowl']:
-            sb_game = self.state.completed_games['super_bowl'][0]
-            super_bowl_winner = sb_game.get('winner_id')
+        super_bowl_games = self._get_completed_games_from_database('super_bowl')
+        if super_bowl_games:
+            super_bowl_winner = super_bowl_games[0].get('winner_id')
 
         if self.verbose_logging:
             print(f"\n{'='*80}")
@@ -656,6 +680,147 @@ class PlayoffController:
 
         # All rounds complete
         return 'complete'
+
+    def get_super_bowl_date(self) -> Date:
+        """
+        Get the date of the Super Bowl game.
+
+        Required for offseason scheduling - offseason events are calculated
+        relative to the Super Bowl date (e.g., Free Agency = SB + 31 days).
+
+        Returns:
+            Date: Date when Super Bowl was/will be played
+
+        Raises:
+            RuntimeError: If Super Bowl game not found or not scheduled
+        """
+        # Get Super Bowl games from bracket
+        super_bowl_games = self.get_round_games("super_bowl")
+
+        if not super_bowl_games:
+            raise RuntimeError(
+                "Super Bowl game not found. Playoffs may not have advanced to Super Bowl round. "
+                f"Current active round: {self.get_active_round()}"
+            )
+
+        # Get first (and only) Super Bowl game
+        sb_game = super_bowl_games[0]
+
+        # Extract date from game parameters
+        # Game structure: {'game_id': ..., 'parameters': {'game_date': 'YYYY-MM-DD', ...}, ...}
+        game_date_str = sb_game.get('game_date')
+        if not game_date_str and 'parameters' in sb_game:
+            game_date_str = sb_game['parameters'].get('game_date')
+
+        if not game_date_str:
+            raise RuntimeError(
+                f"Super Bowl game exists but has no game_date. Game data: {sb_game}"
+            )
+
+        # Parse date string to Date object
+        # Handle both "YYYY-MM-DD" and "YYYY-MM-DDTHH:MM:SS" formats
+        if 'T' in game_date_str:
+            game_date_str = game_date_str.split('T')[0]
+
+        return Date.from_string(game_date_str)
+
+    def get_super_bowl_winner(self) -> Optional[int]:
+        """
+        Get Super Bowl winner team ID.
+
+        Uses database as single source of truth (works after app restart).
+        Required for offseason scheduling - determines which team won the championship.
+
+        Returns:
+            int: Team ID of Super Bowl champion
+            None: If Super Bowl not yet played
+
+        Raises:
+            PlayoffStateException: If Super Bowl marked complete but no data found
+            PlayoffStateException: If Super Bowl data exists but winner_id is None
+        """
+        from src.playoff_system.playoff_exceptions import PlayoffStateException
+
+        # Check if Super Bowl round is complete
+        if not self._is_round_complete('super_bowl'):
+            return None
+
+        # Query database for completed Super Bowl games
+        super_bowl_games = self._get_completed_games_from_database('super_bowl')
+
+        # Data corruption check: Round complete but no game data
+        if not super_bowl_games:
+            raise PlayoffStateException(
+                message="Super Bowl round marked complete but no game data found in database",
+                current_round='super_bowl',
+                context_dict={
+                    'dynasty_id': self.dynasty_id,
+                    'season_year': self.season_year,
+                    'operation': 'get_super_bowl_winner'
+                }
+            )
+
+        # Validate exactly one Super Bowl game
+        if len(super_bowl_games) > 1:
+            raise PlayoffStateException(
+                message=f"Expected exactly 1 Super Bowl, found {len(super_bowl_games)}",
+                current_round='super_bowl',
+                context_dict={
+                    'dynasty_id': self.dynasty_id,
+                    'season_year': self.season_year,
+                    'game_count': len(super_bowl_games),
+                    'operation': 'get_super_bowl_winner'
+                }
+            )
+
+        # Extract winner
+        sb_game = super_bowl_games[0]
+        winner_id = sb_game.get('winner_id')
+
+        # Data corruption check: Game exists but no winner
+        if winner_id is None:
+            raise PlayoffStateException(
+                message="Super Bowl game exists but winner_id is None (data corruption)",
+                current_round='super_bowl',
+                context_dict={
+                    'dynasty_id': self.dynasty_id,
+                    'season_year': self.season_year,
+                    'game_id': sb_game.get('game_id'),
+                    'home_team': sb_game.get('home_team_id'),
+                    'away_team': sb_game.get('away_team_id'),
+                    'home_score': sb_game.get('home_score'),
+                    'away_score': sb_game.get('away_score'),
+                    'operation': 'get_super_bowl_winner'
+                }
+            )
+
+        return winner_id
+
+    def is_super_bowl_complete(self) -> bool:
+        """
+        Check if Super Bowl has been played (not just scheduled).
+
+        Returns:
+            True if Super Bowl game has been simulated with results
+            False if Super Bowl not played or only scheduled
+        """
+        return self._is_round_complete('super_bowl')
+
+    def is_playoffs_started(self) -> bool:
+        """
+        Check if playoffs have started.
+
+        Returns:
+            True if any playoff games have been scheduled
+            False if playoffs not yet initialized
+        """
+        # Check if bracket has been created
+        if not self.state.brackets or not self.state.brackets.get('wild_card'):
+            return False
+
+        # Verify at least one playoff game exists in database
+        wild_card_games = self._get_all_games_from_database('wild_card')
+        return len(wild_card_games) > 0
 
     # ========== Private Helper Methods ==========
 

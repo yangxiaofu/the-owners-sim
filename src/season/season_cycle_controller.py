@@ -26,10 +26,11 @@ from datetime import timedelta, datetime
 from typing import Dict, List, Any, Optional
 
 # Use try/except to handle both production and test imports
+# Try src.calendar first to avoid conflict with Python's builtin calendar module
 try:
-    from calendar.date_models import Date
-    from calendar.season_phase_tracker import SeasonPhase
-    from calendar.phase_state import PhaseState
+    from src.calendar.date_models import Date
+    from src.calendar.season_phase_tracker import SeasonPhase
+    from src.calendar.phase_state import PhaseState
 except (ModuleNotFoundError, ImportError):
     from src.calendar.date_models import Date
     from src.calendar.season_phase_tracker import SeasonPhase
@@ -38,6 +39,7 @@ except (ModuleNotFoundError, ImportError):
 from playoff_system.playoff_controller import PlayoffController
 from playoff_system.playoff_seeder import PlayoffSeeder
 from database.unified_api import UnifiedDatabaseAPI
+from events.event_database_api import EventDatabaseAPI
 from scheduling import RandomScheduleGenerator
 from offseason.offseason_event_scheduler import OffseasonEventScheduler
 from src.season.season_year_validator import SeasonYearValidator
@@ -51,16 +53,38 @@ try:
     from season.phase_transition.phase_completion_checker import PhaseCompletionChecker
     from season.phase_transition.phase_transition_manager import PhaseTransitionManager
     from season.phase_transition.models import PhaseTransition, TransitionHandlerKey
-    from season.phase_transition.transition_handlers.preseason_to_regular_season import PreseasonToRegularSeasonHandler
-    from season.phase_transition.transition_handlers.offseason_to_preseason import OffseasonToPreseasonHandler
-    from season.phase_transition.transition_handlers.playoffs_to_offseason import PlayoffsToOffseasonHandler
+    from season.phase_transition.transition_handlers.preseason_to_regular_season import (
+        PreseasonToRegularSeasonHandler,
+    )
+    from season.phase_transition.transition_handlers.regular_to_playoffs import (
+        RegularToPlayoffsHandler,
+    )
+    from season.phase_transition.transition_handlers.offseason_to_preseason import (
+        OffseasonToPreseasonHandler,
+    )
+    from season.phase_transition.transition_handlers.playoffs_to_offseason import (
+        PlayoffsToOffseasonHandler,
+    )
 except ModuleNotFoundError:
-    from src.season.phase_transition.phase_completion_checker import PhaseCompletionChecker
-    from src.season.phase_transition.phase_transition_manager import PhaseTransitionManager
+    from src.season.phase_transition.phase_completion_checker import (
+        PhaseCompletionChecker,
+    )
+    from src.season.phase_transition.phase_transition_manager import (
+        PhaseTransitionManager,
+    )
     from src.season.phase_transition.models import PhaseTransition, TransitionHandlerKey
-    from src.season.phase_transition.transition_handlers.preseason_to_regular_season import PreseasonToRegularSeasonHandler
-    from src.season.phase_transition.transition_handlers.offseason_to_preseason import OffseasonToPreseasonHandler
-    from src.season.phase_transition.transition_handlers.playoffs_to_offseason import PlayoffsToOffseasonHandler
+    from src.season.phase_transition.transition_handlers.preseason_to_regular_season import (
+        PreseasonToRegularSeasonHandler,
+    )
+    from src.season.phase_transition.transition_handlers.regular_to_playoffs import (
+        RegularToPlayoffsHandler,
+    )
+    from src.season.phase_transition.transition_handlers.offseason_to_preseason import (
+        OffseasonToPreseasonHandler,
+    )
+    from src.season.phase_transition.transition_handlers.playoffs_to_offseason import (
+        PlayoffsToOffseasonHandler,
+    )
 
 
 class SeasonCycleController:
@@ -99,12 +123,15 @@ class SeasonCycleController:
         dynasty_id: str = "default",
         season_year: Optional[int] = None,  # Phase 2: Now optional, loads from DB
         start_date: Optional[Date] = None,
-        initial_phase: Optional[SeasonPhase] = None,  # Phase 2: Now optional, loads from DB
+        initial_phase: Optional[
+            SeasonPhase
+        ] = None,  # Phase 2: Now optional, loads from DB
         enable_persistence: bool = True,
         verbose_logging: bool = True,
+        fast_mode: bool = False,
         # Dependency injection (optional - for testing)
         phase_completion_checker: Optional[PhaseCompletionChecker] = None,
-        phase_transition_manager: Optional[PhaseTransitionManager] = None
+        phase_transition_manager: Optional[PhaseTransitionManager] = None,
     ):
         """
         Initialize season cycle controller.
@@ -125,6 +152,7 @@ class SeasonCycleController:
                           Optional - loads from database if None.
             enable_persistence: Whether to save stats to database
             verbose_logging: Whether to print progress messages
+            fast_mode: Skip actual simulations, generate fake results for ultra-fast testing
             phase_completion_checker: Optional PhaseCompletionChecker for testing
             phase_transition_manager: Optional PhaseTransitionManager for testing
         """
@@ -132,14 +160,20 @@ class SeasonCycleController:
         self.dynasty_id = dynasty_id
         self.enable_persistence = enable_persistence
         self.verbose_logging = verbose_logging
+        self.fast_mode = fast_mode
 
         self.logger = logging.getLogger(self.__class__.__name__)
 
-        print(f"[DYNASTY_TRACE] SeasonCycleController.__init__(): dynasty_id={dynasty_id}")
+        print(
+            f"[DYNASTY_TRACE] SeasonCycleController.__init__(): dynasty_id={dynasty_id}"
+        )
 
         # ============ PHASE 2: DATABASE-FIRST LOADING ============
         # Initialize UnifiedDatabaseAPI FIRST (needed for loading)
         self.db = UnifiedDatabaseAPI(database_path, dynasty_id)
+
+        # Initialize EventDatabaseAPI (needed for game validation in handlers)
+        self.event_db = EventDatabaseAPI(database_path)
 
         # Initialize SeasonYearValidator for drift detection
         self.season_year_validator = SeasonYearValidator(logger=self.logger)
@@ -149,8 +183,8 @@ class SeasonCycleController:
 
         if db_state:
             # Existing dynasty - load from database
-            db_season = db_state['season']
-            db_phase = db_state['current_phase']
+            db_season = db_state["season"]
+            db_phase = db_state["current_phase"]
 
             if verbose_logging:
                 print(f"[DATABASE_LOAD] Loading existing dynasty from database:")
@@ -167,7 +201,9 @@ class SeasonCycleController:
 
             # Database is authoritative - use its values
             self.season_year = 0  # Placeholder
-            self._set_season_year(db_season, "Controller initialization (loaded from database)")
+            self._set_season_year(
+                db_season, "Controller initialization (loaded from database)"
+            )
 
             # Load phase from database if not explicitly provided
             if initial_phase is None:
@@ -176,7 +212,7 @@ class SeasonCycleController:
                     PhaseNames.DB_REGULAR_SEASON: SeasonPhase.REGULAR_SEASON,
                     PhaseNames.DB_PRESEASON: SeasonPhase.PRESEASON,
                     PhaseNames.DB_PLAYOFFS: SeasonPhase.PLAYOFFS,
-                    PhaseNames.DB_OFFSEASON: SeasonPhase.OFFSEASON
+                    PhaseNames.DB_OFFSEASON: SeasonPhase.OFFSEASON,
                 }
                 initial_phase = phase_map.get(db_phase, SeasonPhase.REGULAR_SEASON)
 
@@ -190,7 +226,9 @@ class SeasonCycleController:
                 print(f"  Season: {final_season_year}")
 
             self.season_year = 0  # Placeholder
-            self._set_season_year(final_season_year, "Controller initialization (new dynasty)")
+            self._set_season_year(
+                final_season_year, "Controller initialization (new dynasty)"
+            )
 
             # Use provided phase or default to PRESEASON
             if initial_phase is None:
@@ -218,7 +256,7 @@ class SeasonCycleController:
             dynasty_id=dynasty_id,
             enable_persistence=enable_persistence,
             verbose_logging=verbose_logging,
-            phase_state=self.phase_state
+            phase_state=self.phase_state,
         )
 
         # Access the shared calendar from season controller
@@ -247,7 +285,7 @@ class SeasonCycleController:
                 get_last_regular_season_game_date=lambda: self.last_regular_season_game_date,
                 get_last_preseason_game_date=lambda: self._get_last_preseason_game_date(),
                 is_super_bowl_complete=lambda: self._is_super_bowl_complete(),
-                calculate_preseason_start=lambda: self._get_preseason_start_from_milestone()
+                calculate_preseason_start=lambda: self._get_preseason_start_from_milestone(),
             )
         else:
             self.phase_completion_checker = phase_completion_checker
@@ -259,7 +297,18 @@ class SeasonCycleController:
                 update_database_phase=self._update_database_phase_for_handler,
                 dynasty_id=dynasty_id,
                 season_year=self.season_year,  # Phase 2: Use database-loaded value
-                verbose_logging=verbose_logging
+                verbose_logging=verbose_logging,
+            )
+
+            # Create REGULAR_SEASON → PLAYOFFS handler
+            regular_to_playoffs_handler = RegularToPlayoffsHandler(
+                get_standings=self._get_standings_for_handler,
+                seed_playoffs=self._seed_playoffs_for_handler,
+                create_playoff_controller=self._create_playoff_controller_for_handler,
+                update_database_phase=self._update_database_phase_for_handler,
+                dynasty_id=dynasty_id,
+                season_year=self.season_year,
+                verbose_logging=verbose_logging,
             )
 
             # Create PLAYOFFS → OFFSEASON handler
@@ -270,7 +319,7 @@ class SeasonCycleController:
                 update_database_phase=self._update_database_phase_for_handler,
                 dynasty_id=dynasty_id,
                 season_year=self.season_year,  # Phase 2: Use database-loaded value
-                verbose_logging=verbose_logging
+                verbose_logging=verbose_logging,
             )
 
             # Create OFFSEASON → PRESEASON handler
@@ -281,8 +330,10 @@ class SeasonCycleController:
                 calculate_preseason_start=self._calculate_preseason_start_for_handler,
                 update_database_phase=self._update_database_phase_for_handler,
                 dynasty_id=dynasty_id,
-                new_season_year=self.season_year + 1,  # Phase 2: Use database-loaded value + 1
-                verbose_logging=verbose_logging
+                new_season_year=self.season_year
+                + 1,  # Phase 2: Use database-loaded value + 1
+                event_db=self.event_db,  # For game validation
+                verbose_logging=verbose_logging,
             )
 
             # Create default manager with registered handlers
@@ -291,9 +342,10 @@ class SeasonCycleController:
                 completion_checker=self.phase_completion_checker,
                 transition_handlers={
                     TransitionHandlerKey.PRESEASON_TO_REGULAR_SEASON: preseason_to_regular_season_handler.execute,
+                    TransitionHandlerKey.REGULAR_SEASON_TO_PLAYOFFS: regular_to_playoffs_handler.execute,
                     TransitionHandlerKey.PLAYOFFS_TO_OFFSEASON: playoffs_to_offseason_handler.execute,
-                    TransitionHandlerKey.OFFSEASON_TO_PRESEASON: offseason_to_preseason_handler.execute
-                }
+                    TransitionHandlerKey.OFFSEASON_TO_PRESEASON: offseason_to_preseason_handler.execute,
+                },
             )
         else:
             self.phase_transition_manager = phase_transition_manager
@@ -305,13 +357,13 @@ class SeasonCycleController:
             set_controller_year=self._set_season_year,
             update_database_year=self._update_database_year,
             dynasty_id=self.dynasty_id,
-            logger=self.logger
+            logger=self.logger,
         )
 
         # Register season_controller to be updated when year changes
         self.year_synchronizer.register_callback(
             "season_controller",
-            lambda year: setattr(self.season_controller, 'season_year', year)
+            lambda year: setattr(self.season_controller, "season_year", year),
         )
 
         # Register simulation_executor (inside season_controller) to be updated
@@ -319,7 +371,9 @@ class SeasonCycleController:
         # Without this, executor has old year and can't find games with new year prefix
         self.year_synchronizer.register_callback(
             "simulation_executor",
-            lambda year: setattr(self.season_controller.simulation_executor, 'season_year', year)
+            lambda year: setattr(
+                self.season_controller.simulation_executor, "season_year", year
+            ),
         )
 
         if self.verbose_logging:
@@ -332,9 +386,7 @@ class SeasonCycleController:
 
         # Ensure dynasty record exists (required for foreign key constraints)
         self.db.dynasty_ensure_exists(
-            dynasty_name=f"Dynasty {dynasty_id}",
-            owner_name=None,
-            team_id=None
+            dynasty_name=f"Dynasty {dynasty_id}", owner_name=None, team_id=None
         )
 
         # GENERATE DRAFT CLASS FOR THIS SEASON
@@ -345,14 +397,16 @@ class SeasonCycleController:
 
         # State tracking - set active controller based on initial phase
         # IMPORTANT: This comes AFTER database_api initialization because _restore_playoff_controller() needs it
-        if initial_phase == SeasonPhase.PLAYOFFS:
+        if initial_phase.value == "playoffs":
             # Restore playoff controller from database
             self._restore_playoff_controller()
             self.active_controller = self.playoff_controller
-        elif initial_phase == SeasonPhase.OFFSEASON:
+        elif initial_phase.value == "offseason":
             # Restore playoff controller so users can review completed bracket
             self._restore_playoff_controller()
-            self.active_controller = None  # No active controller in offseason (no more games to simulate)
+            self.active_controller = (
+                None  # No active controller in offseason (no more games to simulate)
+            )
         else:
             # Regular season - use season controller
             self.active_controller = self.season_controller
@@ -390,7 +444,7 @@ class SeasonCycleController:
         self._auto_recover_year_from_database("Before daily simulation")
 
         # Handle offseason case
-        if self.phase_state.phase == SeasonPhase.OFFSEASON:
+        if self.phase_state.phase.value == "offseason":
             # Execute any scheduled offseason events for this day
             try:
                 current_date = self.calendar.get_current_date()
@@ -400,7 +454,7 @@ class SeasonCycleController:
 
                 # Import SimulationExecutor to trigger events
                 try:
-                    from calendar.simulation_executor import SimulationExecutor
+                    from src.calendar.simulation_executor import SimulationExecutor
                 except (ModuleNotFoundError, ImportError):
                     from src.calendar.simulation_executor import SimulationExecutor
 
@@ -411,7 +465,7 @@ class SeasonCycleController:
                     dynasty_id=self.dynasty_id,
                     enable_persistence=self.enable_persistence,
                     season_year=self.season_year,
-                    phase_state=self.phase_state
+                    phase_state=self.phase_state,
                 )
 
                 # Simulate events for current day
@@ -422,7 +476,9 @@ class SeasonCycleController:
                 self.total_days_simulated += 1
 
                 if self.verbose_logging:
-                    print(f"[OFFSEASON_DAY] Calendar advanced successfully to: {self.calendar.get_current_date()}")
+                    print(
+                        f"[OFFSEASON_DAY] Calendar advanced successfully to: {self.calendar.get_current_date()}"
+                    )
 
                 # Check for phase transitions (OFFSEASON → PRESEASON)
                 phase_transition = self._check_phase_transition()
@@ -430,12 +486,12 @@ class SeasonCycleController:
                 return {
                     "date": str(current_date),
                     "games_played": 0,
-                    "events_triggered": event_results.get('events_executed', []),
+                    "events_triggered": event_results.get("events_executed", []),
                     "results": [],
                     "current_phase": self.phase_state.phase.value,
                     "phase_transition": phase_transition,
                     "success": True,
-                    "message": f"Offseason day complete. {len(event_results.get('events_executed', []))} events triggered."
+                    "message": f"Offseason day complete. {len(event_results.get('events_executed', []))} events triggered.",
                 }
 
             except Exception as e:
@@ -451,35 +507,39 @@ class SeasonCycleController:
                     "current_phase": "offseason",
                     "phase_transition": None,
                     "success": True,
-                    "message": "Season complete. No more games to simulate."
+                    "message": "Season complete. No more games to simulate.",
                 }
 
         # Delegate to active controller
         result = self.active_controller.advance_day()
 
         # Update statistics
-        self.total_games_played += result.get('games_played', 0)
+        self.total_games_played += result.get("games_played", 0)
         self.total_days_simulated += 1
 
         # Phase 1.7: AI Transaction Evaluation (preseason, regular season, offseason)
-        if self.phase_state.phase in [SeasonPhase.PRESEASON, SeasonPhase.REGULAR_SEASON, SeasonPhase.OFFSEASON]:
+        if self.phase_state.phase in [
+            SeasonPhase.PRESEASON,
+            SeasonPhase.REGULAR_SEASON,
+            SeasonPhase.OFFSEASON,
+        ]:
             # Use TransactionService for evaluation (Phase 3: Service Extraction)
             service = self._get_transaction_service()
             current_week = self._calculate_current_week()
             executed_trades = service.evaluate_daily_for_all_teams(
                 current_phase=self.phase_state.phase.value,
                 current_week=current_week,
-                verbose_logging=self.verbose_logging
+                verbose_logging=self.verbose_logging,
             )
-            result['transactions_executed'] = executed_trades
-            result['num_trades'] = len(executed_trades)
+            result["transactions_executed"] = executed_trades
+            result["num_trades"] = len(executed_trades)
 
         # Check for phase transitions
         phase_transition = self._check_phase_transition()
         if phase_transition:
-            result['phase_transition'] = phase_transition
+            result["phase_transition"] = phase_transition
 
-        result['current_phase'] = self.phase_state.phase.value
+        result["current_phase"] = self.phase_state.phase.value
 
         return result
 
@@ -493,7 +553,7 @@ class SeasonCycleController:
         # Phase 5: Auto-recovery guard before weekly simulation
         self._auto_recover_year_from_database("Before weekly simulation")
 
-        if self.phase_state.phase == SeasonPhase.OFFSEASON:
+        if self.phase_state.phase.value == "offseason":
             # Advance offseason by 7 days, collecting any triggered events
             events_triggered = []
             start_date = str(self.calendar.get_current_date())
@@ -501,11 +561,11 @@ class SeasonCycleController:
 
             for day_num in range(7):
                 day_result = self.advance_day()
-                if day_result.get('events_triggered'):
-                    events_triggered.extend(day_result['events_triggered'])
+                if day_result.get("events_triggered"):
+                    events_triggered.extend(day_result["events_triggered"])
                 # Capture transition if it occurred during any day
-                if day_result.get('phase_transition'):
-                    phase_transition = day_result['phase_transition']
+                if day_result.get("phase_transition"):
+                    phase_transition = day_result["phase_transition"]
 
             end_date = str(self.calendar.get_current_date())
 
@@ -516,7 +576,7 @@ class SeasonCycleController:
                 "phase_transition": phase_transition,
                 "date": end_date,
                 "games_played": 0,
-                "message": f"Offseason week advanced ({start_date} → {end_date}). {len(events_triggered)} events triggered."
+                "message": f"Offseason week advanced ({start_date} → {end_date}). {len(events_triggered)} events triggered.",
             }
 
         # Regular season, preseason, and playoffs: Loop 7 times calling advance_day()
@@ -528,32 +588,46 @@ class SeasonCycleController:
         all_transactions = []
         phase_transition = None  # Track if transition occurred during week
 
+        if self.verbose_logging:
+            print(f"\n[DIAG advance_week] START")
+            print(f"[DIAG advance_week] Current phase: {self.phase_state.phase.value}")
+
         for day_num in range(7):
+            if self.verbose_logging:
+                print(f"[DIAG advance_week] Day {day_num + 1}/7")
             day_result = self.advance_day()
 
             # Accumulate game results
-            games_played = day_result.get('games_played', 0)
+            games_played = day_result.get("games_played", 0)
             total_games += games_played
 
-            if day_result.get('results'):
-                all_results.extend(day_result['results'])
+            if day_result.get("results"):
+                all_results.extend(day_result["results"])
 
             # Accumulate AI transactions (regular season only)
-            if day_result.get('transactions_executed'):
-                all_transactions.extend(day_result['transactions_executed'])
+            if day_result.get("transactions_executed"):
+                all_transactions.extend(day_result["transactions_executed"])
 
             # Capture transition if it occurred during any day
-            if day_result.get('phase_transition'):
-                phase_transition = day_result['phase_transition']
+            if day_result.get("phase_transition"):
+                phase_transition = day_result["phase_transition"]
                 if self.verbose_logging:
-                    print(f"[DEBUG] advance_week(): Phase transition on day {day_num + 1}: {phase_transition}")
+                    print(f"[DIAG advance_week] *** PHASE TRANSITION DETECTED on day {day_num + 1} ***")
+                    print(f"[DIAG advance_week] Transition data: {phase_transition}")
+                    print(f"[DIAG advance_week] BREAKING day loop")
+                # Stop advancing days after a phase transition occurs
+                # This prevents simulating into the next phase
+                break
 
         end_date = str(self.calendar.get_current_date())
 
         if self.verbose_logging:
-            print(f"\n[DEBUG] advance_week(): Week complete ({start_date} → {end_date})")
-            print(f"[DEBUG] advance_week(): Total games: {total_games}, AI trades: {len(all_transactions)}")
-            print(f"[DEBUG] advance_week(): Current phase: {self.phase_state.phase.value}")
+            print(f"\n[DIAG advance_week] END")
+            print(f"[DIAG advance_week] Week complete ({start_date} → {end_date})")
+            print(f"[DIAG advance_week] Total games: {total_games}, AI trades: {len(all_transactions)}")
+            print(f"[DIAG advance_week] Current phase: {self.phase_state.phase.value}")
+            print(f"[DIAG advance_week] phase_transition variable: {phase_transition}")
+            print(f"[DIAG advance_week] Will return phase_transition={phase_transition}")
 
         return {
             "success": True,
@@ -566,7 +640,7 @@ class SeasonCycleController:
             "results": all_results,
             "transactions_executed": all_transactions,
             "num_trades": len(all_transactions),
-            "message": f"Week complete ({start_date} → {end_date}). {total_games} games, {len(all_transactions)} trades."
+            "message": f"Week complete ({start_date} → {end_date}). {total_games} games, {len(all_transactions)} trades.",
         }
 
     def simulate_to_end(self) -> Dict[str, Any]:
@@ -596,7 +670,7 @@ class SeasonCycleController:
             "total_games": self.total_games_played - initial_games,
             "final_phase": self.phase_state.phase.value,
             "season_summary": self.season_summary,
-            "success": True
+            "success": True,
         }
 
     def simulate_to_phase_end(self, progress_callback=None) -> Dict[str, Any]:
@@ -624,7 +698,7 @@ class SeasonCycleController:
             }
         """
         # Handle offseason separately (existing code - keep this)
-        if self.phase_state.phase == SeasonPhase.OFFSEASON:
+        if self.phase_state.phase.value == "offseason":
             return self.simulate_to_next_offseason_milestone(progress_callback)
 
         # Setup (existing code - keep this)
@@ -644,7 +718,7 @@ class SeasonCycleController:
             SeasonPhase.PRESEASON: PhaseNames.DB_REGULAR_SEASON,
             SeasonPhase.REGULAR_SEASON: PhaseNames.DB_PLAYOFFS,
             SeasonPhase.PLAYOFFS: PhaseNames.DB_OFFSEASON,
-            SeasonPhase.OFFSEASON: PhaseNames.DB_PRESEASON  # Complete the cycle for multi-season support
+            SeasonPhase.OFFSEASON: PhaseNames.DB_PRESEASON,  # Complete the cycle for multi-season support
         }
 
         next_phase_name = next_phase_map.get(starting_phase)
@@ -654,30 +728,44 @@ class SeasonCycleController:
             # Query first game of next phase
             first_game_date = self.db.events_get_first_game_date_of_phase(
                 phase_name=next_phase_name,
-                current_date=str(self.calendar.get_current_date())
+                current_date=str(self.calendar.get_current_date()),
             )
 
             if first_game_date:
                 # Calculate day before first game (our stop point)
-                first_game_dt = datetime.strptime(first_game_date, '%Y-%m-%d')
+                first_game_dt = datetime.strptime(first_game_date, "%Y-%m-%d")
                 stop_date_dt = first_game_dt - timedelta(days=1)
-                target_stop_date = stop_date_dt.strftime('%Y-%m-%d')
+                target_stop_date = stop_date_dt.strftime("%Y-%m-%d")
 
                 if self.verbose_logging:
-                    print(f"[LOOK_AHEAD] First {next_phase_name} game: {first_game_date}")
+                    print(
+                        f"[LOOK_AHEAD] First {next_phase_name} game: {first_game_date}"
+                    )
                     print(f"[LOOK_AHEAD] Will stop on: {target_stop_date} (day before)")
 
         # NEW: Simulation loop with look-ahead stop condition
         consecutive_empty_weeks = 0
         max_empty_weeks = 3
+        loop_iteration = 0  # For diagnostic tracking
+
+        if self.verbose_logging:
+            print(f"\n[DIAG simulate_to_phase_end] STARTING LOOP")
+            print(f"[DIAG simulate_to_phase_end] Starting phase: {starting_phase.value}")
+            print(f"[DIAG simulate_to_phase_end] Target stop date: {target_stop_date}")
 
         while True:
+            loop_iteration += 1
             current_date_str = str(self.calendar.get_current_date())
+
+            if self.verbose_logging:
+                print(f"\n[DIAG simulate_to_phase_end] === ITERATION {loop_iteration} ===")
+                print(f"[DIAG simulate_to_phase_end] Current date: {current_date_str}")
+                print(f"[DIAG simulate_to_phase_end] Current phase: {self.phase_state.phase.value}")
 
             # STOP CONDITION 1: Check if NEXT week would exceed target (prevent overshoot)
             if target_stop_date:
                 current_py_date = self.calendar.get_current_date().to_python_date()
-                target_py_date = datetime.strptime(target_stop_date, '%Y-%m-%d').date()
+                target_py_date = datetime.strptime(target_stop_date, "%Y-%m-%d").date()
 
                 # Estimate where next week would end (current + 7 days)
                 next_week_end_estimate = current_py_date + timedelta(days=7)
@@ -685,22 +773,30 @@ class SeasonCycleController:
                 # Stop if current >= target OR next week would exceed target
                 if current_py_date >= target_py_date:
                     if self.verbose_logging:
-                        print(f"[STOP] Reached target date: {current_date_str} >= {target_stop_date}")
+                        print(
+                            f"[STOP] Reached target date: {current_date_str} >= {target_stop_date}"
+                        )
                     break
                 elif next_week_end_estimate >= target_py_date:
                     if self.verbose_logging:
-                        print(f"[STOP] Preventing overshoot: current={current_date_str}, target={target_stop_date}")
-                        print(f"[STOP] Next week would end around {next_week_end_estimate}, which exceeds target")
+                        print(
+                            f"[STOP] Preventing overshoot: current={current_date_str}, target={target_stop_date}"
+                        )
+                        print(
+                            f"[STOP] Next week would end around {next_week_end_estimate}, which exceeds target"
+                        )
                     break
 
             # STOP CONDITION 2: Phase already changed (safety fallback)
             if self.phase_state.phase != starting_phase:
                 if self.verbose_logging:
-                    print(f"[STOP] Phase changed: {starting_phase.value} -> {self.phase_state.phase.value}")
+                    print(
+                        f"[STOP] Phase changed: {starting_phase.value} -> {self.phase_state.phase.value}"
+                    )
                 break
 
             # STOP CONDITION 3: Offseason reached (safety)
-            if self.phase_state.phase == SeasonPhase.OFFSEASON:
+            if self.phase_state.phase.value == "offseason":
                 break
 
             # Advance one week (only if we didn't break above)
@@ -709,12 +805,47 @@ class SeasonCycleController:
             games_after = self.total_games_played
             weeks_simulated += 1
 
+            if self.verbose_logging:
+                print(f"[DIAG simulate_to_phase_end] advance_week() returned")
+                print(f"[DIAG simulate_to_phase_end] Result keys: {list(result.keys())}")
+                print(f"[DIAG simulate_to_phase_end] phase_transition in result: {'phase_transition' in result}")
+                if 'phase_transition' in result:
+                    print(f"[DIAG simulate_to_phase_end] phase_transition value: {result.get('phase_transition')}")
+                print(f"[DIAG simulate_to_phase_end] Phase after advance_week: {self.phase_state.phase.value}")
+                print(f"[DIAG simulate_to_phase_end] Games played this week: {games_after - games_before}")
+
+            # PRIMARY CHECK: Did advance_week() detect a phase transition?
+            # This catches transitions immediately when advance_week() breaks its day loop
+            if self.verbose_logging:
+                print(f"[DIAG simulate_to_phase_end] PRIMARY CHECK - result.get('phase_transition'): {result.get('phase_transition')}")
+
+            if result.get("phase_transition"):
+                if self.verbose_logging:
+                    print(f"[STOP] PRIMARY CHECK TRIGGERED!")
+                    print(f"[STOP] Phase transition detected in advance_week() result")
+                    print(f"[STOP] Transition: {result['phase_transition']}")
+                break
+
+            # FALLBACK CHECK: Did the phase_state change during the week?
+            # This is a safety check in case phase transition occurred mid-week
+            if self.verbose_logging:
+                print(f"[DIAG simulate_to_phase_end] FALLBACK CHECK - phase_state.phase: {self.phase_state.phase.value}, starting_phase: {starting_phase.value}")
+                print(f"[DIAG simulate_to_phase_end] FALLBACK CHECK - phases equal: {self.phase_state.phase == starting_phase}")
+
+            if self.phase_state.phase != starting_phase:
+                if self.verbose_logging:
+                    print(f"[STOP] FALLBACK CHECK TRIGGERED!")
+                    print(f"[STOP] Phase changed during week: {starting_phase.value} -> {self.phase_state.phase.value}")
+                break
+
             # Track consecutive empty weeks (safety valve)
             if games_after == games_before:
                 consecutive_empty_weeks += 1
                 if consecutive_empty_weeks >= max_empty_weeks:
                     if self.verbose_logging:
-                        print(f"[WARNING] Stopping: {consecutive_empty_weeks} consecutive weeks with no games")
+                        print(
+                            f"[WARNING] Stopping: {consecutive_empty_weeks} consecutive weeks with no games"
+                        )
                     break
             else:
                 consecutive_empty_weeks = 0
@@ -724,25 +855,35 @@ class SeasonCycleController:
                 games_this_iteration = self.total_games_played - initial_games
                 progress_callback(weeks_simulated, games_this_iteration)
 
+            # Diagnostic: If we reach here, no break was triggered
+            if self.verbose_logging:
+                print(f"[DIAG simulate_to_phase_end] No break triggered - CONTINUING TO NEXT ITERATION")
+                print(f"[DIAG simulate_to_phase_end] Will loop again (iteration {loop_iteration + 1})\n")
+
         # Return summary with next_phase information for UI
         return {
-            'start_date': str(start_date),
-            'end_date': str(self.calendar.get_current_date()),
-            'weeks_simulated': weeks_simulated,
-            'total_games': self.total_games_played - initial_games,
-            'starting_phase': starting_phase.value,
-            'ending_phase': self.phase_state.phase.value,
-            'next_phase': next_phase_name,  # Phase we're about to enter (for UI message)
-            'phase_transition': self.phase_state.phase != starting_phase,
-            'success': True
+            "start_date": str(start_date),
+            "end_date": str(self.calendar.get_current_date()),
+            "weeks_simulated": weeks_simulated,
+            "total_games": self.total_games_played - initial_games,
+            "starting_phase": starting_phase.value,
+            "ending_phase": self.phase_state.phase.value,
+            "next_phase": next_phase_name,  # Phase we're about to enter (for UI message)
+            "phase_transition": self.phase_state.phase != starting_phase,
+            "success": True,
         }
 
-    def simulate_to_next_offseason_milestone(self, progress_callback=None) -> Dict[str, Any]:
+    def simulate_to_next_offseason_milestone(
+        self, progress_callback=None
+    ) -> Dict[str, Any]:
         """
         Simulate to next offseason milestone (stops at EVERY milestone).
 
         Includes ALL events: deadlines, window starts/ends, and milestone markers.
         Gives user control at every major offseason event.
+
+        If no more offseason milestones exist, checks if offseason is complete
+        and automatically transitions to PRESEASON (new season).
 
         Now uses generic simulate_to_date() method for implementation.
 
@@ -759,77 +900,141 @@ class SeasonCycleController:
                 'milestone_date': str,
                 'events_triggered': List,
                 'success': bool,
-                'message': str
+                'message': str,
+                'transition_occurred': bool,  # Whether phase transition happened
+                'new_season': bool  # Whether new season was initialized
             }
         """
         if self.phase_state.phase != SeasonPhase.OFFSEASON:
             return {
-                'success': False,
-                'message': 'Not in offseason phase',
-                'start_date': str(self.calendar.get_current_date()),
-                'end_date': str(self.calendar.get_current_date()),
-                'days_simulated': 0
+                "success": False,
+                "message": "Not in offseason phase",
+                "start_date": str(self.calendar.get_current_date()),
+                "end_date": str(self.calendar.get_current_date()),
+                "days_simulated": 0,
             }
+
+        starting_phase = self.phase_state.phase.value
+        starting_year = self.season_year
 
         # Query next milestone from event database
         next_milestone = self.db.events_get_next_offseason_milestone(
-            current_date=self.calendar.get_current_date(),
-            season_year=self.season_year
+            current_date=self.calendar.get_current_date(), season_year=self.season_year
         )
 
         if not next_milestone:
-            # NO FALLBACK - this is an error condition that must be fixed
-            error_msg = (
-                f"No offseason milestone found in database!\n\n"
-                f"Dynasty: {self.dynasty_id}\n"
-                f"Season: {self.season_year}\n"
-                f"Current Date: {self.calendar.get_current_date()}\n\n"
-                f"This means offseason events were not scheduled during Super Bowl → Offseason transition.\n"
-                f"Check terminal output for '[OFFSEASON_EVENTS] Scheduling...' message and any errors."
+            # No more offseason milestones - check if offseason is complete
+            self.logger.info(
+                "No more offseason milestones found. Checking if offseason is complete..."
             )
 
-            if self.verbose_logging:
-                print(f"\n{'='*80}")
-                print(f"[ERROR] NO OFFSEASON MILESTONES FOUND")
-                print(f"{'='*80}")
-                print(error_msg)
-                print(f"{'='*80}\n")
+            try:
+                # Check if we should transition to next season
+                transition_result = self._check_phase_transition()
 
-            return {
-                'success': False,
-                'message': error_msg,
-                'starting_phase': 'offseason',
-                'ending_phase': 'offseason',
-                'weeks_simulated': 0,
-                'total_games': 0,
-                'phase_transition': False,
-                'days_simulated': 0,
-                'events_executed': 0
-            }
+                if transition_result and transition_result.get("to_phase"):
+                    # Transition happened (OFFSEASON → PRESEASON)
+                    self.logger.info(
+                        f"Offseason complete! Transitioned from season {starting_year} to {self.season_year}"
+                    )
+                    return {
+                        "success": True,
+                        "message": f"Offseason complete! Transitioned from {starting_phase.upper()} to {self.phase_state.phase.value.upper()}. New season {self.season_year} initialized.",
+                        "starting_phase": starting_phase,
+                        "ending_phase": self.phase_state.phase.value,
+                        "starting_year": starting_year,
+                        "season_year": self.season_year,
+                        "transition_occurred": True,
+                        "new_season": True,
+                        "weeks_simulated": 0,
+                        "total_games": 0,
+                        "days_simulated": 0,
+                        "events_executed": 0,
+                        "start_date": str(self.calendar.get_current_date()),
+                        "end_date": str(self.calendar.get_current_date()),
+                    }
+                else:
+                    # No transition occurred - truly an error state
+                    current_date = self.calendar.get_current_date()
+                    self.logger.warning(
+                        f"No offseason milestone found and offseason not complete. "
+                        f"Current date: {current_date}. This may indicate a database or calendar configuration issue."
+                    )
+                    error_msg = (
+                        f"No offseason milestone found and offseason not complete.\n\n"
+                        f"Current date: {current_date}\n"
+                        f"This may indicate missing milestones in the database or a calendar configuration issue."
+                    )
+
+                    if self.verbose_logging:
+                        print(f"\n{'='*80}")
+                        print(f"[ERROR] NO OFFSEASON MILESTONES FOUND")
+                        print(f"{'='*80}")
+                        print(error_msg)
+                        print(f"{'='*80}\n")
+
+                    return {
+                        "success": False,
+                        "message": error_msg,
+                        "starting_phase": starting_phase,
+                        "ending_phase": self.phase_state.phase.value,
+                        "season_year": self.season_year,
+                        "transition_occurred": False,
+                        "error_type": "incomplete_offseason_no_milestones",
+                        "weeks_simulated": 0,
+                        "total_games": 0,
+                        "days_simulated": 0,
+                        "events_executed": 0,
+                        "start_date": str(self.calendar.get_current_date()),
+                        "end_date": str(self.calendar.get_current_date()),
+                    }
+            except Exception as e:
+                self.logger.error(f"Transition check failed: {e}", exc_info=True)
+                return {
+                    "success": False,
+                    "message": f"Phase transition check failed: {str(e)}",
+                    "starting_phase": starting_phase,
+                    "ending_phase": self.phase_state.phase.value,
+                    "error_type": "transition_check_exception",
+                    "weeks_simulated": 0,
+                    "total_games": 0,
+                    "days_simulated": 0,
+                    "events_executed": 0,
+                    "start_date": str(self.calendar.get_current_date()),
+                    "end_date": str(self.calendar.get_current_date()),
+                }
 
         # Use simulate_to_date to reach milestone
-        milestone_date = next_milestone['event_date']  # Already a Date object
-        result = self.simulate_to_date(milestone_date, execute_events=True, progress_callback=progress_callback)
+        milestone_date = next_milestone["event_date"]  # Already a Date object
+        result = self.simulate_to_date(
+            milestone_date, execute_events=True, progress_callback=progress_callback
+        )
+
+        # Detect if transition occurred during simulation
+        transition_occurred = self.phase_state.phase.value != starting_phase
+
+        if transition_occurred:
+            self.logger.info(
+                f"Phase transition occurred during simulation to {next_milestone['display_name']}"
+            )
 
         # Add milestone-specific info to result
-        result['milestone_reached'] = next_milestone['display_name']
-        result['milestone_type'] = next_milestone['event_type']
-        result['milestone_date'] = str(milestone_date)
+        result["milestone_reached"] = next_milestone["display_name"]
+        result["milestone_type"] = next_milestone["event_type"]
+        result["milestone_date"] = str(milestone_date)
 
         # Add keys UI expects
-        result['starting_phase'] = 'offseason'
-        result['ending_phase'] = self.phase_state.phase.value
-        result['weeks_simulated'] = result['days_simulated'] // 7
-        result['total_games'] = result.get('games_played', 0)
-        result['phase_transition'] = False
+        result["starting_phase"] = starting_phase
+        result["ending_phase"] = self.phase_state.phase.value
+        result["weeks_simulated"] = result["days_simulated"] // 7
+        result["total_games"] = result.get("games_played", 0)
+        result["phase_transition"] = transition_occurred
+        result["transition_occurred"] = transition_occurred
 
         return result
 
     def simulate_to_date(
-        self,
-        target_date: Date,
-        execute_events: bool = True,
-        progress_callback=None
+        self, target_date: Date, execute_events: bool = True, progress_callback=None
     ) -> Dict[str, Any]:
         """
         Generic simulation advancing day-by-day to target date.
@@ -857,13 +1062,13 @@ class SeasonCycleController:
         current_date = self.calendar.get_current_date()
         if target_date <= current_date:
             return {
-                'success': False,
-                'start_date': str(current_date),
-                'end_date': str(current_date),
-                'days_simulated': 0,
-                'events_triggered': [],
-                'games_played': 0,
-                'message': f'Target date ({target_date}) must be after current date ({current_date})'
+                "success": False,
+                "start_date": str(current_date),
+                "end_date": str(current_date),
+                "days_simulated": 0,
+                "events_triggered": [],
+                "games_played": 0,
+                "message": f"Target date ({target_date}) must be after current date ({current_date})",
             }
 
         # Track start state
@@ -894,8 +1099,8 @@ class SeasonCycleController:
             days_advanced += 1
 
             # Collect events triggered
-            if day_result.get('events_triggered'):
-                events_triggered.extend(day_result['events_triggered'])
+            if day_result.get("events_triggered"):
+                events_triggered.extend(day_result["events_triggered"])
 
             # Progress callback for UI
             if progress_callback and total_days > 0:
@@ -903,7 +1108,9 @@ class SeasonCycleController:
 
             # Safety check: prevent infinite loops
             if days_advanced > total_days + 7:  # Allow 7-day buffer for tolerance
-                self.logger.warning(f"Simulation exceeded expected days ({days_advanced} > {total_days})")
+                self.logger.warning(
+                    f"Simulation exceeded expected days ({days_advanced} > {total_days})"
+                )
                 break
 
         end_date = self.calendar.get_current_date()
@@ -921,13 +1128,13 @@ class SeasonCycleController:
             print(f"{'='*80}")
 
         return {
-            'success': True,
-            'start_date': str(start_date),
-            'end_date': str(end_date),
-            'days_simulated': days_advanced,
-            'events_triggered': events_triggered,
-            'games_played': games_played,
-            'message': f'Simulated {days_advanced} days ({start_date} → {end_date}). {games_played} games, {len(events_triggered)} events.'
+            "success": True,
+            "start_date": str(start_date),
+            "end_date": str(end_date),
+            "days_simulated": days_advanced,
+            "events_triggered": events_triggered,
+            "games_played": games_played,
+            "message": f"Simulated {days_advanced} days ({start_date} → {end_date}). {games_played} games, {len(events_triggered)} events.",
         }
 
     def get_next_offseason_milestone_name(self) -> str:
@@ -943,76 +1150,189 @@ class SeasonCycleController:
 
         current_date = self.calendar.get_current_date()
         next_milestone = self.db.events_get_next_offseason_milestone(
-            current_date=current_date,
-            season_year=self.season_year
+            current_date=current_date, season_year=self.season_year
         )
 
         if not next_milestone:
             return "Next Season"
 
-        return next_milestone['display_name']
+        return next_milestone["display_name"]
 
     def simulate_to_new_season(self, progress_callback=None) -> Dict[str, Any]:
         """
-        Skip all remaining offseason milestones and initialize new season.
+        Simulates through all remaining offseason events until preseason starts.
 
-        Auto-executes all offseason events (franchise tags, draft, FA, etc.)
-        and advances calendar to first Thursday in August (preseason start).
+        This is a convenience method that repeatedly calls simulate_to_next_offseason_milestone()
+        until the OFFSEASON→PRESEASON transition occurs.
 
         Args:
             progress_callback: Optional callback(current, total, event_name) for UI progress updates
 
         Returns:
-            Dict with same keys as simulate_to_phase_end() for UI compatibility:
-            {
-                'success': bool,
-                'start_date': str,
-                'end_date': str,
-                'starting_phase': str,
-                'ending_phase': str,
-                'weeks_simulated': int,
-                'total_games': int,
-                'phase_transition': bool,
-                'days_simulated': int,
-                'events_executed': int,
-                'event_list': List[str],
-                'new_season_year': int,
-                'message': str
-            }
+            dict: Simulation result with aggregated information about all milestones
+                  processed and the final transition to new season.
+                  {
+                      'success': bool,
+                      'start_date': str,
+                      'end_date': str,
+                      'starting_phase': str,
+                      'ending_phase': str,
+                      'starting_year': int,
+                      'ending_year': int,
+                      'weeks_simulated': int,
+                      'total_games': int,
+                      'phase_transition': bool,
+                      'days_simulated': int,
+                      'events_executed': int,
+                      'event_list': List[str],
+                      'milestones_processed': List[Dict],
+                      'total_milestones': int,
+                      'total_days': int,
+                      'message': str
+                  }
         """
-        # TODO: Implement full skip-to-new-season logic
-        # See docs/plans/season_cycle_controller_implementation_plan.md for details
+        starting_phase = self.phase_state.phase.value
+        starting_year = self.season_year
+        starting_date = self.calendar.get_current_date()
 
+        # Validate we're in offseason
         if self.phase_state.phase != SeasonPhase.OFFSEASON:
+            self.logger.warning(
+                f"Cannot simulate to new season from {starting_phase.upper()} phase"
+            )
             return {
-                'success': False,
-                'message': 'Can only skip to new season during offseason',
-                'starting_phase': self.phase_state.phase.value,
-                'ending_phase': self.phase_state.phase.value,
-                'weeks_simulated': 0,
-                'total_games': 0,
-                'phase_transition': False,
-                'days_simulated': 0,
-                'events_executed': 0
+                "success": False,
+                "message": f"Cannot simulate to new season from {starting_phase.upper()} phase. Must be in OFFSEASON.",
+                "starting_phase": starting_phase,
+                "ending_phase": starting_phase,
+                "weeks_simulated": 0,
+                "total_games": 0,
+                "phase_transition": False,
+                "days_simulated": 0,
+                "events_executed": 0,
+                "event_list": [],
             }
 
-        if self.verbose_logging:
-            print(f"\n[SKIP_TO_NEW_SEASON] TODO: Implement full season skip logic")
-            print(f"  Current implementation is placeholder")
+        self.logger.info(
+            f"Starting simulate_to_new_season from {starting_date}, season {starting_year}"
+        )
 
-        # Placeholder return (will be replaced with full implementation)
+        milestones_processed = []
+        total_days = 0
+        all_events = []
+        max_iterations = 50  # Safety limit
+
+        for iteration in range(max_iterations):
+            result = self.simulate_to_next_offseason_milestone(
+                progress_callback=progress_callback
+            )
+
+            if not result["success"]:
+                error_type = result.get("error_type")
+
+                if error_type == "incomplete_offseason_no_milestones":
+                    self.logger.error(
+                        f"Unexpected incomplete offseason state after {iteration} iterations"
+                    )
+                    return {
+                        "success": False,
+                        "message": f"Simulation stalled: {result['message']}\n\nProcessed {len(milestones_processed)} milestones before error.",
+                        "starting_phase": starting_phase,
+                        "ending_phase": self.phase_state.phase.value,
+                        "milestones_processed": milestones_processed,
+                        "total_days": total_days,
+                        "weeks_simulated": total_days // 7,
+                        "total_games": 0,
+                        "phase_transition": False,
+                        "days_simulated": total_days,
+                        "events_executed": len(all_events),
+                        "event_list": all_events,
+                    }
+                else:
+                    return {
+                        "success": False,
+                        "message": f"Simulation failed: {result['message']}",
+                        "starting_phase": starting_phase,
+                        "ending_phase": self.phase_state.phase.value,
+                        "milestones_processed": milestones_processed,
+                        "total_days": total_days,
+                        "weeks_simulated": total_days // 7,
+                        "total_games": 0,
+                        "phase_transition": False,
+                        "days_simulated": total_days,
+                        "events_executed": len(all_events),
+                        "event_list": all_events,
+                    }
+
+            # Track milestone if one was processed
+            if "milestone_reached" in result:
+                milestones_processed.append(
+                    {
+                        "name": result["milestone_reached"],
+                        "date": result["milestone_date"],
+                        "days_simulated": result.get("days_simulated", 0),
+                    }
+                )
+                total_days += result.get("days_simulated", 0)
+                self.logger.info(
+                    f"Processed milestone {len(milestones_processed)}: {result['milestone_reached']}"
+                )
+
+            # Track events
+            if "events_triggered" in result:
+                for event in result["events_triggered"]:
+                    event_name = event.get(
+                        "display_name", event.get("event_type", "Unknown")
+                    )
+                    all_events.append(event_name)
+
+            # Check if transition to new season occurred
+            if result.get("transition_occurred") or result.get("new_season"):
+                ending_date = self.calendar.get_current_date()
+                self.logger.info(
+                    f"Successfully completed offseason! Transitioned from season {starting_year} to {self.season_year}. "
+                    f"Processed {len(milestones_processed)} milestones in {total_days} days."
+                )
+                return {
+                    "success": True,
+                    "message": f"Successfully simulated to new season! Transitioned from season {starting_year} to {self.season_year}.",
+                    "starting_phase": starting_phase,
+                    "ending_phase": self.phase_state.phase.value,
+                    "starting_year": starting_year,
+                    "ending_year": self.season_year,
+                    "starting_date": str(starting_date),
+                    "ending_date": str(ending_date),
+                    "start_date": str(starting_date),
+                    "end_date": str(ending_date),
+                    "milestones_processed": milestones_processed,
+                    "total_milestones": len(milestones_processed),
+                    "total_days": total_days,
+                    "weeks_simulated": total_days // 7,
+                    "total_games": 0,
+                    "phase_transition": True,
+                    "days_simulated": total_days,
+                    "events_executed": len(all_events),
+                    "event_list": all_events,
+                    "new_season_year": self.season_year,
+                }
+
+        # Should never reach here unless we hit max iterations
+        self.logger.error(
+            f"simulate_to_new_season exceeded {max_iterations} iterations"
+        )
         return {
-            'success': False,
-            'message': 'Skip to new season not yet implemented - see season_cycle_controller_implementation_plan.md',
-            'starting_phase': 'offseason',
-            'ending_phase': 'offseason',
-            'weeks_simulated': 0,
-            'total_games': 0,
-            'phase_transition': False,
-            'days_simulated': 0,
-            'events_executed': 0,
-            'event_list': [],
-            'new_season_year': self.season_year
+            "success": False,
+            "message": f"Exceeded {max_iterations} iterations without transitioning. Possible infinite loop.",
+            "starting_phase": starting_phase,
+            "ending_phase": self.phase_state.phase.value,
+            "milestones_processed": milestones_processed,
+            "iterations": max_iterations,
+            "weeks_simulated": 0,
+            "total_games": 0,
+            "phase_transition": False,
+            "days_simulated": total_days,
+            "events_executed": len(all_events),
+            "event_list": all_events,
         }
 
     def get_current_phase(self) -> SeasonPhase:
@@ -1029,8 +1349,7 @@ class SeasonCycleController:
         if self.phase_state.phase != SeasonPhase.REGULAR_SEASON:
             # Return final regular season standings from database
             return self.db.standings_get(
-                season=self.season_year,
-                season_type=PhaseNames.DB_REGULAR_SEASON
+                season=self.season_year, season_type=PhaseNames.DB_REGULAR_SEASON
             )
 
         return self.season_controller.get_current_standings()
@@ -1043,15 +1362,20 @@ class SeasonCycleController:
             Bracket data or None if not available
         """
         # Only hide bracket during regular season (before playoffs start)
-        if self.phase_state.phase == SeasonPhase.REGULAR_SEASON:
+        if self.phase_state.phase.value == "regular_season":
             return None
 
         # Lazy initialization: If playoff controller not initialized but we need it, restore it
         # This handles the case when app restarts during playoffs or offseason
-        if not self.playoff_controller and self.phase_state.phase in [SeasonPhase.PLAYOFFS, SeasonPhase.OFFSEASON]:
+        if not self.playoff_controller and self.phase_state.phase.value in [
+            "playoffs",
+            "offseason",
+        ]:
             try:
                 if self.verbose_logging:
-                    print(f"[DEBUG] get_playoff_bracket(): playoff_controller is None, attempting restoration...")
+                    print(
+                        f"[DEBUG] get_playoff_bracket(): playoff_controller is None, attempting restoration..."
+                    )
                 self._restore_playoff_controller()
             except Exception as e:
                 self.logger.error(f"Failed to restore playoff controller: {e}")
@@ -1073,7 +1397,11 @@ class SeasonCycleController:
             "dynasty_id": self.dynasty_id,
             "total_games_played": self.total_games_played,
             "total_days_simulated": self.total_days_simulated,
-            "active_controller": type(self.active_controller).__name__ if self.active_controller else None
+            "active_controller": (
+                type(self.active_controller).__name__
+                if self.active_controller
+                else None
+            ),
         }
 
     # ========== Private Methods ==========
@@ -1089,14 +1417,14 @@ class SeasonCycleController:
         Returns:
             TransactionService: Initialized transaction service instance
         """
-        if not hasattr(self, '_transaction_service'):
+        if not hasattr(self, "_transaction_service"):
             from transactions.transaction_ai_manager import TransactionAIManager
 
             # Create AI manager with debug mode
             transaction_ai = TransactionAIManager(
                 database_path=self.database_path,
                 dynasty_id=self.dynasty_id,
-                debug_mode=True  # Enable debug mode for UI debug log window
+                debug_mode=True,  # Enable debug mode for UI debug log window
             )
 
             # Create service with dependency injection
@@ -1107,7 +1435,7 @@ class SeasonCycleController:
                 logger=self.logger,
                 dynasty_id=self.dynasty_id,
                 database_path=self.database_path,
-                season_year=self.season_year
+                season_year=self.season_year,
             )
 
         return self._transaction_service
@@ -1145,7 +1473,11 @@ class SeasonCycleController:
 
             if self.verbose_logging:
                 # Phase may not be initialized yet during construction
-                phase_str = self.phase_state.phase.value if hasattr(self, 'phase_state') else "not initialized"
+                phase_str = (
+                    self.phase_state.phase.value
+                    if hasattr(self, "phase_state")
+                    else "not initialized"
+                )
                 print(
                     f"[YEAR_CHANGE] Season year changed: {old_year} → {new_year}\n"
                     f"  Reason: {reason}\n"
@@ -1189,10 +1521,12 @@ class SeasonCycleController:
             >>> if self._auto_recover_year_from_database("Before game simulation"):
             ...     print("Year drift was auto-corrected")
         """
-        is_synced, db_year, can_recover = self.season_year_validator.validate_with_recovery(
-            controller_year=self.season_year,
-            dynasty_id=self.dynasty_id,
-            dynasty_api=self.db  # Phase 2: dynasty_api consolidated into UnifiedDatabaseAPI
+        is_synced, db_year, can_recover = (
+            self.season_year_validator.validate_with_recovery(
+                controller_year=self.season_year,
+                dynasty_id=self.dynasty_id,
+                dynasty_api=self.db,  # Phase 2: dynasty_api consolidated into UnifiedDatabaseAPI
+            )
         )
 
         if is_synced:
@@ -1239,7 +1573,7 @@ class SeasonCycleController:
         old_year = self.season_year
         self.year_synchronizer.synchronize_year(
             db_year,
-            f"Auto-recovery from drift (was {old_year}, corrected to {db_year}) - {context}"
+            f"Auto-recovery from drift (was {old_year}, corrected to {db_year}) - {context}",
         )
 
         self.logger.info(
@@ -1277,16 +1611,16 @@ class SeasonCycleController:
                     season=new_year,
                     start_date=str(self.calendar.get_current_date()),
                     start_week=0,
-                    start_phase=self.phase_state.phase.value.lower()
+                    start_phase=self.phase_state.phase.value.lower(),
                 )
             else:
                 # Update existing state with new season
                 self.db.dynasty_update_state(
                     season=new_year,  # Only changing season
-                    current_date=current_state['current_date'],
-                    current_phase=current_state['current_phase'],
-                    current_week=current_state.get('current_week'),
-                    last_simulated_game_id=current_state.get('last_simulated_game_id')
+                    current_date=current_state["current_date"],
+                    current_phase=current_state["current_phase"],
+                    current_week=current_state.get("current_week"),
+                    last_simulated_game_id=current_state.get("last_simulated_game_id"),
                 )
 
             self.logger.debug(
@@ -1297,7 +1631,7 @@ class SeasonCycleController:
         except Exception as e:
             self.logger.error(
                 f"[DB_UPDATE_YEAR] Failed to update database year to {new_year}: {e}",
-                exc_info=True
+                exc_info=True,
             )
             raise
 
@@ -1316,18 +1650,24 @@ class SeasonCycleController:
             controller_year=self.season_year,
             dynasty_id=self.dynasty_id,
             dynasty_api=self.db,  # Phase 2: dynasty_api consolidated into UnifiedDatabaseAPI
-            context="Before phase transition check"
+            context="Before phase transition check",
         )
 
         # Phase 5: Auto-recovery guard before phase transition
         self._auto_recover_year_from_database("Before phase transition check")
 
         if self.verbose_logging:
-            print(f"\n[DEBUG] Checking phase transition (current phase: {self.phase_state.phase.value})")
+            print(
+                f"\n[DEBUG] Checking phase transition (current phase: {self.phase_state.phase.value})"
+            )
 
         # [PRESEASON_DEBUG Point 1] Transition Detection Check
         print(f"\n[PRESEASON_DEBUG Point 1] Checking transition detection...")
         print(f"  Current phase: {self.phase_state.phase.value}")
+        print(f"  Phase object: {self.phase_state.phase}")
+        print(f"  Phase type: {type(self.phase_state.phase)}")
+        print(f"  SeasonPhase.PRESEASON: {SeasonPhase.PRESEASON}")
+        print(f"  Are they equal? {self.phase_state.phase.value == 'preseason'}")
         print(f"  Current date: {self.calendar.get_current_date()}")
         print(f"  Dynasty ID: {self.dynasty_id}")
 
@@ -1344,9 +1684,11 @@ class SeasonCycleController:
 
         if transition is None:
             # No transition needed
-            if self.verbose_logging and self.phase_state.phase == SeasonPhase.PLAYOFFS:
+            if self.verbose_logging and self.phase_state.phase.value == "playoffs":
                 if not self._is_super_bowl_complete():
-                    print(f"[DEBUG] Super Bowl not yet complete, remaining in PLAYOFFS phase")
+                    print(
+                        f"[DEBUG] Super Bowl not yet complete, remaining in PLAYOFFS phase"
+                    )
             return None
 
         # Transition needed - execute it
@@ -1354,35 +1696,57 @@ class SeasonCycleController:
             print(f"\n[PHASE_TRANSITION] {transition}")
 
         # Execute transition using existing methods (backward compatible)
-        if transition.from_phase == SeasonPhase.PRESEASON and transition.to_phase == SeasonPhase.REGULAR_SEASON:
+        if (
+            transition.from_phase.value == "preseason"
+            and transition.to_phase.value == "regular_season"
+        ):
             self._transition_to_regular_season()
             return {
                 "from_phase": "preseason",
                 "to_phase": "regular_season",
-                "trigger": transition.trigger
+                "trigger": transition.trigger,
             }
 
-        elif transition.from_phase == SeasonPhase.REGULAR_SEASON and transition.to_phase == SeasonPhase.PLAYOFFS:
+        elif (
+            transition.from_phase.value == "regular_season"
+            and transition.to_phase.value == "playoffs"
+        ):
             self._transition_to_playoffs()
             return {
                 "from_phase": "regular_season",
                 "to_phase": "playoffs",
-                "trigger": transition.trigger
+                "trigger": transition.trigger,
             }
 
-        elif transition.from_phase == SeasonPhase.PLAYOFFS and transition.to_phase == SeasonPhase.OFFSEASON:
+        elif (
+            transition.from_phase.value == "playoffs"
+            and transition.to_phase.value == "offseason"
+        ):
             print(f"\n{'='*80}")
             print(f"[SUPER_BOWL_FLOW] Super Bowl complete detected!")
             print(f"[SUPER_BOWL_FLOW] Transitioning from PLAYOFFS → OFFSEASON")
+            print(f"[SUPER_BOWL_FLOW] Using PlayoffsToOffseasonHandler")
             print(f"{'='*80}")
-            self._transition_to_offseason()
+
+            # Use handler system instead of direct method call
+            success = self.phase_transition_manager.execute_transition(transition)
+
+            if not success:
+                raise RuntimeError("PLAYOFFS → OFFSEASON transition failed")
+
+            print(f"[SUPER_BOWL_FLOW] ✓ Transition completed successfully")
+
             return {
                 "from_phase": "playoffs",
                 "to_phase": "offseason",
-                "trigger": transition.trigger
+                "trigger": transition.trigger,
+                "success": True
             }
 
-        elif transition.from_phase == SeasonPhase.OFFSEASON and transition.to_phase == SeasonPhase.PRESEASON:
+        elif (
+            transition.from_phase.value == "offseason"
+            and transition.to_phase.value == "preseason"
+        ):
             # [PRESEASON_DEBUG Point 2] OFFSEASON→PRESEASON Case Match
             print(f"\n[PRESEASON_DEBUG Point 2] ✅ OFFSEASON→PRESEASON case matched!")
             print(f"  Current year: {self.season_year}")
@@ -1392,17 +1756,25 @@ class SeasonCycleController:
             print(f"\n{'='*80}")
             print(f"[NEW_SEASON_FLOW] Offseason complete detected!")
             print(f"[NEW_SEASON_FLOW] Current date: {self.calendar.get_current_date()}")
-            print(f"[NEW_SEASON_FLOW] Preseason start: {self._calculate_preseason_start_for_handler(self.season_year + 1)}")
+            print(
+                f"[NEW_SEASON_FLOW] Preseason start: {self._calculate_preseason_start_for_handler(self.season_year + 1)}"
+            )
             print(f"[NEW_SEASON_FLOW] Transitioning from OFFSEASON → PRESEASON")
-            print(f"[NEW_SEASON_FLOW] Generating preseason schedule ({SeasonConstants.PRESEASON_GAME_COUNT} games)...")
-            print(f"[NEW_SEASON_FLOW] Generating regular season schedule ({SeasonConstants.REGULAR_SEASON_GAME_COUNT} games)...")
+            print(
+                f"[NEW_SEASON_FLOW] Generating preseason schedule ({SeasonConstants.PRESEASON_GAME_COUNT} games)..."
+            )
+            print(
+                f"[NEW_SEASON_FLOW] Generating regular season schedule ({SeasonConstants.REGULAR_SEASON_GAME_COUNT} games)..."
+            )
             print(f"{'='*80}")
 
             try:
                 # [PRESEASON_DEBUG Point 3] Execute Transition Call
                 print(f"\n[PRESEASON_DEBUG Point 3] Calling execute_transition()...")
                 print(f"  Transition: {transition}")
-                print(f"  Handler registered: {self.phase_transition_manager.has_handler(TransitionHandlerKey.OFFSEASON_TO_PRESEASON)}")
+                print(
+                    f"  Handler registered: {self.phase_transition_manager.has_handler(TransitionHandlerKey.OFFSEASON_TO_PRESEASON)}"
+                )
 
                 # Execute the transition via PhaseTransitionManager
                 # Phase 3: Use synchronizer for atomic year increment across all components
@@ -1417,8 +1789,12 @@ class SeasonCycleController:
 
                 # NEW SEASON INITIALIZATION: Clear previous season state
                 if self.verbose_logging:
-                    print(f"\n[NEW_SEASON_INIT] Initializing new season {self.season_year}")
-                    print(f"[NEW_SEASON_INIT] Clearing playoff state from previous season")
+                    print(
+                        f"\n[NEW_SEASON_INIT] Initializing new season {self.season_year}"
+                    )
+                    print(
+                        f"[NEW_SEASON_INIT] Clearing playoff state from previous season"
+                    )
 
                 # Clear playoff controller (removes previous season's bracket data)
                 self.playoff_controller = None
@@ -1431,14 +1807,20 @@ class SeasonCycleController:
                 self.total_days_simulated = 0
 
                 if self.verbose_logging:
-                    print(f"[NEW_SEASON_INIT] Game counters reset: {old_game_count} → 0")
+                    print(
+                        f"[NEW_SEASON_INIT] Game counters reset: {old_game_count} → 0"
+                    )
 
                 # NOTE: Season statistics are archived during PLAYOFFS→OFFSEASON transition
                 # See _transition_to_offseason() method for archival implementation
 
                 if self.verbose_logging:
-                    print(f"[NEW_SEASON_INIT] Previous season ({old_year}) state cleared")
-                    print(f"[NEW_SEASON_INIT] Ready for {self.season_year} season initialization")
+                    print(
+                        f"[NEW_SEASON_INIT] Previous season ({old_year}) state cleared"
+                    )
+                    print(
+                        f"[NEW_SEASON_INIT] Ready for {self.season_year} season initialization"
+                    )
 
                 # Update database phase (year already updated by synchronizer)
                 if self.verbose_logging:
@@ -1448,21 +1830,29 @@ class SeasonCycleController:
                     season=self.season_year,  # Already updated by synchronizer
                     current_date=str(self.calendar.get_current_date()),
                     current_phase="PRESEASON",
-                    current_week=0
+                    current_week=0,
                 )
 
                 if self.verbose_logging:
-                    print(f"[PHASE_TRANSITION] Database updated - now executing transition")
+                    print(
+                        f"[PHASE_TRANSITION] Database updated - now executing transition"
+                    )
 
                 try:
                     # This calls OffseasonToPreseasonHandler.execute() which:
                     # - Generates SeasonConstants.PRESEASON_GAME_COUNT preseason games
                     # - Generates SeasonConstants.REGULAR_SEASON_GAME_COUNT regular season games
                     # - Resets all team standings to 0-0-0
-                    result = self.phase_transition_manager.execute_transition(transition)
+                    result = self.phase_transition_manager.execute_transition(
+                        transition
+                    )
 
-                    print(f"[PRESEASON_DEBUG Point 3] ✅ execute_transition() completed successfully")
-                    print(f"  Result keys: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
+                    print(
+                        f"[PRESEASON_DEBUG Point 3] ✅ execute_transition() completed successfully"
+                    )
+                    print(
+                        f"  Result keys: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}"
+                    )
 
                     # CRITICAL: Update phase state and active controller after successful transition
                     # This matches the pattern in _transition_to_playoffs() and _transition_to_offseason()
@@ -1470,20 +1860,28 @@ class SeasonCycleController:
                     self.active_controller = self.season_controller
 
                     if self.verbose_logging:
-                        print(f"[PHASE_TRANSITION] Phase state updated: OFFSEASON → PRESEASON")
-                        print(f"[PHASE_TRANSITION] Active controller set: season_controller")
+                        print(
+                            f"[PHASE_TRANSITION] Phase state updated: OFFSEASON → PRESEASON"
+                        )
+                        print(
+                            f"[PHASE_TRANSITION] Active controller set: season_controller"
+                        )
 
                 except Exception as e:
                     # Rollback database state if transition fails
                     if self.verbose_logging:
-                        print(f"[PHASE_TRANSITION] Transition failed - rolling back database")
+                        print(
+                            f"[PHASE_TRANSITION] Transition failed - rolling back database"
+                        )
 
-                    self._set_season_year(old_year, f"Rollback due to transition failure: {e}")
+                    self._set_season_year(
+                        old_year, f"Rollback due to transition failure: {e}"
+                    )
                     self.db.dynasty_update_state(
                         season=old_year,
                         current_date=str(self.calendar.get_current_date()),
                         current_phase=old_phase.value,
-                        current_week=0
+                        current_week=0,
                     )
 
                     raise  # Re-raise the exception after rollback
@@ -1493,7 +1891,9 @@ class SeasonCycleController:
                 print(f"  Season: {old_year} → {self.season_year}")
                 print(f"  Phase: OFFSEASON → PRESEASON")
                 print(f"  Preseason games: {SeasonConstants.PRESEASON_GAME_COUNT}")
-                print(f"  Regular season games: {SeasonConstants.REGULAR_SEASON_GAME_COUNT}")
+                print(
+                    f"  Regular season games: {SeasonConstants.REGULAR_SEASON_GAME_COUNT}"
+                )
                 print(f"  Teams reset: 32")
                 print(f"{'='*80}\n")
 
@@ -1501,7 +1901,7 @@ class SeasonCycleController:
                     "from_phase": "offseason",
                     "to_phase": "preseason",
                     "trigger": transition.trigger,
-                    "new_season_year": self.season_year
+                    "new_season_year": self.season_year,
                 }
 
             except Exception as e:
@@ -1531,45 +1931,50 @@ class SeasonCycleController:
         try:
             # Use API to get ONLY this dynasty's GAME events (10-100x faster with database filtering)
             dynasty_game_events = self.season_controller.event_db.get_events_by_dynasty(
-                dynasty_id=self.dynasty_id,
-                event_type="GAME"
+                dynasty_id=self.dynasty_id, event_type="GAME"
             )
 
             # Filter for regular season games WITH SEASON FILTERING
             regular_season_events = [
-                e for e in dynasty_game_events
+                e
+                for e in dynasty_game_events
                 # CRITICAL: Only look at this season's games (multi-season support)
                 # Use the 'season' field from parameters, NOT timestamp.year
                 # (NFL seasons span calendar years: Sept 2025 → Jan 2026 are both "2025 season")
                 # This ensures Week 15-18 games (January 2026) are included for 2025 season
-                if e.get('data', {}).get('parameters', {}).get('season') == self.season_year
+                if e.get("data", {}).get("parameters", {}).get("season")
+                == self.season_year
                 # Exclude playoff and preseason games
-                and not e.get('game_id', '').startswith(GameIDPrefixes.PLAYOFF)
-                and not e.get('game_id', '').startswith(GameIDPrefixes.PRESEASON)
+                and not e.get("game_id", "").startswith(GameIDPrefixes.PLAYOFF)
+                and not e.get("game_id", "").startswith(GameIDPrefixes.PRESEASON)
                 # CRITICAL: Only include weeks 1-18 (ignore corrupted future games)
-                and 1 <= e.get('data', {}).get('parameters', {}).get('week', 0) <= 18
+                and 1 <= e.get("data", {}).get("parameters", {}).get("week", 0) <= 18
             ]
 
             if not regular_season_events:
                 # No regular season games scheduled - return season end date as fallback
-                self.logger.warning(f"No regular season games found for dynasty {self.dynasty_id}")
+                self.logger.warning(
+                    f"No regular season games found for dynasty {self.dynasty_id}"
+                )
                 return Date(self.season_year, 12, 31)  # Dec 31 fallback
 
             # Find the event with the maximum timestamp
-            last_event = max(regular_season_events, key=lambda e: e['timestamp'])
+            last_event = max(regular_season_events, key=lambda e: e["timestamp"])
 
             # Convert timestamp to Date
-            last_datetime = last_event['timestamp']
+            last_datetime = last_event["timestamp"]
             last_date = Date(
                 year=last_datetime.year,
                 month=last_datetime.month,
-                day=last_datetime.day
+                day=last_datetime.day,
             )
 
             if self.verbose_logging:
-                game_id = last_event.get('game_id', 'unknown')
-                week = last_event.get('data', {}).get('parameters', {}).get('week', '?')
-                self.logger.info(f"Last regular season game scheduled for: {last_date} (Week {week}, game_id={game_id})")
+                game_id = last_event.get("game_id", "unknown")
+                week = last_event.get("data", {}).get("parameters", {}).get("week", "?")
+                self.logger.info(
+                    f"Last regular season game scheduled for: {last_date} (Week {week}, game_id={game_id})"
+                )
 
             return last_date
 
@@ -1594,48 +1999,76 @@ class SeasonCycleController:
             Date of the last scheduled preseason game for this dynasty
         """
         try:
+            if self.verbose_logging:
+                print(f"\n[DIAG] _get_last_preseason_game_date()")
+                print(f"  self.season_year: {self.season_year}")
+                print(f"  PhaseNames.DB_PRESEASON: {PhaseNames.DB_PRESEASON}")
+                print(f"  GameIDPrefixes.PRESEASON: {GameIDPrefixes.PRESEASON}")
+
             # Use API to get ONLY this dynasty's GAME events (10-100x faster with database filtering)
-            dynasty_game_events = self.db.events_get_by_type(
-                event_type="GAME"
-            )
+            dynasty_game_events = self.db.events_get_by_type(event_type="GAME")
+
+            if self.verbose_logging:
+                print(f"  Total GAME events: {len(dynasty_game_events)}")
 
             # Filter for preseason games WITH SEASON FILTERING
             preseason_events = [
-                e for e in dynasty_game_events
+                e
+                for e in dynasty_game_events
                 # CRITICAL: Only look at this season's games (multi-season support)
                 # Use the 'season' field from parameters, NOT timestamp.year
                 # (NFL seasons span calendar years: Sept 2025 → Jan 2026 are both "2025 season")
-                if e.get('data', {}).get('parameters', {}).get('season') == self.season_year
+                if e.get("data", {}).get("parameters", {}).get("season")
+                == self.season_year
                 # Include preseason games (check both game_id and season_type)
                 and (
-                    e.get('game_id', '').startswith(GameIDPrefixes.PRESEASON)
-                    or e.get('data', {}).get('parameters', {}).get('season_type') == PhaseNames.DB_PRESEASON
-                    or e.get('data', {}).get('parameters', {}).get('game_type') == PhaseNames.DB_PRESEASON
+                    e.get("game_id", "").startswith(GameIDPrefixes.PRESEASON)
+                    or e.get("data", {}).get("parameters", {}).get("season_type")
+                    == PhaseNames.DB_PRESEASON
+                    or e.get("data", {}).get("parameters", {}).get("game_type")
+                    == PhaseNames.DB_PRESEASON
                 )
                 # CRITICAL: Only include weeks 1-4 (ignore corrupted future games)
-                and 1 <= e.get('data', {}).get('parameters', {}).get('week', 0) <= 4
+                and 1 <= e.get("data", {}).get("parameters", {}).get("week", 0) <= 4
             ]
+
+            if self.verbose_logging:
+                print(f"  Filtered preseason events: {len(preseason_events)}")
+                if len(preseason_events) == 0 and dynasty_game_events:
+                    print(f"  [WARNING] No preseason events found! Debugging...")
+                    sample = dynasty_game_events[0]
+                    print(f"    Sample game_id: {sample.get('game_id')}")
+                    print(f"    Sample season: {sample.get('data', {}).get('parameters', {}).get('season')}")
+                    print(f"    Sample season_type: {sample.get('data', {}).get('parameters', {}).get('season_type')}")
+                    print(f"    Sample week: {sample.get('data', {}).get('parameters', {}).get('week')}")
+                    print(f"    Does game_id start with '{GameIDPrefixes.PRESEASON}'? {sample.get('game_id', '').startswith(GameIDPrefixes.PRESEASON)}")
 
             if not preseason_events:
                 # No preseason games scheduled - return early September as fallback
-                self.logger.warning(f"No preseason games found for dynasty {self.dynasty_id}")
-                return Date(self.season_year, 9, 3)  # Sept 3 fallback (day before regular season typically starts)
+                self.logger.warning(
+                    f"No preseason games found for dynasty {self.dynasty_id}"
+                )
+                return Date(
+                    self.season_year, 9, 3
+                )  # Sept 3 fallback (day before regular season typically starts)
 
             # Find the event with the maximum timestamp
-            last_event = max(preseason_events, key=lambda e: e['timestamp'])
+            last_event = max(preseason_events, key=lambda e: e["timestamp"])
 
             # Convert timestamp to Date
-            last_datetime = last_event['timestamp']
+            last_datetime = last_event["timestamp"]
             last_date = Date(
                 year=last_datetime.year,
                 month=last_datetime.month,
-                day=last_datetime.day
+                day=last_datetime.day,
             )
 
             if self.verbose_logging:
-                game_id = last_event.get('game_id', 'unknown')
-                week = last_event.get('data', {}).get('parameters', {}).get('week', '?')
-                self.logger.info(f"Last preseason game scheduled for: {last_date} (Week {week}, game_id={game_id})")
+                game_id = last_event.get("game_id", "unknown")
+                week = last_event.get("data", {}).get("parameters", {}).get("week", "?")
+                self.logger.info(
+                    f"Last preseason game scheduled for: {last_date} (Week {week}, game_id={game_id})"
+                )
 
             return last_date
 
@@ -1656,21 +2089,50 @@ class SeasonCycleController:
             Number of preseason games with results (completed games only)
         """
         try:
+            if self.verbose_logging:
+                print(f"\n[DIAG] _get_preseason_games_completed()")
+                print(f"  self.season_year: {self.season_year}")
+                print(f"  self.dynasty_id: {self.dynasty_id}")
+
             # Use API to get ONLY this dynasty's GAME events (10-100x faster with database filtering)
-            dynasty_game_events = self.db.events_get_by_type(
-                event_type="GAME"
-            )
+            dynasty_game_events = self.db.events_get_by_type(event_type="GAME")
+
+            if self.verbose_logging:
+                print(f"  Total GAME events from API: {len(dynasty_game_events)}")
+                if dynasty_game_events:
+                    sample = dynasty_game_events[0]
+                    print(f"  Sample event structure:")
+                    print(f"    - game_id: {sample.get('game_id')}")
+                    print(f"    - has 'data' key: {'data' in sample}")
+                    if 'data' in sample:
+                        print(f"    - data.parameters.season: {sample.get('data', {}).get('parameters', {}).get('season')}")
+                        print(f"    - data.parameters.season_type: {sample.get('data', {}).get('parameters', {}).get('season_type')}")
+                        print(f"    - has results: {sample.get('data', {}).get('results') is not None}")
 
             completed_preseason_games = [
-                e for e in dynasty_game_events
-                if e.get('data', {}).get('parameters', {}).get('season') == self.season_year
-                and e.get('data', {}).get('parameters', {}).get('season_type') == 'preseason'
-                and e.get('data', {}).get('results') is not None  # Must be completed
+                e
+                for e in dynasty_game_events
+                if e.get("data", {}).get("parameters", {}).get("season")
+                == self.season_year
+                and e.get("data", {}).get("parameters", {}).get("season_type")
+                == "preseason"
+                and e.get("data", {}).get("results") is not None  # Must be completed
             ]
 
             count = len(completed_preseason_games)
 
             if self.verbose_logging:
+                print(f"  Filtered completed preseason games: {count}")
+                print(f"  Expected: 48")
+                if count == 0:
+                    print(f"  [WARNING] No games found! Checking why...")
+                    # Check each condition separately
+                    matching_season = [e for e in dynasty_game_events if e.get("data", {}).get("parameters", {}).get("season") == self.season_year]
+                    matching_type = [e for e in dynasty_game_events if e.get("data", {}).get("parameters", {}).get("season_type") == "preseason"]
+                    has_results = [e for e in dynasty_game_events if e.get("data", {}).get("results") is not None]
+                    print(f"    - Events matching season={self.season_year}: {len(matching_season)}")
+                    print(f"    - Events matching season_type='preseason': {len(matching_type)}")
+                    print(f"    - Events with results: {len(has_results)}")
                 self.logger.debug(f"Preseason games completed: {count}/48")
 
             return count
@@ -1697,21 +2159,24 @@ class SeasonCycleController:
         """
         try:
             # Use API to get ONLY this dynasty's GAME events (10-100x faster with database filtering)
-            dynasty_game_events = self.db.events_get_by_type(
-                event_type="GAME"
-            )
+            dynasty_game_events = self.db.events_get_by_type(event_type="GAME")
 
             completed_regular_games = [
-                e for e in dynasty_game_events
-                if e.get('data', {}).get('parameters', {}).get('season') == self.season_year
-                and e.get('data', {}).get('parameters', {}).get('season_type') == PhaseNames.DB_REGULAR_SEASON
-                and e.get('data', {}).get('results') is not None  # Must be completed
+                e
+                for e in dynasty_game_events
+                if e.get("data", {}).get("parameters", {}).get("season")
+                == self.season_year
+                and e.get("data", {}).get("parameters", {}).get("season_type")
+                == PhaseNames.DB_REGULAR_SEASON
+                and e.get("data", {}).get("results") is not None  # Must be completed
             ]
 
             count = len(completed_regular_games)
 
             if self.verbose_logging:
-                self.logger.debug(f"Regular season games completed: {count}/{SeasonConstants.REGULAR_SEASON_GAME_COUNT}")
+                self.logger.debug(
+                    f"Regular season games completed: {count}/{SeasonConstants.REGULAR_SEASON_GAME_COUNT}"
+                )
 
             return count
 
@@ -1770,7 +2235,9 @@ class SeasonCycleController:
         games_played = self.total_games_played
         if games_played >= SeasonConstants.REGULAR_SEASON_GAME_COUNT:
             if self.verbose_logging:
-                print(f"[DEBUG] Regular season complete: {games_played} games played (threshold: {SeasonConstants.REGULAR_SEASON_GAME_COUNT})")
+                print(
+                    f"[DEBUG] Regular season complete: {games_played} games played (threshold: {SeasonConstants.REGULAR_SEASON_GAME_COUNT})"
+                )
             return True
 
         # FALLBACK CHECK: Has date passed last scheduled regular season game?
@@ -1780,7 +2247,9 @@ class SeasonCycleController:
 
         if self.verbose_logging:
             print(f"[DEBUG] Regular season check:")
-            print(f"  - Games played: {games_played}/{SeasonConstants.REGULAR_SEASON_GAME_COUNT}")
+            print(
+                f"  - Games played: {games_played}/{SeasonConstants.REGULAR_SEASON_GAME_COUNT}"
+            )
             print(f"  - Current date: {current_date}")
             print(f"  - Last scheduled game: {self.last_regular_season_game_date}")
             print(f"  - Date check result: {date_check}")
@@ -1800,17 +2269,19 @@ class SeasonCycleController:
         """
         if not self.playoff_controller:
             if self.verbose_logging:
-                print(f"\n[DEBUG] Checking Super Bowl completion: playoff_controller is None!")
+                print(
+                    f"\n[DEBUG] Checking Super Bowl completion: playoff_controller is None!"
+                )
             return False
 
-        super_bowl_games = self.playoff_controller.get_round_games('super_bowl')
+        super_bowl_games = self.playoff_controller.get_round_games("super_bowl")
 
         # Check if Super Bowl EXISTS and HAS BEEN PLAYED (has a winner)
         # Game exists but winner_id is None → scheduled but not played yet
         # Game exists and winner_id is set → game has been played
         is_complete = (
             len(super_bowl_games) > 0
-            and super_bowl_games[0].get('winner_id') is not None
+            and super_bowl_games[0].get("winner_id") is not None
         )
 
         # Debug logging
@@ -1820,8 +2291,8 @@ class SeasonCycleController:
             print(f"  - Super Bowl games: {super_bowl_games}")
             print(f"  - Super Bowl games count: {len(super_bowl_games)}")
             if super_bowl_games:
-                winner_id = super_bowl_games[0].get('winner_id')
-                status = super_bowl_games[0].get('status')
+                winner_id = super_bowl_games[0].get("winner_id")
+                status = super_bowl_games[0].get("status")
                 print(f"  - Super Bowl winner_id: {winner_id}")
                 print(f"  - Super Bowl status: {status}")
                 print(f"  - Is complete (has winner): {is_complete}")
@@ -1830,7 +2301,9 @@ class SeasonCycleController:
 
         if is_complete:
             print(f"\n[SUPER_BOWL_FLOW] ✅ Super Bowl has been played!")
-            print(f"[SUPER_BOWL_FLOW]    Winner: Team {super_bowl_games[0].get('winner_id')}")
+            print(
+                f"[SUPER_BOWL_FLOW]    Winner: Team {super_bowl_games[0].get('winner_id')}"
+            )
             print(f"[SUPER_BOWL_FLOW]    Ready to transition to OFFSEASON")
         elif len(super_bowl_games) > 0:
             print(f"\n[SUPER_BOWL_FLOW] ⏳ Super Bowl is SCHEDULED but not yet played")
@@ -1842,7 +2315,7 @@ class SeasonCycleController:
     def _transition_to_playoffs(self):
         """Execute transition from regular season to playoffs."""
         # Guard: prevent redundant transitions if already in playoffs
-        if self.phase_state.phase == SeasonPhase.PLAYOFFS:
+        if self.phase_state.phase.value == "playoffs":
             if self.verbose_logging:
                 print(f"\n⚠️  Already in playoffs phase, skipping transition")
             return
@@ -1855,30 +2328,33 @@ class SeasonCycleController:
         try:
             # 1. Get final regular season standings from database
             standings_data = self.db.standings_get(
-                season=self.season_year,
-                season_type=PhaseNames.DB_REGULAR_SEASON
+                season=self.season_year, season_type=PhaseNames.DB_REGULAR_SEASON
             )
 
-            if not standings_data or not standings_data.get('divisions'):
-                self.logger.error("No regular season standings found for playoff seeding")
-                raise RuntimeError("Cannot calculate playoff seeding - no standings available")
+            if not standings_data or not standings_data.get("divisions"):
+                self.logger.error(
+                    "No regular season standings found for playoff seeding"
+                )
+                raise RuntimeError(
+                    "Cannot calculate playoff seeding - no standings available"
+                )
 
             # 2. Convert standings to format expected by PlayoffSeeder
             # DatabaseAPI returns standings organized by division/conference
             # Each team_data has: {'team_id': int, 'standing': EnhancedTeamStanding}
             standings_dict = {}
-            for division_name, teams in standings_data.get('divisions', {}).items():
+            for division_name, teams in standings_data.get("divisions", {}).items():
                 for team_data in teams:
-                    team_id = team_data['team_id']
+                    team_id = team_data["team_id"]
                     # Use the EnhancedTeamStanding object directly from database
-                    standings_dict[team_id] = team_data['standing']
+                    standings_dict[team_id] = team_data["standing"]
 
             # 3. Calculate playoff seeding using PlayoffSeeder
             seeder = PlayoffSeeder()
             playoff_seeding = seeder.calculate_seeding(
                 standings=standings_dict,
                 season=self.season_year,
-                week=SeasonConstants.REGULAR_SEASON_WEEKS
+                week=SeasonConstants.REGULAR_SEASON_WEEKS,
             )
 
             if self.verbose_logging:
@@ -1905,7 +2381,8 @@ class SeasonCycleController:
                 initial_seeding=playoff_seeding,  # Pass real seeding from regular season!
                 enable_persistence=self.enable_persistence,
                 verbose_logging=self.verbose_logging,
-                phase_state=self.phase_state
+                phase_state=self.phase_state,
+                fast_mode=self.fast_mode
             )
 
             # Replace the playoff controller's calendar with the shared calendar
@@ -1980,13 +2457,15 @@ class SeasonCycleController:
             controller_year=self.season_year,
             dynasty_id=self.dynasty_id,
             dynasty_api=self.db,  # Phase 2: dynasty_api consolidated into UnifiedDatabaseAPI
-            context="Before playoff controller restoration"
+            context="Before playoff controller restoration",
         )
 
         # Guard: prevent duplicate initialization
         if self.playoff_controller is not None:
             if self.verbose_logging:
-                print(f"⚠️  Playoff controller already initialized, skipping restoration")
+                print(
+                    f"⚠️  Playoff controller already initialized, skipping restoration"
+                )
             return
 
         try:
@@ -1997,27 +2476,28 @@ class SeasonCycleController:
 
             # 1. Query database for final regular season standings (needed for seeding)
             standings_data = self.db.standings_get(
-                season=self.season_year,
-                season_type=PhaseNames.DB_REGULAR_SEASON
+                season=self.season_year, season_type=PhaseNames.DB_REGULAR_SEASON
             )
 
-            if not standings_data or not standings_data.get('divisions'):
-                self.logger.error("No regular season standings found - cannot restore playoff controller")
-                raise RuntimeError("Cannot restore playoff bracket - no standings available")
+            if not standings_data or not standings_data.get("divisions"):
+                self.logger.error(
+                    "No regular season standings found - cannot restore playoff controller"
+                )
+                raise RuntimeError(
+                    "Cannot restore playoff bracket - no standings available"
+                )
 
             # 2. Convert standings to format expected by PlayoffSeeder
             standings_dict = {}
-            for division_name, teams in standings_data.get('divisions', {}).items():
+            for division_name, teams in standings_data.get("divisions", {}).items():
                 for team_data in teams:
-                    team_id = team_data['team_id']
-                    standings_dict[team_id] = team_data['standing']
+                    team_id = team_data["team_id"]
+                    standings_dict[team_id] = team_data["standing"]
 
             # 3. Calculate playoff seeding
             seeder = PlayoffSeeder()
             playoff_seeding = seeder.calculate_seeding(
-                standings=standings_dict,
-                season=self.season_year,
-                week=18
+                standings=standings_dict, season=self.season_year, week=18
             )
 
             # 4. Estimate Wild Card date (mid-January)
@@ -2038,7 +2518,8 @@ class SeasonCycleController:
                 initial_seeding=playoff_seeding,
                 enable_persistence=self.enable_persistence,
                 verbose_logging=self.verbose_logging,
-                phase_state=self.phase_state
+                phase_state=self.phase_state,
+                fast_mode=self.fast_mode
             )
 
             # 6. Share calendar for date continuity
@@ -2060,195 +2541,35 @@ class SeasonCycleController:
             raise
 
     def _transition_to_offseason(self):
-        """Execute transition from playoffs to offseason."""
-        if self.verbose_logging:
-            print(f"\n{'='*80}")
-            print(f"{'SEASON COMPLETE - ENTERING OFFSEASON'.center(80)}")
-            print(f"{'='*80}")
-            print(f"[DEBUG] _transition_to_offseason() called")
-            print(f"[DEBUG] Current phase before transition: {self.phase_state.phase.value}")
+        """
+        OBSOLETE: This method is replaced by PlayoffsToOffseasonHandler.
 
-        # CRITICAL DIAGNOSTIC: Verify playoff events exist BEFORE transition
-        print(f"\n[PLAYOFF_LIFECYCLE] ===== BEFORE OFFSEASON TRANSITION =====")
-        playoff_count_before = self.db.events_count_playoff(
-            season_year=self.season_year
-        )
-        print(f"[PLAYOFF_LIFECYCLE]   Dynasty: {self.dynasty_id}")
-        print(f"[PLAYOFF_LIFECYCLE]   Database: {self.database_path}")
-        print(f"[PLAYOFF_LIFECYCLE]   Playoff events in database: {playoff_count_before}")
-        if playoff_count_before == 0:
-            print(f"[PLAYOFF_LIFECYCLE]   ⚠️  WARNING: NO PLAYOFF EVENTS FOUND!")
+        The PLAYOFFS → OFFSEASON transition is now handled by the phase transition
+        system via PlayoffsToOffseasonHandler. This method is kept temporarily for
+        reference during migration but should never be called in production code.
 
-        try:
-            # 1. Get Super Bowl result
-            super_bowl_games = self.playoff_controller.get_round_games('super_bowl')
-            super_bowl_result = super_bowl_games[0] if super_bowl_games else None
+        See:
+        - PlayoffsToOffseasonHandler (src/season/phase_transition/transition_handlers/playoffs_to_offseason.py)
+        - PhaseTransitionManager (src/season/phase_transition/phase_transition_manager.py)
+        - Lines 1710-1716 in this file for correct transition usage
 
-            champion_id = None
-            if super_bowl_result:
-                champion_id = super_bowl_result.get('winner_id')
-
-            # 2. Update state
-            if self.verbose_logging:
-                print(f"[DEBUG] Setting phase_state.phase to OFFSEASON...")
-            self.phase_state.phase = SeasonPhase.OFFSEASON
-            self.active_controller = None  # No active controller in offseason
-            if self.verbose_logging:
-                print(f"[DEBUG] Current phase after setting: {self.phase_state.phase.value}")
-
-            # Schedule offseason events
-            try:
-                if self.verbose_logging:
-                    print(f"\n[OFFSEASON_EVENTS] Scheduling offseason events...")
-                    print(f"  Season year: {self.season_year}")
-                    print(f"  Dynasty ID: {self.dynasty_id}")
-
-                from offseason.offseason_event_scheduler import OffseasonEventScheduler
-
-                scheduler = OffseasonEventScheduler()
-
-                # Get Super Bowl date from result
-                super_bowl_date = None
-                if super_bowl_result and super_bowl_result.get('game_date'):
-                    game_date_obj = super_bowl_result['game_date']
-                    # Convert to Date if it's a datetime
-                    if hasattr(game_date_obj, 'year'):
-                        from calendar.date_models import Date
-                        super_bowl_date = Date(game_date_obj.year, game_date_obj.month, game_date_obj.day)
-
-                # If no date in result, use current calendar date
-                if not super_bowl_date:
-                    super_bowl_date = self.calendar.get_current_date()
-
-                if self.verbose_logging:
-                    print(f"  Super Bowl date: {super_bowl_date}")
-
-                # Schedule all offseason events
-                scheduling_result = scheduler.schedule_offseason_events(
-                    super_bowl_date=super_bowl_date,
-                    season_year=self.season_year,
-                    dynasty_id=self.dynasty_id,
-                    event_db=self.season_controller.event_db
-                )
-
-                if self.verbose_logging:
-                    print(f"\n📅 Offseason Events Scheduled:")
-                    print(f"   Deadline Events: {scheduling_result['deadline_events']}")
-                    print(f"   Window Events: {scheduling_result['window_events']}")
-                    print(f"   Milestone Events: {scheduling_result['milestone_events']}")
-                    print(f"   Total Events: {scheduling_result['total_events']}")
-
-            except Exception as e:
-                self.logger.error(f"Error scheduling offseason events: {e}")
-                if self.verbose_logging:
-                    print(f"⚠️  WARNING: Offseason event scheduling failed!")
-                    print(f"  Error: {e}")
-                    print(f"  This will prevent milestone-based simulation from working correctly.")
-                    import traceback
-                    traceback.print_exc()
-                # Don't silently continue - this is a critical error
-
-            # 3. Generate season summary
-            self.season_summary = self._generate_season_summary()
-
-            # 4. Archive season statistics (Phase 2: Statistics Preservation System)
-            if self.enable_persistence:
-                try:
-                    if self.verbose_logging:
-                        print(f"\n{'='*80}")
-                        print(f"{'ARCHIVING SEASON STATISTICS'.center(80)}")
-                        print(f"{'='*80}")
-
-                    # Extract playoff champions (Phase 3: Service Extraction)
-                    afc_champion_id, nfc_champion_id = extract_playoff_champions(self.playoff_controller)
-
-                    # Import and initialize archiver
-                    from statistics.statistics_archiver import StatisticsArchiver
-
-                    archiver = StatisticsArchiver(
-                        database_path=self.database_path,
-                        dynasty_id=self.dynasty_id,
-                        logger=self.logger
-                    )
-
-                    # Archive the completed season
-                    archival_result = archiver.archive_season(
-                        completed_season=self.season_year,
-                        season_type=PhaseNames.DB_REGULAR_SEASON,
-                        super_bowl_champion=champion_id,
-                        afc_champion=afc_champion_id,
-                        nfc_champion=nfc_champion_id,
-                        awards={}  # TODO: Implement award selection system
-                    )
-
-                    # Log archival results
-                    if archival_result.success:
-                        self.logger.info(
-                            f"✅ Season {self.season_year} statistics archived successfully:\n"
-                            f"  - Player stats aggregated: {archival_result.player_stats_aggregated}\n"
-                            f"  - Duration: {archival_result.duration_seconds:.2f}s"
-                        )
-                        if self.verbose_logging:
-                            print(f"\n📊 Season Statistics Archived:")
-                            print(f"   Player Season Records: {archival_result.player_stats_aggregated}")
-                            print(f"   Games Archived (deleted): {archival_result.games_archived}")
-                            print(f"   Player Game Stats Archived (deleted): {archival_result.game_stats_archived}")
-                            print(f"   Archival Duration: {archival_result.duration_seconds:.2f}s")
-                            if archival_result.warnings:
-                                print(f"   Warnings: {len(archival_result.warnings)}")
-                                for warning in archival_result.warnings:
-                                    print(f"     ⚠️  {warning}")
-                    else:
-                        self.logger.error(
-                            f"❌ Season {self.season_year} statistics archival failed:\n"
-                            f"  - Errors: {archival_result.errors}"
-                        )
-                        if self.verbose_logging:
-                            print(f"\n⚠️  Statistics Archival Failed:")
-                            for error in archival_result.errors:
-                                print(f"   ❌ {error}")
-                        # Don't block offseason transition on archival failure
-
-                except Exception as e:
-                    self.logger.error(
-                        f"Unexpected error during statistics archival: {e}",
-                        exc_info=True
-                    )
-                    if self.verbose_logging:
-                        print(f"\n⚠️  Statistics archival error: {e}")
-                        print(f"   Continuing with offseason transition...")
-                    # Don't block offseason transition on archival failure
-
-            # 5. Notify user
-            if self.verbose_logging:
-                if champion_id:
-                    from team_management.teams.team_loader import get_team_by_id
-                    champion = get_team_by_id(champion_id)
-                    print(f"\n🏆 Super Bowl Champion: {champion.full_name}")
-
-                print(f"\n📊 Season Summary Generated")
-                print(f"   Total Games: {self.total_games_played}")
-                print(f"   Total Days: {self.total_days_simulated}")
-                print(f"{'='*80}\n")
-
-            # CRITICAL DIAGNOSTIC: Verify playoff events STILL exist AFTER transition
-            print(f"\n[PLAYOFF_LIFECYCLE] ===== AFTER OFFSEASON TRANSITION =====")
-            playoff_count_after = self.db.events_count_playoff(
-                season_year=self.season_year
+        Migration Guide:
+        Instead of calling this method directly, use:
+            transition = PhaseTransition(
+                from_phase=SeasonPhase.PLAYOFFS,
+                to_phase=SeasonPhase.OFFSEASON,
+                trigger="playoffs_complete"
             )
-            print(f"[PLAYOFF_LIFECYCLE]   Playoff events in database: {playoff_count_after}")
-            if playoff_count_after == 0:
-                print(f"[PLAYOFF_LIFECYCLE]   ⚠️  WARNING: PLAYOFF EVENTS DISAPPEARED!")
-            elif playoff_count_after != playoff_count_before:
-                print(f"[PLAYOFF_LIFECYCLE]   ⚠️  WARNING: Event count changed! Before: {playoff_count_before}, After: {playoff_count_after}")
-            else:
-                print(f"[PLAYOFF_LIFECYCLE]   ✅ Playoff events preserved ({playoff_count_after} events)")
+            self.phase_transition_manager.execute_transition(transition)
 
-        except Exception as e:
-            self.logger.error(f"Error transitioning to offseason: {e}")
-            if self.verbose_logging:
-                print(f"❌ Offseason transition failed: {e}")
-            raise
+        Raises:
+            NotImplementedError: Always raised to prevent accidental usage
+        """
+        raise NotImplementedError(
+            "This method is obsolete and should not be called. "
+            "Use PlayoffsToOffseasonHandler via phase_transition_manager.execute_transition() instead. "
+            "See lines 1710-1716 in season_cycle_controller.py for correct usage."
+        )
 
     def _calculate_wild_card_date(self) -> Date:
         """
@@ -2268,17 +2589,27 @@ class SeasonCycleController:
         final_reg_season_date = self.last_regular_season_game_date
 
         # Add SeasonConstants.PLAYOFF_DELAY_DAYS days (2 weeks)
-        wild_card_date = final_reg_season_date.add_days(SeasonConstants.PLAYOFF_DELAY_DAYS)
+        wild_card_date = final_reg_season_date.add_days(
+            SeasonConstants.PLAYOFF_DELAY_DAYS
+        )
 
         # Adjust to next Saturday
         # Use Python's weekday() where Monday=0, Saturday=SeasonConstants.WILD_CARD_WEEKDAY, Sunday=6
-        while wild_card_date.to_python_date().weekday() != SeasonConstants.WILD_CARD_WEEKDAY:  # SeasonConstants.WILD_CARD_WEEKDAY = Saturday
+        while (
+            wild_card_date.to_python_date().weekday()
+            != SeasonConstants.WILD_CARD_WEEKDAY
+        ):  # SeasonConstants.WILD_CARD_WEEKDAY = Saturday
             wild_card_date = wild_card_date.add_days(1)
             # Safety check to prevent infinite loop
-            if wild_card_date.days_until(final_reg_season_date) > SeasonConstants.DATE_ADJUSTMENT_SAFETY_LIMIT:
+            if (
+                wild_card_date.days_until(final_reg_season_date)
+                > SeasonConstants.DATE_ADJUSTMENT_SAFETY_LIMIT
+            ):
                 # If we've gone more than SeasonConstants.DATE_ADJUSTMENT_SAFETY_LIMIT days, something is wrong
                 # Just use the date SeasonConstants.PLAYOFF_DELAY_DAYS days out
-                wild_card_date = final_reg_season_date.add_days(SeasonConstants.PLAYOFF_DELAY_DAYS)
+                wild_card_date = final_reg_season_date.add_days(
+                    SeasonConstants.PLAYOFF_DELAY_DAYS
+                )
                 break
 
         return wild_card_date
@@ -2293,13 +2624,16 @@ class SeasonCycleController:
         try:
             # Get final regular season standings
             final_standings = self.db.standings_get(
-                season=self.season_year,
-                season_type=PhaseNames.DB_REGULAR_SEASON
+                season=self.season_year, season_type=PhaseNames.DB_REGULAR_SEASON
             )
 
             # Get Super Bowl winner
-            super_bowl_games = self.playoff_controller.get_round_games('super_bowl') if self.playoff_controller else []
-            champion_id = super_bowl_games[0]['winner_id'] if super_bowl_games else None
+            super_bowl_games = (
+                self.playoff_controller.get_round_games("super_bowl")
+                if self.playoff_controller
+                else []
+            )
+            champion_id = super_bowl_games[0]["winner_id"] if super_bowl_games else None
 
             # Note: Stat leaders queries would require additional DatabaseAPI methods
             # For now, we'll return basic summary
@@ -2310,7 +2644,7 @@ class SeasonCycleController:
                 "super_bowl_champion": champion_id,
                 "total_games": self.total_games_played,
                 "total_days": self.total_days_simulated,
-                "final_date": str(self.calendar.get_current_date())
+                "final_date": str(self.calendar.get_current_date()),
             }
 
             # Try to get stat leaders if methods exist
@@ -2329,7 +2663,7 @@ class SeasonCycleController:
             return {
                 "season_year": self.season_year,
                 "dynasty_id": self.dynasty_id,
-                "error": str(e)
+                "error": str(e),
             }
 
     def _generate_draft_class_if_needed(self):
@@ -2355,14 +2689,14 @@ class SeasonCycleController:
 
         # Generate draft class (224 prospects = 7 rounds × 32 teams)
         try:
-            draft_class_id = self.db.draft_generate_class(
-                season=self.season_year
-            )
+            draft_class_id = self.db.draft_generate_class(season=self.season_year)
 
             if self.verbose_logging:
                 print(f"\n🏈 Draft Class Generated:")
                 print(f"   Season: {self.season_year}")
-                print(f"   Prospects: {SeasonConstants.DRAFT_TOTAL_PROSPECTS} ({SeasonConstants.DRAFT_ROUNDS} rounds × {SeasonConstants.NFL_TEAMS_COUNT} teams)")
+                print(
+                    f"   Prospects: {SeasonConstants.DRAFT_TOTAL_PROSPECTS} ({SeasonConstants.DRAFT_ROUNDS} rounds × {SeasonConstants.NFL_TEAMS_COUNT} teams)"
+                )
                 print(f"   Draft Class ID: {draft_class_id}")
 
         except Exception as e:
@@ -2404,7 +2738,7 @@ class SeasonCycleController:
         See docs/plans/season_cycle_controller_implementation_plan.md for details
         """
         if self.verbose_logging:
-            event_name = event.get('display_name', 'Unknown Event')
+            event_name = event.get("display_name", "Unknown Event")
             print(f"[TODO] _execute_offseason_event_auto({event_name})")
 
     def _initialize_next_season(self):
@@ -2427,7 +2761,9 @@ class SeasonCycleController:
 
         # Step 1: Increment season year (Phase 3: Use synchronizer)
         old_year = self.season_year
-        new_year = self.year_synchronizer.increment_year("_initialize_next_season called")
+        new_year = self.year_synchronizer.increment_year(
+            "_initialize_next_season called"
+        )
 
         if self.verbose_logging:
             print(f"[NEW_SEASON] Season year: {old_year} → {self.season_year}")
@@ -2439,19 +2775,20 @@ class SeasonCycleController:
             season_model = SeasonDataModel(
                 db_path=self.database_path,
                 dynasty_id=self.dynasty_id,
-                season=self.season_year
+                season=self.season_year,
             )
 
             # Generate preseason games (3 weeks, 48 total games)
             generator = RandomScheduleGenerator(
-                event_db=self.event_db,
-                dynasty_id=self.dynasty_id
+                event_db=self.event_db, dynasty_id=self.dynasty_id
             )
 
             preseason_games = generator.generate_preseason(season_year=self.season_year)
 
             if self.verbose_logging:
-                print(f"[NEW_SEASON] Generated {len(preseason_games)} preseason games (3 weeks)")
+                print(
+                    f"[NEW_SEASON] Generated {len(preseason_games)} preseason games (3 weeks)"
+                )
 
             # Step 3: Generate regular season schedule (17 weeks, 272 games)
             # Dynasty starts day before first preseason game
@@ -2476,7 +2813,7 @@ class SeasonCycleController:
             self.db.dynasty_update_state(
                 current_date=str(self.calendar.get_current_date()),
                 current_week=0,  # Preseason is week 0
-                current_phase='preseason'
+                current_phase="preseason",
             )
 
             if self.verbose_logging:
@@ -2496,7 +2833,9 @@ class SeasonCycleController:
 
         except Exception as e:
             # Rollback season year on failure
-            self._set_season_year(old_year, f"Rollback after _initialize_next_season failure: {e}")
+            self._set_season_year(
+                old_year, f"Rollback after _initialize_next_season failure: {e}"
+            )
 
             # Log error
             self.logger.error(f"Failed to initialize season {old_year + 1}: {e}")
@@ -2504,6 +2843,7 @@ class SeasonCycleController:
             if self.verbose_logging:
                 print(f"❌ Season initialization failed: {e}")
                 import traceback
+
                 traceback.print_exc()
 
             # Re-raise with context
@@ -2538,7 +2878,7 @@ class SeasonCycleController:
             super_bowl_date=super_bowl_date,
             season_year=season_year,
             dynasty_id=self.dynasty_id,
-            event_db=self.event_db
+            event_db=self.event_db,
         )
 
     def _generate_season_summary_for_handler(self) -> Dict[str, Any]:
@@ -2551,10 +2891,12 @@ class SeasonCycleController:
         return {
             "champion_team_id": self.playoff_controller.get_super_bowl_winner(),
             "season_year": self.season_year,
-            "dynasty_id": self.dynasty_id
+            "dynasty_id": self.dynasty_id,
         }
 
-    def _generate_preseason_schedule_for_handler(self, season_year: int) -> List[Dict[str, Any]]:
+    def _generate_preseason_schedule_for_handler(
+        self, season_year: int
+    ) -> List[Dict[str, Any]]:
         """
         Generate preseason schedule for phase transition handler.
 
@@ -2571,19 +2913,20 @@ class SeasonCycleController:
         self._auto_recover_year_from_database("Before preseason schedule generation")
 
         # Check if preseason schedule already exists (prevent duplicates)
-        all_events = self.db.events_get_by_type(
-            event_type="GAME"
-        )
+        all_events = self.db.events_get_by_type(event_type="GAME")
 
         preseason_games = [
-            e for e in all_events
-            if e.get('game_id', '').startswith(GameIDPrefixes.PRESEASON)
-            and e.get('data', {}).get('parameters', {}).get('season') == season_year
+            e
+            for e in all_events
+            if e.get("game_id", "").startswith(GameIDPrefixes.PRESEASON)
+            and e.get("data", {}).get("parameters", {}).get("season") == season_year
         ]
 
         if len(preseason_games) == 48:
             if self.verbose_logging:
-                print(f"[SCHEDULE_IDEMPOTENCY] Preseason schedule already exists for {season_year}")
+                print(
+                    f"[SCHEDULE_IDEMPOTENCY] Preseason schedule already exists for {season_year}"
+                )
                 print(f"  Found {len(preseason_games)} games - returning existing")
             return preseason_games
 
@@ -2598,24 +2941,28 @@ class SeasonCycleController:
 
         # Convert Date to datetime for schedule generator
         from datetime import datetime
+
         preseason_start_datetime = datetime(
             preseason_start_date.year,
             preseason_start_date.month,
             preseason_start_date.day,
-            19, 0  # 7:00 PM default start time
+            19,
+            0,  # 7:00 PM default start time
         )
 
-        print(f"[PRESEASON_DEBUG Point 5.1] Using milestone date: {preseason_start_datetime.strftime('%Y-%m-%d')}")
+        print(
+            f"[PRESEASON_DEBUG Point 5.1] Using milestone date: {preseason_start_datetime.strftime('%Y-%m-%d')}"
+        )
 
         generator = RandomScheduleGenerator(
-            event_db=self.event_db,
-            dynasty_id=self.dynasty_id
+            event_db=self.event_db, dynasty_id=self.dynasty_id
         )
 
-        print(f"[PRESEASON_DEBUG Point 5.1] Calling generate_preseason() with start_date...")
+        print(
+            f"[PRESEASON_DEBUG Point 5.1] Calling generate_preseason() with start_date..."
+        )
         games = generator.generate_preseason(
-            season_year=season_year,
-            start_date=preseason_start_datetime
+            season_year=season_year, start_date=preseason_start_datetime
         )
 
         print(f"[PRESEASON_DEBUG Point 5.1] ✅ generate_preseason() completed")
@@ -2624,9 +2971,7 @@ class SeasonCycleController:
         return games
 
     def _generate_regular_season_schedule_for_handler(
-        self,
-        season_year: int,
-        start_date: datetime
+        self, season_year: int, start_date: datetime
     ) -> List[Dict[str, Any]]:
         """
         Generate regular season schedule for phase transition handler.
@@ -2642,23 +2987,26 @@ class SeasonCycleController:
             List of 272 regular season game event dictionaries
         """
         # Phase 5: Auto-recovery guard before schedule generation
-        self._auto_recover_year_from_database("Before regular season schedule generation")
-
-        # Check if regular season schedule already exists (prevent duplicates)
-        all_events = self.db.events_get_by_type(
-            event_type="GAME"
+        self._auto_recover_year_from_database(
+            "Before regular season schedule generation"
         )
 
+        # Check if regular season schedule already exists (prevent duplicates)
+        all_events = self.db.events_get_by_type(event_type="GAME")
+
         regular_season_games = [
-            e for e in all_events
-            if not e.get('game_id', '').startswith(GameIDPrefixes.PLAYOFF)
-            and not e.get('game_id', '').startswith(GameIDPrefixes.PRESEASON)
-            and e.get('data', {}).get('parameters', {}).get('season') == season_year
+            e
+            for e in all_events
+            if not e.get("game_id", "").startswith(GameIDPrefixes.PLAYOFF)
+            and not e.get("game_id", "").startswith(GameIDPrefixes.PRESEASON)
+            and e.get("data", {}).get("parameters", {}).get("season") == season_year
         ]
 
         if len(regular_season_games) == SeasonConstants.REGULAR_SEASON_GAME_COUNT:
             if self.verbose_logging:
-                print(f"[SCHEDULE_IDEMPOTENCY] Regular season schedule already exists for {season_year}")
+                print(
+                    f"[SCHEDULE_IDEMPOTENCY] Regular season schedule already exists for {season_year}"
+                )
                 print(f"  Found {len(regular_season_games)} games - returning existing")
             return regular_season_games
 
@@ -2666,9 +3014,7 @@ class SeasonCycleController:
         from ui.domain_models.season_data_model import SeasonDataModel
 
         season_model = SeasonDataModel(
-            db_path=self.database_path,
-            dynasty_id=self.dynasty_id,
-            season=season_year
+            db_path=self.database_path, dynasty_id=self.dynasty_id, season=season_year
         )
 
         # Use existing schedule generation
@@ -2679,20 +3025,21 @@ class SeasonCycleController:
             raise RuntimeError(f"Failed to generate regular season schedule: {error}")
 
         # Retrieve the generated games from event database
-        all_events = self.db.events_get_by_type(
-            event_type="GAME"
-        )
+        all_events = self.db.events_get_by_type(event_type="GAME")
 
         regular_season_games = [
-            e for e in all_events
-            if not e.get('game_id', '').startswith(GameIDPrefixes.PLAYOFF)
-            and not e.get('game_id', '').startswith(GameIDPrefixes.PRESEASON)
-            and e.get('data', {}).get('parameters', {}).get('season') == season_year
+            e
+            for e in all_events
+            if not e.get("game_id", "").startswith(GameIDPrefixes.PLAYOFF)
+            and not e.get("game_id", "").startswith(GameIDPrefixes.PRESEASON)
+            and e.get("data", {}).get("parameters", {}).get("season") == season_year
         ]
 
         return regular_season_games
 
-    def _reset_standings_for_handler(self, season_year: int, season_type: str = PhaseNames.DB_REGULAR_SEASON) -> None:
+    def _reset_standings_for_handler(
+        self, season_year: int, season_type: str = PhaseNames.DB_REGULAR_SEASON
+    ) -> None:
         """
         Reset all team standings for phase transition handler.
 
@@ -2702,13 +3049,19 @@ class SeasonCycleController:
         """
         # Temporarily update season_year for reset operation
         old_season_year = self.season_year
-        self._set_season_year(season_year, f"Temporary assignment for standings reset (year={season_year})")
+        self._set_season_year(
+            season_year,
+            f"Temporary assignment for standings reset (year={season_year})",
+        )
 
         try:
             self._reset_all_standings(season_type=season_type)
         finally:
             # Restore original season_year
-            self._set_season_year(old_season_year, f"Restore after standings reset (back to {old_season_year})")
+            self._set_season_year(
+                old_season_year,
+                f"Restore after standings reset (back to {old_season_year})",
+            )
 
     def _calculate_preseason_start_for_handler(self, season_year: int) -> datetime:
         """
@@ -2721,8 +3074,7 @@ class SeasonCycleController:
             datetime representing preseason start date (typically first Thursday in August)
         """
         generator = RandomScheduleGenerator(
-            event_db=self.event_db,
-            dynasty_id=self.dynasty_id
+            event_db=self.event_db, dynasty_id=self.dynasty_id
         )
         return generator._calculate_preseason_start(season_year)  # Returns datetime
 
@@ -2742,9 +3094,9 @@ class SeasonCycleController:
         """
         # Use EventDatabaseAPI instead of direct SQL (proper separation of concerns)
         milestone_date = self.db.events_get_milestone_by_type(
-            milestone_type='PRESEASON_START',
+            milestone_type="PRESEASON_START",
             season_year=self.season_year,
-            year_tolerance=1  # Accept ±1 year to handle phase transitions
+            year_tolerance=1,  # Accept ±1 year to handle phase transitions
         )
 
         if not milestone_date:
@@ -2768,10 +3120,119 @@ class SeasonCycleController:
         self._auto_recover_year_from_database("Before database phase update")
 
         self.db.dynasty_update_state(
+            season=season_year,  # Required first positional argument
             current_date=str(self.calendar.get_current_date()),
+            current_phase=phase.lower(),
             current_week=0 if phase == "PRESEASON" else None,
-            current_phase=phase.lower()
         )
+
+    def _get_standings_for_handler(self, dynasty_id: str, season_year: int) -> Dict[str, Any]:
+        """
+        Get final regular season standings from database.
+
+        Required by RegularToPlayoffsHandler to calculate playoff seeding.
+
+        Args:
+            dynasty_id: Dynasty identifier
+            season_year: Season year to query standings for
+
+        Returns:
+            Dict mapping team_id to standing dict with wins/losses/ties
+
+        Raises:
+            RuntimeError: If no standings found for season
+        """
+        standings_data = self.db.standings_get(
+            season=season_year,
+            season_type=PhaseNames.DB_REGULAR_SEASON
+        )
+
+        if not standings_data or not standings_data.get("divisions"):
+            raise RuntimeError(
+                f"No regular season standings found for dynasty '{dynasty_id}', "
+                f"season {season_year}"
+            )
+
+        # Convert to format expected by PlayoffSeeder
+        standings_dict = {}
+        for division_name, teams in standings_data.get("divisions", {}).items():
+            for team_data in teams:
+                team_id = team_data["team_id"]
+                standings_dict[team_id] = team_data["standing"]
+
+        return standings_dict
+
+    def _seed_playoffs_for_handler(self, standings: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Seed playoff bracket from regular season standings.
+
+        Required by RegularToPlayoffsHandler to create playoff bracket.
+
+        Args:
+            standings: Dict mapping team_id to standing dict
+
+        Returns:
+            PlayoffSeeding object with AFC/NFC seeds
+        """
+        seeder = PlayoffSeeder()
+        playoff_seeding = seeder.calculate_seeding(
+            standings=standings,
+            season=self.season_year,
+            week=SeasonConstants.REGULAR_SEASON_WEEKS,
+        )
+
+        if self.verbose_logging:
+            print(f"\n📋 Playoff Seeding Calculated")
+            print(f"\nAFC Seeds:")
+            for seed in playoff_seeding.afc.seeds:
+                print(f"  #{seed.seed}: Team {seed.team_id} ({seed.record_string})")
+            print(f"\nNFC Seeds:")
+            for seed in playoff_seeding.nfc.seeds:
+                print(f"  #{seed.seed}: Team {seed.team_id} ({seed.record_string})")
+
+        return playoff_seeding
+
+    def _create_playoff_controller_for_handler(self, seeding: Dict[str, Any]) -> PlayoffController:
+        """
+        Create playoff controller with seeded bracket.
+
+        Required by RegularToPlayoffsHandler to initialize playoff phase.
+
+        Args:
+            seeding: PlayoffSeeding object from _seed_playoffs_for_handler
+
+        Returns:
+            PlayoffController instance ready for playoff simulation
+        """
+        wild_card_date = self._calculate_wild_card_date()
+
+        if self.verbose_logging:
+            print(f"\n📅 Wild Card Weekend: {wild_card_date}")
+
+        playoff_controller = PlayoffController(
+            database_path=self.database_path,
+            dynasty_id=self.dynasty_id,
+            season_year=self.season_year,
+            wild_card_start_date=wild_card_date,
+            initial_seeding=seeding,
+            enable_persistence=self.enable_persistence,
+            verbose_logging=self.verbose_logging,
+            phase_state=self.phase_state,
+            fast_mode=self.fast_mode
+        )
+
+        # Share calendar and set references
+        playoff_controller.calendar = self.calendar
+        playoff_controller.simulation_executor.calendar = self.calendar
+        playoff_controller.original_seeding = seeding
+
+        self.playoff_controller = playoff_controller
+        self.active_controller = playoff_controller
+
+        if self.verbose_logging:
+            print(f"\n✅ Playoff controller created successfully")
+
+        return playoff_controller
 
     # ========== AI Transaction Helper Methods (Phase 1.7) ==========
 
@@ -2787,10 +3248,18 @@ class SeasonCycleController:
         """
         if self.phase_state.phase == SeasonPhase.REGULAR_SEASON:
             # Use SeasonController's tracked week (most reliable)
-            return self.season_controller.current_week if hasattr(self.season_controller, 'current_week') else 0
+            return (
+                self.season_controller.current_week
+                if hasattr(self.season_controller, "current_week")
+                else 0
+            )
         elif self.phase_state.phase == SeasonPhase.PRESEASON:
             # Preseason weeks are 1-4
-            return self.season_controller.current_week if hasattr(self.season_controller, 'current_week') else 0
+            return (
+                self.season_controller.current_week
+                if hasattr(self.season_controller, "current_week")
+                else 0
+            )
         else:
             # Playoffs, offseason, etc.
             return 0
@@ -2808,31 +3277,36 @@ class SeasonCycleController:
         """
         try:
             self.db.standings_reset(
-                season_year=self.season_year,
-                season_type=season_type
+                season_year=self.season_year, season_type=season_type
             )
 
             if self.verbose_logging:
-                print(f"[STANDINGS_RESET] All 32 teams reset to 0-0-0 for season {self.season_year} ({season_type})")
+                print(
+                    f"[STANDINGS_RESET] All 32 teams reset to 0-0-0 for season {self.season_year} ({season_type})"
+                )
 
         except Exception as e:
             raise Exception(f"Failed to reset standings: {e}") from e
-\
+
     # ==================== Dunder Methods ====================
 
     def __str__(self) -> str:
         """String representation"""
-        return (f"SeasonCycleController(season={self.season_year}, "
-                f"phase={self.phase_state.phase.value}, "
-                f"games={self.total_games_played})")
+        return (
+            f"SeasonCycleController(season={self.season_year}, "
+            f"phase={self.phase_state.phase.value}, "
+            f"games={self.total_games_played})"
+        )
 
     def __repr__(self) -> str:
         """Detailed representation"""
-        return (f"SeasonCycleController(database_path='{self.database_path}', "
-                f"season_year={self.season_year}, "
-                f"dynasty_id='{self.dynasty_id}')")
+        return (
+            f"SeasonCycleController(database_path='{self.database_path}', "
+            f"season_year={self.season_year}, "
+            f"dynasty_id='{self.dynasty_id}')"
+        )
 
     def close(self):
         """Close database connections"""
-        if hasattr(self, 'db'):
+        if hasattr(self, "db"):
             self.db.close()
