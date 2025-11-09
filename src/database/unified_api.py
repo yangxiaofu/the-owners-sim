@@ -1148,7 +1148,7 @@ class UnifiedDatabaseAPI:
 
     def events_get_next_offseason_milestone(
         self,
-        current_date: str,
+        current_date,  # Union[str, Date, datetime.date]
         season_year: int
     ) -> Optional[Dict[str, Any]]:
         """
@@ -1158,15 +1158,24 @@ class UnifiedDatabaseAPI:
         and returns the chronologically next event.
 
         Args:
-            current_date: Current date (YYYY-MM-DD format)
+            current_date: Current date (YYYY-MM-DD string OR Date/datetime object)
             season_year: Season year for filtering
 
         Returns:
             Dict with milestone info or None if no more milestones
         """
         try:
-            # Convert current_date to timestamp
-            year, month, day = map(int, current_date.split('-'))
+            # Convert current_date to timestamp (handle both Date objects and strings)
+            from src.calendar.date_models import Date
+
+            if isinstance(current_date, Date):
+                year, month, day = current_date.year, current_date.month, current_date.day
+            elif isinstance(current_date, str):
+                year, month, day = map(int, current_date.split('-'))
+            else:
+                # Handle datetime.date objects
+                year, month, day = current_date.year, current_date.month, current_date.day
+
             current_datetime = datetime(year, month, day)
             current_timestamp_ms = int(current_datetime.timestamp() * 1000)
 
@@ -1196,6 +1205,68 @@ class UnifiedDatabaseAPI:
 
         except Exception as e:
             self.logger.error(f"Error getting next offseason milestone: {e}", exc_info=True)
+            return None
+
+    def events_get_milestone_by_type(
+        self,
+        milestone_type: str,
+        season_year: int,
+        year_tolerance: int = 1
+    ) -> Optional['Date']:
+        """
+        Get milestone date by type with tolerant season_year matching.
+
+        Handles phase transition edge cases where the controller's season_year
+        may increment before all milestones are consumed. Uses year tolerance
+        to accept milestones within ±N years of the target season.
+
+        Args:
+            milestone_type: Type of milestone (e.g., "PRESEASON_START", "DRAFT", "FREE_AGENCY_START")
+            season_year: Season year to search for
+            year_tolerance: Accept milestones within ±N years (default: 1)
+
+        Returns:
+            Date: Date of the milestone
+            None: If milestone not found
+
+        Example:
+            # Get preseason start date for 2025 season (±1 year tolerance)
+            date = db.events_get_milestone_by_type("PRESEASON_START", 2025, year_tolerance=1)
+        """
+        from src.calendar.date_models import Date
+
+        try:
+            query = """
+                SELECT timestamp, data FROM events
+                WHERE dynasty_id = ?
+                  AND event_type = 'MILESTONE'
+                ORDER BY timestamp ASC
+            """
+
+            results = self._execute_query(query, (self.dynasty_id,))
+
+            for row in results:
+                # Parse event data
+                data = json.loads(row['data']) if isinstance(row['data'], str) else row['data']
+                params = data.get('parameters', {})
+
+                # Check if this is the milestone type we're looking for
+                if params.get('milestone_type') == milestone_type:
+                    # Get season year from milestone
+                    event_season = params.get('season_year', 0)
+                    year_diff = abs(event_season - season_year)
+
+                    # Check if within tolerance
+                    if year_diff <= year_tolerance:
+                        # Convert timestamp to Date
+                        dt = datetime.fromtimestamp(row['timestamp'] / 1000)
+                        return Date(dt.year, dt.month, dt.day)
+
+            # Milestone not found
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Error getting milestone by type '{milestone_type}': {e}", exc_info=True)
             return None
 
     def events_get_first_game_date_of_phase(
