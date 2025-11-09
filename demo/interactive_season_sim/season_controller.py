@@ -24,15 +24,15 @@ current_dir = Path(__file__).parent
 project_root = current_dir.parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from calendar.calendar_component import CalendarComponent
-from calendar.simulation_executor import SimulationExecutor
-from calendar.date_models import Date
-from calendar.season_phase_tracker import SeasonPhase
-from events import EventDatabaseAPI, GameEvent
-from workflows import SimulationWorkflow
-from database.api import DatabaseAPI
+from src.calendar.calendar_component import CalendarComponent
+from src.calendar.simulation_executor import SimulationExecutor
+from src.calendar.date_models import Date
+from src.calendar.season_phase_tracker import SeasonPhase
+from src.events import EventDatabaseAPI, GameEvent
+from src.workflows import SimulationWorkflow
+from src.database.api import DatabaseAPI
 
-from scheduling import RandomScheduleGenerator
+from src.scheduling import RandomScheduleGenerator
 
 
 class SeasonController:

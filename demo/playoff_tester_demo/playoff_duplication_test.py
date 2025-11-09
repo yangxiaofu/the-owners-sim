@@ -29,7 +29,7 @@ from verify_duplicates import DuplicateChecker
 
 from playoff_system.playoff_controller import PlayoffController
 from playoff_system.playoff_seeder import PlayoffSeeder
-from calendar.date_models import Date
+from src.calendar.date_models import Date
 from database.connection import DatabaseConnection
 
 

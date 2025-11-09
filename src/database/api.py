@@ -57,7 +57,16 @@ class DatabaseAPI:
             ORDER BY team_id
         '''
 
+        # DEBUG: Log query parameters
+        print(f"\n[DEBUG DatabaseAPI.get_standings()] Called with:")
+        print(f"  dynasty_id={dynasty_id}, season={season}, season_type={season_type}")
+
         results = self.db_connection.execute_query(query, (dynasty_id, season, season_type))
+
+        # DEBUG: Log query results
+        print(f"[DEBUG DatabaseAPI.get_standings()] Query returned {len(results) if results else 0} rows")
+        if results:
+            print(f"  First row: team_id={results[0].get('team_id')}, wins={results[0].get('wins')}, losses={results[0].get('losses')}")
 
         if not results:
             self.logger.warning(f"No standings found for dynasty {dynasty_id}, season {season}")

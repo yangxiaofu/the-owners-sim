@@ -79,7 +79,7 @@ class OffseasonController:
         else:
             # If no calendar provided, start at Super Bowl + 1 week
             try:
-                from calendar.calendar_component import CalendarComponent
+                from src.calendar.calendar_component import CalendarComponent
             except (ModuleNotFoundError, ImportError):
                 from src.calendar.calendar_component import CalendarComponent
             start_date = super_bowl_date or datetime(season_year + 1, 2, 9)

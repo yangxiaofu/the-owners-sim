@@ -10,7 +10,7 @@ import threading
 
 # Use try/except to handle both production and test imports
 try:
-    from calendar.season_phase_tracker import SeasonPhase
+    from src.calendar.season_phase_tracker import SeasonPhase
 except ModuleNotFoundError:
     from .season_phase_tracker import SeasonPhase
 

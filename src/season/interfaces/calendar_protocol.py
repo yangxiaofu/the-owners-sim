@@ -6,7 +6,7 @@ Enables dependency injection and testing with mock calendars.
 """
 
 from typing import Protocol
-from calendar.date_models import Date
+from src.calendar.date_models import Date
 
 
 class CalendarProtocol(Protocol):

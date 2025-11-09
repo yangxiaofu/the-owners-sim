@@ -27,7 +27,7 @@ def test_draft_class_generated_at_season_start(temp_db):
     """Verify draft class is generated when season starts."""
     from season.season_cycle_controller import SeasonCycleController
     from database.draft_class_api import DraftClassAPI
-    from calendar.season_phase_tracker import SeasonPhase
+    from src.calendar.season_phase_tracker import SeasonPhase
 
     # Action: Create season cycle controller (season start)
     controller = SeasonCycleController(

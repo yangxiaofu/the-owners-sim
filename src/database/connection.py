@@ -830,7 +830,10 @@ class DatabaseConnection:
         """
         Initialize standings records for dynasties that have games but missing standings.
 
-        This ensures all 32 NFL teams have standings entries for each season with games.
+        This ensures all 32 NFL teams have standings entries for each (season, season_type)
+        combination with games. Preseason, regular_season, and playoffs standings are
+        initialized independently.
+
         Runs automatically on database connection to fix missing initialization data.
 
         Args:
@@ -845,33 +848,32 @@ class DatabaseConnection:
             if not dynasties_with_games:
                 return  # No games yet, nothing to initialize
 
-            # For each dynasty, get seasons with games
+            # For each dynasty, get seasons AND season_types with games
             for dynasty_id in dynasties_with_games:
                 cursor.execute(
-                    "SELECT DISTINCT season FROM games WHERE dynasty_id = ?",
+                    "SELECT DISTINCT season, season_type FROM games WHERE dynasty_id = ?",
                     (dynasty_id,)
                 )
-                seasons = [row[0] for row in cursor.fetchall()]
+                season_types_with_games = cursor.fetchall()
 
-                # For each season, check if standings exist
-                for season in seasons:
+                # For each (season, season_type) combination, check if standings exist
+                for season, season_type in season_types_with_games:
                     cursor.execute(
-                        "SELECT COUNT(*) FROM standings WHERE dynasty_id = ? AND season = ?",
-                        (dynasty_id, season)
+                        "SELECT COUNT(*) FROM standings WHERE dynasty_id = ? AND season = ? AND season_type = ?",
+                        (dynasty_id, season, season_type)
                     )
                     existing_count = cursor.fetchone()[0]
 
-                    # If missing standings (should be 32 teams)
+                    # If missing standings (should be 32 teams per season_type)
                     if existing_count < 32:
-                        # Get existing team IDs to avoid duplicates
+                        # Get existing team IDs to avoid duplicates (filtered by season_type)
                         cursor.execute(
-                            "SELECT team_id FROM standings WHERE dynasty_id = ? AND season = ?",
-                            (dynasty_id, season)
+                            "SELECT team_id FROM standings WHERE dynasty_id = ? AND season = ? AND season_type = ?",
+                            (dynasty_id, season, season_type)
                         )
                         existing_teams = {row[0] for row in cursor.fetchall()}
 
-                        # Insert missing teams (1-32)
-                        # NOTE: Always initialize as 'regular_season' - other season_types created separately
+                        # Insert missing teams (1-32) for this specific season_type
                         for team_id in range(1, 33):
                             if team_id not in existing_teams:
                                 cursor.execute('''
@@ -883,8 +885,8 @@ class DatabaseConnection:
                                         home_wins, home_losses, home_ties,
                                         away_wins, away_losses, away_ties,
                                         points_for, points_against, point_differential
-                                    ) VALUES (?, ?, ?, 'regular_season', 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-                                ''', (dynasty_id, team_id, season))
+                                    ) VALUES (?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+                                ''', (dynasty_id, team_id, season, season_type))
 
                         conn.commit()
 
@@ -892,7 +894,7 @@ class DatabaseConnection:
                         teams_added = 32 - existing_count
                         if teams_added > 0:
                             self.logger.info(
-                                f"Initialized {teams_added} missing standings records for "
+                                f"Initialized {teams_added} missing {season_type} standings records for "
                                 f"dynasty '{dynasty_id}', season {season}"
                             )
 

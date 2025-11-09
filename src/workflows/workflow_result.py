@@ -175,6 +175,7 @@ class WorkflowConfiguration:
     persist_team_stats: bool = True
     persist_standings: bool = True
     verbose_logging: bool = True
+    fast_mode: bool = False  # Skip actual simulations, generate fake results (for testing)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary."""
@@ -185,7 +186,8 @@ class WorkflowConfiguration:
             'persist_player_stats': self.persist_player_stats,
             'persist_team_stats': self.persist_team_stats,
             'persist_standings': self.persist_standings,
-            'verbose_logging': self.verbose_logging
+            'verbose_logging': self.verbose_logging,
+            'fast_mode': self.fast_mode
         }
 
     @classmethod

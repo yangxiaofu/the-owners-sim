@@ -29,8 +29,8 @@ project_root = current_dir.parent.parent
 sys.path.insert(0, str(project_root / "src"))
 sys.path.insert(0, str(current_dir.parent / "interactive_season_sim"))
 
-from calendar.date_models import Date
-from calendar.season_phase_tracker import SeasonPhase
+from src.calendar.date_models import Date
+from src.calendar.season_phase_tracker import SeasonPhase
 from playoff_system.playoff_controller import PlayoffController
 from playoff_system.playoff_seeder import PlayoffSeeder
 from database.api import DatabaseAPI

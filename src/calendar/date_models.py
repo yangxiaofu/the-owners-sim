@@ -239,14 +239,21 @@ def normalize_date(date_input: Union[Date, PyDate, str]) -> Date:
     Raises:
         ValueError: If input cannot be converted to Date
     """
-    if isinstance(date_input, Date):
+    # Use duck typing to handle Date objects imported from different paths
+    # Check if it's a Date-like object by class name and attributes
+    if hasattr(date_input, '__class__') and date_input.__class__.__name__ == 'Date':
+        # It's a Date object (possibly imported from different path)
+        # Convert to ensure we have the right type
+        if hasattr(date_input, 'year') and hasattr(date_input, 'month') and hasattr(date_input, 'day'):
+            return Date(year=date_input.year, month=date_input.month, day=date_input.day)
+    elif isinstance(date_input, Date):
         return date_input
     elif isinstance(date_input, PyDate):
         return Date.from_python_date(date_input)
     elif isinstance(date_input, str):
         return Date.from_string(date_input)
-    else:
-        raise ValueError(f"Cannot convert {type(date_input)} to Date")
+
+    raise ValueError(f"Cannot convert {type(date_input)} to Date")
 
 
 def days_between(start_date: Union[Date, PyDate, str],

@@ -24,7 +24,7 @@ from events.deadline_event import DeadlineEvent, DeadlineType
 from events.window_event import WindowEvent, WindowName
 from events.milestone_event import MilestoneEvent, MilestoneType
 from events.event_database_api import EventDatabaseAPI
-from calendar.date_models import Date
+from src.calendar.date_models import Date
 
 
 # Configure logging

@@ -157,13 +157,15 @@ class GamePersistenceOrchestrator:
             composite_result.add_result("team_stats", team_stats_persistence)
 
             # Step 4: Update standings
+            season_type = game_data.get('season_type', 'regular_season')
             standings_persistence = self.persister.update_standings(
                 home_team_id=game_data['home_team_id'],
                 away_team_id=game_data['away_team_id'],
                 home_score=game_data['home_score'],
                 away_score=game_data['away_score'],
                 dynasty_id=dynasty_id,
-                season=season
+                season=season,
+                season_type=season_type
             )
             composite_result.add_result("standings", standings_persistence)
 
@@ -291,6 +293,7 @@ class GamePersistenceOrchestrator:
                     'total_plays': getattr(game_result, 'total_plays', 0),
                     'game_duration_minutes': getattr(game_result, 'game_duration_minutes', 180),
                     'overtime_periods': getattr(game_result, 'overtime_periods', 0),
+                    'season_type': getattr(game_result, 'season_type', 'regular_season'),
                 }
             # Check if it's a simulation result with metadata
             elif hasattr(game_result, 'metadata') and isinstance(game_result.metadata, dict):
@@ -302,7 +305,14 @@ class GamePersistenceOrchestrator:
             # Ensure required fields
             game_data.setdefault('season', season)
             game_data.setdefault('week', week)
-            game_data.setdefault('season_type', 'regular_season')
+
+            # Warn if season_type is missing (should be extracted above)
+            if 'season_type' not in game_data:
+                self.logger.warning(
+                    f"season_type missing from game_data for season {season} week {week}, "
+                    f"defaulting to 'regular_season'. This may indicate a bug in data extraction."
+                )
+                game_data['season_type'] = 'regular_season'
 
             return game_data
 

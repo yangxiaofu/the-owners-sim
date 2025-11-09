@@ -10,8 +10,8 @@ from datetime import date, datetime, timedelta
 from typing import List, Optional, Dict, Any, Union
 import logging
 
-from calendar.calendar_component import CalendarComponent
-from calendar.simulation_executor import SimulationExecutor
+from src.calendar.calendar_component import CalendarComponent
+from src.calendar.simulation_executor import SimulationExecutor
 
 
 class SeasonManager:
@@ -38,7 +38,7 @@ class SeasonManager:
         # For now, create with a default date that can be updated later
         try:
             from datetime import date
-            from calendar.date_models import Date
+            from src.calendar.date_models import Date
             default_start_date = Date(2024, 9, 1)  # Default NFL season start
             self._calendar_manager = CalendarComponent(
                 start_date=default_start_date,

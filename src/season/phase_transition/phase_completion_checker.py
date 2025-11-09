@@ -40,7 +40,7 @@ from typing import Callable
 
 # Use src. prefix to avoid collision with Python builtin calendar
 try:
-    from calendar.date_models import Date
+    from src.calendar.date_models import Date
 except ModuleNotFoundError:
     # Fallback for test environment
     from src.calendar.date_models import Date
@@ -226,17 +226,39 @@ class PhaseCompletionChecker:
         Performance:
             O(1) time complexity. Performs 2 function calls and 2 comparisons.
         """
+        # Diagnostic entry
+        print("\n" + "="*80)
+        print("[PHASE_COMPLETION_CHECK] is_preseason_complete() called")
+        print("="*80)
+
         # Primary check: Game count (most reliable)
         games_played = self._get_games_played()
+        print(f"[PHASE_COMPLETION_CHECK] games_played: {games_played}")
+        print(f"[PHASE_COMPLETION_CHECK] PRESEASON_GAME_COUNT: {self.PRESEASON_GAME_COUNT}")
+        print(f"[PHASE_COMPLETION_CHECK] Check: {games_played} >= {self.PRESEASON_GAME_COUNT}? {games_played >= self.PRESEASON_GAME_COUNT}")
+
         if games_played >= self.PRESEASON_GAME_COUNT:
+            print(f"[PHASE_COMPLETION_CHECK] ✓ PRIMARY CHECK PASSED - Preseason complete!")
+            print(f"[PHASE_COMPLETION_CHECK] → Returning True")
+            print("="*80 + "\n")
             return True
 
         # Fallback check: Date progression (handles edge cases)
+        print(f"[PHASE_COMPLETION_CHECK] Primary check failed ({games_played} < {self.PRESEASON_GAME_COUNT})")
+        print(f"[PHASE_COMPLETION_CHECK] Trying fallback check (date progression)...")
+
         current_date = self._get_current_date()
         last_game_date = self._get_last_preseason_game_date()
 
+        print(f"[PHASE_COMPLETION_CHECK] current_date: {current_date}")
+        print(f"[PHASE_COMPLETION_CHECK] last_game_date: {last_game_date}")
+        print(f"[PHASE_COMPLETION_CHECK] Check: {current_date} > {last_game_date}? {current_date > last_game_date}")
+
         # Preseason complete if we've passed the last scheduled preseason game date
-        return current_date > last_game_date
+        result = current_date > last_game_date
+        print(f"[PHASE_COMPLETION_CHECK] → Returning {result} (fallback check)")
+        print("="*80 + "\n")
+        return result
 
     def is_playoffs_complete(self) -> bool:
         """

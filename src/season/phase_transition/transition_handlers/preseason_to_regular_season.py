@@ -30,6 +30,7 @@ import logging
 from datetime import datetime
 
 from ..models import PhaseTransition
+from src.calendar.season_phase_tracker import SeasonPhase
 
 
 class PreseasonToRegularSeasonHandler:
@@ -152,10 +153,10 @@ class PreseasonToRegularSeasonHandler:
         )
 
         # Validate transition
-        if transition.from_phase != "PRESEASON":
-            raise ValueError(f"Invalid from_phase: {transition.from_phase} (expected PRESEASON)")
-        if transition.to_phase != "REGULAR_SEASON":
-            raise ValueError(f"Invalid to_phase: {transition.to_phase} (expected REGULAR_SEASON)")
+        if transition.from_phase != SeasonPhase.PRESEASON:
+            raise ValueError(f"Invalid from_phase: {transition.from_phase.value} (expected PRESEASON)")
+        if transition.to_phase != SeasonPhase.REGULAR_SEASON:
+            raise ValueError(f"Invalid to_phase: {transition.to_phase.value} (expected REGULAR_SEASON)")
 
         try:
             # Step 1: Save rollback state

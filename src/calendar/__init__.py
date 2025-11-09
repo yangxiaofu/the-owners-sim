@@ -78,7 +78,7 @@ from .calendar_exceptions import (
 )
 
 # NOTE: SimulationExecutor not imported at package level to avoid circular dependency
-# Import directly when needed: from calendar.simulation_executor import SimulationExecutor
+# Import directly when needed: from src.calendar.simulation_executor import SimulationExecutor
 
 # Version information
 __version__ = "1.1.0"

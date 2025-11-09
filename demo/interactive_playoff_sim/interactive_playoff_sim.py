@@ -23,7 +23,7 @@ from pathlib import Path
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from calendar.date_models import Date
+from src.calendar.date_models import Date
 
 # Import playoff controller from centralized location
 from playoff_system.playoff_controller import PlayoffController

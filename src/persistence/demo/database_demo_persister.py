@@ -285,7 +285,8 @@ class DatabaseDemoPersister(DemoPersister):
         home_score: int,
         away_score: int,
         dynasty_id: str = "default",
-        season: int = 2024
+        season: int = 2024,
+        season_type: str = "regular_season"
     ) -> PersistenceResult:
         """
         Update team standings based on game result.
@@ -297,6 +298,7 @@ class DatabaseDemoPersister(DemoPersister):
             away_score: Away team score
             dynasty_id: Dynasty context
             season: Season year
+            season_type: Season type ('preseason', 'regular_season', 'playoffs')
 
         Returns:
             PersistenceResult with operation outcome
@@ -314,30 +316,30 @@ class DatabaseDemoPersister(DemoPersister):
             for team_id in [home_team_id, away_team_id]:
                 conn.execute("""
                     INSERT OR IGNORE INTO standings (
-                        dynasty_id, team_id, season, wins, losses, ties,
+                        dynasty_id, team_id, season, season_type, wins, losses, ties,
                         points_for, points_against, division_wins, division_losses,
                         conference_wins, conference_losses, home_wins, home_losses,
                         away_wins, away_losses
-                    ) VALUES (?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
-                """, (dynasty_id, team_id, season))
+                    ) VALUES (?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+                """, (dynasty_id, team_id, season, season_type))
 
             # Determine winner and update records
             if home_score > away_score:
                 # Home team wins
-                self._update_team_record(conn, home_team_id, dynasty_id, season, wins=1, home_wins=1)
-                self._update_team_record(conn, away_team_id, dynasty_id, season, losses=1, away_losses=1)
+                self._update_team_record(conn, home_team_id, dynasty_id, season, season_type, wins=1, home_wins=1)
+                self._update_team_record(conn, away_team_id, dynasty_id, season, season_type, losses=1, away_losses=1)
             elif away_score > home_score:
                 # Away team wins
-                self._update_team_record(conn, away_team_id, dynasty_id, season, wins=1, away_wins=1)
-                self._update_team_record(conn, home_team_id, dynasty_id, season, losses=1, home_losses=1)
+                self._update_team_record(conn, away_team_id, dynasty_id, season, season_type, wins=1, away_wins=1)
+                self._update_team_record(conn, home_team_id, dynasty_id, season, season_type, losses=1, home_losses=1)
             else:
                 # Tie
-                self._update_team_record(conn, home_team_id, dynasty_id, season, ties=1)
-                self._update_team_record(conn, away_team_id, dynasty_id, season, ties=1)
+                self._update_team_record(conn, home_team_id, dynasty_id, season, season_type, ties=1)
+                self._update_team_record(conn, away_team_id, dynasty_id, season, season_type, ties=1)
 
             # Update points for/against
-            self._update_team_points(conn, home_team_id, dynasty_id, season, home_score, away_score)
-            self._update_team_points(conn, away_team_id, dynasty_id, season, away_score, home_score)
+            self._update_team_points(conn, home_team_id, dynasty_id, season, season_type, home_score, away_score)
+            self._update_team_points(conn, away_team_id, dynasty_id, season, season_type, away_score, home_score)
 
             result.records_persisted = 2  # Both teams updated
             self.total_standings_updates += 2
@@ -439,6 +441,7 @@ class DatabaseDemoPersister(DemoPersister):
         team_id: int,
         dynasty_id: str,
         season: int,
+        season_type: str,
         wins: int = 0,
         losses: int = 0,
         ties: int = 0,
@@ -447,7 +450,7 @@ class DatabaseDemoPersister(DemoPersister):
         away_wins: int = 0,
         away_losses: int = 0
     ):
-        """Update team win/loss record"""
+        """Update team win/loss record for specific season_type"""
         conn.execute("""
             UPDATE standings
             SET wins = wins + ?,
@@ -457,9 +460,9 @@ class DatabaseDemoPersister(DemoPersister):
                 home_losses = home_losses + ?,
                 away_wins = away_wins + ?,
                 away_losses = away_losses + ?
-            WHERE dynasty_id = ? AND team_id = ? AND season = ?
+            WHERE dynasty_id = ? AND team_id = ? AND season = ? AND season_type = ?
         """, (wins, losses, ties, home_wins, home_losses, away_wins, away_losses,
-              dynasty_id, team_id, season))
+              dynasty_id, team_id, season, season_type))
 
     def _update_team_points(
         self,
@@ -467,16 +470,17 @@ class DatabaseDemoPersister(DemoPersister):
         team_id: int,
         dynasty_id: str,
         season: int,
+        season_type: str,
         points_for: int,
         points_against: int
     ):
-        """Update team points for/against"""
+        """Update team points for/against for specific season_type"""
         conn.execute("""
             UPDATE standings
             SET points_for = points_for + ?,
                 points_against = points_against + ?
-            WHERE dynasty_id = ? AND team_id = ? AND season = ?
-        """, (points_for, points_against, dynasty_id, team_id, season))
+            WHERE dynasty_id = ? AND team_id = ? AND season = ? AND season_type = ?
+        """, (points_for, points_against, dynasty_id, team_id, season, season_type))
 
     def __str__(self) -> str:
         """String representation"""

@@ -60,6 +60,7 @@ class OffseasonToPreseasonHandler:
         update_database_phase: Callable[[str, int], None],
         dynasty_id: str,
         new_season_year: int,
+        event_db=None,  # EventDatabaseAPI instance for game validation
         verbose_logging: bool = False
     ):
         """
@@ -101,6 +102,7 @@ class OffseasonToPreseasonHandler:
         self._reset_standings = reset_standings
         self._calculate_preseason_start = calculate_preseason_start
         self._update_database_phase = update_database_phase
+        self._event_db = event_db  # For game validation
 
         # Store context
         self._dynasty_id = dynasty_id
@@ -166,7 +168,7 @@ class OffseasonToPreseasonHandler:
         # Validate transition
         # Import SeasonPhase for validation
         try:
-            from calendar.season_phase_tracker import SeasonPhase
+            from src.calendar.season_phase_tracker import SeasonPhase
         except ModuleNotFoundError:
             from src.calendar.season_phase_tracker import SeasonPhase
 
@@ -196,6 +198,12 @@ class OffseasonToPreseasonHandler:
             self._save_rollback_state(transition, effective_year)
             completed_steps.append("rollback_state_saved")
             self._log("✓ Rollback state saved")
+
+            # Step 1.5: Validate games exist for upcoming season
+            # This ensures SCHEDULE_RELEASE milestone executed successfully during offseason
+            self._log("[Step 1.5/5] Validating schedule exists for upcoming season...")
+            self._validate_games_exist(effective_year)  # Raises ValueError if games missing
+            completed_steps.append("schedule_validated")
 
             # NOTE: Game generation moved to SCHEDULE_RELEASE milestone (mid-May)
             # Games are now generated 3 months before preseason starts (NFL realistic!)
@@ -384,6 +392,74 @@ class OffseasonToPreseasonHandler:
 
         if self._verbose_logging:
             self._log(f"Rollback state saved: {self._rollback_state}")
+
+    def _query_games_for_season(self, season_year: int, season_type: str) -> List[Any]:
+        """
+        Query games for specific season and type from event database.
+
+        Args:
+            season_year: Season year to query (e.g., 2026)
+            season_type: Type of season ("preseason" or "regular_season")
+
+        Returns:
+            List of game events matching the criteria
+        """
+        if self._event_db is None:
+            return []
+
+        # Get all GAME events for this dynasty
+        all_games = self._event_db.events_get_by_type(event_type="GAME")
+
+        # Filter by season year and season type
+        filtered = [
+            g for g in all_games
+            if g.get("data", {}).get("parameters", {}).get("season") == season_year
+            and g.get("data", {}).get("parameters", {}).get("season_type") == season_type
+        ]
+
+        return filtered
+
+    def _validate_games_exist(self, season_year: int):
+        """
+        Validate that games exist for the upcoming season.
+
+        Args:
+            season_year: Season year to validate
+
+        Raises:
+            ValueError: If schedule is incomplete (missing preseason or regular season games)
+        """
+        if self._event_db is None:
+            self._log("[WARNING] No event_db provided - skipping game validation")
+            return
+
+        # Query for preseason and regular season games
+        preseason_games = self._query_games_for_season(season_year, "preseason")
+        regular_games = self._query_games_for_season(season_year, "regular_season")
+
+        preseason_count = len(preseason_games)
+        regular_count = len(regular_games)
+
+        # NFL standard: 48 preseason (3 weeks × 16 games) + 272 regular (18 weeks × ~16 games)
+        if preseason_count < 48:
+            raise ValueError(
+                f"Missing preseason games for season {season_year}. "
+                f"Found {preseason_count}/48. "
+                f"SCHEDULE_RELEASE milestone may not have executed. "
+                f"Expected 48 preseason games to be generated during offseason."
+            )
+
+        if regular_count < 272:
+            raise ValueError(
+                f"Missing regular season games for season {season_year}. "
+                f"Found {regular_count}/272. "
+                f"SCHEDULE_RELEASE milestone may not have executed. "
+                f"Expected 272 regular season games to be generated during offseason."
+            )
+
+        self._log(
+            f"[VALIDATION] ✓ Schedule complete: {preseason_count} preseason + {regular_count} regular season games"
+        )
 
     def _log(self, message: str) -> None:
         """

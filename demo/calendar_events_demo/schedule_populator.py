@@ -7,7 +7,7 @@ Creates realistic NFL game schedules for testing the day simulation system.
 
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
-from calendar.date_models import Date
+from src.calendar.date_models import Date
 from events import EventDatabaseAPI, GameEvent
 from constants.team_ids import TeamIDs
 

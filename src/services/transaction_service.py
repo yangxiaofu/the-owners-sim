@@ -22,7 +22,7 @@ from transactions.models import AssetType
 
 if TYPE_CHECKING:
     # Import for type hints only, avoid runtime import conflicts
-    from calendar.calendar_manager import CalendarManager
+    from src.calendar.calendar_manager import CalendarManager
 
 
 class TransactionService:
@@ -89,7 +89,7 @@ class TransactionService:
             list: List of executed trade dicts
         """
         from transactions.transaction_timing_validator import TransactionTimingValidator
-        from calendar.season_phase_tracker import SeasonPhase
+        from src.calendar.season_phase_tracker import SeasonPhase
 
         # Log entry point
         current_date = self.calendar.get_current_date().to_python_date()
@@ -247,7 +247,7 @@ class TransactionService:
         """
         try:
             from events.trade_events import PlayerForPlayerTradeEvent
-            from calendar.date_models import Date
+            from src.calendar.date_models import Date
 
             # Create trade event
             current_date = self.calendar.get_current_date()

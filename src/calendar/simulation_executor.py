@@ -29,9 +29,9 @@ from datetime import datetime
 
 # Use try/except to handle both production and test imports
 try:
-    from calendar.calendar_component import CalendarComponent
-    from calendar.season_phase_tracker import GameCompletionEvent, PhaseTransition
-    from calendar.date_models import Date
+    from src.calendar.calendar_component import CalendarComponent
+    from src.calendar.season_phase_tracker import GameCompletionEvent, PhaseTransition
+    from src.calendar.date_models import Date
 except ModuleNotFoundError:
     from .calendar_component import CalendarComponent
     from .season_phase_tracker import GameCompletionEvent, PhaseTransition
@@ -76,7 +76,8 @@ class SimulationExecutor:
         enable_persistence: bool = True,
         season_year: Optional[int] = None,
         phase_state: Optional['PhaseState'] = None,
-        verbose_logging: bool = False
+        verbose_logging: bool = False,
+        fast_mode: bool = False
     ):
         """
         Initialize simulation executor.
@@ -90,6 +91,7 @@ class SimulationExecutor:
             season_year: Season year for filtering dynasty-specific events (extracted from calendar if None)
             phase_state: Optional shared PhaseState object for phase reporting (uses calendar if None)
             verbose_logging: Enable diagnostic logging output (default: False)
+            fast_mode: Skip actual simulations, generate fake results for ultra-fast testing
         """
         self.calendar = calendar
         self.event_db = event_db
@@ -97,6 +99,7 @@ class SimulationExecutor:
         self.dynasty_id = dynasty_id
         self.phase_state = phase_state  # NEW: Store for phase reporting
         self.verbose_logging = verbose_logging  # Enable diagnostic output
+        self.fast_mode = fast_mode  # NEW: Store fast_mode for workflow creation
 
         # Extract season year from calendar if not provided
         if season_year is None:
@@ -109,12 +112,19 @@ class SimulationExecutor:
         if enable_persistence:
             if not database_path:
                 raise ValueError("database_path is required when enable_persistence=True")
-            self.workflow = SimulationWorkflow.for_season(
+            self.workflow = SimulationWorkflow(
+                enable_persistence=True,
                 database_path=database_path,
-                dynasty_id=dynasty_id
+                dynasty_id=dynasty_id,
+                verbose_logging=True,  # Season simulation verbose logging
+                fast_mode=fast_mode
             )
         else:
-            self.workflow = SimulationWorkflow.for_testing()
+            self.workflow = SimulationWorkflow(
+                enable_persistence=False,
+                verbose_logging=False,
+                fast_mode=fast_mode
+            )
 
     def simulate_day(self, target_date: Optional[Date] = None) -> Dict[str, Any]:
         """
@@ -670,7 +680,7 @@ class SimulationExecutor:
         }
 
     def get_current_date(self) -> Date:
-        """Get current date from calendar."""
+        """Get current date from src.calendar."""
         return self.calendar.get_current_date()
 
     def advance_calendar(self, days: int) -> Date:
@@ -687,7 +697,7 @@ class SimulationExecutor:
         return result.end_date
 
     def get_phase_info(self) -> Dict[str, Any]:
-        """Get comprehensive phase information from calendar."""
+        """Get comprehensive phase information from src.calendar."""
         return self.calendar.get_phase_info()
 
     def _get_current_phase_value(self) -> str:

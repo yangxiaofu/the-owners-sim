@@ -941,7 +941,7 @@ class EventDatabaseAPI:
             >>> print(milestone['display_name'])  # "Scouting Combine"
             >>> print(milestone['event_date'])    # 2026-02-24
         """
-        from calendar.date_models import Date
+        from src.calendar.date_models import Date
 
         # Convert current_date to timestamp for query
         # Date → Python date → datetime
@@ -1053,7 +1053,7 @@ class EventDatabaseAPI:
         """
         import json
         from datetime import datetime
-        from calendar.date_models import Date
+        from src.calendar.date_models import Date
 
         conn = sqlite3.connect(self.db_path)
         conn.row_factory = sqlite3.Row
@@ -1306,7 +1306,12 @@ class EventDatabaseAPI_DEPRECATED:
             The original event object (for backward compatibility)
         """
         event_data = event.to_database_format()
-        result = self._unified.events_insert(
+
+        # FIX: Create UnifiedAPI with the event's dynasty_id to avoid foreign key constraint failure
+        # The default self._unified uses dynasty_id="default" which may not exist in dynasties table
+        unified = UnifiedDatabaseAPI(database_path=self.db_path, dynasty_id=event_data['dynasty_id'])
+
+        result = unified.events_insert(
             event_id=event_data['event_id'],
             event_type=event_data['event_type'],
             timestamp=int(event_data['timestamp'].timestamp() * 1000),
@@ -1325,7 +1330,16 @@ class EventDatabaseAPI_DEPRECATED:
         Returns:
             List of inserted events
         """
-        return self._unified.events_insert_batch(events)
+        if not events:
+            return []
+
+        # FIX: Create UnifiedAPI with the first event's dynasty_id
+        # All events in a batch should have the same dynasty_id
+        first_event_data = events[0].to_database_format() if hasattr(events[0], 'to_database_format') else events[0]
+        dynasty_id = first_event_data.get('dynasty_id', 'default')
+
+        unified = UnifiedDatabaseAPI(database_path=self.db_path, dynasty_id=dynasty_id)
+        return unified.events_insert_batch(events)
 
     def get_event_by_id(self, event_id: str) -> Optional[Dict[str, Any]]:
         """

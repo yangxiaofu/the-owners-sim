@@ -11,9 +11,9 @@ Coordinates the simulation of a single day in the NFL season by:
 
 from typing import List, Dict, Any, Optional
 from datetime import datetime
-from calendar.calendar_component import CalendarComponent
-from calendar.season_phase_tracker import GameCompletionEvent, PhaseTransition
-from calendar.date_models import Date
+from src.calendar.calendar_component import CalendarComponent
+from src.calendar.season_phase_tracker import GameCompletionEvent, PhaseTransition
+from src.calendar.date_models import Date
 from events import EventDatabaseAPI, GameEvent, EventResult
 
 
@@ -251,7 +251,7 @@ class DaySimulationCoordinator:
         }
 
     def get_current_date(self) -> Date:
-        """Get current date from calendar."""
+        """Get current date from src.calendar."""
         return self.calendar.get_current_date()
 
     def advance_calendar(self, days: int) -> Date:
@@ -268,5 +268,5 @@ class DaySimulationCoordinator:
         return result.end_date
 
     def get_phase_info(self) -> Dict[str, Any]:
-        """Get comprehensive phase information from calendar."""
+        """Get comprehensive phase information from src.calendar."""
         return self.calendar.get_phase_info()

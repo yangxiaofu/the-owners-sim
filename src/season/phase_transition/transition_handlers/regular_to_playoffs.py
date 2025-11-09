@@ -16,6 +16,7 @@ Dependencies are injected as callables to maintain testability and flexibility.
 from typing import Any, Dict, Callable, Optional
 import logging
 from ..models import PhaseTransition
+from src.calendar.season_phase_tracker import SeasonPhase
 
 
 class RegularToPlayoffsHandler:
@@ -126,14 +127,14 @@ class RegularToPlayoffsHandler:
             >>> # playoff_controller is now ready for playoff simulation
         """
         # Validate transition
-        if transition.from_phase != "REGULAR_SEASON":
+        if transition.from_phase != SeasonPhase.REGULAR_SEASON:
             raise ValueError(
-                f"Invalid from_phase: {transition.from_phase}. "
+                f"Invalid from_phase: {transition.from_phase.value}. "
                 f"Expected 'REGULAR_SEASON'"
             )
-        if transition.to_phase != "PLAYOFFS":
+        if transition.to_phase != SeasonPhase.PLAYOFFS:
             raise ValueError(
-                f"Invalid to_phase: {transition.to_phase}. "
+                f"Invalid to_phase: {transition.to_phase.value}. "
                 f"Expected 'PLAYOFFS'"
             )
 

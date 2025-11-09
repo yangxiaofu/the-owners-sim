@@ -24,6 +24,58 @@ class SeasonPhase(Enum):
     PLAYOFFS = "playoffs"
     OFFSEASON = "offseason"
 
+    @classmethod
+    def from_string(cls, value: str) -> 'SeasonPhase':
+        """
+        Convert string to enum (case-insensitive).
+
+        Accepts:
+        - 'preseason', 'PRESEASON', 'Preseason' → SeasonPhase.PRESEASON
+        - 'regular_season', 'REGULAR_SEASON', 'Regular Season' → SeasonPhase.REGULAR_SEASON
+        - 'playoffs', 'PLAYOFFS', 'Playoffs' → SeasonPhase.PLAYOFFS
+        - 'offseason', 'OFFSEASON', 'Offseason' → SeasonPhase.OFFSEASON
+
+        Args:
+            value: String representation of phase (case-insensitive)
+
+        Returns:
+            SeasonPhase enum member
+
+        Raises:
+            ValueError: If string doesn't match any valid phase
+        """
+        # Try exact match with lowercase value first (database format)
+        try:
+            return cls(value.lower())
+        except ValueError:
+            pass
+
+        # Try enum name match (UPPERCASE format)
+        normalized = value.upper().replace(' ', '_').replace('-', '_')
+        try:
+            return cls[normalized]
+        except KeyError:
+            raise ValueError(
+                f"Invalid season phase: '{value}'. "
+                f"Valid values: {[p.value for p in cls]}"
+            )
+
+    @property
+    def display_name(self) -> str:
+        """
+        Get human-readable display name for UI.
+
+        Returns:
+            Capitalized display name (e.g., "Regular Season")
+        """
+        display_map = {
+            SeasonPhase.PRESEASON: "Preseason",
+            SeasonPhase.REGULAR_SEASON: "Regular Season",
+            SeasonPhase.PLAYOFFS: "Playoffs",
+            SeasonPhase.OFFSEASON: "Offseason"
+        }
+        return display_map[self]
+
 
 class TransitionType(Enum):
     """Types of phase transitions that can occur."""

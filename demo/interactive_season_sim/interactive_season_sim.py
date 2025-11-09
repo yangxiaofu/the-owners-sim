@@ -22,7 +22,7 @@ from pathlib import Path
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from calendar.date_models import Date
+from src.calendar.date_models import Date
 
 # Handle both direct execution and module import
 try:

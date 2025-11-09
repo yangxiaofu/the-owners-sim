@@ -30,7 +30,7 @@ from events.event_database_api import EventDatabaseAPI
 from database.connection import DatabaseConnection
 from database.dynasty_state_api import DynastyStateAPI
 from scheduling import RandomScheduleGenerator
-from src.calendar.season_phase_tracker import SeasonPhase
+from calendar.season_phase_tracker import SeasonPhase
 
 
 class SeasonDataModel:
@@ -154,24 +154,19 @@ class SeasonDataModel:
             if not state:
                 return 'regular_season'  # Safe default
 
-            # Get current phase from state (lowercase string from database)
-            current_phase_str = state.get('current_phase', 'regular_season')
+            # Get current phase from state
+            current_phase = state.get('current_phase', 'REGULAR_SEASON')
 
-            # Convert to SeasonPhase enum (handles case-insensitive conversion)
-            try:
-                current_phase = SeasonPhase.from_string(current_phase_str)
-            except ValueError:
-                # Fallback to regular season if invalid phase
-                current_phase = SeasonPhase.REGULAR_SEASON
+            # Map phase enum to season_type database value
+            phase_to_season_type = {
+                'PRESEASON': 'preseason',
+                'REGULAR_SEASON': 'regular_season',
+                'PLAYOFFS': 'playoffs',
+                'OFFSEASON': 'regular_season'  # Show regular season final records during offseason
+            }
 
-            # Map enum to season_type for standings query
-            # OFFSEASON shows regular_season final records, others map directly
-            if current_phase.value == "offseason":
-                season_type = SeasonPhase.REGULAR_SEASON.value
-            else:
-                season_type = current_phase.value
-
-            print(f"[SeasonDataModel] Current phase: {current_phase.name}, season_type: {season_type}")
+            season_type = phase_to_season_type.get(current_phase, 'regular_season')
+            print(f"[SeasonDataModel] Current phase: {current_phase}, season_type: {season_type}")
             return season_type
 
         except Exception as e:
@@ -213,34 +208,12 @@ class SeasonDataModel:
             # Get season_type for current phase
             season_type = self._get_current_season_type()
 
-            # DEBUG: Log query parameters
-            print(f"\n{'='*70}")
-            print(f"[DEBUG SeasonDataModel] Querying standings:")
-            print(f"  dynasty_id: {self.dynasty_id}")
-            print(f"  season: {self.season}")
-            print(f"  season_type: {season_type}")
-            print(f"{'='*70}\n")
-
             # Query standings for current phase
             standings = self.db_api.get_standings(
                 dynasty_id=self.dynasty_id,
                 season=self.season,
                 season_type=season_type  # ✅ Pass season_type based on current phase
             )
-
-            # DEBUG: Log result
-            print(f"\n[DEBUG SeasonDataModel] Standings result:")
-            print(f"  Type: {type(standings)}")
-            print(f"  Keys: {standings.keys() if isinstance(standings, dict) else 'N/A'}")
-            if isinstance(standings, dict):
-                total_teams = 0
-                for div_name, div_data in standings.items():
-                    if isinstance(div_data, dict) and 'teams' in div_data:
-                        team_count = len(div_data['teams'])
-                        total_teams += team_count
-                        print(f"  {div_name}: {team_count} teams")
-                print(f"  TOTAL: {total_teams} teams\n")
-
             return standings
         except Exception as e:
             # Gracefully handle missing data - season might not be initialized yet
@@ -435,7 +408,7 @@ class SeasonDataModel:
             season=self.season,
             start_date=date_str,
             start_week=1,
-            start_phase=SeasonPhase.PRESEASON.value  # August 1 start = preseason, not regular season
+            start_phase='preseason'  # August 1 start = preseason, not regular season
         )
 
         if not success:

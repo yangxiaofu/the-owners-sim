@@ -40,7 +40,7 @@ from datetime import datetime
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
-from calendar.date_models import Date
+from src.calendar.date_models import Date
 from season.season_cycle_controller import SeasonCycleController
 
 # Handle both direct execution and module import for display utilities

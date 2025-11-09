@@ -16,6 +16,8 @@ if src_path not in sys.path:
 
 from team_management.teams.team_loader import TeamDataLoader, Team
 from database.api import DatabaseAPI
+from database.dynasty_state_api import DynastyStateAPI
+from src.calendar.season_phase_tracker import SeasonPhase
 
 
 class LeagueController:
@@ -47,6 +49,7 @@ class LeagueController:
         # Initialize data access components
         self.team_loader = TeamDataLoader()
         self.db_api = DatabaseAPI(db_path)
+        self.dynasty_api = DynastyStateAPI(db_path)  # For phase detection
 
     def get_all_teams(self) -> List[Team]:
         """
@@ -82,9 +85,57 @@ class LeagueController:
         """
         return self.team_loader.get_teams_by_conference(conference)
 
+    def _get_current_season_type(self) -> str:
+        """
+        Determine the season_type based on current phase from dynasty_state.
+
+        Maps the current phase (PRESEASON, REGULAR_SEASON, PLAYOFFS, OFFSEASON)
+        to the database season_type column value ('preseason', 'regular_season', 'playoffs').
+
+        Returns:
+            str: 'preseason', 'regular_season', or 'playoffs'
+            Defaults to 'regular_season' if phase cannot be determined or on error.
+        """
+        try:
+            # Get current dynasty state
+            state = self.dynasty_api.get_current_state(self.dynasty_id, self.season)
+
+            if not state:
+                return 'regular_season'  # Safe default
+
+            # Get current phase from state (lowercase string from database)
+            current_phase_str = state.get('current_phase', 'regular_season')
+
+            # Convert to SeasonPhase enum (handles case-insensitive conversion)
+            try:
+                current_phase = SeasonPhase.from_string(current_phase_str)
+            except ValueError:
+                # Fallback to regular season if invalid phase
+                current_phase = SeasonPhase.REGULAR_SEASON
+
+            # Map enum to season_type for standings query
+            # OFFSEASON shows regular_season final records, others map directly
+            if current_phase.value == "offseason":
+                season_type = SeasonPhase.REGULAR_SEASON.value
+            else:
+                season_type = current_phase.value
+
+            print(f"[LeagueController] Current phase: {current_phase.name}, season_type: {season_type}")
+            return season_type
+
+        except Exception as e:
+            print(f"[WARNING LeagueController] Could not determine season_type: {e}, using 'regular_season'")
+            return 'regular_season'  # Safe fallback
+
     def get_standings(self) -> Dict[str, Any]:
         """
-        Get current league standings.
+        Get current league standings for the current phase.
+
+        Returns standings matching the current season phase:
+        - During PRESEASON: Shows preseason records
+        - During REGULAR_SEASON: Shows regular season records
+        - During PLAYOFFS: Shows playoff records
+        - During OFFSEASON: Shows regular season final records
 
         Returns:
             Standings data structure organized by:
@@ -96,9 +147,14 @@ class LeagueController:
             Returns empty dict if no season data available.
         """
         try:
+            # Get season_type for current phase
+            season_type = self._get_current_season_type()
+
+            # Query standings for current phase
             standings = self.db_api.get_standings(
                 dynasty_id=self.dynasty_id,
-                season=self.season
+                season=self.season,
+                season_type=season_type  # ✅ Pass season_type based on current phase
             )
             return standings
         except Exception as e:

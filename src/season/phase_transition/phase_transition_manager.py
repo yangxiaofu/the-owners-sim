@@ -8,8 +8,8 @@ from typing import Optional, Dict, Callable, Any
 
 # Use src. prefix to avoid collision with Python builtin calendar
 try:
-    from calendar.phase_state import PhaseState
-    from calendar.season_phase_tracker import SeasonPhase
+    from src.calendar.phase_state import PhaseState
+    from src.calendar.season_phase_tracker import SeasonPhase
 except ModuleNotFoundError:
     # Fallback for test environment
     from src.calendar.phase_state import PhaseState
@@ -94,7 +94,8 @@ class PhaseTransitionManager:
         current_phase = self.phase_state.phase
 
         # Check completion based on current phase
-        if current_phase == SeasonPhase.PRESEASON:
+        # FIX: Compare by .value to avoid enum double-import bug
+        if current_phase.value == "preseason":
             if self.completion_checker.is_preseason_complete():
                 return PhaseTransition(
                     from_phase=SeasonPhase.PRESEASON,
@@ -103,7 +104,7 @@ class PhaseTransitionManager:
                     metadata={}
                 )
 
-        elif current_phase == SeasonPhase.REGULAR_SEASON:
+        elif current_phase.value == "regular_season":
             if self.completion_checker.is_regular_season_complete():
                 return PhaseTransition(
                     from_phase=SeasonPhase.REGULAR_SEASON,
@@ -112,7 +113,7 @@ class PhaseTransitionManager:
                     metadata={}
                 )
 
-        elif current_phase == SeasonPhase.PLAYOFFS:
+        elif current_phase.value == "playoffs":
             if self.completion_checker.is_playoffs_complete():
                 return PhaseTransition(
                     from_phase=SeasonPhase.PLAYOFFS,
@@ -121,7 +122,7 @@ class PhaseTransitionManager:
                     metadata={}
                 )
 
-        elif current_phase == SeasonPhase.OFFSEASON:
+        elif current_phase.value == "offseason":
             if self.completion_checker.is_offseason_complete():
                 return PhaseTransition(
                     from_phase=SeasonPhase.OFFSEASON,

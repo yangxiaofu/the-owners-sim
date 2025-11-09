@@ -536,6 +536,14 @@ class MainWindow(QMainWindow):
 
         progress.close()
 
+        # Force Qt event processing to ensure date_changed signal is handled
+        # This prevents stale phase display in status bar
+        QApplication.processEvents()
+
+        # Manually trigger status bar refresh to ensure phase updates
+        current_date = self.simulation_controller.get_current_date()
+        self._on_date_changed(current_date)
+
         # Show summary dialog
         if summary.get('success', False):
             # Detect if this is a milestone stop (offseason) vs phase completion
@@ -555,15 +563,21 @@ class MainWindow(QMainWindow):
                 phase_name = summary['starting_phase'].replace('_', ' ').title()
 
                 # Determine next phase for message (use next_phase if available, otherwise ending_phase)
-                next_phase_display = summary.get('next_phase', summary['ending_phase'])
+                next_phase_display = summary.get('next_phase', summary.get('ending_phase'))
 
+                # Build base message
                 msg = (
                     f"{phase_name} Complete!\n\n"
                     f"Weeks Simulated: {summary['weeks_simulated']}\n"
                     f"Games Played: {summary['total_games']}\n"
-                    f"End Date: {summary['end_date']}\n\n"
-                    f"Now entering: {next_phase_display.replace('_', ' ').title()}"
+                    f"End Date: {summary['end_date']}"
                 )
+
+                # Add next phase info if available
+                if next_phase_display:
+                    msg += f"\n\nNow entering: {next_phase_display.replace('_', ' ').title()}"
+                else:
+                    msg += "\n\nPhase complete!"
             QMessageBox.information(self, title, msg)
 
             # Automatically advance one day to trigger phase transition
@@ -577,6 +591,9 @@ class MainWindow(QMainWindow):
                 self.calendar_view.refresh_current_date()
             if hasattr(self, 'playoff_view') and summary['ending_phase'] == 'playoffs':
                 self.playoff_view.refresh()
+
+            # Force status bar refresh as additional safety net
+            self._refresh_status_bar()
         else:
             QMessageBox.warning(
                 self,
@@ -831,6 +848,37 @@ class MainWindow(QMainWindow):
                 self.playoff_view.refresh()
         else:  # preseason or regular_season
             self.tabs.setTabVisible(self.playoff_tab_index, False)
+
+    def _refresh_status_bar(self):
+        """
+        Force refresh of status bar displays (date and phase).
+
+        This is a helper method that can be called to manually update the status bar
+        when automatic signal processing may be delayed or missed.
+        """
+        from PySide6.QtWidgets import QApplication
+
+        # Get current state from controller
+        current_date = self.simulation_controller.get_current_date()
+        current_phase = self.simulation_controller.get_current_phase()
+
+        # Update date label
+        self.date_label.setText(f"Date: {current_date}")
+
+        # Format phase with week info if available
+        phase_display = current_phase.replace('_', ' ').title()
+        current_week = self.simulation_controller.get_current_week()
+        if current_week:
+            phase_display += f" - Week {current_week}"
+        self.phase_label.setText(f"Phase: {phase_display}")
+
+        # Force immediate repaint
+        self.date_label.repaint()
+        self.phase_label.repaint()
+        self.statusBar().repaint()
+
+        # Process pending events
+        QApplication.processEvents()
 
     def _on_games_played(self, game_results: list):
         """

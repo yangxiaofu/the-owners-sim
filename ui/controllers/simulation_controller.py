@@ -10,6 +10,7 @@ from datetime import datetime, date
 from PySide6.QtCore import QObject, Signal
 import sys
 import os
+import logging
 
 # Add src to path for imports
 src_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'src')
@@ -19,14 +20,17 @@ if src_path not in sys.path:
 from season.season_cycle_controller import SeasonCycleController
 
 # Use try/except to handle both production and test imports
-try:
-    from calendar.date_models import Date
-    from calendar.season_phase_tracker import SeasonPhase
-except (ModuleNotFoundError, ImportError):
-    from src.calendar.date_models import Date
-    from src.calendar.season_phase_tracker import SeasonPhase
+from src.calendar.date_models import Date
+from src.calendar.season_phase_tracker import SeasonPhase
 
 from ui.domain_models.simulation_data_model import SimulationDataModel
+
+# Import fail-loud exceptions and validators (Phase 4)
+from src.database.sync_exceptions import (
+    CalendarSyncPersistenceException,
+    CalendarSyncDriftException
+)
+from src.database.sync_validators import SyncValidator
 
 
 class SimulationController(QObject):
@@ -64,6 +68,16 @@ class SimulationController(QObject):
         self.db_path = db_path
         self.dynasty_id = dynasty_id
         self.season = season
+
+        # ============ FAST MODE TOGGLE ============
+        # Set to True to skip full game simulations (5000x faster)
+        # Useful for testing playoffs, UI flows, and rapid season progression
+        # When enabled, games simulate instantly with fake scores
+        self.fast_mode = False  # ← CHANGE THIS TO True TO ENABLE FAST MODE
+        # ==========================================
+
+        # Phase 4: Setup logging for fail-loud validation
+        self._logger = logging.getLogger(__name__)
         print(f"[DYNASTY_TRACE] SimulationController.__init__(): dynasty_id={dynasty_id}")
 
         # Domain model for state persistence and retrieval
@@ -74,6 +88,9 @@ class SimulationController(QObject):
 
         # Initialize season cycle controller with the loaded state
         self._init_season_controller()
+
+        # Phase 4: Initialize sync validator (will be ready after season_controller init)
+        self._sync_validator = None  # Initialized lazily when calendar_manager is available
 
     def _init_season_controller(self):
         """Initialize or restore SeasonCycleController using already-loaded state."""
@@ -102,7 +119,8 @@ class SimulationController(QObject):
             start_date=start_date,
             initial_phase=initial_phase,
             enable_persistence=True,
-            verbose_logging=True  # Enable for player stats debugging
+            verbose_logging=True,  # Enable for player stats debugging
+            fast_mode=self.fast_mode  # Pass fast mode setting from toggle above
         )
 
         # No more manual phase synchronization needed - handled by constructor!
@@ -116,23 +134,119 @@ class SimulationController(QObject):
         """
         return self.state_model.get_state()
 
-    def _save_state_to_db(self, current_date: str, current_phase: str, current_week: Optional[int] = None):
+    def _get_sync_validator(self) -> SyncValidator:
         """
-        Save current simulation state to database.
+        Lazy initialization of sync validator.
+
+        Returns:
+            SyncValidator instance
+
+        Raises:
+            RuntimeError: If calendar manager not available
+        """
+        if not self._sync_validator:
+            # Get calendar manager from season controller
+            calendar_manager = getattr(self.season_controller, 'calendar_manager', None)
+
+            if not calendar_manager:
+                raise RuntimeError(
+                    "Cannot create sync validator: calendar_manager not available. "
+                    "Ensure SeasonCycleController is fully initialized."
+                )
+
+            self._sync_validator = SyncValidator(
+                state_model=self.state_model,
+                calendar_manager=calendar_manager,
+                max_acceptable_drift=3  # 3 days threshold
+            )
+
+        return self._sync_validator
+
+    def _save_state_to_db(
+        self,
+        current_date: str,
+        current_phase: str,
+        current_week: Optional[int] = None
+    ):
+        """
+        Save current simulation state to database with fail-loud validation.
+
+        This method implements the fix for CALENDAR-DRIFT-2025-001 by replacing
+        silent failures with exceptions.
 
         Args:
             current_date: Date string (YYYY-MM-DD)
             current_phase: REGULAR_SEASON, PLAYOFFS, or OFFSEASON
             current_week: Current week number (optional)
+
+        Raises:
+            CalendarSyncPersistenceException: If database write fails
+            CalendarSyncDriftException: If post-write verification detects drift
+
+        Phase 4 Changes:
+        - BEFORE: Printed error and returned None (silent failure)
+        - AFTER: Raises CalendarSyncPersistenceException (fail-loud)
         """
+        # Attempt database write
         success = self.state_model.save_state(
             current_date=current_date,
             current_phase=current_phase,
             current_week=current_week
         )
 
+        # Phase 4: FAIL-LOUD instead of silent failure
         if not success:
-            print(f"[ERROR SimulationController] Failed to write dynasty_state!")
+            self._logger.error(
+                f"Failed to persist dynasty state to database!\n"
+                f"  Date: {current_date}\n"
+                f"  Phase: {current_phase}\n"
+                f"  Week: {current_week}\n"
+                f"  Dynasty: {self.dynasty_id}"
+            )
+
+            # Raise exception instead of just printing
+            raise CalendarSyncPersistenceException(
+                operation="dynasty_state_update",
+                sync_point="_save_state_to_db",
+                state_info={
+                    "current_date": current_date,
+                    "current_phase": current_phase,
+                    "current_week": current_week,
+                    "dynasty_id": self.dynasty_id,
+                    "season": self.season
+                }
+            )
+
+        # Phase 4: Post-sync verification (optional but recommended)
+        try:
+            validator = self._get_sync_validator()
+            post_result = validator.verify_post_sync(current_date, current_phase)
+
+            if not post_result.valid:
+                self._logger.warning(
+                    f"Post-sync verification detected issues: {post_result.issues}"
+                )
+
+                # If drift detected, raise drift exception
+                if post_result.drift > 0:
+                    raise CalendarSyncDriftException(
+                        calendar_date=post_result.actual_calendar_date,
+                        db_date=current_date,
+                        drift_days=post_result.drift,
+                        sync_point="_save_state_to_db_post_verification",
+                        state_info={
+                            "expected_date": current_date,
+                            "expected_phase": current_phase,
+                            "actual_phase": post_result.actual_phase,
+                            "dynasty_id": self.dynasty_id
+                        }
+                    )
+
+        except RuntimeError:
+            # Sync validator not available (calendar manager not initialized)
+            # This is acceptable during early initialization
+            self._logger.debug("Sync validator not available for post-sync verification")
+            pass
 
     def _load_state(self):
         """Load and cache current state."""

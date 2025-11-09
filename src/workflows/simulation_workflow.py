@@ -68,7 +68,8 @@ class SimulationWorkflow:
                  database_path: Optional[str] = None,
                  dynasty_id: str = "default",
                  persister_strategy: Optional[DemoPersister] = None,
-                 verbose_logging: bool = True):
+                 verbose_logging: bool = True,
+                 fast_mode: bool = False):
         """
         Initialize simulation workflow.
 
@@ -78,12 +79,14 @@ class SimulationWorkflow:
             dynasty_id: Dynasty context for data isolation
             persister_strategy: Custom persistence strategy (optional)
             verbose_logging: Whether to print progress messages
+            fast_mode: Skip actual simulations, generate fake results for ultra-fast testing
         """
         self.config = WorkflowConfiguration(
             enable_persistence=enable_persistence,
             database_path=database_path,
             dynasty_id=dynasty_id,
-            verbose_logging=verbose_logging
+            verbose_logging=verbose_logging,
+            fast_mode=fast_mode
         )
 
         self.logger = logging.getLogger(self.__class__.__name__)
@@ -206,12 +209,29 @@ class SimulationWorkflow:
             RuntimeError: If simulation fails
         """
         if self.config.verbose_logging:
-            print(f"\n🎮 Stage 1: Running Simulation...")
+            if self.config.fast_mode:
+                print(f"\n🚀 Stage 1: FAST MODE - Generating Fake Result...")
+            else:
+                print(f"\n🎮 Stage 1: Running Simulation...")
             print(f"   Teams: {game_event.away_team_id} @ {game_event.home_team_id}")
 
         start_time = time.time()
 
         try:
+            # Fast mode: Generate instant fake result without running simulation
+            if self.config.fast_mode:
+                simulation_result = self._generate_fake_result(game_event)
+                duration = time.time() - start_time
+
+                if self.config.verbose_logging:
+                    away_score = simulation_result.data.get('away_score', 0)
+                    home_score = simulation_result.data.get('home_score', 0)
+                    print(f"   🚀 FAKE SIM complete ({duration:.4f}s)")
+                    print(f"   Final Score: {away_score}-{home_score}")
+
+                return simulation_result
+
+            # Normal mode: Run actual simulation
             simulation_result = game_event.simulate()
 
             if not simulation_result.success:
@@ -234,6 +254,43 @@ class SimulationWorkflow:
             self.logger.error(f"Simulation stage failed: {e}")
             raise RuntimeError(f"Game simulation failed: {e}") from e
 
+    def _generate_fake_result(self, game_event: GameEvent) -> EventResult:
+        """
+        Generate instant fake game result for fast_mode testing.
+
+        Creates realistic-looking NFL scores without running actual simulation.
+        ~5000x faster than real simulation (0.001s vs 2-5s).
+
+        Args:
+            game_event: GameEvent to generate result for
+
+        Returns:
+            EventResult with randomized scores and minimal data
+        """
+        import random
+
+        # Generate realistic NFL scores (10-35 point range)
+        away_score = random.randint(10, 35)
+        home_score = random.randint(10, 35)
+
+        # Fake game data matching real simulation structure
+        fake_data = {
+            'away_score': away_score,
+            'home_score': home_score,
+            'total_plays': random.randint(120, 150),  # Realistic play count
+            'game_duration_minutes': 180,  # Standard 3-hour game
+            'overtime_periods': 0,
+            'home_team_id': game_event.home_team_id,
+            'away_team_id': game_event.away_team_id
+        }
+
+        # Create successful EventResult
+        return EventResult(
+            success=True,
+            data=fake_data,
+            error_message=None
+        )
+
     def _gather_statistics(self, simulation_result: EventResult, game_event: GameEvent) -> List[PlayerStats]:
         """
         Stage 2: Gather comprehensive player statistics.
@@ -248,6 +305,12 @@ class SimulationWorkflow:
         Raises:
             RuntimeError: If statistics gathering fails
         """
+        # Fast mode: Skip statistics gathering (no simulator available)
+        if self.config.fast_mode:
+            if self.config.verbose_logging:
+                print(f"\n⏭️  Stage 2: Statistics SKIPPED (fast_mode)")
+            return []
+
         if self.config.verbose_logging:
             print(f"\n📊 Stage 2: Gathering Statistics...")
 

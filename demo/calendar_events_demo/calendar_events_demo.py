@@ -22,10 +22,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from datetime import datetime
-from calendar.calendar_component import CalendarComponent
-from calendar.simulation_executor import SimulationExecutor
-from calendar.date_models import Date
-from calendar.calendar_notifications import CalendarEventPublisher, CalendarNotification, NotificationType
+from src.calendar.calendar_component import CalendarComponent
+from src.calendar.simulation_executor import SimulationExecutor
+from src.calendar.date_models import Date
+from src.calendar.calendar_notifications import CalendarEventPublisher, CalendarNotification, NotificationType
 from events import EventDatabaseAPI
 from demo.calendar_events_demo.schedule_populator import SchedulePopulator
 

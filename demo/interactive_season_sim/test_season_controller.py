@@ -14,7 +14,7 @@ import os
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root / "src"))
 
-from calendar.date_models import Date
+from src.calendar.date_models import Date
 from season_controller import SeasonController
 
 

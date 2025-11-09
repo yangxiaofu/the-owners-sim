@@ -14,7 +14,7 @@ from .seeding_models import PlayoffSeeding
 
 # Use try/except to handle both production and test imports
 try:
-    from calendar.date_models import Date
+    from src.calendar.date_models import Date
 except ModuleNotFoundError:
     from src.calendar.date_models import Date
 

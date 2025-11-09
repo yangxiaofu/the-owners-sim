@@ -10,7 +10,7 @@ from enum import Enum
 
 # Use src. prefix to avoid collision with Python builtin calendar
 try:
-    from calendar.season_phase_tracker import SeasonPhase
+    from src.calendar.season_phase_tracker import SeasonPhase
 except ModuleNotFoundError:
     # Fallback for test environment
     from src.calendar.season_phase_tracker import SeasonPhase

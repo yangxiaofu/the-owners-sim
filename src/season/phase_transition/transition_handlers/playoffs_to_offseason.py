@@ -37,6 +37,7 @@ import logging
 from datetime import datetime
 
 from ..models import PhaseTransition
+from src.calendar.season_phase_tracker import SeasonPhase
 
 
 class PlayoffsToOffseasonHandler:
@@ -73,7 +74,7 @@ class PlayoffsToOffseasonHandler:
         get_super_bowl_winner: Callable[[], int],
         schedule_offseason_events: Callable[[int], None],
         generate_season_summary: Callable[[], Dict[str, Any]],
-        update_database_phase: Callable[[str], None],
+        update_database_phase: Callable[[str, int], None],  # FIX: Add season_year parameter
         dynasty_id: str,
         season_year: int,
         verbose_logging: bool = False
@@ -197,10 +198,10 @@ class PlayoffsToOffseasonHandler:
         )
 
         # Validate transition
-        if transition.from_phase != "PLAYOFFS":
-            raise ValueError(f"Invalid from_phase: {transition.from_phase} (expected PLAYOFFS)")
-        if transition.to_phase != "OFFSEASON":
-            raise ValueError(f"Invalid to_phase: {transition.to_phase} (expected OFFSEASON)")
+        if transition.from_phase != SeasonPhase.PLAYOFFS:
+            raise ValueError(f"Invalid from_phase: {transition.from_phase.value} (expected PLAYOFFS)")
+        if transition.to_phase != SeasonPhase.OFFSEASON:
+            raise ValueError(f"Invalid to_phase: {transition.to_phase.value} (expected OFFSEASON)")
 
         try:
             # Step 1: Save rollback state
@@ -233,7 +234,7 @@ class PlayoffsToOffseasonHandler:
 
             # Step 5: Update database phase
             self._log_debug("Updating database phase to OFFSEASON...")
-            self._update_database_phase("OFFSEASON")
+            self._update_database_phase("OFFSEASON", effective_year)  # FIX: Pass season_year
             self._log_info("Database phase updated to OFFSEASON")
 
             # Build result

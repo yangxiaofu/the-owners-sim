@@ -10,8 +10,8 @@ from datetime import datetime
 
 # Use try/except to handle both production and test imports
 try:
-    from calendar.date_models import Date
-    from calendar.season_milestones import SeasonMilestoneCalculator, MilestoneType
+    from src.calendar.date_models import Date
+    from src.calendar.season_milestones import SeasonMilestoneCalculator, MilestoneType
 except (ModuleNotFoundError, ImportError):
     from src.calendar.date_models import Date
     from src.calendar.season_milestones import SeasonMilestoneCalculator, MilestoneType

@@ -22,7 +22,7 @@ from typing import Dict, Any
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 
 from events.trade_events import PlayerForPlayerTradeEvent
-from calendar.date_models import Date
+from src.calendar.date_models import Date
 from salary_cap import EventCapBridge
 
 
