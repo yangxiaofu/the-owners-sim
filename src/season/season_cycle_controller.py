@@ -328,6 +328,7 @@ class SeasonCycleController:
                 generate_regular_season=self._generate_regular_season_schedule_for_handler,
                 reset_standings=self._reset_standings_for_handler,
                 calculate_preseason_start=self._calculate_preseason_start_for_handler,
+                execute_year_transition=self._execute_year_transition_for_handler,
                 update_database_phase=self._update_database_phase_for_handler,
                 dynasty_id=dynasty_id,
                 new_season_year=self.season_year
@@ -1439,6 +1440,94 @@ class SeasonCycleController:
             )
 
         return self._transaction_service
+
+    def _get_contract_transition_service(self) -> "ContractTransitionService":
+        """
+        Lazy initialization factory for ContractTransitionService.
+
+        Creates ContractTransitionService on first use with dependency injection pattern.
+        Part of Milestone 1: Complete Multi-Year Season Cycle implementation.
+
+        Returns:
+            ContractTransitionService: Initialized contract transition service instance
+        """
+        if not hasattr(self, "_contract_transition_service"):
+            from services.contract_transition_service import ContractTransitionService
+            from salary_cap.cap_database_api import CapDatabaseAPI
+
+            # Create CapDatabaseAPI for contract operations
+            cap_api = CapDatabaseAPI(
+                database_path=self.database_path,
+                dynasty_id=self.dynasty_id
+            )
+
+            # Create service with dependency injection
+            self._contract_transition_service = ContractTransitionService(
+                cap_api=cap_api,
+                dynasty_id=self.dynasty_id
+            )
+
+        return self._contract_transition_service
+
+    def _get_draft_preparation_service(self) -> "DraftPreparationService":
+        """
+        Lazy initialization factory for DraftPreparationService.
+
+        Creates DraftPreparationService on first use with dependency injection pattern.
+        Part of Milestone 1: Complete Multi-Year Season Cycle implementation.
+
+        Returns:
+            DraftPreparationService: Initialized draft preparation service instance
+        """
+        if not hasattr(self, "_draft_preparation_service"):
+            from services.draft_preparation_service import DraftPreparationService
+            from offseason.draft_manager import DraftManager
+            from offseason.draft_class_api import DraftClassDatabaseAPI
+
+            # Create DraftManager for draft class generation
+            draft_manager = DraftManager(
+                database_path=self.database_path,
+                dynasty_id=self.dynasty_id
+            )
+
+            # Create DraftClassDatabaseAPI for validation
+            draft_api = DraftClassDatabaseAPI(
+                database_path=self.database_path,
+                dynasty_id=self.dynasty_id
+            )
+
+            # Create service with dependency injection
+            self._draft_preparation_service = DraftPreparationService(
+                draft_manager=draft_manager,
+                draft_api=draft_api,
+                dynasty_id=self.dynasty_id
+            )
+
+        return self._draft_preparation_service
+
+    def _get_season_transition_service(self) -> "SeasonTransitionService":
+        """
+        Lazy initialization factory for SeasonTransitionService.
+
+        Creates SeasonTransitionService on first use with dependency injection pattern.
+        Orchestrates year transitions using ContractTransitionService and DraftPreparationService.
+        Part of Milestone 1: Complete Multi-Year Season Cycle implementation.
+
+        Returns:
+            SeasonTransitionService: Initialized season transition service instance
+        """
+        if not hasattr(self, "_season_transition_service"):
+            from services.season_transition_service import SeasonTransitionService
+
+            # Create service with dependency injection
+            # Uses other services (lazy-initialized via getters)
+            self._season_transition_service = SeasonTransitionService(
+                contract_service=self._get_contract_transition_service(),
+                draft_service=self._get_draft_preparation_service(),
+                dynasty_id=self.dynasty_id
+            )
+
+        return self._season_transition_service
 
     def _set_season_year(self, new_year: int, reason: str) -> None:
         """
@@ -3233,6 +3322,64 @@ class SeasonCycleController:
             print(f"\n✅ Playoff controller created successfully")
 
         return playoff_controller
+
+    def _increment_contracts_for_handler(self, season_year: int) -> Dict[str, Any]:
+        """
+        Increment contract years and handle expirations for OffseasonToPreseasonHandler.
+
+        Part of Milestone 1: Complete Multi-Year Season Cycle implementation.
+        Delegates to ContractTransitionService for contract lifecycle management.
+
+        Args:
+            season_year: New season year after increment (e.g., 2025)
+
+        Returns:
+            Dict with contract transition results (total, active, expired counts)
+        """
+        contract_service = self._get_contract_transition_service()
+        return contract_service.increment_all_contracts(season_year)
+
+    def _prepare_draft_for_handler(self, season_year: int) -> Dict[str, Any]:
+        """
+        Generate draft class for upcoming season for OffseasonToPreseasonHandler.
+
+        Part of Milestone 1: Complete Multi-Year Season Cycle implementation.
+        Delegates to DraftPreparationService for draft class generation (synchronous, ~2-5s).
+
+        Args:
+            season_year: Season year for draft class (e.g., 2025)
+
+        Returns:
+            Dict with draft preparation results (draft_class_id, total_players, timing)
+        """
+        draft_service = self._get_draft_preparation_service()
+        return draft_service.prepare_draft_class(season_year, size=300)
+
+    def _execute_year_transition_for_handler(
+        self, old_year: int, new_year: int
+    ) -> Dict[str, Any]:
+        """
+        Execute complete year transition orchestration for OffseasonToPreseasonHandler.
+
+        Part of Milestone 1: Complete Multi-Year Season Cycle implementation.
+        Orchestrates:
+        1. Season year increment (via SeasonYearSynchronizer)
+        2. Contract transitions (increment years, handle expirations)
+        3. Draft class generation (300 prospects)
+
+        Args:
+            old_year: Previous season year (e.g., 2024)
+            new_year: New season year (e.g., 2025)
+
+        Returns:
+            Dict with complete transition results (all 3 steps)
+        """
+        season_transition_service = self._get_season_transition_service()
+        return season_transition_service.execute_year_transition(
+            old_year=old_year,
+            new_year=new_year,
+            synchronizer=self.year_synchronizer
+        )
 
     # ========== AI Transaction Helper Methods (Phase 1.7) ==========
 

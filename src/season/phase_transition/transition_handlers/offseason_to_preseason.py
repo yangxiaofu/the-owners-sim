@@ -57,6 +57,7 @@ class OffseasonToPreseasonHandler:
         generate_regular_season: Callable[[int, datetime], List[Dict[str, Any]]],
         reset_standings: Callable[[int], None],
         calculate_preseason_start: Callable[[int], datetime],
+        execute_year_transition: Callable[[int, int], Dict[str, Any]],
         update_database_phase: Callable[[str, int], None],
         dynasty_id: str,
         new_season_year: int,
@@ -79,6 +80,10 @@ class OffseasonToPreseasonHandler:
             calculate_preseason_start: Function to calculate preseason start date
                 - Takes: season_year (int)
                 - Returns: datetime (typically early August)
+            execute_year_transition: Function to execute complete year transition
+                - Takes: old_year (int), new_year (int)
+                - Returns: Dict with transition results (year increment, contracts, draft)
+                - Part of Milestone 1: Complete Multi-Year Season Cycle
             update_database_phase: Function to update database phase
                 - Takes: phase (str), season_year (int)
                 - Returns: None (updates dynasty_state table)
@@ -101,6 +106,7 @@ class OffseasonToPreseasonHandler:
         self._generate_regular_season = generate_regular_season
         self._reset_standings = reset_standings
         self._calculate_preseason_start = calculate_preseason_start
+        self._execute_year_transition = execute_year_transition
         self._update_database_phase = update_database_phase
         self._event_db = event_db  # For game validation
 
@@ -194,14 +200,28 @@ class OffseasonToPreseasonHandler:
 
         try:
             # Step 1: Save rollback state
-            self._log("[Step 1/5] Saving rollback state...")
+            self._log("[Step 1/6] Saving rollback state...")
             self._save_rollback_state(transition, effective_year)
             completed_steps.append("rollback_state_saved")
             self._log("✓ Rollback state saved")
 
+            # Step 1.75: Execute Year Transition (Milestone 1: Multi-Year Season Cycle)
+            # This orchestrates: Season year increment + Contract transitions + Draft class generation
+            self._log("[Step 1.75/6] Executing year transition (increment year, contracts, draft)...")
+            old_year = effective_year - 1
+            transition_result = self._execute_year_transition(old_year, effective_year)
+            result["year_transition"] = transition_result
+            completed_steps.append("year_transition_executed")
+            self._log(
+                f"✓ Year transition complete: {old_year} → {effective_year}\n"
+                f"  - Contracts: {transition_result['contract_transition']['total_contracts']} processed, "
+                f"{transition_result['contract_transition']['expired_count']} expired\n"
+                f"  - Draft class: {transition_result['draft_preparation']['total_players']} prospects generated"
+            )
+
             # Step 1.5: Validate games exist for upcoming season
             # This ensures SCHEDULE_RELEASE milestone executed successfully during offseason
-            self._log("[Step 1.5/5] Validating schedule exists for upcoming season...")
+            self._log("[Step 1.5/6] Validating schedule exists for upcoming season...")
             self._validate_games_exist(effective_year)  # Raises ValueError if games missing
             completed_steps.append("schedule_validated")
 
@@ -210,7 +230,7 @@ class OffseasonToPreseasonHandler:
             # This transition only handles phase change + standings reset
 
             # Step 2: Reset all team standings
-            self._log("[Step 2/2] Resetting all team standings to 0-0-0...")
+            self._log("[Step 2/6] Resetting all team standings to 0-0-0...")
             self._reset_standings(effective_year)
             result["teams_reset"] = 32  # All 32 NFL teams
             completed_steps.append("standings_reset")
@@ -224,7 +244,9 @@ class OffseasonToPreseasonHandler:
 
             self._log(
                 f"\n[SUCCESS] OFFSEASON → PRESEASON transition complete:\n"
-                f"  - Season Year: {effective_year}\n"
+                f"  - Season Year: {old_year} → {effective_year}\n"
+                f"  - Contracts: {transition_result['contract_transition']['expired_count']} expired\n"
+                f"  - Draft Class: {transition_result['draft_preparation']['total_players']} prospects\n"
                 f"  - Teams Reset: 32 (all standings → 0-0-0)\n"
                 f"  - Phase: PRESEASON\n"
                 f"  - Note: Games already generated at SCHEDULE_RELEASE (mid-May)"
