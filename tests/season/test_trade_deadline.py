@@ -1,14 +1,17 @@
 """
-Test Trade Deadline Enforcement (Phase 1.7)
+Test Trade Deadline Enforcement (Comprehensive)
 
 Tests that trades are properly blocked after the NFL trade deadline (Week 9 Tuesday).
-Verifies ValidationMiddleware correctly enforces deadline rules.
+Verifies TransactionTimingValidator correctly enforces deadline rules.
 
-Phase 1.7 of ai_transactions_plan.md
+Based on NFL rules:
+- Trades allowed: March 12 (new league year) through Week 9
+- Trades blocked: Week 10+ through end of season
+- Trade deadline occurs on Tuesday of Week 9 (early November)
 """
 
 import pytest
-from datetime import datetime, date
+from datetime import date
 
 # Add src to path for testing
 import sys
@@ -16,221 +19,335 @@ from pathlib import Path
 src_path = str(Path(__file__).parent.parent.parent / "src")
 sys.path.insert(0, src_path)
 
-from salary_cap.event_integration import ValidationMiddleware
-from salary_cap import CapCalculator, CapValidator, TagManager, CapDatabaseAPI
+from transactions.transaction_timing_validator import TransactionTimingValidator
+from calendar.season_phase_tracker import SeasonPhase
 
 
 # ============================================================================
-# TEST: TRADE DEADLINE VALIDATION
+# TEST: COMPREHENSIVE TRADE WINDOW VALIDATION
 # ============================================================================
 
-class TestTradeDeadlineValidation:
-    """Test trade deadline enforcement in ValidationMiddleware."""
+class TestTradeWindowValidation:
+    """Comprehensive tests for NFL trade window validation."""
 
-    def test_trade_allowed_in_september(self):
-        """
-        Test that trades are allowed in September (early season).
-
-        September = Weeks 1-4, well before deadline.
-        """
-        # Create mock validator (no real database needed for date check)
-        validator = ValidationMiddleware(
-            cap_calculator=None,  # Not used for deadline check
-            cap_validator=None,
-            tag_manager=None,
-            cap_db=None
+    def test_trades_allowed_offseason_after_march_12(self):
+        """Trades should be allowed in offseason after March 12."""
+        validator = TransactionTimingValidator(2025)
+        is_allowed, reason = validator.is_trade_allowed(
+            current_date=date(2025, 3, 13),
+            current_phase=SeasonPhase.OFFSEASON,
+            current_week=0
         )
+        assert is_allowed, f"Trades should be allowed after March 12. Reason: {reason}"
 
-        # September 15 = Early season, before deadline
-        trade_date = date(2025, 9, 15)
+    def test_trades_blocked_offseason_before_march_12(self):
+        """Trades should be blocked in offseason before March 12."""
+        validator = TransactionTimingValidator(2025)
+        is_allowed, reason = validator.is_trade_allowed(
+            current_date=date(2025, 3, 11),
+            current_phase=SeasonPhase.OFFSEASON,
+            current_week=0
+        )
+        assert not is_allowed, "Trades should be blocked before March 12"
+        assert "march 12" in reason.lower(), f"Expected March 12 message, got: {reason}"
 
-        # NOTE: Full test would call validate_player_trade()
-        # For now, this documents the expected behavior
+    def test_trades_allowed_preseason(self):
+        """Trades should be allowed during entire preseason."""
+        validator = TransactionTimingValidator(2025)
+        is_allowed, reason = validator.is_trade_allowed(
+            current_date=date(2025, 8, 15),
+            current_phase=SeasonPhase.PRESEASON,
+            current_week=0
+        )
+        assert is_allowed, f"Trades should be allowed in preseason. Reason: {reason}"
 
-        # Expected: Trade allowed (no deadline error)
-        assert trade_date.month < 11  # Deadline check passes
+    def test_trades_allowed_regular_season_week_1(self):
+        """Trades should be allowed during Week 1."""
+        validator = TransactionTimingValidator(2025)
+        is_allowed, reason = validator.is_trade_allowed(
+            current_date=date(2025, 9, 10),
+            current_phase=SeasonPhase.REGULAR_SEASON,
+            current_week=1
+        )
+        assert is_allowed, f"Trades should be allowed in Week 1. Reason: {reason}"
 
-    def test_trade_allowed_in_october(self):
-        """
-        Test that trades are allowed in October (mid-season).
+    def test_trades_allowed_regular_season_week_9(self):
+        """Trades should be allowed during Week 9 (deadline week)."""
+        validator = TransactionTimingValidator(2025)
+        is_allowed, reason = validator.is_trade_allowed(
+            current_date=date(2025, 11, 4),  # Tuesday of Week 9
+            current_phase=SeasonPhase.REGULAR_SEASON,
+            current_week=9
+        )
+        assert is_allowed, f"Trades should be allowed in Week 9. Reason: {reason}"
 
-        October = Weeks 5-8, still before deadline (early November).
-        """
-        trade_date = date(2025, 10, 25)
+    def test_trades_blocked_regular_season_week_10(self):
+        """Trades should be blocked starting Week 10."""
+        validator = TransactionTimingValidator(2025)
+        is_allowed, reason = validator.is_trade_allowed(
+            current_date=date(2025, 11, 11),  # Week 10
+            current_phase=SeasonPhase.REGULAR_SEASON,
+            current_week=10
+        )
+        assert not is_allowed, "Trades should be blocked after Week 9"
+        assert "deadline has passed" in reason.lower(), f"Expected deadline message, got: {reason}"
 
-        # Expected: Trade allowed (October < November)
-        assert trade_date.month < 11
+    def test_trades_blocked_regular_season_week_18(self):
+        """Trades should be blocked during Week 18."""
+        validator = TransactionTimingValidator(2025)
+        is_allowed, reason = validator.is_trade_allowed(
+            current_date=date(2026, 1, 5),  # Week 18
+            current_phase=SeasonPhase.REGULAR_SEASON,
+            current_week=18
+        )
+        assert not is_allowed, "Trades should be blocked in Week 18"
 
-    def test_trade_blocked_in_november(self):
-        """
-        Test that trades are blocked in November (after deadline).
+    def test_trades_blocked_playoffs(self):
+        """Trades should be blocked during playoffs."""
+        validator = TransactionTimingValidator(2025)
+        is_allowed, reason = validator.is_trade_allowed(
+            current_date=date(2026, 1, 15),
+            current_phase=SeasonPhase.PLAYOFFS,
+            current_week=0
+        )
+        assert not is_allowed, "Trades should be blocked in playoffs"
+        assert "playoff" in reason.lower(), f"Expected playoff message, got: {reason}"
 
-        NFL trade deadline is typically early November (Week 9 Tuesday).
-        Our simplified check blocks all November+ trades.
-        """
-        trade_date = date(2025, 11, 5)
+    def test_trade_deadline_boundary_week_8_vs_9(self):
+        """Test the Week 8 vs Week 9 boundary (critical bug fix)."""
+        validator = TransactionTimingValidator(2025)
 
-        # Expected: Trade blocked (November >= deadline)
-        assert trade_date.month >= 11
+        # Week 8 should be allowed
+        week8_allowed, week8_reason = validator.is_trade_allowed(
+            current_date=date(2025, 10, 28),
+            current_phase=SeasonPhase.REGULAR_SEASON,
+            current_week=8
+        )
+        assert week8_allowed, f"Week 8 should allow trades. Reason: {week8_reason}"
 
-    def test_trade_blocked_in_december(self):
-        """
-        Test that trades are blocked in December (late season).
+        # Week 9 should be allowed (THIS IS THE BUG FIX)
+        week9_allowed, week9_reason = validator.is_trade_allowed(
+            current_date=date(2025, 11, 4),
+            current_phase=SeasonPhase.REGULAR_SEASON,
+            current_week=9
+        )
+        assert week9_allowed, f"Week 9 should allow trades (deadline is AFTER Week 9). Reason: {week9_reason}"
 
-        December = Weeks 14-18, well after deadline.
-        """
-        trade_date = date(2025, 12, 15)
-
-        # Expected: Trade blocked
-        assert trade_date.month >= 11
+        # Week 10 should be blocked
+        week10_allowed, week10_reason = validator.is_trade_allowed(
+            current_date=date(2025, 11, 11),
+            current_phase=SeasonPhase.REGULAR_SEASON,
+            current_week=10
+        )
+        assert not week10_allowed, f"Week 10 should block trades. Got: {week10_allowed}"
 
 
 # ============================================================================
-# TEST: DEADLINE ERROR MESSAGES
+# TEST: ADDITIONAL REGULAR SEASON WEEKS
 # ============================================================================
 
-class TestDeadlineErrorMessages:
+class TestRegularSeasonTradeWindows:
+    """Test trade windows for all regular season weeks."""
+
+    def test_trades_allowed_week_2(self):
+        """Trades should be allowed in Week 2."""
+        validator = TransactionTimingValidator(2025)
+        is_allowed, reason = validator.is_trade_allowed(
+            current_date=date(2025, 9, 17),
+            current_phase=SeasonPhase.REGULAR_SEASON,
+            current_week=2
+        )
+        assert is_allowed, f"Week 2 should allow trades. Reason: {reason}"
+
+    def test_trades_allowed_week_5(self):
+        """Trades should be allowed in Week 5."""
+        validator = TransactionTimingValidator(2025)
+        is_allowed, reason = validator.is_trade_allowed(
+            current_date=date(2025, 10, 8),
+            current_phase=SeasonPhase.REGULAR_SEASON,
+            current_week=5
+        )
+        assert is_allowed, f"Week 5 should allow trades. Reason: {reason}"
+
+    def test_trades_allowed_week_7(self):
+        """Trades should be allowed in Week 7."""
+        validator = TransactionTimingValidator(2025)
+        is_allowed, reason = validator.is_trade_allowed(
+            current_date=date(2025, 10, 22),
+            current_phase=SeasonPhase.REGULAR_SEASON,
+            current_week=7
+        )
+        assert is_allowed, f"Week 7 should allow trades. Reason: {reason}"
+
+    def test_trades_blocked_week_11(self):
+        """Trades should be blocked in Week 11."""
+        validator = TransactionTimingValidator(2025)
+        is_allowed, reason = validator.is_trade_allowed(
+            current_date=date(2025, 11, 18),
+            current_phase=SeasonPhase.REGULAR_SEASON,
+            current_week=11
+        )
+        assert not is_allowed, "Week 11 should block trades"
+
+    def test_trades_blocked_week_15(self):
+        """Trades should be blocked in Week 15."""
+        validator = TransactionTimingValidator(2025)
+        is_allowed, reason = validator.is_trade_allowed(
+            current_date=date(2025, 12, 16),
+            current_phase=SeasonPhase.REGULAR_SEASON,
+            current_week=15
+        )
+        assert not is_allowed, "Week 15 should block trades"
+
+
+# ============================================================================
+# TEST: ERROR MESSAGES
+# ============================================================================
+
+class TestTradeDeadlineErrorMessages:
     """Test that deadline violations return clear error messages."""
 
-    def test_deadline_error_message_format(self):
-        """
-        Test that deadline error message is clear and informative.
+    def test_before_march_12_message(self):
+        """Test error message for trades before March 12."""
+        validator = TransactionTimingValidator(2025)
+        is_allowed, reason = validator.is_trade_allowed(
+            current_date=date(2025, 2, 15),
+            current_phase=SeasonPhase.OFFSEASON,
+            current_week=0
+        )
+        assert not is_allowed
+        assert "march 12" in reason.lower()
+        assert "new league year" in reason.lower()
 
-        Expected format:
-        "Trade rejected: Trade deadline has passed (Week 9 Tuesday)"
-        """
-        expected_message = "Trade rejected: Trade deadline has passed (Week 9 Tuesday)"
+    def test_after_deadline_message(self):
+        """Test error message for trades after Week 9 deadline."""
+        validator = TransactionTimingValidator(2025)
+        is_allowed, reason = validator.is_trade_allowed(
+            current_date=date(2025, 11, 11),
+            current_phase=SeasonPhase.REGULAR_SEASON,
+            current_week=10
+        )
+        assert not is_allowed
+        assert "deadline has passed" in reason.lower()
+        # Should reference Week 8 or Week 9 in message
+        assert "week" in reason.lower()
 
-        # This is the message returned by validate_player_trade()
-        # when trade_date.month >= 11
-
-        assert "Trade rejected" in expected_message
-        assert "deadline" in expected_message.lower()
-        assert "Week 9" in expected_message
+    def test_playoffs_message(self):
+        """Test error message for trades during playoffs."""
+        validator = TransactionTimingValidator(2025)
+        is_allowed, reason = validator.is_trade_allowed(
+            current_date=date(2026, 1, 15),
+            current_phase=SeasonPhase.PLAYOFFS,
+            current_week=0
+        )
+        assert not is_allowed
+        assert "playoff" in reason.lower()
 
 
 # ============================================================================
 # TEST: EDGE CASES
 # ============================================================================
 
-class TestDeadlineEdgeCases:
+class TestTradeDeadlineEdgeCases:
     """Test edge cases for deadline validation."""
 
-    def test_deadline_on_october_31(self):
-        """
-        Test trade on October 31 (last day before November).
+    def test_march_12_boundary(self):
+        """Test the March 12 boundary (first day trades allowed)."""
+        validator = TransactionTimingValidator(2025)
 
-        Should be allowed (October < November).
-        """
-        trade_date = date(2025, 10, 31)
+        # March 11 - should be blocked
+        march_11_allowed, march_11_reason = validator.is_trade_allowed(
+            current_date=date(2025, 3, 11),
+            current_phase=SeasonPhase.OFFSEASON,
+            current_week=0
+        )
+        assert not march_11_allowed, "March 11 should block trades"
 
-        # Expected: Allowed (still October)
-        assert trade_date.month == 10
-        assert trade_date.month < 11
+        # March 12 - should be allowed
+        march_12_allowed, march_12_reason = validator.is_trade_allowed(
+            current_date=date(2025, 3, 12),
+            current_phase=SeasonPhase.OFFSEASON,
+            current_week=0
+        )
+        assert march_12_allowed, f"March 12 should allow trades. Reason: {march_12_reason}"
 
-    def test_deadline_on_november_1(self):
-        """
-        Test trade on November 1 (first day of November).
-
-        Should be blocked (November >= deadline).
-        """
-        trade_date = date(2025, 11, 1)
-
-        # Expected: Blocked (November)
-        assert trade_date.month == 11
-        assert trade_date.month >= 11
-
-    def test_none_trade_date_allowed(self):
-        """
-        Test that None trade_date is allowed (for backwards compatibility).
-
-        If trade_date is None, deadline check should be skipped.
-        """
-        trade_date = None
-
-        # Expected: Deadline check skipped when date is None
-        # This allows trades when date is unknown/not provided
-
-    def test_invalid_date_format_handled_gracefully(self):
-        """
-        Test that invalid date formats don't crash validation.
-
-        System should fail open (allow trade) if date can't be parsed.
-        """
-        # NOTE: Full test would pass malformed date string
-        # and verify it doesn't raise exception
-
-        # Expected: Trade allowed (fail open for robustness)
-        pass
+    def test_week_0_regular_season(self):
+        """Test Week 0 in regular season (edge case)."""
+        validator = TransactionTimingValidator(2025)
+        is_allowed, reason = validator.is_trade_allowed(
+            current_date=date(2025, 9, 1),
+            current_phase=SeasonPhase.REGULAR_SEASON,
+            current_week=0
+        )
+        # Week 0 should be allowed (not > deadline week)
+        assert is_allowed, f"Week 0 should allow trades. Reason: {reason}"
 
 
 # ============================================================================
-# TEST: INTEGRATION WITH CALENDAR MILESTONES
+# TEST: TRANSACTION STATUS SUMMARY
 # ============================================================================
 
-class TestCalendarMilestoneIntegration:
-    """Test integration with calendar milestone system."""
+class TestTransactionStatusSummary:
+    """Test the get_transaction_status_summary method."""
 
-    def test_trade_deadline_milestone_exists(self):
-        """
-        Test that TRADE_DEADLINE milestone exists in season_milestones.py.
+    def test_summary_during_regular_season(self):
+        """Test transaction status summary during regular season."""
+        validator = TransactionTimingValidator(2025)
+        summary = validator.get_transaction_status_summary(
+            current_date=date(2025, 9, 15),
+            current_phase="regular_season",
+            current_week=2
+        )
 
-        Milestone should be defined as Tuesday of Week 9.
-        """
-        from calendar.season_milestones import MilestoneType
+        # During regular season Week 2
+        assert summary["trades"][0] is True, "Trades should be allowed in Week 2"
+        assert summary["franchise_tags"][0] is False, "Franchise tags closed by September"
+        assert summary["free_agency"][0] is True, "Free agency open year-round after March 12"
 
-        # Verify TRADE_DEADLINE milestone exists
-        assert hasattr(MilestoneType, 'TRADE_DEADLINE')
+    def test_summary_after_trade_deadline(self):
+        """Test transaction status summary after trade deadline."""
+        validator = TransactionTimingValidator(2025)
+        summary = validator.get_transaction_status_summary(
+            current_date=date(2025, 11, 15),
+            current_phase="regular_season",
+            current_week=11
+        )
 
-    def test_deadline_milestone_calculation(self):
-        """
-        Test that trade deadline is calculated as Tuesday of Week 9.
-
-        From season_milestones.py:
-        - Week 9 starts 8 weeks after Week 1
-        - Find Tuesday of that week
-        """
-        # NOTE: Full test would:
-        # 1. Get regular season start date
-        # 2. Calculate Week 9 start (8 * 7 days later)
-        # 3. Find Tuesday of Week 9
-        # 4. Verify deadline matches this date
-
-        # This is implemented in season_milestones.py line 505-521
-        pass
+        # After trade deadline (Week 11)
+        assert summary["trades"][0] is False, "Trades should be blocked in Week 11"
+        assert "deadline has passed" in summary["trades"][1].lower()
 
 
 # ============================================================================
-# TEST: FUTURE IMPROVEMENTS
+# TEST: YEAR-TO-YEAR CONSISTENCY
 # ============================================================================
 
-class TestFutureImprovements:
-    """Document future improvements to deadline checking."""
+class TestYearToYearConsistency:
+    """Test that validation works correctly across different season years."""
 
-    def test_todo_use_calendar_milestones(self):
-        """
-        TODO: Improve deadline check to use actual calendar milestones.
+    def test_2024_season(self):
+        """Test trade window validation for 2024 season."""
+        validator = TransactionTimingValidator(2024)
 
-        Current implementation uses simplified month check (November+).
-        Future: Query calendar for TRADE_DEADLINE milestone date.
+        # Week 9 of 2024 season
+        is_allowed, reason = validator.is_trade_allowed(
+            current_date=date(2024, 11, 5),
+            current_phase=SeasonPhase.REGULAR_SEASON,
+            current_week=9
+        )
+        assert is_allowed, f"2024 Week 9 should allow trades. Reason: {reason}"
 
-        This would make deadline calculation season-aware and accurate.
-        """
-        # TODO marker for future enhancement
-        # See event_integration.py line 304
+    def test_2026_season(self):
+        """Test trade window validation for 2026 season."""
+        validator = TransactionTimingValidator(2026)
 
-        pass
-
-    def test_todo_week_based_deadline(self):
-        """
-        TODO: Use week number instead of month for deadline check.
-
-        Current: trade_date.month >= 11
-        Better: current_week > 8
-
-        This requires passing week number to validate_player_trade().
-        """
-        pass
+        # Week 9 of 2026 season
+        is_allowed, reason = validator.is_trade_allowed(
+            current_date=date(2026, 11, 4),
+            current_phase=SeasonPhase.REGULAR_SEASON,
+            current_week=9
+        )
+        assert is_allowed, f"2026 Week 9 should allow trades. Reason: {reason}"
 
 
 # ============================================================================

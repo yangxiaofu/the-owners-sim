@@ -33,7 +33,7 @@ class PhaseTransitionManager:
 
     Example:
         # Setup
-        phase_state = PhaseState(SeasonPhase.REGULAR_SEASON)
+        phase_state = PhaseState(SeasonPhase.REGULAR_SEASON, season_year=2025)
         checker = PhaseCompletionChecker(database_api)
         handlers = {
             "regular_to_playoffs": regular_to_playoffs_handler,

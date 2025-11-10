@@ -1050,12 +1050,13 @@ class CapDatabaseAPI_DEPRECATED:
     an instance variable and passing it to UnifiedDatabaseAPI for each operation.
     """
 
-    def __init__(self, database_path: str):
+    def __init__(self, database_path: str, dynasty_id: str = "default"):
         """
         Initialize deprecated wrapper.
 
         Args:
             database_path: Path to SQLite database
+            dynasty_id: Dynasty identifier for cap operations (default: "default")
         """
         import warnings
         warnings.warn(
@@ -1066,8 +1067,8 @@ class CapDatabaseAPI_DEPRECATED:
             stacklevel=2
         )
         from database.unified_api import UnifiedDatabaseAPI
-        self._unified = UnifiedDatabaseAPI(database_path)
-        self._dynasty_id = "default"
+        self._unified = UnifiedDatabaseAPI(database_path, dynasty_id=dynasty_id)
+        self._dynasty_id = dynasty_id
 
     @property
     def dynasty_id(self) -> str:

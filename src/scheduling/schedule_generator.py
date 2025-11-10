@@ -76,7 +76,17 @@ class RandomScheduleGenerator:
             event_db: Event database API for storing generated games
             dynasty_id: Dynasty context for game event isolation
             logger: Optional logger for tracking generation progress
+
+        Raises:
+            ValueError: If dynasty_id is None or empty (fail-loud validation)
         """
+        # FAIL-LOUD: Validate dynasty_id immediately
+        if not dynasty_id or not dynasty_id.strip():
+            raise ValueError(
+                "dynasty_id cannot be None or empty. "
+                "RandomScheduleGenerator requires valid dynasty context for game isolation."
+            )
+
         self.event_db = event_db
         self.dynasty_id = dynasty_id
         print(f"[DYNASTY_TRACE] RandomScheduleGenerator.__init__(): dynasty_id={dynasty_id}")
@@ -291,6 +301,12 @@ class RandomScheduleGenerator:
             - Stats tracked separately from regular season
             - Games start ~3.5 weeks before regular season opener
         """
+        # DEBUG: Confirm entry and dynasty_id state
+        print(f"\n[PRESEASON_DEBUG] generate_preseason() ENTRY")
+        print(f"  Season Year: {season_year}")
+        print(f"  Dynasty ID: {self.dynasty_id}")
+        print(f"  Start Date: {start_date}")
+
         self.logger.info(f"Generating {season_year} preseason schedule...")
 
         # Set random seed if provided
@@ -664,6 +680,7 @@ class RandomScheduleGenerator:
             games: List of GameEvent objects to store
 
         Raises:
+            ValueError: If any game has invalid dynasty_id (fail-loud validation)
             Exception: If database storage fails
         """
         # [PRESEASON_DEBUG Point 6b] _store_games Method
@@ -676,6 +693,18 @@ class RandomScheduleGenerator:
             print(f"    game_id: {games[0].get_game_id()}")
             print(f"    dynasty_id: {games[0].dynasty_id}")
             print(f"    event_type: {games[0].get_event_type()}")
+
+        # FAIL-LOUD: Validate all games have valid dynasty_id before attempting insert
+        print(f"\n[FAIL_LOUD_VALIDATION] Validating {len(games)} games before database insert...")
+        for i, game in enumerate(games, 1):
+            if not hasattr(game, 'dynasty_id') or not game.dynasty_id or not game.dynasty_id.strip():
+                raise ValueError(
+                    f"Game {i}/{len(games)} has invalid dynasty_id: '{getattr(game, 'dynasty_id', None)}'. "
+                    f"Game ID: {game.get_game_id()}, "
+                    f"Teams: {game.away_team_id} @ {game.home_team_id}. "
+                    f"All games MUST have valid dynasty_id for isolation."
+                )
+        print(f"[FAIL_LOUD_VALIDATION] ✅ All {len(games)} games have valid dynasty_id")
 
         try:
             # Use batch insert for performance (10-50x faster than individual inserts)

@@ -162,7 +162,7 @@ def demo_trade_validation():
     print("  1. Both teams have sufficient cap space for incoming players")
     print("  2. All players have active contracts with their current teams")
     print("  3. No player appears on both sides of the trade")
-    print("  4. Trade occurs before the deadline (Week 8 Tuesday)")
+    print("  4. Trade occurs before the deadline (Week 9 Tuesday)")
 
     print("\n❌ Invalid Trade Examples:")
 
@@ -182,8 +182,8 @@ def demo_trade_validation():
     print("    → REJECTED: Player 1 appears on both sides")
 
     print("\n  Example 4: After Trade Deadline")
-    print("    Trade attempted on Week 9, Day 1")
-    print("    Deadline is Week 8, Tuesday")
+    print("    Trade attempted on Week 10, Day 1")
+    print("    Deadline is Week 9, Tuesday")
     print("    → REJECTED: Trade deadline has passed (currently not implemented)")
 
 

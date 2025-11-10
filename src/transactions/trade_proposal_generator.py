@@ -106,7 +106,7 @@ class TeamContext:
         Check if currently at trade deadline.
 
         Note: This is a placeholder. In full implementation, this would check
-        actual date against NFL trade deadline (Week 8 Tuesday).
+        actual date against NFL trade deadline (Week 9 Tuesday).
 
         Returns:
             False (placeholder - no deadline tracking yet)

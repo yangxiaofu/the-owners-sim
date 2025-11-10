@@ -32,8 +32,8 @@ class RosterCutEvent(BaseEvent):
         cut_type: str,  # "TO_75", "TO_53", "INJURY_SETTLEMENT", "MID_SEASON"
         reason: str,
         event_date: Date,
-        event_id: Optional[str] = None,
-        dynasty_id: str = "default"
+        dynasty_id: str,
+        event_id: Optional[str] = None
     ):
         """
         Initialize roster cut event.
@@ -116,8 +116,8 @@ class WaiverClaimEvent(BaseEvent):
         waiver_priority: int,
         claim_successful: bool,
         event_date: Date,
-        event_id: Optional[str] = None,
-        dynasty_id: str = "default"
+        dynasty_id: str,
+        event_id: Optional[str] = None
     ):
         """
         Initialize waiver claim event.
@@ -206,8 +206,8 @@ class PracticeSquadEvent(BaseEvent):
         action: str,  # "ADD", "REMOVE", "ELEVATE", "PROTECT"
         reason: str,
         event_date: Date,
-        event_id: Optional[str] = None,
-        dynasty_id: str = "default"
+        dynasty_id: str,
+        event_id: Optional[str] = None
     ):
         """
         Initialize practice squad event.

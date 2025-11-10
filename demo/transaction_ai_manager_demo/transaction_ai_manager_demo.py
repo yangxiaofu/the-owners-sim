@@ -387,7 +387,7 @@ def demo_playoff_push_scenario():
 
 
 # ============================================================================
-# Scenario 4: Trade Deadline Scenario (Week 8, final 3 days)
+# Scenario 4: Trade Deadline Scenario (Week 9, final 3 days)
 # ============================================================================
 
 def demo_trade_deadline_scenario():
@@ -397,10 +397,10 @@ def demo_trade_deadline_scenario():
     Shows:
     - Activity spike before deadline
     - Deadline proximity modifier (+100%)
-    - Week 9 has no trades
+    - Week 10 has no trades
     """
-    print_header("SCENARIO 4: Trade Deadline Scenario (Week 8 Final 3 Days)", level=1)
-    print("\nScenario: NFL trade deadline (Week 8 Tuesday)")
+    print_header("SCENARIO 4: Trade Deadline Scenario (Week 9 Final 3 Days)", level=1)
+    print("\nScenario: NFL trade deadline (Week 9 Tuesday)")
     print("Duration: 3 days before deadline")
     print("Expected: +100% evaluation probability (deadline proximity modifier)")
 
@@ -414,15 +414,15 @@ def demo_trade_deadline_scenario():
     team_aggressive = 7
     team_conservative = 9
 
-    print_header("Week 8 (Final 3 Days Before Deadline)", level=2)
+    print_header("Week 9 (Final 3 Days Before Deadline)", level=2)
 
     for label, team_id in [("Aggressive GM", team_aggressive), ("Conservative GM", team_conservative)]:
         print(f"\n{label} - Team {team_id}")
 
         team_record = {"wins": 4, "losses": 3}
 
-        # Simulate final 3 days of Week 8 (deadline week)
-        deadline_date = datetime(2025, 10, 28)  # Week 8 Tuesday
+        # Simulate final 3 days of Week 9 (deadline week)
+        deadline_date = datetime(2025, 11, 4)  # Week 9 Tuesday
 
         total_evals = 0
         total_props = 0

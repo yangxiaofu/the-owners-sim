@@ -37,8 +37,8 @@ class DraftPickEvent(BaseEvent):
         position: str,
         college: str,
         event_date: Date,
+        dynasty_id: str,
         event_id: Optional[str] = None,
-        dynasty_id: str = "default",
         transaction_logger: Optional["TransactionLogger"] = None
     ):
         """
@@ -153,8 +153,8 @@ class UDFASigningEvent(BaseEvent):
         college: str,
         signing_bonus: int,
         event_date: Date,
-        event_id: Optional[str] = None,
-        dynasty_id: str = "default"
+        dynasty_id: str,
+        event_id: Optional[str] = None
     ):
         """
         Initialize UDFA signing event.
@@ -245,8 +245,8 @@ class DraftTradeEvent(BaseEvent):
         team1_gives_players: List[str],  # List of player_ids (optional)
         team2_gives_players: List[str],
         event_date: Date,
-        event_id: Optional[str] = None,
-        dynasty_id: str = "default"
+        dynasty_id: str,
+        event_id: Optional[str] = None
     ):
         """
         Initialize draft trade event.

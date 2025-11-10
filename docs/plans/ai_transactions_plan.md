@@ -239,11 +239,11 @@ Not started - depends on Phase 2 completion.
 **Probability System:**
 - Base: 5% daily baseline × GM trade_frequency (0.2-0.9)
 - Modifiers:
-  - **Playoff Push**: +50% if in wild card hunt (weeks 10+, but blocked by Week 8 deadline)
+  - **Playoff Push**: +50% if in wild card hunt (weeks 10+, but blocked by Week 9 deadline)
   - **Losing Streak**: +25% per game in 3+ game losing streak
   - **Injury Emergency**: +200% if critical starter injured (placeholder)
   - **Post-Trade Cooldown**: -80% for 7 days after trade
-  - **Deadline Proximity**: +100% in final 3 days before deadline (Week 8)
+  - **Deadline Proximity**: +100% in final 3 days before deadline (Week 9)
 - Result: 0-3 trades per team per season (realistic NFL frequency)
 
 **8-Step Daily Evaluation Pipeline:**
@@ -304,7 +304,7 @@ Not started - depends on Phase 2 completion.
 **Documentation:** `PHASE_1_5_COMPLETE.md` (663 lines)
 
 **Known Limitations:**
-- Playoff push modifier (Week 10+) unreachable due to Week 8 trade deadline
+- Playoff push modifier (Week 10+) unreachable due to Week 9 trade deadline
 - Draft pick trading not yet integrated (placeholder filters)
 - Player tenure tracking not available (loyalty filter placeholder)
 - Injury emergency detection not implemented (placeholder modifier)
@@ -687,7 +687,7 @@ def _should_evaluate_today(self, team_id: int, gm: GMArchetype) -> bool:
 
 **File Modifications**:
 - `src/season/season_cycle_controller.py` - Hook transaction evaluation into daily advancement
-- `src/calendar/season_milestones.py` - Add trade deadline date (Week 8 Tuesday)
+- `src/calendar/season_milestones.py` - Add trade deadline date (Week 9 Tuesday)
 
 **Daily Advancement Flow**:
 ```python
@@ -831,7 +831,7 @@ def _evaluate_ai_transactions(self):
   - Probability system for realistic frequency
   - Trade decision orchestration
 
-- **Week 8:** 🔲 Trade Events & Season Integration
+- **Week 9:** 🔲 Trade Events & Season Integration
   - `PlayerForPlayerTradeEvent` implementation
   - `PlayerForPickTradeEvent` implementation
   - Season cycle integration
@@ -880,7 +880,7 @@ def _evaluate_ai_transactions(self):
 3. **Simple trades first**: 1-for-1 trades easier to balance and test
 4. **Archetype templates + customization**: Balance between variety and maintainability
 5. **Event-driven execution**: All trades go through event system for cap integration
-6. **Trade deadline enforcement**: No trades after Week 8 (configurable)
+6. **Trade deadline enforcement**: No trades after Week 9 (configurable)
 
 ---
 

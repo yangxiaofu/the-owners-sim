@@ -109,12 +109,12 @@ class TestCapComplianceOverSeason:
         """
         Test that advancing 56 days (8 weeks) maintains cap compliance.
 
-        Trade window: Week 1-8 (56 days)
+        Trade window: Week 1-9 (63 days)
         Should verify cap compliance at:
         - Start of season (Week 1, Day 1)
         - Mid-season (Week 4, Day 1)
-        - Near deadline (Week 8, Day 7)
-        - After deadline (Week 9, Day 1)
+        - Near deadline (Week 9, Day 7)
+        - After deadline (Week 10, Day 1)
         """
         # NOTE: Full test would:
         # 1. Initialize season

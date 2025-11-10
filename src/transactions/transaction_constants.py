@@ -40,11 +40,12 @@ class TransactionProbability:
     TRADE_COOLDOWN_DAYS = 7
     """Days a team must wait after executing a trade before next evaluation"""
 
-    TRADE_DEADLINE_WEEK = 8
+    TRADE_DEADLINE_WEEK = 9  # Changed from 8 in 2024 to accommodate 17-game season
     """
-    NFL trade deadline week (Week 8 Tuesday in early November).
+    NFL trade deadline week (Week 9 Tuesday in early November).
 
-    Trades allowed through end of Week 8, blocked starting Week 9.
+    Trades allowed through end of Week 9, blocked starting Week 10.
+    Updated in 2024 to align with 17-game season format.
     """
 
 

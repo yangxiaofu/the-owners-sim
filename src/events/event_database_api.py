@@ -1276,12 +1276,13 @@ class EventDatabaseAPI_DEPRECATED:
         api.events_insert(event_id, event_type, timestamp, game_id, data)
     """
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, dynasty_id: str = "default"):
         """
         Initialize deprecated EventDatabaseAPI wrapper.
 
         Args:
             db_path: Path to SQLite database file
+            dynasty_id: Dynasty identifier for event filtering (default: "default")
 
         Raises:
             DeprecationWarning: Always warns on instantiation
@@ -1292,8 +1293,9 @@ class EventDatabaseAPI_DEPRECATED:
             DeprecationWarning,
             stacklevel=2
         )
-        self._unified = UnifiedDatabaseAPI(database_path=db_path)
+        self._unified = UnifiedDatabaseAPI(database_path=db_path, dynasty_id=dynasty_id)
         self.db_path = db_path
+        self.dynasty_id = dynasty_id  # Store for reference
 
     def insert_event(self, event) -> bool:
         """
@@ -1481,7 +1483,18 @@ class EventDatabaseAPI_DEPRECATED:
             List of event dictionaries within the range
         """
         unified = UnifiedDatabaseAPI(database_path=self.db_path, dynasty_id=dynasty_id)
-        return unified.events_get_by_date_range(start_timestamp_ms, end_timestamp_ms)
+
+        # CRITICAL FIX: Use event_type parameter when provided
+        # This prevents returning ALL events when caller wants specific type
+        # (e.g., UI calendar was getting 5x overhead by querying all events 5 times)
+        if event_type:
+            return unified.events_get_by_type(
+                event_type=event_type,
+                start_timestamp=start_timestamp_ms,
+                end_timestamp=end_timestamp_ms
+            )
+        else:
+            return unified.events_get_by_date_range(start_timestamp_ms, end_timestamp_ms)
 
     def get_events_by_game_id_prefix(
         self,

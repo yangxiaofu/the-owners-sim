@@ -32,22 +32,22 @@ class ScoutingEvent(BaseEvent):
     def __init__(
         self,
         scout_type: str,
+        dynasty_id: str,
         target_positions: Optional[List[str]] = None,
         num_players: int = 5,
         event_id: Optional[str] = None,
-        timestamp: Optional[datetime] = None,
-        dynasty_id: str = "default"
+        timestamp: Optional[datetime] = None
     ):
         """
         Initialize scouting event.
 
         Args:
             scout_type: Type of scouting ("college", "pro", "free_agent")
+            dynasty_id: Dynasty context for isolation
             target_positions: List of positions to scout (e.g., ["QB", "WR"])
             num_players: Number of players to evaluate
             event_id: Optional event identifier
             timestamp: Optional event timestamp
-            dynasty_id: Dynasty context for isolation
         """
         super().__init__(event_id=event_id, timestamp=timestamp or datetime.now(), dynasty_id=dynasty_id)
 
@@ -297,10 +297,10 @@ class ScoutingEvent(BaseEvent):
 
         scout = cls(
             scout_type=params['scout_type'],
+            dynasty_id=event_data.get('dynasty_id', 'default'),
             target_positions=params.get('target_positions', []),
             num_players=params.get('num_players', 5),
-            event_id=event_data['event_id'],
-            dynasty_id=event_data.get('dynasty_id', 'default')
+            event_id=event_data['event_id']
         )
 
         # Load historical scouting reports (don't regenerate)

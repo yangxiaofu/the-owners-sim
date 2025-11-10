@@ -120,6 +120,10 @@ class PlayoffController:
 
         self.logger = logging.getLogger(self.__class__.__name__)
 
+        # DIAGNOSTIC: Log playoff controller initialization with season info
+        if verbose_logging:
+            print(f"[PLAYOFF_CONTROLLER] Initializing with season_year={season_year}, dynasty_id='{dynasty_id}'")
+
         # Default Wild Card start date (second Saturday of January)
         if wild_card_start_date is None:
             wild_card_start_date = Date(2025, 1, 11)
@@ -1397,6 +1401,15 @@ class PlayoffController:
 
         # FILTERING #2: Season + Round filtering via game_id prefix
         round_prefix = f"playoff_{self.season_year}_{round_name}_"
+
+        # DIAGNOSTIC: Log query details for debugging season mismatch issues
+        if self.verbose_logging:
+            print(f"[PLAYOFF_QUERY] Querying playoff games:")
+            print(f"  Round: {round_name}")
+            print(f"  Season Year: {self.season_year}")
+            print(f"  Query Prefix: {round_prefix}")
+            print(f"  Total playoff events in database: {len(all_playoff_events)}")
+
         all_games = []
 
         for event in all_playoff_events:

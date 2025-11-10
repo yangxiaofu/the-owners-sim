@@ -56,7 +56,7 @@ class BaseEvent(ABC):
         self,
         event_id: Optional[str] = None,
         timestamp: Optional[datetime] = None,
-        dynasty_id: Optional[str] = None
+        dynasty_id: str = None
     ):
         """
         Initialize base event properties.
@@ -64,8 +64,19 @@ class BaseEvent(ABC):
         Args:
             event_id: Unique identifier (generated if not provided)
             timestamp: Event timestamp (defaults to now)
-            dynasty_id: Dynasty identifier for isolation (REQUIRED for persistence)
+            dynasty_id: Dynasty identifier for isolation (REQUIRED - no default)
+
+        Raises:
+            ValueError: If dynasty_id is None or empty (fail-loud validation)
         """
+        # FAIL-LOUD: Dynasty ID is mandatory for all events (multi-save isolation)
+        if not dynasty_id or not dynasty_id.strip():
+            raise ValueError(
+                f"{self.__class__.__name__} requires valid dynasty_id for multi-save isolation. "
+                f"Dynasty context is mandatory for all events. "
+                f"Received: {dynasty_id!r}"
+            )
+
         self.event_id = event_id or str(uuid.uuid4())
         self.timestamp = timestamp or datetime.now()
         self.dynasty_id = dynasty_id
@@ -184,12 +195,10 @@ class BaseEvent(ABC):
                 }
             }
 
-        Raises:
-            ValueError: If dynasty_id is not set (required for persistence)
+        Note:
+            dynasty_id validation now happens in __init__() (fail-loud at construction)
         """
-        if not self.dynasty_id:
-            raise ValueError("dynasty_id is required for event persistence")
-
+        # Note: dynasty_id validation removed - now enforced at __init__() level
         return {
             "event_id": self.event_id,
             "event_type": self.get_event_type(),

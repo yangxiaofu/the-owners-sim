@@ -56,12 +56,41 @@ class PlayoffDataModel:
         Returns True for both active playoffs AND offseason (to view completed bracket).
         Only returns False during regular season (before playoffs start).
 
+        CRITICAL: Validates that playoff controller matches CURRENT season year.
+        This prevents showing Season 1 playoff bracket when in Season 2.
+
         Returns:
             True if playoff bracket should be displayed, False during regular season
         """
         phase = self.simulation_controller.get_current_phase()
-        # Allow bracket viewing during playoffs (active) and offseason (review results)
-        return phase in ["playoffs", "offseason"]
+
+        # Phase check: only show bracket during playoffs or offseason
+        if phase not in ["playoffs", "offseason"]:
+            return False
+
+        # Season validation: ensure playoff controller matches current season
+        # This prevents stale playoff data from previous seasons showing up
+        season_controller = self.simulation_controller.season_controller
+        if not season_controller:
+            return False
+
+        # If no playoff controller exists, don't show bracket
+        if not season_controller.playoff_controller:
+            return False
+
+        # Validate playoff controller is for CURRENT season
+        current_season = season_controller.season_year
+        playoff_season = season_controller.playoff_controller.season_year
+
+        if playoff_season != current_season:
+            # Playoff controller is from a different season - don't show
+            if hasattr(self.simulation_controller, 'verbose_logging') and self.simulation_controller.verbose_logging:
+                print(f"[PLAYOFF_VIEW] Season mismatch: playoff_controller.season_year={playoff_season}, "
+                      f"current season={current_season}. Hiding bracket.")
+            return False
+
+        # All checks passed: playoff bracket is for current season
+        return True
 
     def get_playoff_seeding(self) -> Optional[Dict[str, Any]]:
         """

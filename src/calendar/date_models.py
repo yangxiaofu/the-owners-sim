@@ -77,6 +77,25 @@ class Date:
         """Convert to Python date object."""
         return PyDate(self.year, self.month, self.day)
 
+    def to_python_datetime(self, hour: int = 19, minute: int = 0, second: int = 0) -> datetime:
+        """
+        Convert Date to datetime with specified time components.
+
+        Args:
+            hour: Hour of day (0-23), defaults to 19 (7:00 PM - typical game time)
+            minute: Minute (0-59), defaults to 0
+            second: Second (0-59), defaults to 0
+
+        Returns:
+            datetime object with this date and specified time
+
+        Example:
+            >>> date = Date(2025, 9, 5)
+            >>> dt = date.to_python_datetime()  # 2025-09-05 19:00:00
+            >>> dt_custom = date.to_python_datetime(hour=13, minute=30)  # 2025-09-05 13:30:00
+        """
+        return datetime(self.year, self.month, self.day, hour, minute, second)
+
     def add_days(self, days: int) -> Date:
         """Add specified number of days (can be negative)."""
         py_date = self.to_python_date()

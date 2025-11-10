@@ -176,8 +176,8 @@ class TransactionAIManager:
                 debug_data['reason'] = f'Trades only during preseason/regular/offseason (current={season_phase.value})'
             return False, debug_data
 
-        # Check trade deadline (Week 8 Tuesday - no trades AFTER deadline week)
-        # Allow trades through the end of Week 8, block starting Week 9
+        # Check trade deadline (Week 9 Tuesday - no trades AFTER deadline week)
+        # Allow trades through the end of Week 9, block starting Week 10
         if current_week > TransactionProbability.TRADE_DEADLINE_WEEK:
             if self.debug_mode:
                 debug_data['decision'] = 'NO_EVALUATE'
@@ -342,7 +342,7 @@ class TransactionAIManager:
         """
         Check if within 3 days of trade deadline.
 
-        Trade deadline: Week 8 Tuesday
+        Trade deadline: Week 9 Tuesday
 
         Args:
             current_week: Current week number (1-18)
@@ -351,7 +351,7 @@ class TransactionAIManager:
         Returns:
             True if within 3 days before deadline
         """
-        # Simple check: if Week 8, assume within deadline proximity
+        # Simple check: if Week 9, assume within deadline proximity
         # More sophisticated implementation would check actual date
         return current_week == TransactionProbability.TRADE_DEADLINE_WEEK
 
@@ -1011,7 +1011,7 @@ class TransactionAIManager:
             # -------------------------------------------------------------------------
             # Check 3: Trade Deadline Enforcement
             # -------------------------------------------------------------------------
-            # Already handled in evaluate_daily_transactions (Week 8 check)
+            # Already handled in evaluate_daily_transactions (Week 9 check)
             # No additional check needed here
 
             # -------------------------------------------------------------------------

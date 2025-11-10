@@ -19,7 +19,7 @@ Based on 2024-2025 NFL rules:
 from enum import Enum
 from datetime import date
 from typing import Tuple
-from src.calendar.season_phase_tracker import SeasonPhase
+from calendar.season_phase_tracker import SeasonPhase
 from transactions.transaction_constants import NFLCalendarDates, TransactionProbability
 
 
@@ -35,10 +35,32 @@ class TransactionType(Enum):
 
 class TransactionTimingValidator:
     """
-    Validates whether a transaction is allowed based on NFL calendar rules.
+    Transaction timing validator for NFL rules compliance.
 
-    This class encapsulates all timing logic for different transaction types,
-    providing a single source of truth for transaction windows and deadlines.
+    Based on 2024-2025 NFL rules:
+    - Trade deadline: Week 9 Tuesday, 4:00 PM ET (changed from Week 8 in 2024)
+    - Trading opens: March 12, 4:00 PM ET (new league year)
+    - Trading closed: After Week 9 Tuesday until March 12 of next year
+
+    TRADE WINDOWS:
+      ✅ ALLOWED:
+         - Offseason: March 12 (4 PM ET) → Preseason start
+         - Preseason: Entire preseason period
+         - Regular Season: Week 1 → Week 9 Tuesday (4 PM ET)
+
+      ❌ BLOCKED:
+         - Early Offseason: January 1 → March 11
+         - Late Regular Season: After Week 9 Tuesday → Week 18
+         - Playoffs: Wild Card → Super Bowl
+
+    NOTE: This validator uses date-only checks (no time-of-day validation).
+    Trades are blocked for the entire day of the deadline (conservative approach).
+    This is acceptable for daily simulation granularity.
+
+    Franchise Tag Window: February 18 - March 4
+    Free Agency Start: March 12, 4:00 PM ET
+    RFA Offer Sheet Deadline: April 18
+    Roster Cut Deadline: Late August (typically Aug 27)
 
     Example:
         >>> validator = TransactionTimingValidator(season_year=2025)
@@ -121,10 +143,15 @@ class TransactionTimingValidator:
             >>> print(is_allowed)  # False
             >>> print(reason)  # "Trade deadline has passed (Week 9 Tuesday)"
         """
-        # Check if before league year starts (March 12)
-        if (current_date.month < self.FREE_AGENCY_START_MONTH or
-            (current_date.month == self.FREE_AGENCY_START_MONTH and
-             current_date.day < self.FREE_AGENCY_START_DAY)):
+        # Check phase-specific blocks first (playoffs)
+        if current_phase == SeasonPhase.PLAYOFFS:
+            return (False, "Trades not allowed during playoffs")
+
+        # Check if before league year starts (March 12 of season_year)
+        # Must compare full date, not just month/day, to handle cross-year seasons
+        # (e.g., 2025 season runs Sep 2025 - Feb 2026, then offseason Mar 2026)
+        march_12_this_season = date(self.season_year, self.FREE_AGENCY_START_MONTH, self.FREE_AGENCY_START_DAY)
+        if current_date < march_12_this_season:
             return (
                 False,
                 f"Trading period begins March {self.FREE_AGENCY_START_DAY} (new league year)"
@@ -140,10 +167,6 @@ class TransactionTimingValidator:
         # Trades allowed in: offseason, preseason, regular season (before deadline)
         if current_phase in [SeasonPhase.OFFSEASON, SeasonPhase.PRESEASON, SeasonPhase.REGULAR_SEASON]:
             return (True, "")
-
-        # Playoffs - trades not allowed
-        if current_phase == SeasonPhase.PLAYOFFS:
-            return (False, "Trades not allowed during playoffs")
 
         # Unknown phase - be conservative and allow
         return (True, "")
@@ -320,7 +343,7 @@ class TransactionTimingValidator:
 
         Args:
             current_date: Current calendar date
-            current_phase: Current phase
+            current_phase: Current phase (string like "regular_season", "offseason", "preseason", "playoffs")
             current_week: Current week number
 
         Returns:
@@ -336,8 +359,17 @@ class TransactionTimingValidator:
             >>> print(status["trades"])  # (True, "")
             >>> print(status["franchise_tags"])  # (False, "Franchise tag deadline was March 4")
         """
+        # Convert string phase to SeasonPhase enum
+        phase_map = {
+            "offseason": SeasonPhase.OFFSEASON,
+            "preseason": SeasonPhase.PRESEASON,
+            "regular_season": SeasonPhase.REGULAR_SEASON,
+            "playoffs": SeasonPhase.PLAYOFFS,
+        }
+        phase_enum = phase_map.get(current_phase.lower(), SeasonPhase.OFFSEASON)
+
         return {
-            "trades": self.is_trade_allowed(current_date, current_phase, current_week),
+            "trades": self.is_trade_allowed(current_date, phase_enum, current_week),
             "franchise_tags": self.is_franchise_tag_allowed(current_date),
             "transition_tags": self.is_transition_tag_allowed(current_date),
             "free_agency": self.is_free_agency_signing_allowed(current_date),

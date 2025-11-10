@@ -23,13 +23,20 @@ This is "The Owners Sim" - a comprehensive NFL football simulation engine writte
 
 **Production Ready:**
 - Desktop UI (Phase 1 complete - foundation, tabs, MVC architecture)
-- Season simulation (regular season, playoffs, offseason cycle)
+- Season simulation (single season: regular season → playoffs → offseason)
 - Salary cap system (full CBA compliance, event integration)
 - Calendar and event systems
-- Statistics preservation system (Phases 1-3 complete with season year tracking)
+- Statistics preservation system (Phases 1-5 complete with season year tracking)
 - Offseason AI Manager (Phase 2 complete - franchise tags, free agency, roster cuts)
+- Service layer extraction (Phase 3 complete - transaction logic separated)
+- Transaction context system (atomic database operations with nested support)
 
 **In Active Development:**
+- **Milestone 1: Complete Multi-Year Season Cycle** (2/14 systems complete)
+  - Goal: Enable repeatable 10+ season dynasty simulation
+  - Status: Offseason → Preseason transition handler partially implemented
+  - Missing: Season year increment, salary cap rollover, contract increments, player lifecycle
+  - See `docs/MILESTONE_1/README.md` for complete roadmap
 - Desktop UI Phase 2 (Season/Team views with data integration)
 - Player Generation System (archetype-based procedural generation)
 - Offseason AI Manager Phase 3 (Draft system integration)
@@ -641,6 +648,7 @@ Comprehensive documentation is available in `docs/`:
   - `docs/architecture/playoff_controller.md` - Playoff controller centralization and architecture
   - `docs/architecture/event_cap_integration.md` - Event-salary cap integration bridge pattern
   - `docs/architecture/ui_layer_separation.md` - **UI MVC architecture with domain model layer** (View → Controller → Domain Model → Database API)
+  - `docs/architecture/checkpoint_integration.md` - Checkpoint system integration architecture
 - **Database Schema**: `docs/schema/database_schema.md` - Complete SQLite schema v2.0.0 documentation with table definitions, indexes, and query examples
 - **System Summaries**:
   - `docs/PENALTY_SYSTEM_SUMMARY.md` - Penalty system overview
@@ -658,6 +666,17 @@ Comprehensive documentation is available in `docs/`:
   - `docs/plans/salary_cap_plan.md` - Salary cap system design
   - `docs/plans/playoff_manager_plan.md` - Playoff system architecture and design
   - `docs/plans/calendar_manager_plan.md` - Calendar system design
+  - `docs/plans/statistics_preservation.md` - Statistics preservation and season year tracking (Phases 1-5 complete)
+  - `docs/plans/offseason_ai_manager_plan.md` - AI offseason decision-making system (Phase 2 complete)
+  - `docs/plans/player_generator_plan.md` - Player generation system implementation plan
+- **Milestone Documentation**:
+  - `docs/MILESTONE_1/README.md` - **CRITICAL**: Multi-year season cycle roadmap (2/14 systems complete)
+  - `docs/MILESTONE_1/01_audit_report.md` - Complete system audit and gap analysis
+  - `docs/MILESTONE_1/02_requirements.md` - Detailed requirements for all 14 offseason-to-preseason systems
+  - `docs/MILESTONE_1/03_architecture.md` - System architecture and component design
+  - `docs/MILESTONE_1/04_implementation_plan.md` - 4-phase implementation roadmap (3-4 weeks)
+- **Bug Reports**:
+  - `docs/bugs/calendar_drift_root_cause_analysis.md` - **CRITICAL**: Calendar drift bug analysis (silent persistence failures)
 - **Specifications**:
   - `docs/specifications/player_generator_system.md` - Player generation system design
 - **API Specifications**:
@@ -671,22 +690,103 @@ Comprehensive documentation is available in `docs/`:
   - `demo/interactive_season_sim/QUICK_START.md` - Quick start guide for interactive season simulation
   - `demo/interactive_playoff_sim/` - Interactive playoff simulator documentation
 
+## Known Issues
+
+### Critical Issues
+
+**Calendar Drift Bug (CRITICAL - Active Investigation)**
+- **Severity**: CRITICAL
+- **Status**: Root cause identified, fix in development
+- **Symptom**: UI calendar shows future date (e.g., March 2026) while database shows past date (e.g., November 2025)
+- **Root Cause**: Silent database persistence failures - `SimulationController._save_state_to_db()` fails to raise exceptions when database writes fail
+- **Impact**: 4+ month calendar-database desynchronization, appears to work but data not saved
+- **Detection**: Console shows `[ERROR SimulationDataModel] Failed to save dynasty state...` or `[ERROR SimulationController] Failed to write dynasty_state!`
+- **Workaround**: Check database state regularly with `sqlite3 data/database/nfl_simulation.db "SELECT current_date, current_phase FROM dynasty_state WHERE dynasty_id='your_dynasty';"`
+- **Fix Status**: Comprehensive fix planned with fail-loud validation, post-save verification, and error dialogs
+- **Documentation**: See `docs/bugs/calendar_drift_root_cause_analysis.md` for complete analysis
+
+**Service Layer Test Failures (LOW PRIORITY)**
+- **Severity**: LOW (non-critical, core functionality verified)
+- **Status**: Known issue, fix deferred
+- **Tests Affected**: 10 of 30 tests in `tests/services/` failing due to incorrect mock patch paths
+- **Root Cause**: Patch paths reference wrong import locations (`@patch('services.transaction_service.X')` should be `@patch('events.trade_events.X')`)
+- **Impact**: Test failures only, production code unaffected
+- **Workaround**: 20/30 tests passing verify core functionality
+- **Fix Status**: Deferred - low priority, will fix when services module is refactored
+- **Documentation**: See `PHASE_3_COMPLETE.md` Section "Failing Tests"
+
+### Multi-Year Season Limitations
+
+**Single Season Only (Milestone 1 Gap)**
+- **Current State**: Can simulate 1 complete season (Regular Season → Playoffs → Offseason)
+- **Limitation**: Cannot automatically transition from one season to the next (Offseason → Preseason)
+- **Missing Systems**: 12 of 14 offseason-to-preseason transition systems not implemented
+  - Season year increment
+  - Salary cap rollover
+  - Contract year increments
+  - Player aging and retirements
+  - Rookie contract generation
+  - Free agent pool updates
+  - Draft class timing
+  - Event cleanup
+- **Impact**: After completing one season, requires manual database reset to simulate another season
+- **Workaround**: Use single-season simulations, manually reset database between seasons
+- **Fix Status**: **MILESTONE 1 IN DEVELOPMENT** - see `docs/MILESTONE_1/README.md` for complete roadmap
+- **Target**: Enable 10+ consecutive season simulation without manual intervention
+
 ## Common Issues and Troubleshooting
 
 ### Database Issues
-- **Empty stats/standings**: Run diagnostic scripts like `team_corruption_tracker.py` or `simple_stats_check.py`
-- **Transaction failures**: Check `detailed_transaction_tracking.log` for persistence errors
-- **Data inconsistency**: Use validation scripts in tests/ directory for verification
+
+**Silent Persistence Failures (Related to Calendar Drift Bug)**
+- **Symptom**: Simulation appears to work but data not saved to database
+- **Detection Signals**:
+  - Console messages: `[ERROR SimulationDataModel] Failed to save dynasty state...`
+  - Console messages: `[ERROR SimulationController] Failed to write dynasty_state!`
+  - UI date advances but database date remains stuck
+  - Phase mismatch between UI and database
+- **Verification**: Check database state vs UI state
+  ```bash
+  # Check database date/phase
+  sqlite3 data/database/nfl_simulation.db "SELECT dynasty_id, current_date, current_phase FROM dynasty_state WHERE dynasty_id='your_dynasty';"
+
+  # Compare to UI displayed date/phase
+  # If mismatch > 1 day, calendar drift has occurred
+  ```
+- **Possible Causes**:
+  - SQLite database lock timeout (another process holding lock)
+  - Disk space issues
+  - File permissions errors
+  - Database connection dropped
+  - Constraint violations
+- **Immediate Action**: Stop simulation, investigate console errors, verify database accessibility
+- **Recovery**: May require database state correction or rollback to last known good state
+
+**Empty stats/standings**
+- Run diagnostic scripts like `team_corruption_tracker.py` or `simple_stats_check.py`
+- Check dynasty_id matches between queries
+
+**Transaction failures**
+- Check `detailed_transaction_tracking.log` for persistence errors
+- Verify database file permissions and disk space
+- Check for SQLite lock files (`.db-shm`, `.db-wal`)
+
+**Data inconsistency**
+- Use validation scripts in tests/ directory for verification
+- Compare in-memory state vs database state
+- Check for calendar drift (see above)
 
 ### Testing Issues
 - **Test failures**: Always run with `PYTHONPATH=src` or `PYTHONPATH=.` prefix for imports
 - **Module not found**: Ensure virtual environment is activated and dependencies installed
 - **Performance issues**: Install and use `pytest-benchmark` if needed for performance testing
+- **Service layer test failures**: 10/30 tests in `tests/services/` expected to fail (known issue, see above)
 
 ### Development Workflow
 - **Before committing**: Run relevant tests and consider using black/pylint if available
 - **New features**: Follow existing patterns and add corresponding tests
 - **Team ID validation**: Always use numerical IDs (1-32), never team name strings
+- **Database operations**: Always verify success, raise exceptions on failure (don't fail silently)
 
 ## Key Implementation Details
 

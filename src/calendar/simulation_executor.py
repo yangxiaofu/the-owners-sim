@@ -101,12 +101,25 @@ class SimulationExecutor:
         self.verbose_logging = verbose_logging  # Enable diagnostic output
         self.fast_mode = fast_mode  # NEW: Store fast_mode for workflow creation
 
-        # Extract season year from calendar if not provided
+        # CRITICAL FIX #4: Extract season year from PhaseState (single source of truth)
         if season_year is None:
             phase_info = calendar.get_phase_info()
-            self.season_year = phase_info.get("season_year", calendar.get_current_date().year)
+            self.season_year = phase_info.get("season_year")
+
+            if self.season_year is None:
+                # Fallback for legacy/test scenarios where PhaseState missing season_year
+                self.season_year = calendar.get_current_date().year
+                if verbose_logging:
+                    print(
+                        f"[WARNING] SimulationExecutor initialized without PhaseState.season_year, "
+                        f"falling back to calendar year: {self.season_year}"
+                    )
+            elif verbose_logging:
+                print(f"[SIMULATION_EXECUTOR] Initialized with season_year={self.season_year} from PhaseState")
         else:
             self.season_year = season_year
+            if verbose_logging:
+                print(f"[SIMULATION_EXECUTOR] Initialized with explicit season_year={self.season_year}")
 
         # Initialize SimulationWorkflow for 3-stage simulation
         if enable_persistence:
@@ -271,13 +284,30 @@ class SimulationExecutor:
 
             except Exception as e:
                 import traceback
+                import sys
+
+                event_type = event_data.get('event_type', 'unknown')
                 error_msg = f"Event {i}: Unexpected error - {str(e)}"
                 errors.append(error_msg)
+
+                # FAIL-LOUD: Special handling for critical events
+                is_critical_event = event_type in ['SCHEDULE_RELEASE', 'DEADLINE']
+
+                if is_critical_event:
+                    print(f"\n{'!'*80}")
+                    print(f"🚨 CRITICAL EVENT FAILURE: {event_type}")
+                    print(f"{'!'*80}")
+
                 print(f"❌ {error_msg}")
                 print(f"[ERROR_DETAIL] Full traceback:")
                 traceback.print_exc()
+
+                # Explicit flush to ensure error output is visible immediately
+                sys.stdout.flush()
+                sys.stderr.flush()
+
                 print(f"[ERROR_DETAIL] Event game_id: {event_data.get('game_id', 'unknown')}")
-                print(f"[ERROR_DETAIL] Event type: {event_data.get('event_type', 'unknown')}")
+                print(f"[ERROR_DETAIL] Event type: {event_type}")
                 if 'data' in event_data and 'parameters' in event_data['data']:
                     params = event_data['data']['parameters']
                     print(f"[ERROR_DETAIL] Event parameters:")
@@ -286,6 +316,19 @@ class SimulationExecutor:
                     print(f"  - away_team: {params.get('away_team_id', 'NOT SET')}")
                     print(f"  - home_team: {params.get('home_team_id', 'NOT SET')}")
                     print(f"  - game_date: {params.get('game_date', 'NOT SET')}")
+
+                if is_critical_event:
+                    print(f"{'!'*80}")
+                    print(f"🚨 CRITICAL: {event_type} failed - season transition may be incomplete!")
+                    print(f"{'!'*80}")
+                    sys.stdout.flush()
+                    sys.stderr.flush()
+
+                    # For critical events, re-raise to halt execution (fail-loud)
+                    raise RuntimeError(
+                        f"Critical event {event_type} failed during season transition. "
+                        f"Error: {str(e)}. See traceback above for details."
+                    ) from e
 
         # Summary
         print(f"\n{'='*80}")
@@ -474,19 +517,29 @@ class SimulationExecutor:
         phase_info = self.calendar.get_phase_info()
         current_phase = phase_info.get("current_phase", "").lower()
 
-        # FIX: Use season_year from calendar's phase_info instead of cached self.season_year
-        # This ensures we always use the latest season_year, even after phase transitions
-        current_season_year = phase_info.get("season_year", self.season_year)
+        # CRITICAL FIX #3: Always get season_year from PhaseState (single source of truth)
+        # PhaseState.to_dict() now includes "season_year" key (added in Fix #1)
+        # This eliminates unreliable fallback logic and stale cached values
+        current_season_year = phase_info.get("season_year")
+
+        if current_season_year is None:
+            # Fallback only for legacy/test scenarios where PhaseState missing season_year
+            current_date = self.calendar.get_current_date()
+            current_season_year = current_date.year
+            if self.verbose_logging:
+                print(
+                    f"[WARNING] PhaseState missing season_year, falling back to calendar year: {current_season_year}"
+                )
+
         preseason_season = current_season_year + 1 if current_phase == "offseason" else current_season_year
 
         # DIAGNOSTIC LOGGING
         if self.verbose_logging:
-            print(f"\n[DIAGNOSTIC] _get_events_for_date() called for {target_date}")
-            print(f"  phase_info keys: {list(phase_info.keys())}")
-            print(f"  phase_info.get('season_year'): {phase_info.get('season_year')}")
-            print(f"  self.season_year (cached): {self.season_year}")
-            print(f"  current_season_year (computed): {current_season_year}")
-            print(f"  current_phase: '{current_phase}'")
+            print(f"\n[GAME_QUERY] Querying games for date {target_date}")
+            print(f"  Current phase: {current_phase}")
+            print(f"  Season year (from PhaseState): {phase_info.get('season_year')}")
+            print(f"  Preseason query year: {preseason_season}")
+            print(f"  Query pattern: 'preseason_{preseason_season}_*'")
 
         preseason_events = [
             e for e in all_preseason_events
@@ -560,6 +613,17 @@ class SimulationExecutor:
             e for e in schedule_release_events
             if e.get('dynasty_id') == self.dynasty_id
         ]
+
+        # DIAGNOSTIC LOGGING for SCHEDULE_RELEASE
+        if self.verbose_logging:
+            print(f"  [SCHEDULE_RELEASE] Total from DB: {len(schedule_release_events)}")
+            print(f"  [SCHEDULE_RELEASE] After dynasty filter ('{self.dynasty_id}'): {len(dynasty_schedule_release_events)}")
+            if len(schedule_release_events) > 0:
+                for i, evt in enumerate(schedule_release_events[:3], 1):
+                    evt_dynasty = evt.get('dynasty_id', 'MISSING')
+                    evt_date = evt['data'].get('parameters', {}).get('event_date', 'NO_DATE')
+                    print(f"    Sample {i}: dynasty_id='{evt_dynasty}', event_date='{evt_date}'")
+
         all_events_for_dynasty.extend(dynasty_schedule_release_events)
 
         # Get window events (dynasty-specific)
@@ -582,6 +646,11 @@ class SimulationExecutor:
         events_for_date = []
         target_date_str = str(target_date)
 
+        # DIAGNOSTIC LOGGING for date filtering
+        if self.verbose_logging:
+            print(f"  [DATE_FILTER] Target date: '{target_date_str}'")
+            print(f"  [DATE_FILTER] Events to filter: {len(all_events_for_dynasty)}")
+
         for event_data in all_events_for_dynasty:
             # Check if event_date/game_date in parameters matches target date
             params = event_data['data'].get('parameters', event_data['data'])
@@ -593,6 +662,10 @@ class SimulationExecutor:
                 date_part = date_str.split('T')[0]
             else:
                 date_part = date_str[:10] if len(date_str) >= 10 else date_str
+
+            # DIAGNOSTIC: Log SCHEDULE_RELEASE events specifically
+            if self.verbose_logging and event_data.get('event_type') == 'SCHEDULE_RELEASE':
+                print(f"  [DATE_FILTER] SCHEDULE_RELEASE: date_str='{date_str}', date_part='{date_part}', match={date_part == target_date_str}")
 
             if date_part == target_date_str:
                 events_for_date.append(event_data)

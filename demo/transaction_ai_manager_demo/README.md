@@ -104,8 +104,8 @@ Contender - Team 12: 8-1 (0.889 win%)
 
 ---
 
-### Scenario 4: Trade Deadline Scenario (Week 8, Final 3 Days)
-**Scenario**: NFL trade deadline (Week 8 Tuesday)
+### Scenario 4: Trade Deadline Scenario (Week 9, Final 3 Days)
+**Scenario**: NFL trade deadline (Week 9 Tuesday)
 **Duration**: 3 days before deadline
 **Expected**: +100% evaluation probability (deadline proximity modifier)
 
@@ -113,10 +113,10 @@ Shows activity spike before deadline and enforcement after deadline.
 
 **Example Output**:
 ```
-Week 8 (Final 3 Days Before Deadline):
+Week 9 (Final 3 Days Before Deadline):
 Aggressive GM - Team 7
-  2025-10-25: 2 proposals generated
-  2025-10-26: 1 proposals generated
+  2025-11-01: 2 proposals generated
+  2025-11-02: 1 proposals generated
   2025-10-27: 3 proposals generated
   Total: 3 evaluations, 6 proposals
 

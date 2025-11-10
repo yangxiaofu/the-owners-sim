@@ -215,22 +215,23 @@ TIMELINE:
   - Week 5 (Oct 3 - Oct 9):   ✅ Trades allowed
   - Week 6 (Oct 10 - Oct 16): ✅ Trades allowed
   - Week 7 (Oct 17 - Oct 23): ✅ Trades allowed
-  - Week 8 (Oct 24 - Oct 30): ✅ Trades allowed (last week!)
-  - Week 9 (Oct 31 - Nov 6):  ❌ Trades blocked (deadline passed)
-  - Week 10+:                 ❌ Trades blocked
+  - Week 8 (Oct 24 - Oct 30): ✅ Trades allowed
+  - Week 9 (Oct 31 - Nov 6):  ✅ Trades allowed (last week!)
+  - Week 10 (Nov 7 - Nov 13): ❌ Trades blocked (deadline passed)
+  - Week 11+:                 ❌ Trades blocked
 
 ENFORCEMENT:
   ValidationMiddleware.validate_player_trade() checks:
-    if trade_date.month >= 11:  # November or later
+    if current_week > 9:  # After Week 9
         return False, "Trade deadline has passed"
 
 RESULT:
-  - Trades execute normally Weeks 1-8 (56 days)
-  - All trades rejected Week 9+ (early November)
-  - Activity spike expected Week 8 Days 5-7 (deadline proximity modifier)
+  - Trades execute normally Weeks 1-9 (63 days)
+  - All trades rejected Week 10+ (early November)
+  - Activity spike expected Week 9 Days 5-7 (deadline proximity modifier)
 
 📈 DEADLINE PROXIMITY EFFECT:
-  Week 8, Days 5-7: +100% probability
+  Week 9, Days 5-7: +100% probability
   Example: Base 5% × GM 0.7 × Deadline 2.0 = 7% daily probability
   Last 3 days before deadline → Higher trade volume
     """)
@@ -407,10 +408,10 @@ def demo_success_metrics():
      - 1.0 = perfectly balanced
      - 0.8-1.2 = acceptable NFL trade
 
-  3. Deadline Compliance (No trades after Week 8)
+  3. Deadline Compliance (No trades after Week 9)
      Query: SELECT * FROM cap_transactions
             WHERE transaction_type='TRADE'
-            AND transaction_date >= '2025-11-01'
+            AND transaction_date >= '2025-11-07'
 
      Expected: 0 results
 

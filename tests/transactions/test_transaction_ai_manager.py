@@ -293,9 +293,9 @@ def test_playoff_push_modifier(manager, gm_balanced):
 
     Teams with 0.40-0.60 win% in weeks 10+ get MODIFIER_PLAYOFF_PUSH (1.5x).
 
-    NOTE: Trade deadline is Week 8, so this test is theoretical.
+    NOTE: Trade deadline is Week 9, so this test is theoretical.
     In practice, playoff push modifier (Week 10+) never activates because
-    trades are blocked after Week 8. Test documents the logic anyway.
+    trades are blocked after Week 9. Test documents the logic anyway.
     """
     # Team in playoff hunt: 5-5 record (0.500 win%)
     playoff_hunt_context = TeamContext(
@@ -317,7 +317,7 @@ def test_playoff_push_modifier(manager, gm_balanced):
             current_date="2025-11-15",
             current_week=10
         )
-        # After trade deadline (Week 8), always returns False
+        # After trade deadline (Week 9), always returns False
         assert result is False
 
     # Same context in early season (week 5) should NOT apply modifier
@@ -454,11 +454,11 @@ def test_post_trade_cooldown_modifier(manager, gm_balanced, team_context):
 
 def test_trade_deadline_proximity_modifier(manager, gm_balanced, team_context):
     """
-    Test +100% modifier in final 3 days before deadline (Week 8).
+    Test +100% modifier in final 3 days before deadline (Week 9).
 
     MODIFIER_DEADLINE_PROXIMITY = 2.0 (doubles probability).
     """
-    # Week 8 (trade deadline week)
+    # Week 9 (trade deadline week)
     # Base: 0.5 * 0.05 = 0.025
     # Deadline modifier: 0.025 * 2.0 = 0.05
 
@@ -469,7 +469,7 @@ def test_trade_deadline_proximity_modifier(manager, gm_balanced, team_context):
             team_context=team_context,
             season_phase="regular",
             current_date="2025-10-29",
-            current_week=8
+            current_week=9
         )
         assert result is True
 
@@ -490,8 +490,8 @@ def test_multiple_modifiers_stacking(manager, gm_balanced):
     """
     Test that multiple modifiers stack correctly.
 
-    Test scenario: Losing streak + deadline proximity (Week 8)
-    Note: Playoff push (Week 10+) cannot apply since deadline is Week 8
+    Test scenario: Losing streak + deadline proximity (Week 9)
+    Note: Playoff push (Week 10+) cannot apply since deadline is Week 9
     """
     # Team with losing streak during deadline week
     multi_modifier_context = TeamContext(
@@ -502,7 +502,7 @@ def test_multiple_modifiers_stacking(manager, gm_balanced):
         season="regular"
     )
 
-    # Week 8 (deadline) + losing streak
+    # Week 9 (deadline) + losing streak
     # Base: 0.5 * 0.05 = 0.025
     # Losing streak modifier: 1.25
     # Deadline modifier: 2.0
@@ -515,7 +515,7 @@ def test_multiple_modifiers_stacking(manager, gm_balanced):
             team_context=multi_modifier_context,
             season_phase="regular",
             current_date="2025-10-29",
-            current_week=8
+            current_week=9
         )
         assert result is True
 
@@ -554,7 +554,7 @@ def test_probability_edge_cases(manager, gm_aggressive, team_context):
         season="regular"
     )
 
-    # Week 8 (deadline) with aggressive GM and losing streak
+    # Week 9 (deadline) with aggressive GM and losing streak
     # Base: 0.9 * 0.05 = 0.045
     # Losing streak: 1.25
     # Deadline: 2.0
@@ -1630,9 +1630,9 @@ def test_trade_cooldown_enforcement_across_days(manager):
 
 
 def test_playoff_push_scenario_weeks_10_to_18(manager):
-    """Test 42: Playoff push cannot occur due to Week 8 trade deadline."""
+    """Test 42: Playoff push cannot occur due to Week 9 trade deadline."""
     # NOTE: This test documents that playoff push (Week 10+) is unreachable
-    # because the trade deadline is Week 8. All evaluations after Week 8 return False.
+    # because the trade deadline is Week 9. All evaluations after Week 9 return False.
     # This is a known design limitation - playoff push modifier exists but can't trigger.
 
     manager.needs_analyzer.analyze_team_needs = Mock(return_value=[
@@ -1657,7 +1657,7 @@ def test_playoff_push_scenario_weeks_10_to_18(manager):
     in_playoff_hunt = manager._is_in_playoff_hunt(team_context_marginal)
     assert in_playoff_hunt
 
-    # After trade deadline (Week 8), all evaluations should return False
+    # After trade deadline (Week 9), all evaluations should return False
     should_eval = manager._should_evaluate_today(
         team_id=team_id,
         gm=moderate_gm,
@@ -1667,7 +1667,7 @@ def test_playoff_push_scenario_weeks_10_to_18(manager):
         current_week=12  # After deadline
     )
 
-    # Expect False because Week 12 > Week 8 deadline
+    # Expect False because Week 12 > Week 9 deadline
     assert should_eval is False
 
 

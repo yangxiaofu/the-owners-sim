@@ -154,7 +154,7 @@ The system uses:
 BASE_EVALUATION_PROBABILITY = 0.05  # 5% per day baseline
 MAX_TRANSACTIONS_PER_DAY = 2        # Maximum proposals per team per day
 TRADE_COOLDOWN_DAYS = 7             # Days after trade before next evaluation
-TRADE_DEADLINE_WEEK = 8             # NFL trade deadline (Week 8 Tuesday)
+TRADE_DEADLINE_WEEK = 9             # NFL trade deadline (Week 9 Tuesday)
 
 # Probability Modifiers
 MODIFIER_PLAYOFF_PUSH = 1.5         # +50% if in wild card hunt (weeks 10+)
@@ -298,8 +298,8 @@ GMArchetype(
 **ONLY during REGULAR_SEASON phase**
 
 - **Preseason**: No AI transactions (teams evaluating rosters)
-- **Regular Season (Weeks 1-8)**: AI transactions active
-- **Week 9 Tuesday+**: Trade deadline passed, no more trades
+- **Regular Season (Weeks 1-9)**: AI transactions active
+- **Week 10 Tuesday+**: Trade deadline passed, no more trades
 - **Playoffs**: No AI transactions (roster freeze)
 - **Offseason**: No AI transactions (different transaction types: free agency, draft)
 
@@ -314,11 +314,11 @@ Example: GM with `trade_frequency=0.5` → 2.5% chance per day
 1. **Playoff Push** (+50%): Weeks 10+ if win% between 0.40-0.60
 2. **Losing Streak** (+25% per game): 3+ game losing streak
 3. **Trade Cooldown** (-80%): 7 days after executing a trade
-4. **Deadline Proximity** (+100%): Final 3 days before Week 9 Tuesday
+4. **Deadline Proximity** (+100%): Final 3 days before Week 10 Tuesday
 
 **Example Calculation**:
 ```python
-# Week 8, Tuesday (deadline day)
+# Week 9, Tuesday (deadline day)
 # Team: 5-7 record (0.417 win%, in playoff hunt)
 # GM: trade_frequency=0.6
 # Last trade: 10 days ago (no cooldown)
@@ -327,7 +327,7 @@ base_prob = 0.05 * 0.6 = 0.03 (3%)
 
 modifiers:
   playoff_push: 1.5  (in hunt)
-  deadline: 2.0      (Week 8)
+  deadline: 2.0      (Week 9)
 
 final_prob = 0.03 * 1.5 * 2.0 = 0.09 (9% chance)
 
@@ -483,7 +483,7 @@ AND transaction_date = '2025-10-15';
 
 **Realistic NFL Behavior**:
 - NFL teams typically make 2-5 trades per season
-- Most trades happen near trade deadline (Week 8)
+- Most trades happen near trade deadline (Week 9)
 - Trades require:
   - Matching needs between both teams
   - Fair value balance
@@ -536,7 +536,7 @@ Real NFL average: ~60 trades per season = 1.875 trades per team
 
 ## Summary
 
-**AI transactions execute automatically every day during regular season (Weeks 1-8).**
+**AI transactions execute automatically every day during regular season (Weeks 1-9).**
 
 **Flow**:
 1. User advances day → season_cycle_controller.advance_day()
