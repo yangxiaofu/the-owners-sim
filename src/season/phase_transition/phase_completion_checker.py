@@ -75,7 +75,7 @@ class PhaseCompletionChecker:
 
     # NFL season constants
     REGULAR_SEASON_GAME_COUNT = 272  # 32 teams × 17 games / 2
-    PRESEASON_GAME_COUNT = 48  # 32 teams × 3 games / 2
+    PRESEASON_GAME_COUNT = 100  # DIAGNOSTIC: Changed from 48 to test which check triggers early exit
 
     def __init__(
         self,

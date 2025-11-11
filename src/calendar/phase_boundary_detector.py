@@ -113,21 +113,27 @@ class PhaseBoundaryDetector:
         games = self._get_phase_games(phase, completed_only=False)
 
         if not games:
-            # No games found - use fallback
-            self.logger.warning(f"No games found for phase {phase.value}, using fallback")
-            result = self._get_fallback_last_game_date(phase)
-        else:
-            # Find game with maximum timestamp
-            last_game = max(games, key=lambda g: g.get('timestamp', ''))
-            timestamp = last_game.get('timestamp', '')
-
-            # Convert timestamp to Date
-            result = self._timestamp_to_date(datetime.fromisoformat(timestamp.replace('Z', '+00:00')))
-
-            self.logger.info(
-                f"Last {phase.value} game date: {result} "
-                f"(game_id={last_game.get('game_id', 'unknown')})"
+            # FAIL LOUDLY - No fallback dates allowed
+            error_msg = (
+                f"CRITICAL ERROR: No games found for phase '{phase.value}' in season {self.season_year}!\n"
+                f"This indicates a schema mismatch or missing game data.\n"
+                f"Dynasty: {self.dynasty_id}\n"
+                f"Check that game events are stored with correct parameters (season vs season_year)."
             )
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        # Find game with maximum timestamp
+        last_game = max(games, key=lambda g: g.get('timestamp'))
+        timestamp = last_game.get('timestamp')
+
+        # Convert timestamp to Date (timestamp is already a datetime object from EventDatabaseAPI)
+        result = self._timestamp_to_date(timestamp)
+
+        self.logger.info(
+            f"Last {phase.value} game date: {result} "
+            f"(game_id={last_game.get('game_id', 'unknown')})"
+        )
 
         # Cache result
         if self.cache_results:
@@ -159,21 +165,27 @@ class PhaseBoundaryDetector:
         games = self._get_phase_games(phase, completed_only=False)
 
         if not games:
-            # No games found - use fallback
-            self.logger.warning(f"No games found for phase {phase.value}, using fallback")
-            result = self._get_fallback_first_game_date(phase)
-        else:
-            # Find game with minimum timestamp
-            first_game = min(games, key=lambda g: g.get('timestamp', ''))
-            timestamp = first_game.get('timestamp', '')
-
-            # Convert timestamp to Date
-            result = self._timestamp_to_date(datetime.fromisoformat(timestamp.replace('Z', '+00:00')))
-
-            self.logger.info(
-                f"First {phase.value} game date: {result} "
-                f"(game_id={first_game.get('game_id', 'unknown')})"
+            # FAIL LOUDLY - No fallback dates allowed
+            error_msg = (
+                f"CRITICAL ERROR: No games found for phase '{phase.value}' in season {self.season_year}!\n"
+                f"This indicates a schema mismatch or missing game data.\n"
+                f"Dynasty: {self.dynasty_id}\n"
+                f"Check that game events are stored with correct parameters (season vs season_year)."
             )
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        # Find game with minimum timestamp
+        first_game = min(games, key=lambda g: g.get('timestamp'))
+        timestamp = first_game.get('timestamp')
+
+        # Convert timestamp to Date (timestamp is already a datetime object from EventDatabaseAPI)
+        result = self._timestamp_to_date(timestamp)
+
+        self.logger.info(
+            f"First {phase.value} game date: {result} "
+            f"(game_id={first_game.get('game_id', 'unknown')})"
+        )
 
         # Cache result
         if self.cache_results:
@@ -247,8 +259,14 @@ class PhaseBoundaryDetector:
             elif phase == SeasonPhase.PRESEASON:
                 result = self._calculate_preseason_start(year)
             else:
-                # Fallback to first game date fallback
-                result = self._get_fallback_first_game_date(phase)
+                # FAIL LOUDLY - No fallback dates allowed
+                error_msg = (
+                    f"CRITICAL ERROR: Cannot determine start date for phase '{phase.value}'!\n"
+                    f"No milestone, no games, and no calculation method available.\n"
+                    f"Dynasty: {self.dynasty_id}, Season: {year}"
+                )
+                self.logger.error(error_msg)
+                raise ValueError(error_msg)
 
         self.logger.info(f"Phase start date for {phase.value}: {result}")
 
@@ -415,7 +433,7 @@ class PhaseBoundaryDetector:
         phase_games = [
             game for game in all_games
             if self._is_game_in_phase(game, phase) and
-               game.get('data', {}).get('parameters', {}).get('season_year') == self.season_year
+               game.get('data', {}).get('parameters', {}).get('season') == self.season_year
         ]
 
         # Filter for completed games if requested
@@ -580,63 +598,3 @@ class PhaseBoundaryDetector:
             month=timestamp.month,
             day=timestamp.day
         )
-
-    def _get_fallback_last_game_date(self, phase: SeasonPhase) -> Date:
-        """
-        Provide fallback last game date when no games are scheduled.
-
-        Args:
-            phase: Season phase
-
-        Returns:
-            Estimated last game date
-        """
-        # Fallback dates based on typical NFL calendar
-        if phase == SeasonPhase.PRESEASON:
-            # Preseason typically ends late August
-            return Date(year=self.season_year, month=8, day=28)
-
-        elif phase == SeasonPhase.REGULAR_SEASON:
-            # Regular season typically ends early January
-            return Date(year=self.season_year + 1, month=1, day=8)
-
-        elif phase == SeasonPhase.PLAYOFFS:
-            # Super Bowl typically early February
-            return Date(year=self.season_year + 1, month=2, day=12)
-
-        elif phase == SeasonPhase.OFFSEASON:
-            # Offseason extends until next preseason
-            return Date(year=self.season_year, month=7, day=31)
-
-        # Default fallback
-        return Date(year=self.season_year, month=12, day=31)
-
-    def _get_fallback_first_game_date(self, phase: SeasonPhase) -> Date:
-        """
-        Provide fallback first game date when no games are scheduled.
-
-        Args:
-            phase: Season phase
-
-        Returns:
-            Estimated first game date
-        """
-        # Fallback dates based on typical NFL calendar
-        if phase == SeasonPhase.PRESEASON:
-            # Preseason typically starts early August
-            return Date(year=self.season_year, month=8, day=1)
-
-        elif phase == SeasonPhase.REGULAR_SEASON:
-            # Regular season typically starts after Labor Day (early September)
-            return Date(year=self.season_year, month=9, day=7)
-
-        elif phase == SeasonPhase.PLAYOFFS:
-            # Wild Card typically mid-January
-            return Date(year=self.season_year + 1, month=1, day=14)
-
-        elif phase == SeasonPhase.OFFSEASON:
-            # Offseason starts day after Super Bowl
-            return Date(year=self.season_year + 1, month=2, day=13)
-
-        # Default fallback
-        return Date(year=self.season_year, month=1, day=1)

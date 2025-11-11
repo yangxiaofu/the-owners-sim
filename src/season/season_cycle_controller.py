@@ -22,7 +22,7 @@ For individual phase control, use SeasonController or PlayoffController directly
 """
 
 import logging
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, date
 from typing import Dict, List, Any, Optional
 
 # Use try/except to handle both production and test imports
@@ -696,123 +696,75 @@ class SeasonCycleController:
 
     def simulate_to_phase_end(self, progress_callback=None) -> Dict[str, Any]:
         """
-        Simulate until current phase ends (stops BEFORE next phase begins).
+        Simulate until current phase ends (detected by phase transition).
 
-        Calculates total days until next phase and advances day-by-day,
-        stopping precisely on the day before the next phase starts.
+        Uses dynamic detection - runs day-by-day until PhaseCompletionChecker
+        triggers a phase transition. No pre-calculation of end dates required.
 
         Args:
-            progress_callback: Optional callback(days_simulated, total_days) for UI progress updates
+            progress_callback: Optional callback(week_num, games_played) for progress updates
 
         Returns:
-            Summary dict with simulation results:
-            {
-                'start_date': str,
-                'end_date': str,
-                'weeks_simulated': int,
-                'total_games': int,
-                'starting_phase': str,
-                'ending_phase': str,
-                'phase_transition': bool,
-                'success': bool
-            }
+            Dict with success, dates, statistics, and phase transition info
         """
-        # Handle offseason separately
-        if self.phase_state.phase.value == "offseason":
-            return self.simulate_to_next_offseason_milestone(progress_callback)
-
-        # Setup
         starting_phase = self.phase_state.phase
         start_date = self.calendar.get_current_date()
         initial_games = self.total_games_played
 
+        days_simulated = 0
+        MAX_DAYS = 365  # Safety limit to prevent infinite loops
+
         if self.verbose_logging:
             print(f"\n[SIMULATE_TO_PHASE_END] Starting: {starting_phase.value.upper()}")
+            print(f"[SIMULATE_TO_PHASE_END] Will simulate until phase transition detected")
 
-        # Determine next phase
-        next_phase_map = {
-            SeasonPhase.PRESEASON: PhaseNames.DB_REGULAR_SEASON,
-            SeasonPhase.REGULAR_SEASON: PhaseNames.DB_PLAYOFFS,
-            SeasonPhase.PLAYOFFS: PhaseNames.DB_OFFSEASON,
-        }
-        next_phase_name = next_phase_map.get(starting_phase)
-
-        if not next_phase_name or next_phase_name == "offseason":
-            return {
-                "success": False,
-                "message": "Cannot determine next phase",
-                "start_date": str(start_date),
-                "end_date": str(start_date),
-                "weeks_simulated": 0,
-                "total_games": 0,
-                "starting_phase": starting_phase.value,
-                "ending_phase": starting_phase.value,
-                "phase_transition": False,
-            }
-
-        # Query first game of next phase
-        first_game_date = self.db.events_get_first_game_date_of_phase(
-            phase_name=next_phase_name,
-            current_date=str(self.calendar.get_current_date()),
-        )
-
-        if not first_game_date:
-            return {
-                "success": False,
-                "message": f"No {next_phase_name} games found",
-                "start_date": str(start_date),
-                "end_date": str(start_date),
-                "weeks_simulated": 0,
-                "total_games": 0,
-                "starting_phase": starting_phase.value,
-                "ending_phase": starting_phase.value,
-                "phase_transition": False,
-            }
-
-        # Calculate stop date (day before next phase starts)
-        first_game_dt = datetime.strptime(first_game_date, "%Y-%m-%d")
-        target_stop_date = (first_game_dt - timedelta(days=1)).date()
-
-        # Calculate total days to simulate
-        start_py_date = start_date.to_python_date()
-        total_days = (target_stop_date - start_py_date).days
-
-        if self.verbose_logging:
-            print(f"[SIMULATE_TO_PHASE_END] First {next_phase_name} game: {first_game_date}")
-            print(f"[SIMULATE_TO_PHASE_END] Stop date: {target_stop_date}")
-            print(f"[SIMULATE_TO_PHASE_END] Total days: {total_days}")
-
-        # Day-by-day simulation - let advance_day() handle all logic
-        days_simulated = 0
-        while days_simulated < total_days:
+        # Simulate day-by-day until phase changes
+        while days_simulated < MAX_DAYS:
             day_result = self.advance_day()
             days_simulated += 1
 
-            # Stop early if phase transition detected by advance_day()
+            # Progress callback
+            if progress_callback:
+                current_weeks = days_simulated // 7
+                current_games = self.total_games_played - initial_games
+                progress_callback(current_weeks, current_games)
+
+            # Check if phase transitioned
             if day_result.get("phase_transition"):
                 if self.verbose_logging:
-                    print(f"[SIMULATE_TO_PHASE_END] Phase transition at day {days_simulated}")
+                    print(f"[SIMULATE_TO_PHASE_END] Phase transition detected after {days_simulated} days")
                 break
 
-            # Progress callback for UI updates
-            if progress_callback:
-                games_played = self.total_games_played - initial_games
-                progress_callback(days_simulated, games_played)
+            # Double-check phase hasn't changed (belt and suspenders)
+            if self.phase_state.phase != starting_phase:
+                if self.verbose_logging:
+                    print(f"[SIMULATE_TO_PHASE_END] Phase changed: {starting_phase.value} → {self.phase_state.phase.value}")
+                break
 
-        if self.verbose_logging:
-            print(f"[SIMULATE_TO_PHASE_END] Complete: {days_simulated} days, {self.total_games_played - initial_games} games")
+        # Build result
+        end_date = self.calendar.get_current_date()
+        ending_phase = self.phase_state.phase
+        games_played = self.total_games_played - initial_games
+        weeks_simulated = days_simulated // 7
 
-        # Return summary
+        # Check if we hit safety limit
+        if days_simulated >= MAX_DAYS:
+            return self._create_failure_result(
+                f"Safety limit reached ({MAX_DAYS} days) without phase transition",
+                start_date
+            )
+
         return {
-            "start_date": str(start_date),
-            "end_date": str(self.calendar.get_current_date()),
-            "weeks_simulated": days_simulated // 7,  # Convert days to weeks for UI
-            "total_games": self.total_games_played - initial_games,
-            "starting_phase": starting_phase.value,
-            "ending_phase": self.phase_state.phase.value,
-            "next_phase": next_phase_name,
-            "phase_transition": self.phase_state.phase != starting_phase,
             "success": True,
+            "message": f"Simulated to end of {starting_phase.value}",
+            "start_date": str(start_date),
+            "end_date": str(end_date),
+            "days_simulated": days_simulated,
+            "weeks_simulated": weeks_simulated,
+            "total_games": games_played,
+            "starting_phase": starting_phase.value,
+            "ending_phase": ending_phase.value,
+            "phase_transition": ending_phase != starting_phase,
         }
 
     def simulate_to_next_offseason_milestone(
@@ -3222,6 +3174,29 @@ class SeasonCycleController:
 
         except Exception as e:
             raise Exception(f"Failed to reset standings: {e}") from e
+
+    def _create_failure_result(self, message: str, start_date: Date) -> Dict[str, Any]:
+        """
+        Create standardized failure response for simulation errors.
+
+        Args:
+            message: Error message describing why simulation failed
+            start_date: Date when simulation was attempted
+
+        Returns:
+            Failure dict with standard structure
+        """
+        return {
+            "success": False,
+            "message": message,
+            "start_date": str(start_date),
+            "end_date": str(start_date),
+            "weeks_simulated": 0,
+            "total_games": 0,
+            "starting_phase": self.phase_state.phase.value,
+            "ending_phase": self.phase_state.phase.value,
+            "phase_transition": False,
+        }
 
     # ==================== Dunder Methods ====================
 
