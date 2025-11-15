@@ -381,6 +381,10 @@ The simulation follows a layered architecture with clear separation of concerns:
 - `database/api.py`: Clean database API for data retrieval (single source of truth)
 - `database/connection.py`: SQLite database connection management
 - `database/dynasty_state_api.py`: Dynasty state management and persistence
+- `database/dynasty_database_api.py`: Dynasty CRUD operations and standings initialization (NEW)
+  - Single source of truth for dynasties table operations
+  - Transaction-aware with optional shared connection parameter
+  - Handles dynasty creation, standings initialization (preseason + regular season), and deletion
 - `database/migrations/`: Database schema migrations (dynasty_id to events, game_date to games)
 - `stores/base_store.py`: In-memory data store abstraction
 - `stores/standings_store.py`: NFL standings and team performance tracking
@@ -525,9 +529,16 @@ The simulation follows a layered architecture with clear separation of concerns:
   - Trade execution with player roster updates
   - Team record queries for AI decision-making
   - Dependency injection pattern with lazy initialization
+- `dynasty_initialization_service.py`: Complete dynasty initialization orchestration (NEW)
+  - Coordinates dynasty creation across 10+ subsystems
+  - Manages transaction boundaries (commit before schedule generation)
+  - Integrates: DynastyDatabaseAPI, PlayerRosterAPI, DepthChartAPI, DynastyStateAPI
+  - Handles: dynasty record, standings (preseason + regular), rosters, depth charts, contracts, schedule, AI offseason
+  - Returns standardized result dict with timing metadata
+  - 19 comprehensive tests with full mock coverage
 - `playoff_helpers.py`: Playoff champion extraction utilities
 - Clean separation of business logic from orchestration layer
-- Comprehensive test coverage with 30+ tests
+- Comprehensive test coverage with 50+ tests
 - See `PHASE_3_COMPLETE.md` for complete extraction details
 
 **23. Transaction Context System (`src/database/transaction_context.py`)**

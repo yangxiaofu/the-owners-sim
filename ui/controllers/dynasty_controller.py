@@ -8,6 +8,7 @@ Handles dynasty creation, validation, and retrieval operations.
 from typing import List, Dict, Any, Optional, Tuple
 import sys
 import os
+import logging
 from datetime import datetime
 
 # Add src to path for imports
@@ -16,6 +17,7 @@ if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
 from database.connection import DatabaseConnection
+from database.dynasty_database_api import DynastyDatabaseAPI
 
 
 class DynastyController:
@@ -40,6 +42,7 @@ class DynastyController:
         """
         self.db_path = db_path
         self.db = DatabaseConnection(db_path)
+        self.dynasty_db_api = DynastyDatabaseAPI(db_path)
 
     def list_existing_dynasties(self) -> List[Dict[str, Any]]:
         """
@@ -54,27 +57,7 @@ class DynastyController:
             - created_at: Creation timestamp
             - is_active: Active status
         """
-        query = """
-            SELECT dynasty_id, dynasty_name, owner_name, team_id,
-                   created_at, is_active
-            FROM dynasties
-            ORDER BY created_at DESC
-        """
-
-        results = self.db.execute_query(query)
-
-        dynasties = []
-        for row in results:
-            dynasties.append({
-                'dynasty_id': row['dynasty_id'],
-                'dynasty_name': row['dynasty_name'],
-                'owner_name': row['owner_name'],
-                'team_id': row['team_id'],
-                'created_at': row['created_at'],
-                'is_active': bool(row['is_active'])
-            })
-
-        return dynasties
+        return self.dynasty_db_api.get_all_dynasties()
 
     def dynasty_exists(self, dynasty_id: str) -> bool:
         """
@@ -86,9 +69,7 @@ class DynastyController:
         Returns:
             True if dynasty exists, False otherwise
         """
-        query = "SELECT COUNT(*) FROM dynasties WHERE dynasty_id = ?"
-        result = self.db.execute_query(query, (dynasty_id,))
-        return result[0]['COUNT(*)'] > 0 if result else False
+        return self.dynasty_db_api.dynasty_exists(dynasty_id)
 
     def validate_dynasty_name(self, name: str) -> Tuple[bool, Optional[str]]:
         """
@@ -173,6 +154,9 @@ class DynastyController:
         """
         Create a new dynasty with initialization.
 
+        Delegates to DynastyInitializationService for complete dynasty setup.
+        Controller responsibilities: validation, ID generation, error handling.
+
         Args:
             dynasty_name: Display name for the dynasty
             owner_name: Owner's name (default: "User")
@@ -184,174 +168,38 @@ class DynastyController:
             - (True, dynasty_id, None) if successful
             - (False, "", "error message") if failed
         """
-        # Validate dynasty name
+        # UI Concern: Validate dynasty name
         is_valid, error_msg = self.validate_dynasty_name(dynasty_name)
         if not is_valid:
             return (False, "", error_msg)
 
-        # Generate unique dynasty ID
+        # UI Concern: Generate unique dynasty ID
         dynasty_id = self.generate_unique_dynasty_id(dynasty_name)
 
-        # Create dynasty in database with initialization
-        # Everything in one transaction for atomicity
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
+        # Delegate to service: Complete dynasty initialization
+        from services.dynasty_initialization_service import DynastyInitializationService
+
+        service = DynastyInitializationService(
+            db_path=self.db_path,
+            logger=logging.getLogger("DynastyInitializationService")
+        )
 
         try:
-            # Step 1: Create dynasty record
-            cursor.execute('''
-                INSERT INTO dynasties (dynasty_id, dynasty_name, owner_name, team_id, is_active)
-                VALUES (?, ?, ?, ?, TRUE)
-            ''', (dynasty_id, dynasty_name, owner_name, team_id))
+            result = service.initialize_dynasty(
+                dynasty_id=dynasty_id,
+                dynasty_name=dynasty_name,
+                owner_name=owner_name,
+                team_id=team_id,
+                season=season
+            )
 
-            # Step 2: Initialize standings for all 32 NFL teams (0-0-0 records)
-            # IMPORTANT: Initialize both preseason AND regular_season standings
-
-            # Initialize PRESEASON standings (separate records for season_type='preseason')
-            print(f"📊 Initializing preseason standings for all 32 teams...")
-            for tid in range(1, 33):
-                cursor.execute('''
-                    INSERT INTO standings
-                    (dynasty_id, season, team_id, season_type, wins, losses, ties,
-                     points_for, points_against, division_wins, division_losses,
-                     conference_wins, conference_losses)
-                    VALUES (?, ?, ?, 'preseason', 0, 0, 0, 0, 0, 0, 0, 0, 0)
-                ''', (dynasty_id, season, tid))
-            print(f"✅ Preseason standings initialized for {season}")
-
-            # Initialize REGULAR SEASON standings (separate records for season_type='regular_season')
-            print(f"📊 Initializing regular season standings for all 32 teams...")
-            for tid in range(1, 33):
-                cursor.execute('''
-                    INSERT INTO standings
-                    (dynasty_id, season, team_id, season_type, wins, losses, ties,
-                     points_for, points_against, division_wins, division_losses,
-                     conference_wins, conference_losses)
-                    VALUES (?, ?, ?, 'regular_season', 0, 0, 0, 0, 0, 0, 0, 0, 0)
-                ''', (dynasty_id, season, tid))
-            print(f"✅ Regular season standings initialized for {season}")
-
-            # Step 3: Initialize player rosters from JSON → Database (ONE-TIME)
-            print(f"📥 Initializing player rosters for dynasty '{dynasty_id}'...")
-            print(f"   Loading from JSON files (one-time migration)...")
-
-            # Use PlayerRosterAPI with shared connection for transaction safety
-            from database.player_roster_api import PlayerRosterAPI
-            # Pass shared connection so all operations use same transaction
-            roster_api = PlayerRosterAPI(self.db_path, connection=conn)
-
-            players_loaded = roster_api.initialize_dynasty_rosters(dynasty_id, season)
-
-            print(f"✅ Loaded {players_loaded} players from JSON → Database")
-            print(f"   Rosters for all 32 teams initialized")
-
-            # Step 3.5: Auto-generate depth charts for all 32 teams
-            print(f"📊 Auto-generating depth charts for all 32 teams...")
-            from depth_chart.depth_chart_api import DepthChartAPI
-            depth_chart_api = DepthChartAPI(self.db_path)
-
-            depth_charts_created = 0
-            for team_id in range(1, 33):
-                # Pass shared connection to avoid database lock
-                success = depth_chart_api.auto_generate_depth_chart(dynasty_id, team_id, connection=conn)
-                if success:
-                    depth_charts_created += 1
-                else:
-                    print(f"[WARNING] Failed to generate depth chart for team {team_id}")
-
-            print(f"✅ Depth charts auto-generated for {depth_charts_created}/32 teams (sorted by overall rating)")
-
-            # Step 4: Commit dynasty + standings + rosters + depth charts atomically
-            # Must commit BEFORE schedule generation (which creates its own connections)
-            conn.commit()
-            print(f"✅ Dynasty '{dynasty_id}' committed to database")
-
-            # Step 5: Generate initial season schedule (separate transaction)
-            # Note: Schedule generation creates its own database connections
-            # so we must commit the dynasty first to avoid database locks
-            try:
-                from .season_controller import SeasonController
-                season_controller = SeasonController(
-                    db_path=self.db_path,
-                    dynasty_id=dynasty_id,
-                    season=season
-                )
-
-                schedule_success, schedule_error = season_controller.generate_initial_schedule()
-                if not schedule_success:
-                    print(f"[WARNING DynastyController] Schedule generation failed: {schedule_error}")
-                    # Dynasty creation succeeded, but schedule generation failed
-                    # User can manually generate schedule later
-            except Exception as schedule_ex:
-                print(f"[WARNING DynastyController] Schedule generation error: {schedule_ex}")
-                # Non-critical - dynasty is already committed
-
-            # Step 6: CRITICAL - Verify dynasty_state was created by schedule generation
-            # This ensures next load will have proper state
-            from database.dynasty_state_api import DynastyStateAPI
-            dynasty_state_api = DynastyStateAPI(self.db_path)
-
-            state = dynasty_state_api.get_current_state(dynasty_id, season)
-            if not state:
-                print(f"[WARNING DynastyController] Dynasty state missing after schedule generation!")
-                print(f"[INFO DynastyController] Creating fallback dynasty_state...")
-
-                # Create dynasty_state as fallback (Aug 1 - preseason start)
-                fallback_success = dynasty_state_api.initialize_state(
-                    dynasty_id=dynasty_id,
-                    season=season,
-                    start_date=f"{season}-08-01",
-                    start_week=1,
-                    start_phase='preseason'
-                )
-
-                if fallback_success:
-                    print(f"✅ Fallback dynasty_state created successfully")
-                else:
-                    print(f"[ERROR DynastyController] CRITICAL: Failed to create dynasty_state!")
-                    print(f"Dynasty '{dynasty_id}' may have persistence issues on next load")
+            if result['success']:
+                return (True, dynasty_id, None)
             else:
-                print(f"✅ Dynasty state verified: {state['current_date']}")
-
-            # Step 7: NEW - Simulate AI Offseason for all non-user teams
-            # This populates the player_transactions table with offseason activity
-            try:
-                print(f"🤖 Simulating AI offseason for dynasty '{dynasty_id}'...")
-
-                from offseason.offseason_controller import OffseasonController
-                from datetime import datetime
-
-                # Initialize offseason controller
-                offseason_controller = OffseasonController(
-                    database_path=self.db_path,
-                    dynasty_id=dynasty_id,
-                    season_year=season,
-                    user_team_id=team_id if team_id else 1,  # Default to team 1 if no user team
-                    super_bowl_date=datetime(season + 1, 2, 9),  # Feb 9 after season
-                    enable_persistence=True,
-                    verbose_logging=True
-                )
-
-                # Run full AI offseason simulation
-                offseason_result = offseason_controller.simulate_ai_full_offseason(
-                    user_team_id=team_id if team_id else 1
-                )
-
-                print(f"✅ AI offseason simulation complete:")
-                print(f"   - {offseason_result['franchise_tags_applied']} franchise tags")
-                print(f"   - {offseason_result['free_agent_signings']} free agent signings")
-                print(f"   - {offseason_result['roster_cuts_made']} roster cuts")
-                print(f"   - {offseason_result['total_transactions']} total transactions")
-
-            except Exception as offseason_ex:
-                print(f"[WARNING DynastyController] Offseason simulation error: {offseason_ex}")
-                # Non-critical - dynasty is already committed
-
-            return (True, dynasty_id, None)
+                error_message = result.get('error_message', 'Unknown error during dynasty initialization')
+                return (False, "", error_message)
 
         except Exception as e:
-            # Rollback entire transaction on any failure
-            conn.rollback()
             error_message = f"Failed to create dynasty: {str(e)}"
             print(f"[ERROR DynastyController] {error_message}")
             return (False, "", error_message)
@@ -366,27 +214,7 @@ class DynastyController:
         Returns:
             Dict with dynasty metadata or None if not found
         """
-        query = """
-            SELECT dynasty_id, dynasty_name, owner_name, team_id,
-                   created_at, is_active
-            FROM dynasties
-            WHERE dynasty_id = ?
-        """
-
-        result = self.db.execute_query(query, (dynasty_id,))
-
-        if not result:
-            return None
-
-        row = result[0]
-        return {
-            'dynasty_id': row['dynasty_id'],
-            'dynasty_name': row['dynasty_name'],
-            'owner_name': row['owner_name'],
-            'team_id': row['team_id'],
-            'created_at': row['created_at'],
-            'is_active': bool(row['is_active'])
-        }
+        return self.dynasty_db_api.get_dynasty_by_id(dynasty_id)
 
     def get_dynasty_stats(self, dynasty_id: str) -> Dict[str, Any]:
         """
@@ -398,31 +226,7 @@ class DynastyController:
         Returns:
             Dict with dynasty statistics
         """
-        # Query for seasons played
-        seasons_query = """
-            SELECT DISTINCT season
-            FROM standings
-            WHERE dynasty_id = ?
-            ORDER BY season DESC
-        """
-        seasons_result = self.db.execute_query(seasons_query, (dynasty_id,))
-        seasons_played = [row['season'] for row in seasons_result] if seasons_result else []
-
-        # Query for total games played
-        games_query = """
-            SELECT COUNT(*)
-            FROM games
-            WHERE dynasty_id = ?
-        """
-        games_result = self.db.execute_query(games_query, (dynasty_id,))
-        total_games = games_result[0]['COUNT(*)'] if games_result else 0
-
-        return {
-            'seasons_played': seasons_played,
-            'total_seasons': len(seasons_played),
-            'total_games': total_games,
-            'current_season': seasons_played[0] if seasons_played else None
-        }
+        return self.dynasty_db_api.get_dynasty_stats(dynasty_id)
 
     def delete_dynasty(self, dynasty_id: str) -> Tuple[bool, Optional[str]]:
         """
@@ -438,54 +242,9 @@ class DynastyController:
             - (True, None) if successful
             - (False, "error message") if failed
         """
-        conn = self.db.get_connection()
-        cursor = conn.cursor()
+        success = self.dynasty_db_api.delete_dynasty(dynasty_id)
 
-        try:
-            # Delete in reverse order of foreign key dependencies
-            # CASCADE delete should handle most of this, but being explicit
-
-            # Delete player rosters
-            cursor.execute("DELETE FROM team_rosters WHERE dynasty_id = ?", (dynasty_id,))
-
-            # Delete players
-            cursor.execute("DELETE FROM players WHERE dynasty_id = ?", (dynasty_id,))
-
-            # Delete box scores
-            cursor.execute("DELETE FROM box_scores WHERE dynasty_id = ?", (dynasty_id,))
-
-            # Delete player game stats
-            cursor.execute("DELETE FROM player_game_stats WHERE dynasty_id = ?", (dynasty_id,))
-
-            # Delete games
-            cursor.execute("DELETE FROM games WHERE dynasty_id = ?", (dynasty_id,))
-
-            # Delete standings
-            cursor.execute("DELETE FROM standings WHERE dynasty_id = ?", (dynasty_id,))
-
-            # Delete schedules
-            cursor.execute("DELETE FROM schedules WHERE dynasty_id = ?", (dynasty_id,))
-
-            # Delete events
-            cursor.execute("DELETE FROM events WHERE dynasty_id = ?", (dynasty_id,))
-
-            # Delete playoff data
-            cursor.execute("DELETE FROM playoff_brackets WHERE dynasty_id = ?", (dynasty_id,))
-            cursor.execute("DELETE FROM playoff_seedings WHERE dynasty_id = ?", (dynasty_id,))
-            cursor.execute("DELETE FROM tiebreaker_applications WHERE dynasty_id = ?", (dynasty_id,))
-
-            # Delete dynasty state and seasons
-            cursor.execute("DELETE FROM dynasty_state WHERE dynasty_id = ?", (dynasty_id,))
-            cursor.execute("DELETE FROM dynasty_seasons WHERE dynasty_id = ?", (dynasty_id,))
-
-            # Finally, delete dynasty record
-            cursor.execute("DELETE FROM dynasties WHERE dynasty_id = ?", (dynasty_id,))
-
-            conn.commit()
-            return (True, None)
-
-        except Exception as e:
-            conn.rollback()
-            error_message = f"Failed to delete dynasty: {str(e)}"
-            print(f"[ERROR DynastyController] {error_message}")
-            return (False, error_message)
+        if success:
+            return True, None
+        else:
+            return False, f"Failed to delete dynasty: {dynasty_id}"
