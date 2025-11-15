@@ -65,6 +65,19 @@ def mock_dynasty_state_api():
 
 
 @pytest.fixture
+def mock_playoff_db_api():
+    """Create mock PlayoffDatabaseAPI."""
+    mock_api = Mock()
+    mock_api.clear_playoff_data = Mock(return_value={
+        'events_deleted': 4,
+        'brackets_deleted': 1,
+        'seedings_deleted': 12,
+        'total_deleted': 17
+    })
+    return mock_api
+
+
+@pytest.fixture
 def mock_logger():
     """Create mock logger."""
     return Mock()
@@ -115,6 +128,7 @@ class TestDynastyInitializationServiceInit:
         mock_player_roster_api,
         mock_depth_chart_api,
         mock_dynasty_state_api,
+        mock_playoff_db_api,
         mock_logger
     ):
         """Service should store all injected dependencies."""
@@ -125,6 +139,7 @@ class TestDynastyInitializationServiceInit:
             player_roster_api=mock_player_roster_api,
             depth_chart_api=mock_depth_chart_api,
             dynasty_state_api=mock_dynasty_state_api,
+            playoff_database_api=mock_playoff_db_api,
             logger=mock_logger
         )
 
@@ -134,6 +149,7 @@ class TestDynastyInitializationServiceInit:
         assert service._player_roster_api == mock_player_roster_api
         assert service._depth_chart_api == mock_depth_chart_api
         assert service._dynasty_state_api == mock_dynasty_state_api
+        assert service._playoff_db_api == mock_playoff_db_api
         assert service.logger == mock_logger
 
     def test_init_creates_database_connection(self):
@@ -154,13 +170,15 @@ class TestDynastyInitializationServiceInit:
         assert service.player_roster_api is not None
         assert service.depth_chart_api is not None
         assert service.dynasty_state_api is not None
+        assert service.playoff_db_api is not None
 
     def test_lazy_properties_return_injected_apis(
         self,
         mock_dynasty_db_api,
         mock_player_roster_api,
         mock_depth_chart_api,
-        mock_dynasty_state_api
+        mock_dynasty_state_api,
+        mock_playoff_db_api
     ):
         """Lazy properties should return injected APIs when provided."""
         # Arrange
@@ -169,7 +187,8 @@ class TestDynastyInitializationServiceInit:
             dynasty_database_api=mock_dynasty_db_api,
             player_roster_api=mock_player_roster_api,
             depth_chart_api=mock_depth_chart_api,
-            dynasty_state_api=mock_dynasty_state_api
+            dynasty_state_api=mock_dynasty_state_api,
+            playoff_database_api=mock_playoff_db_api
         )
 
         # Act & Assert
@@ -177,6 +196,7 @@ class TestDynastyInitializationServiceInit:
         assert service.player_roster_api == mock_player_roster_api
         assert service.depth_chart_api == mock_depth_chart_api
         assert service.dynasty_state_api == mock_dynasty_state_api
+        assert service.playoff_db_api == mock_playoff_db_api
 
 
 # ============================================================================
@@ -1061,71 +1081,92 @@ class TestResetStandingsMethod:
 # ============================================================================
 
 class TestClearPlayoffDataMethod:
-    """Test _clear_playoff_data helper method."""
+    """Test _clear_playoff_data helper method (delegates to PlayoffDatabaseAPI)."""
 
-    def test_clear_playoff_data_deletes_all_playoff_tables(
+    def test_clear_playoff_data_delegates_to_api(
         self,
-        service,
-        mock_connection
+        mock_connection,
+        mock_playoff_db_api
     ):
-        """_clear_playoff_data should delete from events, brackets, and seedings tables."""
-        # Arrange
-        mock_cursor = Mock()
-        mock_cursor.rowcount = 1  # Each DELETE returns 1 row affected
-        mock_connection.cursor.return_value = mock_cursor
+        """_clear_playoff_data should delegate to PlayoffDatabaseAPI.clear_playoff_data()."""
+        # Arrange - Create service with mocked playoff API
+        mock_playoff_db_api.clear_playoff_data.return_value = {
+            'events_deleted': 4,
+            'brackets_deleted': 1,
+            'seedings_deleted': 12,
+            'total_deleted': 17
+        }
+        service = DynastyInitializationService(
+            db_path=":memory:",
+            playoff_database_api=mock_playoff_db_api
+        )
 
         # Act
         deleted = service._clear_playoff_data("test_dynasty", 2025, connection=mock_connection)
 
-        # Assert - 3 DELETE queries executed (events, brackets, seedings)
-        assert mock_cursor.execute.call_count == 3
+        # Assert - Delegates to API with correct parameters
+        mock_playoff_db_api.clear_playoff_data.assert_called_once_with(
+            dynasty_id="test_dynasty",
+            season=2025,
+            connection=mock_connection
+        )
 
-        # Assert - Total deleted count (3 rows, 1 from each table)
-        assert deleted == 3
+        # Assert - Returns total_deleted count
+        assert deleted == 17
 
-    def test_clear_playoff_data_deletes_events(
+    def test_clear_playoff_data_extracts_total_deleted(
         self,
-        service,
-        mock_connection
+        mock_connection,
+        mock_playoff_db_api
     ):
-        """_clear_playoff_data should delete playoff GameEvents from database."""
-        # Arrange
-        mock_cursor = Mock()
-        mock_cursor.rowcount = 1  # Mock rowcount for DELETE operations
-        mock_connection.cursor.return_value = mock_cursor
+        """_clear_playoff_data should extract total_deleted from API result for backward compatibility."""
+        # Arrange - Create service with mocked playoff API
+        mock_playoff_db_api.clear_playoff_data.return_value = {
+            'events_deleted': 10,
+            'brackets_deleted': 2,
+            'seedings_deleted': 28,
+            'total_deleted': 40
+        }
+        service = DynastyInitializationService(
+            db_path=":memory:",
+            playoff_database_api=mock_playoff_db_api
+        )
 
         # Act
-        service._clear_playoff_data("test_dynasty", 2025, connection=mock_connection)
+        deleted = service._clear_playoff_data("test_dynasty", 2025, connection=mock_connection)
 
-        # Assert - DELETE query for playoff events executed
-        calls = [call[0] for call in mock_cursor.execute.call_args_list]
-        event_delete_found = any(
-            "DELETE FROM events" in str(call) and "event_type = 'GAME'" in str(call)
-            for call in calls
-        )
-        assert event_delete_found
+        # Assert - Returns int (not dict) for backward compatibility
+        assert isinstance(deleted, int)
+        assert deleted == 40
 
-    def test_clear_playoff_data_deletes_brackets(
+    def test_clear_playoff_data_without_connection(
         self,
-        service,
-        mock_connection
+        mock_playoff_db_api
     ):
-        """_clear_playoff_data should delete playoff_brackets records."""
-        # Arrange
-        mock_cursor = Mock()
-        mock_cursor.rowcount = 1  # Mock rowcount for DELETE operations
-        mock_connection.cursor.return_value = mock_cursor
+        """_clear_playoff_data should work without shared connection (standalone mode)."""
+        # Arrange - Create service with mocked playoff API
+        mock_playoff_db_api.clear_playoff_data.return_value = {
+            'events_deleted': 5,
+            'brackets_deleted': 1,
+            'seedings_deleted': 14,
+            'total_deleted': 20
+        }
+        service = DynastyInitializationService(
+            db_path=":memory:",
+            playoff_database_api=mock_playoff_db_api
+        )
 
         # Act
-        service._clear_playoff_data("test_dynasty", 2025, connection=mock_connection)
+        deleted = service._clear_playoff_data("test_dynasty", 2025)
 
-        # Assert - DELETE query for playoff brackets executed
-        calls = [call[0] for call in mock_cursor.execute.call_args_list]
-        bracket_delete_found = any(
-            "DELETE FROM playoff_brackets" in str(call)
-            for call in calls
+        # Assert - Delegates with None connection
+        mock_playoff_db_api.clear_playoff_data.assert_called_once_with(
+            dynasty_id="test_dynasty",
+            season=2025,
+            connection=None
         )
-        assert bracket_delete_found
+
+        assert deleted == 20
 
 
 # ============================================================================

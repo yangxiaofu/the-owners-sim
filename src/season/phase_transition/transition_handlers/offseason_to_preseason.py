@@ -4,16 +4,19 @@ Offseason to Preseason Handler
 Handles the transition from OFFSEASON phase to PRESEASON phase (new season).
 
 This handler orchestrates the initialization of a new NFL season:
-1. Generates preseason schedule (48 games, 3 weeks)
-2. Generates regular season schedule (272 games, 17 weeks)
-3. Resets all team standings to 0-0-0
-4. Updates database to preseason phase
-5. Supports rollback on failure with partial state tracking
+1. Clears playoff data from completed season
+2. Generates preseason schedule (48 games, 3 weeks)
+3. Generates regular season schedule (272 games, 17 weeks)
+4. Resets all team standings to 0-0-0
+5. Updates database to preseason phase
+6. Supports rollback on failure with partial state tracking
 """
 
 from typing import Any, Dict, Callable, Optional, List
 from datetime import datetime
 from ..models import PhaseTransition
+from database.playoff_database_api import PlayoffDatabaseAPI
+from database.connection import DatabaseConnection
 
 
 class OffseasonToPreseasonHandler:
@@ -25,11 +28,12 @@ class OffseasonToPreseasonHandler:
     and updates the database to reflect the new season state.
 
     Responsibilities:
-    1. Generate preseason schedule (48 games, 3 weeks)
-    2. Generate regular season schedule (272 games, 17 weeks)
-    3. Reset all team standings to 0-0-0
-    4. Update database to preseason phase
-    5. Support rollback on failure with partial state restoration
+    1. Clear playoff data from completed season
+    2. Generate preseason schedule (48 games, 3 weeks)
+    3. Generate regular season schedule (272 games, 17 weeks)
+    4. Reset all team standings to 0-0-0
+    5. Update database to preseason phase
+    6. Support rollback on failure with partial state restoration
 
     Design:
     - Uses dependency injection for all external operations
@@ -62,6 +66,9 @@ class OffseasonToPreseasonHandler:
         dynasty_id: str,
         new_season_year: int,
         event_db=None,  # EventDatabaseAPI instance for game validation
+        playoff_database_api: Optional[PlayoffDatabaseAPI] = None,
+        database_connection: Optional[DatabaseConnection] = None,
+        db_path: str = "data/database/nfl_simulation.db",
         verbose_logging: bool = False
     ):
         """
@@ -89,6 +96,10 @@ class OffseasonToPreseasonHandler:
                 - Returns: None (updates dynasty_state table)
             dynasty_id: Dynasty identifier for logging and context
             new_season_year: The new season year being initialized
+            event_db: EventDatabaseAPI instance for game validation
+            playoff_database_api: PlayoffDatabaseAPI instance for playoff cleanup (optional)
+            database_connection: DatabaseConnection instance for database access (optional)
+            db_path: Path to database file (default: "data/database/nfl_simulation.db")
             verbose_logging: Enable detailed step-by-step logging
 
         Raises:
@@ -109,6 +120,9 @@ class OffseasonToPreseasonHandler:
         self._execute_year_transition = execute_year_transition
         self._update_database_phase = update_database_phase
         self._event_db = event_db  # For game validation
+        self._playoff_db_api = playoff_database_api  # For playoff cleanup
+        self._db_connection = database_connection  # For database access
+        self._db_path = db_path  # Database path
 
         # Store context
         self._dynasty_id = dynasty_id
@@ -117,6 +131,20 @@ class OffseasonToPreseasonHandler:
 
         # Rollback state tracking
         self._rollback_state: Dict[str, Any] = {}
+
+    @property
+    def playoff_db_api(self) -> PlayoffDatabaseAPI:
+        """Lazy initialization of PlayoffDatabaseAPI."""
+        if self._playoff_db_api is None:
+            self._playoff_db_api = PlayoffDatabaseAPI(self._db_path)
+        return self._playoff_db_api
+
+    @property
+    def db_connection(self) -> DatabaseConnection:
+        """Lazy initialization of DatabaseConnection."""
+        if self._db_connection is None:
+            self._db_connection = DatabaseConnection(self._db_path)
+        return self._db_connection
 
     def execute(
         self,
@@ -131,11 +159,12 @@ class OffseasonToPreseasonHandler:
         specified at construction.
 
         This method orchestrates the new season initialization process:
-        1. Save rollback state (current phase, schedules, standings)
-        2. Generate preseason schedule (48 games, 3 weeks)
-        3. Generate regular season schedule (272 games, 17 weeks)
-        4. Reset all team standings to 0-0-0
-        5. Update database phase to PRESEASON
+        1. Clear playoff data from completed season
+        2. Save rollback state (current phase, schedules, standings)
+        3. Generate preseason schedule (48 games, 3 weeks)
+        4. Generate regular season schedule (272 games, 17 weeks)
+        5. Reset all team standings to 0-0-0
+        6. Update database phase to PRESEASON
 
         The method tracks completion state at each step to support
         granular rollback if any step fails.
@@ -153,6 +182,7 @@ class OffseasonToPreseasonHandler:
 
         Returns:
             Dict containing:
+                - playoff_cleanup: Playoff data cleanup result with deletion counts
                 - preseason_games: List of preseason game events (48)
                 - regular_season_games: List of regular season game events (272)
                 - preseason_start_date: Calculated preseason start date
@@ -165,6 +195,7 @@ class OffseasonToPreseasonHandler:
             RuntimeError: If any step fails during execution
 
         Side Effects:
+            - Deletes playoff data from completed season
             - Creates game events in database/calendar
             - Resets standings for all 32 NFL teams
             - Updates dynasty_state phase to PRESEASON
@@ -199,29 +230,45 @@ class OffseasonToPreseasonHandler:
         result: Dict[str, Any] = {}
 
         try:
-            # Step 1: Save rollback state
-            self._log("[Step 1/6] Saving rollback state...")
+            # Step 1: Clear playoff data from completed season
+            old_season = effective_year - 1
+            self._log(f"[Step 1/7] Clearing playoff data from season {old_season}...")
+            playoff_result = self.playoff_db_api.clear_playoff_data(
+                dynasty_id=self._dynasty_id,
+                season=old_season,
+                connection=None  # Auto-commit mode (handler not transaction-aware yet)
+            )
+            result["playoff_cleanup"] = playoff_result
+            completed_steps.append("playoff_data_cleared")
+            self._log(
+                f"✓ Playoff data cleared: {playoff_result['total_deleted']} records deleted "
+                f"({playoff_result['playoff_teams_deleted']} teams, "
+                f"{playoff_result['playoff_games_deleted']} games, "
+                f"{playoff_result['playoff_matchups_deleted']} matchups)"
+            )
+
+            # Step 2: Save rollback state
+            self._log("[Step 2/7] Saving rollback state...")
             self._save_rollback_state(transition, effective_year)
             completed_steps.append("rollback_state_saved")
             self._log("✓ Rollback state saved")
 
-            # Step 1.75: Execute Year Transition (Milestone 1: Multi-Year Season Cycle)
+            # Step 2.75: Execute Year Transition (Milestone 1: Multi-Year Season Cycle)
             # This orchestrates: Season year increment + Contract transitions + Draft class generation
-            self._log("[Step 1.75/6] Executing year transition (increment year, contracts, draft)...")
-            old_year = effective_year - 1
-            transition_result = self._execute_year_transition(old_year, effective_year)
+            self._log("[Step 2.75/7] Executing year transition (increment year, contracts, draft)...")
+            transition_result = self._execute_year_transition(old_season, effective_year)
             result["year_transition"] = transition_result
             completed_steps.append("year_transition_executed")
             self._log(
-                f"✓ Year transition complete: {old_year} → {effective_year}\n"
+                f"✓ Year transition complete: {old_season} → {effective_year}\n"
                 f"  - Contracts: {transition_result['contract_transition']['total_contracts']} processed, "
                 f"{transition_result['contract_transition']['expired_count']} expired\n"
                 f"  - Draft class: {transition_result['draft_preparation']['total_players']} prospects generated"
             )
 
-            # Step 1.5: Validate games exist for upcoming season
+            # Step 2.5: Validate games exist for upcoming season
             # This ensures SCHEDULE_RELEASE milestone executed successfully during offseason
-            self._log("[Step 1.5/6] Validating schedule exists for upcoming season...")
+            self._log("[Step 2.5/7] Validating schedule exists for upcoming season...")
             self._validate_games_exist(effective_year)  # Raises ValueError if games missing
             completed_steps.append("schedule_validated")
 
@@ -229,8 +276,8 @@ class OffseasonToPreseasonHandler:
             # Games are now generated 3 months before preseason starts (NFL realistic!)
             # This transition only handles phase change + standings reset
 
-            # Step 2: Reset all team standings
-            self._log("[Step 2/6] Resetting all team standings to 0-0-0...")
+            # Step 3: Reset all team standings
+            self._log("[Step 3/7] Resetting all team standings to 0-0-0...")
             self._reset_standings(effective_year)
             result["teams_reset"] = 32  # All 32 NFL teams
             completed_steps.append("standings_reset")
@@ -244,7 +291,8 @@ class OffseasonToPreseasonHandler:
 
             self._log(
                 f"\n[SUCCESS] OFFSEASON → PRESEASON transition complete:\n"
-                f"  - Season Year: {old_year} → {effective_year}\n"
+                f"  - Season Year: {old_season} → {effective_year}\n"
+                f"  - Playoff Cleanup: {playoff_result['total_deleted']} records deleted\n"
                 f"  - Contracts: {transition_result['contract_transition']['expired_count']} expired\n"
                 f"  - Draft Class: {transition_result['draft_preparation']['total_players']} prospects\n"
                 f"  - Teams Reset: 32 (all standings → 0-0-0)\n"

@@ -20,6 +20,7 @@ from datetime import datetime
 from database.dynasty_database_api import DynastyDatabaseAPI
 from database.player_roster_api import PlayerRosterAPI
 from database.dynasty_state_api import DynastyStateAPI
+from database.playoff_database_api import PlayoffDatabaseAPI
 from database.connection import DatabaseConnection
 from depth_chart.depth_chart_api import DepthChartAPI
 from calendar.season_phase_tracker import SeasonPhase
@@ -43,6 +44,7 @@ class DynastyInitializationService:
     - PlayerRosterAPI: Player roster management
     - DepthChartAPI: Depth chart generation
     - DynastyStateAPI: Dynasty state management
+    - PlayoffDatabaseAPI: Playoff data management
     - Logger: Logging instance
     """
 
@@ -53,6 +55,7 @@ class DynastyInitializationService:
         player_roster_api: Optional[PlayerRosterAPI] = None,
         depth_chart_api: Optional[DepthChartAPI] = None,
         dynasty_state_api: Optional[DynastyStateAPI] = None,
+        playoff_database_api: Optional[PlayoffDatabaseAPI] = None,
         logger: Optional[logging.Logger] = None
     ):
         """
@@ -64,6 +67,7 @@ class DynastyInitializationService:
             player_roster_api: Optional PlayerRosterAPI instance (lazy init if None)
             depth_chart_api: Optional DepthChartAPI instance (lazy init if None)
             dynasty_state_api: Optional DynastyStateAPI instance (lazy init if None)
+            playoff_database_api: Optional PlayoffDatabaseAPI instance (lazy init if None)
             logger: Optional logger instance (creates default if None)
         """
         self.db_path = db_path
@@ -74,6 +78,7 @@ class DynastyInitializationService:
         self._player_roster_api = player_roster_api
         self._depth_chart_api = depth_chart_api
         self._dynasty_state_api = dynasty_state_api
+        self._playoff_db_api = playoff_database_api
 
         self.logger = logger or logging.getLogger(self.__class__.__name__)
 
@@ -104,6 +109,13 @@ class DynastyInitializationService:
         if self._dynasty_state_api is None:
             self._dynasty_state_api = DynastyStateAPI(self.db_path)
         return self._dynasty_state_api
+
+    @property
+    def playoff_db_api(self) -> PlayoffDatabaseAPI:
+        """Lazy-initialize PlayoffDatabaseAPI."""
+        if self._playoff_db_api is None:
+            self._playoff_db_api = PlayoffDatabaseAPI(self.db_path)
+        return self._playoff_db_api
 
     def _reset_standings(
         self,
@@ -163,6 +175,8 @@ class DynastyInitializationService:
         """
         Clear all playoff data for a specific season.
 
+        REFACTORED: Now delegates to PlayoffDatabaseAPI for modular reuse.
+
         Deletes from:
         - events table (playoff GameEvents with game_id pattern)
         - playoff_brackets table
@@ -175,45 +189,21 @@ class DynastyInitializationService:
 
         Returns:
             Number of records deleted
+
+        Example:
+            >>> service = DynastyInitializationService(db_path="nfl.db")
+            >>> deleted = service._clear_playoff_data("my_dynasty", 2025)
+            >>> print(f"Deleted {deleted} playoff records")
         """
-        print(f"🗑️  Clearing playoff data for season {season}...")
+        # Delegate to PlayoffDatabaseAPI
+        result = self.playoff_db_api.clear_playoff_data(
+            dynasty_id=dynasty_id,
+            season=season,
+            connection=connection
+        )
 
-        deleted_count = 0
-
-        if connection:
-            cursor = connection.cursor()
-        else:
-            cursor = self.db_connection.get_connection().cursor()
-
-        # Delete playoff events (game_id pattern: 'playoff_{season}_*')
-        cursor.execute("""
-            DELETE FROM events
-            WHERE dynasty_id = ?
-            AND event_type = 'GAME'
-            AND game_id LIKE ?
-        """, (dynasty_id, f"playoff_{season}_%"))
-        deleted_count += cursor.rowcount
-
-        # Delete playoff brackets
-        cursor.execute("""
-            DELETE FROM playoff_brackets
-            WHERE dynasty_id = ? AND season = ?
-        """, (dynasty_id, season))
-        deleted_count += cursor.rowcount
-
-        # Delete playoff seedings
-        cursor.execute("""
-            DELETE FROM playoff_seedings
-            WHERE dynasty_id = ? AND season = ?
-        """, (dynasty_id, season))
-        deleted_count += cursor.rowcount
-
-        if not connection:
-            cursor.connection.commit()
-
-        print(f"✅ Playoff data cleared: {deleted_count} records deleted")
-
-        return deleted_count
+        # Extract total_deleted count for backward compatibility
+        return result['total_deleted']
 
     def initialize_dynasty(
         self,

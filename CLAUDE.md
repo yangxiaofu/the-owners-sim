@@ -373,6 +373,7 @@ The simulation follows a layered architecture with clear separation of concerns:
   - Single source of truth for dynasties table operations
   - Transaction-aware with optional shared connection parameter
   - Handles dynasty creation, standings initialization (preseason + regular season), and deletion
+- `database/playoff_database_api.py`: **NEW** - Playoff data cleanup and management (brackets, seedings, events)
 - `database/migrations/`: Database schema migrations (dynasty_id to events, game_date to games)
 - `stores/base_store.py`: In-memory data store abstraction
 - `stores/standings_store.py`: NFL standings and team performance tracking
@@ -1022,6 +1023,15 @@ Key architectural updates in the codebase:
    - 25 passing tests with comprehensive coverage
    - Interactive demo available: `demo/transaction_context_demo.py`
    - See `TRANSACTION_CONTEXT_IMPLEMENTATION.md` for implementation details
+
+18. **PlayoffDatabaseAPI** (November 2025): Modular playoff data management
+   - New `src/database/playoff_database_api.py` module for playoff cleanup operations
+   - Transaction-aware design with optional connection parameter
+   - Methods: `clear_playoff_data()`, `bracket_exists()`, `seeding_exists()`
+   - Integrated into DynastyInitializationService and OffseasonToPreseasonHandler
+   - Eliminates code duplication across 4 scattered locations
+   - Comprehensive test coverage (20 tests in `tests/database/test_playoff_database_api.py`)
+   - See `docs/api/playoff_database_api_specification.md` for API reference
 
 ## Key Implementation Notes
 
