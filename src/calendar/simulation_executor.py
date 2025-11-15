@@ -24,7 +24,7 @@ Supported Event Types:
 - DEADLINE: NFL deadline markers (cap compliance, tag deadlines, etc.)
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 
 # Use try/except to handle both production and test imports
@@ -139,57 +139,139 @@ class SimulationExecutor:
                 fast_mode=fast_mode
             )
 
-    def simulate_day(self, target_date: Optional[Date] = None) -> Dict[str, Any]:
+    @classmethod
+    def for_testing(
+        cls,
+        event_db: 'EventDatabaseAPI',
+        dynasty_id: str = "test_dynasty",
+        enable_persistence: bool = False,
+        verbose_logging: bool = False
+    ) -> 'SimulationExecutor':
         """
-        Simulate all events for a specific day.
+        Create SimulationExecutor optimized for testing.
+
+        Minimal setup with sensible defaults for unit testing:
+        - Persistence disabled (no database writes)
+        - Verbose logging disabled (quiet tests)
+        - Minimal calendar (just for date context)
+        - Fast mode enabled (skip actual game simulations)
+
+        Example:
+            >>> from src.events.event_database_api import EventDatabaseAPI
+            >>> event_db = EventDatabaseAPI(":memory:")
+            >>> executor = SimulationExecutor.for_testing(event_db)
+            >>> events = [{'event_type': 'FRANCHISE_TAG', ...}]
+            >>> result = executor.simulate_events(events)
+            >>> assert result['success'] == True
 
         Args:
-            target_date: Date to simulate (uses calendar's current date if None)
+            event_db: EventDatabaseAPI instance (can be in-memory)
+            dynasty_id: Dynasty identifier for testing (default: "test_dynasty")
+            enable_persistence: Whether to save results (default: False)
+            verbose_logging: Whether to print logs (default: False)
 
         Returns:
-            Dictionary with simulation results:
-            {
-                "date": str,
-                "events_count": int,
-                "events_completed": List[Dict],
-                "phase_transitions": List[Dict],
-                "current_phase": str,
-                "phase_info": Dict,
-                "success": bool,
-                "errors": List[str]
-            }
+            Configured SimulationExecutor for testing
         """
-        # Use current date if not specified
-        if target_date is None:
-            target_date = self.calendar.get_current_date()
+        from src.calendar.calendar_component import CalendarComponent
+        from src.calendar.date_models import Date
 
-        print(f"\n{'='*80}")
-        print(f"SIMULATING DAY: {target_date}")
-        print(f"{'='*80}")
+        # Create minimal calendar (just for date context)
+        calendar = CalendarComponent(
+            start_date=Date.today(),
+            season_year=Date.today().year,
+            database_api=event_db,
+            dynasty_id=dynasty_id
+        )
 
-        # Get events for this date
-        events_for_day = self._get_events_for_date(target_date)
+        return cls(
+            calendar=calendar,
+            event_db=event_db,
+            database_path=":memory:",  # In-memory for testing
+            dynasty_id=dynasty_id,
+            enable_persistence=enable_persistence,
+            verbose_logging=verbose_logging,
+            fast_mode=True  # Skip actual game simulations for fast tests
+        )
 
-        if not events_for_day:
-            return {
-                "date": str(target_date),
-                "events_count": 0,
-                "events_completed": [],
-                "phase_transitions": [],
-                "current_phase": self._get_current_phase_value(),
-                "success": True,
-                "message": "No events scheduled for this day"
-            }
+    def simulate_events(
+        self,
+        events: List[Dict[str, Any]],
+        context_date: Optional[Date] = None
+    ) -> Dict[str, Any]:
+        """
+        Simulate a list of events directly (for testing/debugging).
 
-        print(f"\n📅 Found {len(events_for_day)} event(s) scheduled for {target_date}")
+        This method allows testing specific event combinations without
+        calendar/database setup. Perfect for:
+        - Unit testing offseason event sequences
+        - Debugging event combinations
+        - Manual event execution
+        - Testing event validation logic
 
-        # DEBUG: Check if SCHEDULE_RELEASE is in the query results
-        for evt in events_for_day:
-            if evt.get('event_type') == 'SCHEDULE_RELEASE':
-                print(f"[SCHEDULE_RELEASE_TRIGGERED] ✅ SCHEDULE_RELEASE event found in database query")
-                print(f"[SCHEDULE_RELEASE_TRIGGERED]   Event ID: {evt.get('event_id')}")
-                print(f"[SCHEDULE_RELEASE_TRIGGERED]   Event Data: {evt.get('data', {}).get('parameters', {})}")
+        Example:
+            >>> executor = SimulationExecutor.for_testing(event_db)
+            >>> events = [
+            ...     {'event_type': 'FRANCHISE_TAG', 'game_id': 'test1', ...},
+            ...     {'event_type': 'UFA_SIGNING', 'game_id': 'test2', ...}
+            ... ]
+            >>> result = executor.simulate_events(events)
+            >>> assert result['success'] == True
+            >>> assert len(result['events_completed']) == 2
 
+        Args:
+            events: List of event data dictionaries (same structure as from database)
+            context_date: Optional date for logging context (defaults to today)
+
+        Returns:
+            Dict containing:
+            - events_completed: List[Dict] - Successfully completed events
+            - phase_transitions: List[Dict] - Phase transitions triggered (games only)
+            - errors: List[str] - Error messages
+            - success: bool - True if no errors
+            - events_count: int - Total events processed
+        """
+        if context_date is None:
+            context_date = Date.today()
+
+        # Delegate to private batch simulation method
+        events_completed, phase_transitions, errors = self._simulate_event_batch(
+            events,
+            context_date
+        )
+
+        return {
+            "events_completed": events_completed,
+            "phase_transitions": [self._transition_to_dict(t) for t in phase_transitions],
+            "errors": errors,
+            "success": len(errors) == 0,
+            "events_count": len(events)
+        }
+
+    def _simulate_event_batch(
+        self,
+        events_for_day: List[Dict[str, Any]],
+        target_date: Date
+    ) -> Tuple[List[Dict[str, Any]], List['PhaseTransition'], List[str]]:
+        """
+        Simulate all events in a batch.
+
+        Core simulation logic extracted from simulate_day().
+        Handles event reconstruction, validation, execution, and result tracking.
+
+        Args:
+            events_for_day: List of event dictionaries (from DB or manual)
+            target_date: Date context for logging
+
+        Returns:
+            Tuple of (events_completed, phase_transitions, errors)
+
+        Side Effects:
+            - Updates events in database via self.event_db.update_event()
+            - Records game completions via self.calendar.record_game_completion()
+            - Prints extensive logging output
+            - May raise RuntimeError for critical event failures
+        """
         # Simulate each event
         events_completed = []
         phase_transitions = []
@@ -329,6 +411,65 @@ class SimulationExecutor:
                         f"Critical event {event_type} failed during season transition. "
                         f"Error: {str(e)}. See traceback above for details."
                     ) from e
+
+        return (events_completed, phase_transitions, errors)
+
+    def simulate_day(self, target_date: Optional[Date] = None) -> Dict[str, Any]:
+        """
+        Simulate all events for a specific day.
+
+        Args:
+            target_date: Date to simulate (uses calendar's current date if None)
+
+        Returns:
+            Dictionary with simulation results:
+            {
+                "date": str,
+                "events_count": int,
+                "events_completed": List[Dict],
+                "phase_transitions": List[Dict],
+                "current_phase": str,
+                "phase_info": Dict,
+                "success": bool,
+                "errors": List[str]
+            }
+        """
+        # Use current date if not specified
+        if target_date is None:
+            target_date = self.calendar.get_current_date()
+
+        print(f"\n{'='*80}")
+        print(f"SIMULATING DAY: {target_date}")
+        print(f"{'='*80}")
+
+        # Get events for this date
+        events_for_day = self._get_events_for_date(target_date)
+
+        if not events_for_day:
+            return {
+                "date": str(target_date),
+                "events_count": 0,
+                "events_completed": [],
+                "phase_transitions": [],
+                "current_phase": self._get_current_phase_value(),
+                "success": True,
+                "message": "No events scheduled for this day"
+            }
+
+        print(f"\n📅 Found {len(events_for_day)} event(s) scheduled for {target_date}")
+
+        # DEBUG: Check if SCHEDULE_RELEASE is in the query results
+        for evt in events_for_day:
+            if evt.get('event_type') == 'SCHEDULE_RELEASE':
+                print(f"[SCHEDULE_RELEASE_TRIGGERED] ✅ SCHEDULE_RELEASE event found in database query")
+                print(f"[SCHEDULE_RELEASE_TRIGGERED]   Event ID: {evt.get('event_id')}")
+                print(f"[SCHEDULE_RELEASE_TRIGGERED]   Event Data: {evt.get('data', {}).get('parameters', {})}")
+
+        # Delegate to batch simulation method
+        events_completed, phase_transitions, errors = self._simulate_event_batch(
+            events_for_day,
+            target_date
+        )
 
         # Summary
         print(f"\n{'='*80}")
