@@ -312,7 +312,14 @@ class SeasonCycleController:
 
         # Calculate last scheduled regular season game date for flexible end-of-season detection
         # Now using PhaseBoundaryDetector for centralized boundary logic
-        self.last_regular_season_game_date = self.boundary_detector.get_last_game_date(SeasonPhase.REGULAR_SEASON)
+        # NOTE: May be None if schedule hasn't been generated yet (new dynasties)
+        try:
+            self.last_regular_season_game_date = self.boundary_detector.get_last_game_date(SeasonPhase.REGULAR_SEASON)
+        except ValueError:
+            # No games scheduled yet - this is expected for new dynasties before schedule generation
+            self.last_regular_season_game_date = None
+            if verbose_logging:
+                print(f"[INIT] No regular season games scheduled yet (dynasty: {dynasty_id}, season: {self.season_year})")
 
         # ============ OFFSEASON CONTROLLER ============
         # Initialize offseason controller for consistent phase abstraction
@@ -2124,6 +2131,12 @@ class SeasonCycleController:
 
         # FALLBACK CHECK: Has date passed last scheduled regular season game?
         # This handles edge cases where games might not all be played
+        # NOTE: If no games scheduled yet, can't use date check
+        if self.last_regular_season_game_date is None:
+            if self.verbose_logging:
+                print(f"[DEBUG] Regular season check: No scheduled games yet, using game count only")
+            return False  # Can't determine completion without schedule
+
         current_date = self.calendar.get_current_date()
         date_check = current_date > self.last_regular_season_game_date
 
