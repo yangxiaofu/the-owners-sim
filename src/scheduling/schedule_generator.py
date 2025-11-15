@@ -18,9 +18,9 @@ from typing import List, Tuple, Set
 import random
 import logging
 
-from constants.team_ids import TeamIDs
-from events.event_database_api import EventDatabaseAPI
-from events.game_event import GameEvent
+from src.constants.team_ids import TeamIDs
+from src.events.event_database_api import EventDatabaseAPI
+from src.events.game_event import GameEvent
 
 
 class RandomScheduleGenerator:
