@@ -11,6 +11,19 @@ This ensures consistency and prevents bugs when adding new stats.
 import time
 from datetime import datetime
 from typing import List, Dict, Any, Optional
+import logging
+import os
+
+# ============ FAST MODE DEBUG LOGGING ============
+# Reuse the same debug logger from simulation_workflow
+_debug_log_path = os.path.join(os.getcwd(), 'fast_mode_debug.log')
+_debug_logger = logging.getLogger('fast_mode_debug')
+if not _debug_logger.handlers:  # Only add handler if not already added
+    _debug_logger.setLevel(logging.DEBUG)
+    _debug_handler = logging.FileHandler(_debug_log_path, mode='a')
+    _debug_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+    _debug_logger.addHandler(_debug_handler)
+# =================================================
 
 from .base_demo_persister import DemoPersister
 from .persistence_result import PersistenceResult, PersistenceStatus
@@ -309,12 +322,19 @@ class DatabaseDemoPersister(DemoPersister):
             transaction_id=f"standings_{home_team_id}_{away_team_id}"
         )
 
+        # DEBUG: Log method entry
+        _debug_logger.info(f"PERSISTER: update_standings() called")
+        _debug_logger.info(f"  Parameters: home={home_team_id}({home_score}), away={away_team_id}({away_score})")
+        _debug_logger.info(f"  Dynasty: {dynasty_id}, Season: {season}, Type: {season_type}")
+
         try:
             conn = self._get_connection()
+            _debug_logger.debug(f"  Database connection obtained: {conn}")
 
             # Ensure both teams have standings records
+            _debug_logger.info(f"  Inserting/checking standings records for teams {home_team_id} and {away_team_id}")
             for team_id in [home_team_id, away_team_id]:
-                conn.execute("""
+                cursor = conn.execute("""
                     INSERT OR IGNORE INTO standings (
                         dynasty_id, team_id, season, season_type, wins, losses, ties,
                         points_for, points_against, division_wins, division_losses,
@@ -322,37 +342,46 @@ class DatabaseDemoPersister(DemoPersister):
                         away_wins, away_losses
                     ) VALUES (?, ?, ?, ?, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
                 """, (dynasty_id, team_id, season, season_type))
+                _debug_logger.debug(f"    Team {team_id}: rowcount={cursor.rowcount}")
 
             # Determine winner and update records
+            _debug_logger.info(f"  Determining winner: home_score={home_score}, away_score={away_score}")
             if home_score > away_score:
                 # Home team wins
+                _debug_logger.info(f"    HOME TEAM WINS: {home_team_id} beats {away_team_id}")
                 self._update_team_record(conn, home_team_id, dynasty_id, season, season_type, wins=1, home_wins=1)
                 self._update_team_record(conn, away_team_id, dynasty_id, season, season_type, losses=1, away_losses=1)
             elif away_score > home_score:
                 # Away team wins
+                _debug_logger.info(f"    AWAY TEAM WINS: {away_team_id} beats {home_team_id}")
                 self._update_team_record(conn, away_team_id, dynasty_id, season, season_type, wins=1, away_wins=1)
                 self._update_team_record(conn, home_team_id, dynasty_id, season, season_type, losses=1, home_losses=1)
             else:
                 # Tie
+                _debug_logger.info(f"    TIE GAME: {home_team_id} ties {away_team_id}")
                 self._update_team_record(conn, home_team_id, dynasty_id, season, season_type, ties=1)
                 self._update_team_record(conn, away_team_id, dynasty_id, season, season_type, ties=1)
 
             # Update points for/against
+            _debug_logger.info(f"  Updating points for/against for both teams")
             self._update_team_points(conn, home_team_id, dynasty_id, season, season_type, home_score, away_score)
             self._update_team_points(conn, away_team_id, dynasty_id, season, season_type, away_score, home_score)
 
             result.records_persisted = 2  # Both teams updated
             self.total_standings_updates += 2
 
+            _debug_logger.info(f"PERSISTER: Standings update SUCCESS - {result.records_persisted} teams updated")
             self.logger.debug(f"Updated standings for teams {home_team_id} and {away_team_id}")
 
         except Exception as e:
             result.status = PersistenceStatus.FAILURE
             result.add_error(f"Database error updating standings: {str(e)}")
+            _debug_logger.error(f"PERSISTER: EXCEPTION during standings update: {e}", exc_info=True)
             self.logger.error(f"Error updating standings: {e}", exc_info=True)
 
         finally:
             result.processing_time_ms = (time.time() - start_time) * 1000
+            _debug_logger.info(f"PERSISTER: update_standings() complete - processing_time={result.processing_time_ms:.2f}ms")
             if not self._transaction_active:
                 self._close_connection()
 

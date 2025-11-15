@@ -22,6 +22,7 @@ from season.season_cycle_controller import SeasonCycleController
 # Use try/except to handle both production and test imports
 from src.calendar.date_models import Date
 from src.calendar.season_phase_tracker import SeasonPhase
+from src.config.simulation_settings import SimulationSettings
 
 from ui.domain_models.simulation_data_model import SimulationDataModel
 
@@ -69,12 +70,13 @@ class SimulationController(QObject):
         self.dynasty_id = dynasty_id
         self.season = season
 
-        # ============ FAST MODE TOGGLE ============
-        # Set to True to skip full game simulations (5000x faster)
-        # Useful for testing playoffs, UI flows, and rapid season progression
-        # When enabled, games simulate instantly with fake scores
-        self.fast_mode = False  # ← CHANGE THIS TO True TO ENABLE FAST MODE
-        # ==========================================
+        # ============ SIMULATION SPEED SETTINGS ============
+        # Read from centralized config (src/config/simulation_settings.py)
+        # Change settings there to control performance vs realism tradeoffs
+        self.fast_mode = SimulationSettings.SKIP_GAME_SIMULATION
+        self.skip_transactions = SimulationSettings.SKIP_TRANSACTION_AI
+        self.skip_offseason_events = SimulationSettings.SKIP_OFFSEASON_EVENTS
+        # ===================================================
 
         # Phase 4: Setup logging for fail-loud validation
         self._logger = logging.getLogger(__name__)
@@ -120,7 +122,9 @@ class SimulationController(QObject):
             initial_phase=initial_phase,
             enable_persistence=True,
             verbose_logging=True,  # Enable for player stats debugging
-            fast_mode=self.fast_mode  # Pass fast mode setting from toggle above
+            fast_mode=self.fast_mode,  # Skip game simulation
+            skip_transactions=self.skip_transactions,  # Skip transaction AI
+            skip_offseason_events=self.skip_offseason_events  # Skip offseason event processing
         )
 
         # No more manual phase synchronization needed - handled by constructor!

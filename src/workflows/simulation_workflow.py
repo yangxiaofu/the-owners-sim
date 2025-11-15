@@ -13,6 +13,20 @@ import logging
 from typing import List, Dict, Any, Optional
 from datetime import datetime
 
+# ============ FAST MODE DEBUG LOGGING ============
+# Create dedicated debug logger for tracing fast mode standings issues
+import os
+_debug_log_path = os.path.join(os.getcwd(), 'fast_mode_debug.log')
+_debug_logger = logging.getLogger('fast_mode_debug')
+_debug_logger.setLevel(logging.DEBUG)
+_debug_handler = logging.FileHandler(_debug_log_path, mode='a')
+_debug_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+_debug_logger.addHandler(_debug_handler)
+_debug_logger.info("=" * 80)
+_debug_logger.info("NEW SIMULATION SESSION STARTED")
+_debug_logger.info("=" * 80)
+# =================================================
+
 from events.base_event import EventResult
 from events.game_event import GameEvent
 from play_engine.simulation.stats import PlayerStats
@@ -221,6 +235,12 @@ class SimulationWorkflow:
             # Fast mode: Generate instant fake result without running simulation
             if self.config.fast_mode:
                 simulation_result = self._generate_fake_result(game_event)
+
+                # CRITICAL: Store fake result in GameEvent for database persistence
+                # This ensures _get_results() returns data instead of None, which is
+                # required for playoff completion detection to work correctly.
+                game_event._cached_result = simulation_result
+
                 duration = time.time() - start_time
 
                 if self.config.verbose_logging:
@@ -284,11 +304,17 @@ class SimulationWorkflow:
             'away_team_id': game_event.away_team_id
         }
 
-        # Create successful EventResult
+        # DEBUG: Log fake result generation
+        _debug_logger.info(f"FAKE RESULT GENERATED: Away Team {game_event.away_team_id} ({away_score}) @ Home Team {game_event.home_team_id} ({home_score})")
+        _debug_logger.debug(f"  Full fake_data: {fake_data}")
+
+        # Create successful EventResult (matching real simulation signature)
         return EventResult(
+            event_id=game_event.event_id,
+            event_type="GAME",
             success=True,
-            data=fake_data,
-            error_message=None
+            timestamp=game_event.game_date,
+            data=fake_data
         )
 
     def _gather_statistics(self, simulation_result: EventResult, game_event: GameEvent) -> List[PlayerStats]:
@@ -306,9 +332,12 @@ class SimulationWorkflow:
             RuntimeError: If statistics gathering fails
         """
         # Fast mode: Skip statistics gathering (no simulator available)
+        # Return empty list - this is OK! Standings update (Stage 3) only needs
+        # game result data (scores) from Stage 1, not player stats.
         if self.config.fast_mode:
             if self.config.verbose_logging:
-                print(f"\n⏭️  Stage 2: Statistics SKIPPED (fast_mode)")
+                print(f"\n⏭️  Stage 2: Player Statistics SKIPPED (fast_mode)")
+                print(f"   Note: Game results will still persist for standings")
             return []
 
         if self.config.verbose_logging:
@@ -371,10 +400,18 @@ class SimulationWorkflow:
         Raises:
             RuntimeError: If persistence fails when enabled
         """
+        # DEBUG: Log Stage 3 entry
+        _debug_logger.info(f"STAGE 3: Persistence check - enable_persistence={self.config.enable_persistence}")
+
         if not self.config.enable_persistence:
             if self.config.verbose_logging:
                 print(f"\n⏭️  Stage 3: Persistence SKIPPED (disabled)")
+            _debug_logger.warning("STAGE 3: Persistence SKIPPED (enable_persistence=False)")
             return None
+
+        _debug_logger.info(f"STAGE 3: Persistence ENABLED - Starting data persistence")
+        _debug_logger.info(f"  Database: {self.config.database_path}")
+        _debug_logger.info(f"  Dynasty: {self.config.dynasty_id}")
 
         if self.config.verbose_logging:
             print(f"\n💾 Stage 3: Persisting Data...")
@@ -403,11 +440,21 @@ class SimulationWorkflow:
                 'game_date': game_event.game_date  # Include game date for calendar display
             }
 
+            # DEBUG: Log game result data being persisted
+            _debug_logger.info(f"STAGE 3: Prepared game_result_data for persistence:")
+            _debug_logger.info(f"  Game ID: {game_id}")
+            _debug_logger.info(f"  Teams: Away {game_result_data['away_team_id']} @ Home {game_result_data['home_team_id']}")
+            _debug_logger.info(f"  Scores: {game_result_data['away_score']}-{game_result_data['home_score']}")
+            _debug_logger.info(f"  Season: {game_result_data['season']}, Week: {game_result_data['week']}, Type: {game_result_data['season_type']}")
+            _debug_logger.info(f"  Dynasty: {self.config.dynasty_id}")
+            _debug_logger.info(f"  Player stats count: {len(player_stats)}")
+
             if self.config.verbose_logging:
                 print(f"   Game ID: {game_id}")
                 print(f"   Persisting: Game result + {len(player_stats)} player stats")
 
             # Execute persistence using orchestrator
+            _debug_logger.info(f"STAGE 3: Calling orchestrator.persist_complete_game()...")
             persistence_result = self.orchestrator.persist_complete_game(
                 game_id=game_id,
                 game_result=game_result_data,
@@ -417,6 +464,7 @@ class SimulationWorkflow:
                 week=game_result_data['week'],
                 simulation_date=game_event.game_date
             )
+            _debug_logger.info(f"STAGE 3: persist_complete_game() returned - Status: {persistence_result.overall_status}")
 
             if self.config.verbose_logging:
                 print(f"   ✅ Persistence complete")
@@ -426,9 +474,12 @@ class SimulationWorkflow:
                 if persistence_result.overall_status != PersistenceStatus.SUCCESS:
                     print(f"   ⚠️  Some operations had issues - check result details")
 
+            # DEBUG: Log return
+            _debug_logger.info(f"STAGE 3: Returning persistence_result - Status: {persistence_result.overall_status}")
             return persistence_result
 
         except Exception as e:
+            _debug_logger.error(f"STAGE 3: EXCEPTION during persistence: {e}", exc_info=True)
             self.logger.error(f"Persistence stage failed: {e}")
             raise RuntimeError(f"Data persistence failed: {e}") from e
 

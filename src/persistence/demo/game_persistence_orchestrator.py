@@ -9,6 +9,18 @@ import logging
 import time
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+import os
+
+# ============ FAST MODE DEBUG LOGGING ============
+# Reuse the same debug logger from simulation_workflow
+_debug_log_path = os.path.join(os.getcwd(), 'fast_mode_debug.log')
+_debug_logger = logging.getLogger('fast_mode_debug')
+if not _debug_logger.handlers:  # Only add handler if not already added
+    _debug_logger.setLevel(logging.DEBUG)
+    _debug_handler = logging.FileHandler(_debug_log_path, mode='a')
+    _debug_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s'))
+    _debug_logger.addHandler(_debug_handler)
+# =================================================
 
 from .base_demo_persister import DemoPersister
 from .persistence_result import (
@@ -158,6 +170,13 @@ class GamePersistenceOrchestrator:
 
             # Step 4: Update standings
             season_type = game_data.get('season_type', 'regular_season')
+
+            # DEBUG: Log standings update parameters
+            _debug_logger.info(f"ORCHESTRATOR: Calling update_standings()...")
+            _debug_logger.info(f"  home_team_id={game_data['home_team_id']}, away_team_id={game_data['away_team_id']}")
+            _debug_logger.info(f"  home_score={game_data['home_score']}, away_score={game_data['away_score']}")
+            _debug_logger.info(f"  dynasty_id={dynasty_id}, season={season}, season_type={season_type}")
+
             standings_persistence = self.persister.update_standings(
                 home_team_id=game_data['home_team_id'],
                 away_team_id=game_data['away_team_id'],
@@ -167,9 +186,17 @@ class GamePersistenceOrchestrator:
                 season=season,
                 season_type=season_type
             )
+
+            # DEBUG: Log standings update result
+            _debug_logger.info(f"ORCHESTRATOR: update_standings() returned - success={standings_persistence.success}")
+            _debug_logger.info(f"  records_persisted={standings_persistence.records_persisted}")
+            if not standings_persistence.success:
+                _debug_logger.error(f"  STANDINGS UPDATE FAILED! Errors: {standings_persistence.errors}")
+
             composite_result.add_result("standings", standings_persistence)
 
             if not standings_persistence.success:
+                _debug_logger.error("ORCHESTRATOR: Raising exception due to standings update failure")
                 raise Exception("Standings update failed")
 
             # Commit transaction

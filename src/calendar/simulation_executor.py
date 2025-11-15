@@ -77,7 +77,8 @@ class SimulationExecutor:
         season_year: Optional[int] = None,
         phase_state: Optional['PhaseState'] = None,
         verbose_logging: bool = False,
-        fast_mode: bool = False
+        fast_mode: bool = False,
+        skip_offseason_events: bool = False
     ):
         """
         Initialize simulation executor.
@@ -92,6 +93,7 @@ class SimulationExecutor:
             phase_state: Optional shared PhaseState object for phase reporting (uses calendar if None)
             verbose_logging: Enable diagnostic logging output (default: False)
             fast_mode: Skip actual simulations, generate fake results for ultra-fast testing
+            skip_offseason_events: Skip offseason event processing (franchise tags, free agency, etc.)
         """
         self.calendar = calendar
         self.event_db = event_db
@@ -100,6 +102,7 @@ class SimulationExecutor:
         self.phase_state = phase_state  # NEW: Store for phase reporting
         self.verbose_logging = verbose_logging  # Enable diagnostic output
         self.fast_mode = fast_mode  # NEW: Store fast_mode for workflow creation
+        self.skip_offseason_events = skip_offseason_events  # NEW: Store skip_offseason_events flag
 
         # CRITICAL FIX #4: Extract season year from PhaseState (single source of truth)
         if season_year is None:
@@ -122,9 +125,11 @@ class SimulationExecutor:
                 print(f"[SIMULATION_EXECUTOR] Initialized with explicit season_year={self.season_year}")
 
         # Initialize SimulationWorkflow for 3-stage simulation
-        if enable_persistence:
-            if not database_path:
-                raise ValueError("database_path is required when enable_persistence=True")
+        # IMPORTANT: When database_path is provided, ALWAYS enable persistence
+        # even in fast_mode. Fast mode only skips expensive simulation engine,
+        # but still needs to persist results for standings/playoff detection.
+        if database_path:
+            # Database provided - enable persistence regardless of fast_mode
             self.workflow = SimulationWorkflow(
                 enable_persistence=True,
                 database_path=database_path,
@@ -132,7 +137,11 @@ class SimulationExecutor:
                 verbose_logging=True,  # Season simulation verbose logging
                 fast_mode=fast_mode
             )
+        elif enable_persistence:
+            # Persistence requested but no database - error
+            raise ValueError("database_path is required when enable_persistence=True")
         else:
+            # No database, no persistence (testing mode)
             self.workflow = SimulationWorkflow(
                 enable_persistence=False,
                 verbose_logging=False,
@@ -285,6 +294,28 @@ class SimulationExecutor:
                 # Get event type to determine which class to use
                 event_type = event_data.get('event_type', 'GAME')
                 print(f"Event Type: {event_type}")
+
+                # SKIP OFFSEASON EVENTS: Check if this is an offseason event and skip flag is enabled
+                # Offseason events: franchise tags, free agency, draft, roster cuts, deadlines, windows, milestones
+                # Pattern: Same as SeasonCycleController transaction skipping (lines 574-588)
+                offseason_event_types = [
+                    "FRANCHISE_TAG", "TRANSITION_TAG", "PLAYER_RELEASE",
+                    "CONTRACT_RESTRUCTURE", "UFA_SIGNING", "RFA_OFFER_SHEET",
+                    "DEADLINE", "WINDOW", "MILESTONE"
+                ]
+
+                if self.skip_offseason_events and event_type in offseason_event_types:
+                    if self.verbose_logging:
+                        print(f"[OFFSEASON_SKIP] Skipping {event_type} event (skip_offseason_events=True)")
+                    # Mark as skipped and continue to next event
+                    events_completed.append({
+                        "event_id": event_data.get('event_id') or event_data.get('game_id'),
+                        "event_type": event_type,
+                        "success": True,
+                        "skipped": True,
+                        "message": f"{event_type} event skipped (skip_offseason_events=True)"
+                    })
+                    continue
 
                 # DEBUG: Check if we're processing SCHEDULE_RELEASE
                 if event_type == 'SCHEDULE_RELEASE':

@@ -130,6 +130,8 @@ class SeasonCycleController:
         enable_persistence: bool = True,
         verbose_logging: bool = True,
         fast_mode: bool = False,
+        skip_transactions: bool = False,
+        skip_offseason_events: bool = False,
         # Dependency injection (optional - for testing)
         phase_completion_checker: Optional[PhaseCompletionChecker] = None,
         phase_transition_manager: Optional[PhaseTransitionManager] = None,
@@ -154,6 +156,8 @@ class SeasonCycleController:
             enable_persistence: Whether to save stats to database
             verbose_logging: Whether to print progress messages
             fast_mode: Skip actual simulations, generate fake results for ultra-fast testing
+            skip_transactions: Skip AI transaction evaluation (no trade analysis)
+            skip_offseason_events: Skip offseason event processing (faster offseason)
             phase_completion_checker: Optional PhaseCompletionChecker for testing
             phase_transition_manager: Optional PhaseTransitionManager for testing
         """
@@ -162,6 +166,8 @@ class SeasonCycleController:
         self.enable_persistence = enable_persistence
         self.verbose_logging = verbose_logging
         self.fast_mode = fast_mode
+        self.skip_transactions = skip_transactions
+        self.skip_offseason_events = skip_offseason_events
 
         self.logger = logging.getLogger(self.__class__.__name__)
 
@@ -282,7 +288,10 @@ class SeasonCycleController:
             dynasty_id=dynasty_id,
             enable_persistence=enable_persistence,
             season_year=self.season_year,
-            phase_state=self.phase_state
+            phase_state=self.phase_state,
+            verbose_logging=verbose_logging,
+            fast_mode=fast_mode,
+            skip_offseason_events=skip_offseason_events
         )
 
         # Track week number and statistics (previously tracked by demo controller)
@@ -565,7 +574,7 @@ class SeasonCycleController:
             current_week=current_week
         )
 
-        if is_trade_allowed:
+        if is_trade_allowed and not self.skip_transactions:
             # Use TransactionService for evaluation (Phase 3: Service Extraction)
             service = self._get_transaction_service()
             executed_trades = service.evaluate_daily_for_all_teams(
@@ -576,7 +585,10 @@ class SeasonCycleController:
             result["transactions_executed"] = executed_trades
             result["num_trades"] = len(executed_trades)
         elif self.verbose_logging:
-            print(f"[TRADE_WINDOW] Trades not allowed: {reason}")
+            if not is_trade_allowed:
+                print(f"[TRADE_WINDOW] Trades not allowed: {reason}")
+            elif self.skip_transactions:
+                print(f"[TRADE_WINDOW] Transaction AI skipped (skip_transactions=True)")
 
         # Check for phase transitions (common for all phases)
         phase_transition = self._check_phase_transition()
