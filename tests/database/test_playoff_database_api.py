@@ -14,6 +14,7 @@ Tests playoff database operations including:
 import pytest
 import sqlite3
 from datetime import datetime
+from typing import Dict
 
 from database.connection import DatabaseConnection
 from events.event_database_api import EventDatabaseAPI
@@ -132,7 +133,7 @@ def playoff_db_api(playoff_db_path):
             dynasty_id: str,
             season: int,
             connection: sqlite3.Connection = None
-        ) -> bool:
+        ) -> Dict[str, int]:
             """
             Clear all playoff data for a specific dynasty and season.
 
@@ -147,7 +148,13 @@ def playoff_db_api(playoff_db_path):
                 connection: Optional connection for transaction mode
 
             Returns:
-                True if successful, False otherwise
+                Dict with deletion counts:
+                {
+                    'events_deleted': int,
+                    'brackets_deleted': int,
+                    'seedings_deleted': int,
+                    'total_deleted': int
+                }
             """
             try:
                 if connection:
@@ -164,6 +171,7 @@ def playoff_db_api(playoff_db_path):
                     """,
                     (dynasty_id, f'playoff_{season}_%')
                 )
+                events_deleted = cursor.rowcount
 
                 # Delete playoff brackets
                 cursor.execute(
@@ -173,6 +181,7 @@ def playoff_db_api(playoff_db_path):
                     """,
                     (dynasty_id, season)
                 )
+                brackets_deleted = cursor.rowcount
 
                 # Delete playoff seedings
                 cursor.execute(
@@ -182,11 +191,17 @@ def playoff_db_api(playoff_db_path):
                     """,
                     (dynasty_id, season)
                 )
+                seedings_deleted = cursor.rowcount
 
                 if not connection:
                     cursor.connection.commit()
 
-                return True
+                return {
+                    'events_deleted': events_deleted,
+                    'brackets_deleted': brackets_deleted,
+                    'seedings_deleted': seedings_deleted,
+                    'total_deleted': events_deleted + brackets_deleted + seedings_deleted
+                }
 
             except Exception as e:
                 if not connection:
@@ -365,9 +380,14 @@ class TestClearPlayoffData:
         assert playoff_db_api.seeding_exists(test_dynasty_id, test_season)
 
         # Clear playoff data
-        success = playoff_db_api.clear_playoff_data(test_dynasty_id, test_season)
+        result = playoff_db_api.clear_playoff_data(test_dynasty_id, test_season)
 
-        assert success is True
+        assert isinstance(result, dict)
+        assert 'events_deleted' in result
+        assert 'brackets_deleted' in result
+        assert 'seedings_deleted' in result
+        assert 'total_deleted' in result
+        assert result['total_deleted'] >= 0
         assert not playoff_db_api.bracket_exists(test_dynasty_id, test_season)
         assert not playoff_db_api.seeding_exists(test_dynasty_id, test_season)
 
@@ -381,11 +401,16 @@ class TestClearPlayoffData:
 
         try:
             # Clear playoff data within transaction
-            success = playoff_db_api.clear_playoff_data(
+            result = playoff_db_api.clear_playoff_data(
                 test_dynasty_id, test_season, connection=conn
             )
 
-            assert success is True
+            assert isinstance(result, dict)
+            assert 'events_deleted' in result
+            assert 'brackets_deleted' in result
+            assert 'seedings_deleted' in result
+            assert 'total_deleted' in result
+            assert result['total_deleted'] >= 0
 
             # Commit transaction
             conn.commit()
@@ -407,9 +432,14 @@ class TestClearPlayoffData:
         assert not playoff_db_api.seeding_exists(test_dynasty_id, test_season)
 
         # Should still succeed
-        success = playoff_db_api.clear_playoff_data(test_dynasty_id, test_season)
+        result = playoff_db_api.clear_playoff_data(test_dynasty_id, test_season)
 
-        assert success is True
+        assert isinstance(result, dict)
+        assert 'events_deleted' in result
+        assert 'brackets_deleted' in result
+        assert 'seedings_deleted' in result
+        assert 'total_deleted' in result
+        assert result['total_deleted'] == 0  # No data to delete
 
     def test_clear_playoff_data_partial_data(
         self, playoff_db_api, playoff_db_path, test_dynasty_id, test_season
@@ -435,9 +465,16 @@ class TestClearPlayoffData:
         assert not playoff_db_api.seeding_exists(test_dynasty_id, test_season)
 
         # Clear should still work
-        success = playoff_db_api.clear_playoff_data(test_dynasty_id, test_season)
+        result = playoff_db_api.clear_playoff_data(test_dynasty_id, test_season)
 
-        assert success is True
+        assert isinstance(result, dict)
+        assert 'events_deleted' in result
+        assert 'brackets_deleted' in result
+        assert 'seedings_deleted' in result
+        assert 'total_deleted' in result
+        assert result['brackets_deleted'] == 1  # Only bracket data existed
+        assert result['seedings_deleted'] == 0
+        assert result['total_deleted'] == 1
         assert not playoff_db_api.bracket_exists(test_dynasty_id, test_season)
 
     def test_clear_playoff_data_multiple_seasons(
@@ -475,9 +512,14 @@ class TestClearPlayoffData:
         conn.commit()
 
         # Clear only 2025 data
-        success = playoff_db_api.clear_playoff_data(test_dynasty_id, test_season)
+        result = playoff_db_api.clear_playoff_data(test_dynasty_id, test_season)
 
-        assert success is True
+        assert isinstance(result, dict)
+        assert 'events_deleted' in result
+        assert 'brackets_deleted' in result
+        assert 'seedings_deleted' in result
+        assert 'total_deleted' in result
+        assert result['total_deleted'] > 0  # Some data was deleted
 
         # Verify 2025 data is cleared
         assert not playoff_db_api.bracket_exists(test_dynasty_id, test_season)
@@ -543,9 +585,16 @@ class TestClearPlayoffData:
         conn.commit()
 
         # Clear only dynasty_1 data
-        success = playoff_db_api.clear_playoff_data(dynasty_1, test_season)
+        result = playoff_db_api.clear_playoff_data(dynasty_1, test_season)
 
-        assert success is True
+        assert isinstance(result, dict)
+        assert 'events_deleted' in result
+        assert 'brackets_deleted' in result
+        assert 'seedings_deleted' in result
+        assert 'total_deleted' in result
+        assert result['brackets_deleted'] == 1
+        assert result['seedings_deleted'] == 1
+        assert result['total_deleted'] == 2
 
         # Verify dynasty_1 data is cleared
         assert not playoff_db_api.bracket_exists(dynasty_1, test_season)
@@ -700,10 +749,15 @@ class TestIntegrationAndEdgeCases:
         conn.execute("BEGIN")
 
         # Clear playoff data within transaction
-        success = playoff_db_api.clear_playoff_data(
+        result = playoff_db_api.clear_playoff_data(
             test_dynasty_id, test_season, connection=conn
         )
-        assert success is True
+        assert isinstance(result, dict)
+        assert 'events_deleted' in result
+        assert 'brackets_deleted' in result
+        assert 'seedings_deleted' in result
+        assert 'total_deleted' in result
+        assert result['total_deleted'] > 0
 
         # Rollback transaction
         conn.rollback()
@@ -717,16 +771,19 @@ class TestIntegrationAndEdgeCases:
     ):
         """Test that multiple clear operations are idempotent."""
         # First clear
-        success1 = playoff_db_api.clear_playoff_data(test_dynasty_id, test_season)
-        assert success1 is True
+        result1 = playoff_db_api.clear_playoff_data(test_dynasty_id, test_season)
+        assert isinstance(result1, dict)
+        assert result1['total_deleted'] > 0  # Data was deleted
 
         # Second clear (no data exists)
-        success2 = playoff_db_api.clear_playoff_data(test_dynasty_id, test_season)
-        assert success2 is True
+        result2 = playoff_db_api.clear_playoff_data(test_dynasty_id, test_season)
+        assert isinstance(result2, dict)
+        assert result2['total_deleted'] == 0  # No data to delete
 
         # Third clear (still no data)
-        success3 = playoff_db_api.clear_playoff_data(test_dynasty_id, test_season)
-        assert success3 is True
+        result3 = playoff_db_api.clear_playoff_data(test_dynasty_id, test_season)
+        assert isinstance(result3, dict)
+        assert result3['total_deleted'] == 0  # No data to delete
 
         # All should succeed, data should still not exist
         assert not playoff_db_api.bracket_exists(test_dynasty_id, test_season)

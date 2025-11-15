@@ -242,9 +242,9 @@ class OffseasonToPreseasonHandler:
             completed_steps.append("playoff_data_cleared")
             self._log(
                 f"✓ Playoff data cleared: {playoff_result['total_deleted']} records deleted "
-                f"({playoff_result['playoff_teams_deleted']} teams, "
-                f"{playoff_result['playoff_games_deleted']} games, "
-                f"{playoff_result['playoff_matchups_deleted']} matchups)"
+                f"({playoff_result['seedings_deleted']} seedings, "
+                f"{playoff_result['events_deleted']} events, "
+                f"{playoff_result['brackets_deleted']} brackets)"
             )
 
             # Step 2: Save rollback state

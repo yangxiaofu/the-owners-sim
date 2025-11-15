@@ -5,11 +5,27 @@ Centralized API for all playoff-related database operations.
 Provides clean interface for playoff data management and cleanup.
 """
 
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, TypedDict
 import sqlite3
 import logging
 
 from .connection import DatabaseConnection
+
+
+class PlayoffCleanupResult(TypedDict):
+    """
+    Result structure for playoff data cleanup operations.
+
+    Attributes:
+        events_deleted: Number of playoff game events deleted
+        brackets_deleted: Number of playoff bracket records deleted
+        seedings_deleted: Number of playoff seeding records deleted
+        total_deleted: Total number of records deleted across all tables
+    """
+    events_deleted: int
+    brackets_deleted: int
+    seedings_deleted: int
+    total_deleted: int
 
 
 class PlayoffDatabaseAPI:
@@ -46,7 +62,7 @@ class PlayoffDatabaseAPI:
         dynasty_id: str,
         season: int,
         connection: Optional[sqlite3.Connection] = None
-    ) -> Dict[str, int]:
+    ) -> PlayoffCleanupResult:
         """
         Delete all playoff data for a specific dynasty and season.
 
