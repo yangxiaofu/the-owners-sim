@@ -348,7 +348,7 @@ def demo_integration():
 
     print("\n3. Draft Manager - Execute Pick")
     print("-" * 80)
-    draft_mgr = DraftManager(db_path)
+    draft_mgr = DraftManager(db_path, dynasty_id='test', season_year=2024)
     try:
         draft_mgr.execute_draft_pick(
             dynasty_id='test',

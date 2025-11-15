@@ -40,7 +40,7 @@ class DraftPreparationService:
 
         Args:
             draft_manager: DraftManager instance for draft operations
-            draft_api: DraftClassDatabaseAPI instance for validation
+            draft_api: DraftClassAPI instance for validation
             dynasty_id: Dynasty context for isolation
         """
         self.draft_manager = draft_manager

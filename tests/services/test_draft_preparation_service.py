@@ -57,7 +57,7 @@ class TestPrepareDraftClass:
 
     @pytest.fixture
     def mock_draft_api(self):
-        """Create mock DraftClassDatabaseAPI."""
+        """Create mock DraftClassAPI."""
         mock_api = Mock()
         mock_api.dynasty_has_draft_class = Mock(return_value=False)
         mock_api.get_draft_class_info = Mock(return_value={

@@ -180,8 +180,8 @@ class SeasonCycleController:
         self.db = UnifiedDatabaseAPI(database_path, dynasty_id)
 
         # Initialize EventDatabaseAPI (needed for game validation in handlers)
-        # CRITICAL: Pass dynasty_id to ensure event queries filter by correct dynasty
-        self.event_db = EventDatabaseAPI(database_path, dynasty_id=dynasty_id)
+        # NOTE: Dynasty isolation handled via event.dynasty_id attribute on event objects
+        self.event_db = EventDatabaseAPI(database_path)
 
         # Initialize SeasonYearValidator for drift detection
         self.season_year_validator = SeasonYearValidator(logger=self.logger)
@@ -1429,19 +1429,18 @@ class SeasonCycleController:
         if not hasattr(self, "_draft_preparation_service"):
             from services.draft_preparation_service import DraftPreparationService
             from offseason.draft_manager import DraftManager
-            from offseason.draft_class_api import DraftClassDatabaseAPI
+            from database.draft_class_api import DraftClassAPI
 
             # Create DraftManager for draft class generation
             draft_manager = DraftManager(
                 database_path=self.database_path,
-                dynasty_id=self.dynasty_id
+                dynasty_id=self.dynasty_id,
+                season_year=self.season_year,
+                enable_persistence=self.enable_persistence
             )
 
-            # Create DraftClassDatabaseAPI for validation
-            draft_api = DraftClassDatabaseAPI(
-                database_path=self.database_path,
-                dynasty_id=self.dynasty_id
-            )
+            # Create DraftClassAPI for validation
+            draft_api = DraftClassAPI(database_path=self.database_path)
 
             # Create service with dependency injection
             self._draft_preparation_service = DraftPreparationService(
@@ -3217,7 +3216,7 @@ class SeasonCycleController:
         """
         try:
             self.db.standings_reset(
-                season_year=self.season_year, season_type=season_type
+                season=self.season_year, season_type=season_type
             )
 
             if self.verbose_logging:

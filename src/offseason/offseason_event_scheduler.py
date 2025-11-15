@@ -59,7 +59,12 @@ class OffseasonEventScheduler:
         )
         print(f"[EVENT_SCHEDULER] ✓ Milestones calculated: {len(milestones)}")
 
+
+
         # Schedule different event types
+
+
+
         print(f"[EVENT_SCHEDULER] Step 2: Scheduling deadline events...")
         deadline_count = self._schedule_deadline_events(milestones, season_year, dynasty_id, event_db)
         print(f"[EVENT_SCHEDULER] ✓ Deadline events scheduled: {deadline_count}")

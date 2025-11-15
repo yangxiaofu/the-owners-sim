@@ -478,7 +478,7 @@ class OffseasonToPreseasonHandler:
             return []
 
         # Get all GAME events for this dynasty
-        all_games = self._event_db.events_get_by_type(event_type="GAME")
+        all_games = self._event_db.get_events_by_dynasty(dynasty_id=self._dynasty_id, event_type="GAME")
 
         # Filter by season year and season type
         filtered = [

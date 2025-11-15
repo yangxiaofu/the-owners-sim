@@ -1688,5 +1688,7 @@ class EventDatabaseAPI_DEPRECATED:
         return f"EventDatabaseAPI_DEPRECATED(database_path='{self.db_path}')"
 
 
-# Create alias for backward compatibility
-EventDatabaseAPI = EventDatabaseAPI_DEPRECATED
+# Backward compatibility alias - use LegacyEventDatabaseAPI for old code
+# TODO: Migrate all legacy usage and remove this alias by v2.0
+# NOTE: Do NOT use 'EventDatabaseAPI' as alias name - it overwrites the real class!
+LegacyEventDatabaseAPI = EventDatabaseAPI_DEPRECATED
