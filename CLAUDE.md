@@ -6,14 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **New to this codebase? Start here:**
 1. Run the desktop UI: `python main.py` (requires `pip install -r requirements-ui.txt`)
-2. Run a full season simulation: `PYTHONPATH=src python demo/full_season_demo/full_season_sim.py`
-3. Run tests: `python -m pytest tests/`
-4. Database location: `data/database/nfl_simulation.db`
+2. Run tests: `python -m pytest tests/`
+3. Database location: `data/database/nfl_simulation.db`
 
 **Most Important Demos:**
-- **Full Season (PRIMARY)**: `demo/full_season_demo/` - Complete season cycle with playoffs and offseason
-- **Interactive Season**: `demo/interactive_season_sim/` - Regular season only (terminal-based)
 - **Offseason**: `demo/offseason_demo/` - Franchise tags, free agency, draft, roster cuts
+- **Interactive Playoff**: `demo/interactive_playoff_sim/` - Playoff simulation (Wild Card → Super Bowl)
 
 ## Project Overview
 
@@ -112,26 +110,6 @@ python -m pytest tests/salary_cap/test_cap_calculator.py -v
 
 ### Running Demos
 ```bash
-# Full Season Simulation (PRIMARY - Complete Season Cycle)
-PYTHONPATH=src python demo/full_season_demo/full_season_sim.py
-# Interactive NFL season simulation from Week 1 → Super Bowl → Offseason
-# Uses SeasonCycleController (src/season/season_cycle_controller.py)
-# - All 3 phases: Regular Season, Playoffs, Offseason
-# - Automatic phase transitions
-# - Real playoff seeding from standings
-# - Dynasty isolation with database persistence
-# See docs/plans/full_season_simulation_plan.md for architecture details
-
-# Interactive Season Simulation (Regular Season Only)
-PYTHONPATH=src python demo/interactive_season_sim/interactive_season_sim.py
-# Terminal-based interactive NFL regular season simulation:
-# - Day-by-day or week-by-week simulation
-# - View standings, upcoming games, season summary
-# - Playoff picture tracking (Week 10+)
-# - Full database persistence with dynasty support
-# - Stops after Week 18 (use full_season_sim.py for playoffs)
-# See demo/interactive_season_sim/README.md for detailed usage
-
 # Interactive Playoff Simulation (Playoffs Only)
 PYTHONPATH=src python demo/interactive_playoff_sim/interactive_playoff_sim.py
 # Terminal-based interactive NFL playoff simulation:
@@ -141,10 +119,6 @@ PYTHONPATH=src python demo/interactive_playoff_sim/interactive_playoff_sim.py
 # - Complete playoff bracket display
 # - Supports random OR real seeding from regular season
 # See demo/interactive_playoff_sim/README.md for usage
-
-# Season Simulation Utilities
-PYTHONPATH=src python demo/interactive_season_sim/initialize_season_db.py  # Initialize new season database
-PYTHONPATH=src python demo/interactive_season_sim/schedule_generator_example.py  # Generate season schedule
 
 # Playoff System Demos
 PYTHONPATH=src python demo/playoff_seeder_demo/playoff_seeder_demo.py  # NFL playoff seeding and tiebreaker demonstration
@@ -186,6 +160,20 @@ PYTHONPATH=src python demo/play_demos/play_engine_demo.py  # Player roster and p
 PYTHONPATH=src python test_event_system.py  # Event system testing
 PYTHONPATH=src python test_hybrid_event_storage.py  # Hybrid event storage testing
 ```
+
+### Deprecated Demos (Removed)
+
+The following demos have been deprecated and removed. Their functionality is now available through the production `SeasonCycleController`:
+
+**Removed Demos:**
+- `demo/interactive_season_sim/` - Legacy regular season simulator (replaced by `SeasonCycleController`)
+- `demo/full_season_demo/` - Legacy full season simulator (replaced by `SeasonCycleController`)
+
+**For season simulation, use:**
+- **Production**: `src/season/season_cycle_controller.py` - Complete season cycle orchestrator with all 3 phases
+- **Demo**: `demo/offseason_demo/offseason_demo.py` - Interactive offseason simulation
+
+**Note**: The demo controllers used direct component initialization which has been superseded by the production `SeasonCycleController` pattern. All season simulation features are now accessed through `SeasonCycleController` which provides proper phase transitions and calendar continuity.
 
 ### Diagnostic Scripts
 ```bash
@@ -252,11 +240,11 @@ pylint src/
 # Option 1: Desktop UI (recommended for new users)
 python main.py
 
-# Option 2: Terminal-based full season
-PYTHONPATH=src python demo/full_season_demo/full_season_sim.py
-
-# Option 3: Single game simulation
+# Option 2: Single game simulation
 PYTHONPATH=src python demo/play_demos/play_engine_demo.py
+
+# Option 3: Offseason simulation (interactive)
+python demo/offseason_demo/offseason_demo.py
 ```
 
 ### Debugging a Failing Test
@@ -698,7 +686,6 @@ Comprehensive documentation is available in `docs/`:
   - `docs/ui/calendar_tab_spec.md` - Calendar tab UI specification
   - `docs/ui/offseason_specs_dashboard.md` - Offseason dashboard specification
 - **Interactive Demos**:
-  - `demo/interactive_season_sim/QUICK_START.md` - Quick start guide for interactive season simulation
   - `demo/interactive_playoff_sim/` - Interactive playoff simulator documentation
 
 ## Known Issues

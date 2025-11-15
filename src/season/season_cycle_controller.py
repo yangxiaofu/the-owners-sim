@@ -248,22 +248,45 @@ class SeasonCycleController:
         # Create shared phase state with correct starting phase and season year (single source of truth)
         self.phase_state = PhaseState(initial_phase, season_year=self.season_year)
 
-        # Import SeasonController here to avoid circular imports
-        from demo.interactive_season_sim.season_controller import SeasonController
+        # Import core components directly (no demo dependency)
+        from src.calendar.calendar_component import CalendarComponent
+        from src.calendar.simulation_executor import SimulationExecutor
+        from src.database.api import DatabaseAPI
 
-        # Initialize season controller (always starts in regular season)
-        self.season_controller = SeasonController(
-            database_path=database_path,
+        # Ensure database directory exists
+        from pathlib import Path
+        Path(database_path).parent.mkdir(parents=True, exist_ok=True)
+
+        # Ensure dynasty exists in database (auto-create if needed)
+        from database.connection import DatabaseConnection
+        db_conn = DatabaseConnection(database_path)
+        db_conn.ensure_dynasty_exists(dynasty_id)
+
+        # Initialize database_api for standings and statistics
+        self.database_api = DatabaseAPI(database_path)
+
+        # Initialize calendar component with event database for phase detection
+        self.calendar = CalendarComponent(
             start_date=start_date,
-            season_year=self.season_year,  # Phase 2: Use database-loaded value
-            dynasty_id=dynasty_id,
-            enable_persistence=enable_persistence,
-            verbose_logging=verbose_logging,
+            season_year=self.season_year,
             phase_state=self.phase_state,
+            database_api=self.event_db,
+            dynasty_id=dynasty_id
         )
 
-        # Access the shared calendar from season controller
-        self.calendar = self.season_controller.calendar
+        # Initialize simulation executor for game execution
+        self.simulation_executor = SimulationExecutor(
+            calendar=self.calendar,
+            event_db=self.event_db,
+            database_path=database_path,
+            dynasty_id=dynasty_id,
+            enable_persistence=enable_persistence,
+            season_year=self.season_year,
+            phase_state=self.phase_state
+        )
+
+        # Track week number and statistics (previously tracked by demo controller)
+        self.current_week = 1
 
         # Playoff controller created when needed
         self.playoff_controller: Optional[PlayoffController] = None
@@ -316,9 +339,20 @@ class SeasonCycleController:
         )
 
         # Note: Playoff handler initialized later when playoff_controller is created
+        # Phase handlers now receive components directly (no demo dependency)
         self.phase_handlers = {
-            SeasonPhase.PRESEASON: PreseasonHandler(self.season_controller),
-            SeasonPhase.REGULAR_SEASON: RegularSeasonHandler(self.season_controller),
+            SeasonPhase.PRESEASON: PreseasonHandler(
+                calendar=self.calendar,
+                simulation_executor=self.simulation_executor,
+                database_api=self.database_api,
+                season_year=self.season_year
+            ),
+            SeasonPhase.REGULAR_SEASON: RegularSeasonHandler(
+                calendar=self.calendar,
+                simulation_executor=self.simulation_executor,
+                database_api=self.database_api,
+                season_year=self.season_year
+            ),
             SeasonPhase.OFFSEASON: OffseasonHandler(self.offseason_controller),
             # PLAYOFFS handler added dynamically when playoff_controller is created
         }
@@ -413,20 +447,12 @@ class SeasonCycleController:
             logger=self.logger,
         )
 
-        # Register season_controller to be updated when year changes
-        self.year_synchronizer.register_callback(
-            "season_controller",
-            lambda year: setattr(self.season_controller, "season_year", year),
-        )
-
-        # Register simulation_executor (inside season_controller) to be updated
+        # Register simulation_executor to be updated when year changes
         # CRITICAL: This fixes preseason game simulation in the following season
         # Without this, executor has old year and can't find games with new year prefix
         self.year_synchronizer.register_callback(
             "simulation_executor",
-            lambda year: setattr(
-                self.season_controller.simulation_executor, "season_year", year
-            ),
+            lambda year: setattr(self.simulation_executor, "season_year", year),
         )
 
         if self.verbose_logging:
@@ -461,8 +487,8 @@ class SeasonCycleController:
                 None  # No active controller in offseason (no more games to simulate)
             )
         else:
-            # Regular season - use season controller
-            self.active_controller = self.season_controller
+            # Preseason/Regular season - phase handlers manage simulation
+            self.active_controller = None
 
         if self.verbose_logging:
             print(f"\n{'='*80}")
@@ -1246,7 +1272,16 @@ class SeasonCycleController:
                 season=self.season_year, season_type=PhaseNames.DB_REGULAR_SEASON
             )
 
-        return self.season_controller.get_current_standings()
+        # Delegate to the current phase handler
+        current_handler = self.phase_handlers.get(self.phase_state.phase)
+        if current_handler and hasattr(current_handler, 'get_current_standings'):
+            return current_handler.get_current_standings(dynasty_id=self.dynasty_id)
+        else:
+            # Fallback to direct database query
+            return self.database_api.get_standings(
+                dynasty_id=self.dynasty_id,
+                season=self.season_year
+            )
 
     def get_playoff_bracket(self) -> Optional[Dict[str, Any]]:
         """
@@ -1868,14 +1903,14 @@ class SeasonCycleController:
                     # CRITICAL: Update phase state and active controller after successful transition
                     # This matches the pattern in _transition_to_playoffs() and _transition_to_offseason()
                     self.phase_state.phase = SeasonPhase.PRESEASON
-                    self.active_controller = self.season_controller
+                    self.active_controller = None  # Phase handlers manage preseason
 
                     if self.verbose_logging:
                         print(
                             f"[PHASE_TRANSITION] Phase state updated: OFFSEASON → PRESEASON"
                         )
                         print(
-                            f"[PHASE_TRANSITION] Active controller set: season_controller"
+                            f"[PHASE_TRANSITION] Active controller set: None (phase handlers active)"
                         )
 
                 except Exception as e:
@@ -2282,9 +2317,8 @@ class SeasonCycleController:
             # Update phase state
             self.phase_state.phase = SeasonPhase.REGULAR_SEASON
 
-            # The season controller is already the active controller
-            # (we don't need to switch controllers like we do for playoffs)
-            self.active_controller = self.season_controller
+            # Phase handlers manage regular season simulation
+            self.active_controller = None
 
             if self.verbose_logging:
                 print(f"\n✅ Regular season transition complete")
@@ -3127,26 +3161,20 @@ class SeasonCycleController:
         """
         Calculate current NFL week number.
 
-        Uses the season/phase controller's tracked week number which is
+        Uses the phase handler's tracked week number which is
         automatically maintained during week advancement.
 
         Returns:
             int: Current week number (1-18 for regular season, 1-4 for preseason, 0 for other phases)
         """
         if self.phase_state.phase == SeasonPhase.REGULAR_SEASON:
-            # Use SeasonController's tracked week (most reliable)
-            return (
-                self.season_controller.current_week
-                if hasattr(self.season_controller, "current_week")
-                else 0
-            )
+            # Get week from regular season handler
+            handler = self.phase_handlers.get(SeasonPhase.REGULAR_SEASON)
+            return handler.current_week if handler and hasattr(handler, "current_week") else 0
         elif self.phase_state.phase == SeasonPhase.PRESEASON:
-            # Preseason weeks are 1-4
-            return (
-                self.season_controller.current_week
-                if hasattr(self.season_controller, "current_week")
-                else 0
-            )
+            # Get week from preseason handler (weeks 1-4)
+            handler = self.phase_handlers.get(SeasonPhase.PRESEASON)
+            return handler.current_week if handler and hasattr(handler, "current_week") else 0
         else:
             # Playoffs, offseason, etc.
             return 0

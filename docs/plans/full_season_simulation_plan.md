@@ -1,5 +1,7 @@
 # Full Season Simulation - Comprehensive Implementation Plan
 
+> **DEPRECATION NOTICE**: This plan references the legacy demo `SeasonController` which has been deprecated and removed. The production implementation now uses `SeasonCycleController` (`src/season/season_cycle_controller.py`) with direct component initialization rather than demo-based controllers.
+
 **Version**: 1.0
 **Date**: October 3, 2025
 **Status**: Planning Phase

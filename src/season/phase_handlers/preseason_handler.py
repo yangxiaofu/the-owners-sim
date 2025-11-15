@@ -1,19 +1,84 @@
-"""Preseason Phase Handler - Delegates to SeasonController."""
+"""Preseason Phase Handler - Direct component access."""
 from typing import Dict, Any
+from src.calendar.calendar_component import CalendarComponent
+from src.calendar.simulation_executor import SimulationExecutor
+from src.database.api import DatabaseAPI
 
 
 class PreseasonHandler:
     """Handles daily operations during preseason phase."""
 
-    def __init__(self, season_controller):
+    def __init__(
+        self,
+        calendar: CalendarComponent,
+        simulation_executor: SimulationExecutor,
+        database_api: DatabaseAPI,
+        season_year: int
+    ):
         """
-        Initialize preseason handler.
+        Initialize preseason handler with direct component access.
 
         Args:
-            season_controller: SeasonController instance for delegation
+            calendar: Calendar component for date management
+            simulation_executor: Executor for running game simulations
+            database_api: Database API for data access
+            season_year: Current season year
         """
-        self.season_controller = season_controller
+        self.calendar = calendar
+        self.simulation_executor = simulation_executor
+        self.database_api = database_api
+        self.season_year = season_year
+
+        # Add state tracking for consistency with RegularSeasonHandler
+        self.current_week = 1
+        self.total_games_played = 0
+        self.total_days_simulated = 0
 
     def advance_day(self) -> Dict[str, Any]:
-        """Delegate to season controller for preseason day advancement."""
-        return self.season_controller.advance_day()
+        """
+        Advance calendar by 1 day and simulate games.
+
+        Returns:
+            Dict containing simulation results and metadata
+        """
+        # Advance calendar
+        advance_result = self.calendar.advance(1)
+        current_date = advance_result.end_date
+
+        # Simulate day's games
+        simulation_result = self.simulation_executor.simulate_day(current_date)
+
+        # Update statistics
+        games_played = len([
+            g for g in simulation_result.get('games_played', [])
+            if g.get('success', False)
+        ])
+        self.total_games_played += games_played
+        self.total_days_simulated += 1
+
+        return {
+            "date": str(current_date),
+            "games_played": games_played,
+            "results": simulation_result.get('games_played', []),
+            "standings_updated": False,  # Preseason doesn't affect standings
+            "current_phase": "PRESEASON",
+            "success": simulation_result.get('success', True)
+        }
+
+    def get_current_standings(self, dynasty_id: str) -> Dict[str, Any]:
+        """
+        Get current standings from database.
+
+        Note: Preseason doesn't have standings, but providing for consistency.
+
+        Args:
+            dynasty_id: Dynasty identifier
+
+        Returns:
+            Dict containing standings data (empty for preseason)
+        """
+        return {
+            "divisions": {},
+            "conference_standings": {},
+            "note": "Preseason does not have standings"
+        }

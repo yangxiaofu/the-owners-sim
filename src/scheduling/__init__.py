@@ -8,6 +8,6 @@ Handles all NFL schedule generation including:
 - Dynamic date calculations (Labor Day, season start dates)
 """
 
-from .schedule_generator import RandomScheduleGenerator, create_schedule_generator
+from .random_schedule_generator import RandomScheduleGenerator, create_schedule_generator
 
 __all__ = ['RandomScheduleGenerator', 'create_schedule_generator']

@@ -625,8 +625,9 @@ SeasonCycleController (coordinator)
 
 ```python
 # BAD: Direct dependency on concrete class
-from demo.interactive_season_sim.season_controller import SeasonController
-self.season_controller = SeasonController(...)
+# DEPRECATED: demo SeasonController removed, now uses SeasonCycleController
+from season.season_cycle_controller import SeasonCycleController
+self.season_controller = SeasonCycleController(...)
 
 # BAD: Creating dependencies internally
 self._transaction_ai = TransactionAIManager(...)
