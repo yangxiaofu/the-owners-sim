@@ -320,6 +320,24 @@ class PlayoffController:
             "errors": simulation_result.get('errors', [])
         }
 
+    def advance_day(self) -> Dict[str, Any]:
+        """
+        Advance calendar by 1 day and simulate (backward compatibility wrapper).
+
+        DEPRECATED: Use simulate_day(current_date) when called from SeasonCycleController.
+        This method exists for backward compatibility with demos and internal methods
+        (advance_week, advance_to_round_completion, etc.) that still manage their own calendar.
+
+        Returns:
+            Dictionary with simulation results (same as simulate_day)
+        """
+        # Advance calendar (for backward compatibility)
+        advance_result = self.calendar.advance(1)
+        current_date = advance_result.end_date
+
+        # Call simulate_day() with the current date
+        return self.simulate_day(current_date)
+
     def advance_week(self) -> Dict[str, Any]:
         """
         Advance calendar by 7 days, simulating all scheduled games.

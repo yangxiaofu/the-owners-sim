@@ -241,6 +241,29 @@ class OffseasonController:
 
         return result
 
+    def advance_day(self) -> Dict[str, Any]:
+        """
+        Advance calendar by one day and simulate (backward compatibility wrapper).
+
+        DEPRECATED: Use simulate_day(current_date) when called from SeasonCycleController.
+        This method exists for backward compatibility with demos and internal methods
+        (advance_to_deadline, advance_week, etc.) that still manage their own calendar.
+
+        Returns:
+            Dictionary with:
+                - new_date: Updated calendar date
+                - phase_changed: Whether phase changed
+                - new_phase: New phase if changed
+                - deadlines_passed: List of deadline types passed
+                - events_triggered: List of automatic events
+        """
+        # Advance calendar (for backward compatibility)
+        self.calendar.advance_day()
+        current_date = self.get_current_date()
+
+        # Call simulate_day() with the current date
+        return self.simulate_day(current_date)
+
     def advance_to_deadline(self, deadline_type: str) -> Dict[str, Any]:
         """
         Advance calendar to next occurrence of specified deadline.
