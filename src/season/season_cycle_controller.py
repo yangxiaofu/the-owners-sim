@@ -312,7 +312,7 @@ class SeasonCycleController:
         self.boundary_detector = PhaseBoundaryDetector(
             event_db=self.event_db,
             dynasty_id=self.dynasty_id,
-            season_year=self.season_year,
+            get_season_year=lambda: self.season_year,  # Dynamic callable (SSOT)
             db=self.db,
             calendar=self.calendar,
             logger=self.logger,
@@ -524,6 +524,11 @@ class SeasonCycleController:
         """
         Advance simulation by 1 day using phase handler strategy pattern.
 
+        REFACTORED: Controller now owns calendar advancement.
+        - Controller advances calendar ONCE at the start
+        - Handlers renamed to simulate_day(current_date) and never touch calendar
+        - Eliminates double-advance bug on phase transition days
+
         Unified phase handling: routes to appropriate phase handler based on current phase.
         All phases (preseason, regular season, playoffs, offseason) now use consistent
         controller → handler delegation pattern.
@@ -545,8 +550,55 @@ class SeasonCycleController:
         # Guard: Auto-recovery before simulation
         self._auto_recover_year_from_database("Before daily simulation")
 
+        # DIAGNOSTIC: Log entry to advance_day
+        print(f"\n{'='*100}")
+        print(f"[DIAGNOSTIC] advance_day() ENTRY")
+        print(f"{'='*100}")
+        print(f"[DIAGNOSTIC] Current date BEFORE advance: {self.calendar.get_current_date()}")
+        print(f"[DIAGNOSTIC] Current phase: {self.phase_state.phase.value}")
+        print(f"[DIAGNOSTIC] Season year: {self.season_year}")
+        dynasty_state = self.db.dynasty_get_latest_state()
+        if dynasty_state:
+            print(f"[DIAGNOSTIC] Database phase: {dynasty_state.get('current_phase', 'UNKNOWN')}")
+            print(f"[DIAGNOSTIC] Database date: {dynasty_state.get('current_date', 'UNKNOWN')}")
+            print(f"[DIAGNOSTIC] Database season: {dynasty_state.get('season', 'UNKNOWN')}")
+        else:
+            print(f"[DIAGNOSTIC] Database state: NO STATE FOUND")
+        print(f"{'='*100}\n")
+
+        # CRITICAL FIX: Controller advances calendar ONCE before everything else
+        # This prevents double-advance bug on transition days (e.g., Aug 4→5)
+        self.calendar.advance(days=1)
+        current_date = self.calendar.get_current_date()
+
+        print(f"\n[CALENDAR_ADVANCE] Controller advanced calendar by 1 day")
+        print(f"  New current date: {current_date}")
+        print(f"")
+
+        # Check for phase transitions using NEW date
+        # If transition occurs, we'll use the NEW phase handler for today's simulation
+        phase_transition = self._check_phase_transition()
+
+        if phase_transition and self.verbose_logging:
+            print(f"\n[PHASE_TRANSITION] Transition occurred on {current_date}")
+            print(f"  From: {phase_transition.get('from_phase')}")
+            print(f"  To: {phase_transition.get('to_phase')}")
+            print(f"  Will use {phase_transition.get('to_phase')} handler to simulate {current_date}")
+
+        # DIAGNOSTIC: Log handler selection
+        print(f"\n[DIAGNOSTIC] HANDLER SELECTION")
+        print(f"  Phase transition occurred? {phase_transition is not None}")
+        if phase_transition:
+            print(f"  Transition: {phase_transition.get('from_phase')} → {phase_transition.get('to_phase')}")
+        print(f"  Current phase (for handler selection): {self.phase_state.phase.value}")
+        print(f"  Available handlers: {list(self.phase_handlers.keys())}")
+
         # Get phase-specific handler (Strategy Pattern)
+        # If transition occurred above, this gets the NEW phase handler
         handler = self.phase_handlers.get(self.phase_state.phase)
+
+        print(f"  Selected handler: {type(handler).__name__ if handler else 'None'}")
+        print(f"")
 
         if handler is None:
             raise ValueError(
@@ -554,8 +606,19 @@ class SeasonCycleController:
                 f"Available handlers: {list(self.phase_handlers.keys())}"
             )
 
-        # Execute phase-specific logic via handler
-        result = handler.advance_day()
+        # Execute phase-specific simulation via handler
+        # Handler ONLY simulates the given date - it does NOT advance calendar
+        result = handler.simulate_day(current_date)
+
+        # DIAGNOSTIC: Log handler result
+        print(f"\n[DIAGNOSTIC] HANDLER RESULT")
+        print(f"  Handler: {type(handler).__name__}")
+        print(f"  Simulated date: {current_date}")
+        print(f"  Games played: {result.get('games_played', 0)}")
+        print(f"  Results count: {len(result.get('results', []))}")
+        print(f"  Success: {result.get('success', 'NOT_SET')}")
+        print(f"  Calendar date unchanged: {self.calendar.get_current_date()}")
+        print(f"")
 
         # Update statistics (common for all phases)
         self.total_games_played += result.get("games_played", 0)
@@ -590,8 +653,17 @@ class SeasonCycleController:
             elif self.skip_transactions:
                 print(f"[TRADE_WINDOW] Transaction AI skipped (skip_transactions=True)")
 
-        # Check for phase transitions (common for all phases)
-        phase_transition = self._check_phase_transition()
+        # Check for phase transitions AFTER handler execution (if not already transitioned)
+        # This handles game-count-based transitions (e.g., regular season → playoffs after 272 games)
+        # Skip if transition already occurred before handler (e.g., offseason → preseason on date)
+        if not phase_transition:
+            phase_transition = self._check_phase_transition()
+            if phase_transition and self.verbose_logging:
+                print(f"\n[PHASE_TRANSITION_AFTER_HANDLER] Transition occurred after handler execution")
+                print(f"  From: {phase_transition.get('from_phase')}")
+                print(f"  To: {phase_transition.get('to_phase')}")
+
+        # Add transition to result if it occurred (either before or after handler)
         if phase_transition:
             result["phase_transition"] = phase_transition
 
@@ -1905,7 +1977,6 @@ class SeasonCycleController:
                     print(f"[YEAR_DERIVATION] Derived season year: {correct_year}")
                     print(f"[YEAR_DERIVATION] Previous season year: {self.season_year}")
 
-                # Update season_year to match calendar (if needed)
                 if correct_year != self.season_year:
                     self.year_synchronizer.synchronize_year(
                         correct_year,

@@ -183,21 +183,26 @@ class OffseasonController:
 
     # ========== Public API: Calendar Advancement ==========
 
-    def advance_day(self) -> Dict[str, Any]:
+    def simulate_day(self, current_date) -> Dict[str, Any]:
         """
-        Advance calendar by one day.
+        Simulate offseason activities for the given date (calendar managed by SeasonCycleController).
+
+        REFACTORED: No longer advances calendar - controller handles that.
+        This method only processes offseason events for the date provided.
+
+        Args:
+            current_date: Date object for the day to simulate (from controller)
 
         Returns:
             Dictionary with:
-                - new_date: Updated calendar date
+                - new_date: Current date (for compatibility)
                 - phase_changed: Whether phase changed
                 - new_phase: New phase if changed
                 - deadlines_passed: List of deadline types passed
                 - events_triggered: List of automatic events
         """
-        # Advance calendar
-        self.calendar.advance_day()
-        new_date = self.get_current_date()
+        # Use provided date instead of advancing calendar
+        new_date = current_date
 
         # Check for phase change
         old_phase = self.current_phase
@@ -235,6 +240,29 @@ class OffseasonController:
                 print(f"  Deadlines passed: {', '.join(deadlines_passed)}")
 
         return result
+
+    def advance_day(self) -> Dict[str, Any]:
+        """
+        Advance calendar by one day and simulate (backward compatibility wrapper).
+
+        DEPRECATED: Use simulate_day(current_date) when called from SeasonCycleController.
+        This method exists for backward compatibility with demos and internal methods
+        (advance_to_deadline, advance_week, etc.) that still manage their own calendar.
+
+        Returns:
+            Dictionary with:
+                - new_date: Updated calendar date
+                - phase_changed: Whether phase changed
+                - new_phase: New phase if changed
+                - deadlines_passed: List of deadline types passed
+                - events_triggered: List of automatic events
+        """
+        # Advance calendar (for backward compatibility)
+        self.calendar.advance_day()
+        current_date = self.get_current_date()
+
+        # Call simulate_day() with the current date
+        return self.simulate_day(current_date)
 
     def advance_to_deadline(self, deadline_type: str) -> Dict[str, Any]:
         """

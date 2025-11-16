@@ -202,6 +202,17 @@ class OffseasonToPreseasonHandler:
         """
         # Phase 4: Use execution-time year if provided, otherwise use constructor year
         effective_year = season_year if season_year is not None else self._new_season_year
+
+        # DIAGNOSTIC: Transition handler entry
+        print(f"\n{'='*100}")
+        print(f"[OFFSEASON→PRESEASON] TRANSITION HANDLER EXECUTE")
+        print(f"{'='*100}")
+        print(f"  Effective year: {effective_year}")
+        print(f"  Dynasty ID: {self._dynasty_id}")
+        print(f"  From phase: {transition.from_phase.value}")
+        print(f"  To phase: {transition.to_phase.value}")
+        print(f"{'='*100}\n")
+
         # Validate transition
         # Import SeasonPhase for validation
         try:
@@ -271,6 +282,14 @@ class OffseasonToPreseasonHandler:
             self._log("[Step 2.5/7] Validating schedule exists for upcoming season...")
             self._validate_games_exist(effective_year)  # Raises ValueError if games missing
             completed_steps.append("schedule_validated")
+
+            # DIAGNOSTIC: Game validation result
+            print(f"\n[OFFSEASON→PRESEASON] Game validation passed!")
+            preseason_games = self._query_games_for_season(effective_year, 'preseason')
+            regular_games = self._query_games_for_season(effective_year, 'regular_season')
+            print(f"  Preseason games: {len(preseason_games)}")
+            print(f"  Regular season games: {len(regular_games)}")
+            print(f"")
 
             # NOTE: Game generation moved to SCHEDULE_RELEASE milestone (mid-May)
             # Games are now generated 3 months before preseason starts (NFL realistic!)

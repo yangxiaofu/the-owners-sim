@@ -469,6 +469,21 @@ class SimulationExecutor:
         if target_date is None:
             target_date = self.calendar.get_current_date()
 
+        # DIAGNOSTIC: Simulation executor entry
+        print(f"\n{'='*100}")
+        print(f"[SIM_EXECUTOR] simulate_day() ENTRY")
+        print(f"{'='*100}")
+        print(f"  Target date: {target_date}")
+        print(f"  Dynasty ID: {self.dynasty_id}")
+        print(f"  Season year: {self.season_year}")
+        print(f"  Enable persistence: {self.enable_persistence}")
+        if self.phase_state:
+            print(f"  Phase state: {self.phase_state.phase.value}")
+        else:
+            print(f"  Phase state: NO_PHASE_STATE")
+        print(f"  Calendar current date: {self.calendar.get_current_date()}")
+        print(f"{'='*100}\n")
+
         print(f"\n{'='*80}")
         print(f"SIMULATING DAY: {target_date}")
         print(f"{'='*80}")
@@ -859,6 +874,19 @@ class SimulationExecutor:
 
         if duplicates_removed > 0:
             print(f"⚠️  Removed {duplicates_removed} duplicate event(s) for {target_date}")
+
+        # DIAGNOSTIC: Final game query summary
+        print(f"\n[SIM_EXECUTOR] GAME QUERY SUMMARY FOR {target_date}")
+        playoff_count = len([e for e in deduplicated_events if e.get('game_id', '').startswith('playoff_')])
+        preseason_count = len([e for e in deduplicated_events if e.get('game_id', '').startswith('preseason_')])
+        regular_count = len([e for e in deduplicated_events if e.get('game_id', '').startswith('game_')])
+        other_count = len([e for e in deduplicated_events if not e.get('game_id', '').startswith(('playoff_', 'preseason_', 'game_'))])
+        print(f"  Playoff games: {playoff_count}")
+        print(f"  Preseason games: {preseason_count}")
+        print(f"  Regular games: {regular_count}")
+        print(f"  Other events: {other_count}")
+        print(f"  Total: {len(deduplicated_events)}")
+        print(f"")
 
         # DIAGNOSTIC LOGGING
         if self.verbose_logging:

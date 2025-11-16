@@ -34,18 +34,20 @@ class RegularSeasonHandler:
         self.total_games_played = 0
         self.total_days_simulated = 0
 
-    def advance_day(self) -> Dict[str, Any]:
+    def simulate_day(self, current_date) -> Dict[str, Any]:
         """
-        Advance calendar by 1 day and simulate games.
+        Simulate games for the given date (controller manages calendar).
+
+        REFACTORED: No longer advances calendar - controller handles that.
+        Handler only simulates games for the date provided by controller.
+
+        Args:
+            current_date: Date object for the day to simulate (from controller)
 
         Returns:
             Dict containing simulation results and metadata
         """
-        # Advance calendar
-        advance_result = self.calendar.advance(1)
-        current_date = advance_result.end_date
-
-        # Simulate day's games
+        # Simulate day's games (no calendar advancement)
         simulation_result = self.simulation_executor.simulate_day(current_date)
 
         # Update statistics
