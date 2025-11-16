@@ -144,12 +144,15 @@ class PhaseBoundaryDetector:
         # Convert timestamp to Date (timestamp is already a datetime object from EventDatabaseAPI)
         result = self._timestamp_to_date(timestamp)
 
-        # FAIL-LOUD VALIDATION: Check year consistency
-        if result.year != self.season_year:
+        # FAIL-LOUD VALIDATION: Check year consistency (allow year spanning for NFL seasons)
+        # NFL seasons span two calendar years (e.g., 2026 season: Sept 2026 → Jan 2027)
+        # Allow game dates in season_year OR season_year + 1 (for January games)
+        if result.year not in [self.season_year, self.season_year + 1]:
             error_msg = (
                 f"CRITICAL ERROR: Year mismatch detected in {phase.value} completion check!\n"
                 f"Detector season_year: {self.season_year}\n"
-                f"Last game date year: {result.year}\n"
+                f"Expected game year: {self.season_year} or {self.season_year + 1}\n"
+                f"Actual game date year: {result.year}\n"
                 f"Last game date: {result}\n"
                 f"Game ID: {last_game.get('game_id', 'unknown')}\n"
                 f"Dynasty: {self.dynasty_id}\n"
