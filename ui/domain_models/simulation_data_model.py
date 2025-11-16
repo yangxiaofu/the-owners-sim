@@ -68,22 +68,16 @@ class SimulationDataModel:
         """
         Current season year (SINGLE SOURCE OF TRUTH).
 
-        Lazy-loads from database using get_latest_state() which automatically
+        Queries database using get_latest_state() which automatically
         retrieves the most recent season without requiring a season filter.
-        This ensures the UI always displays the current season year.
+        This ensures the UI always displays the current season year, even
+        immediately after season transitions.
 
         Returns:
             int: Current season year from database, or initialization season for new dynasties
         """
-        if not hasattr(self, '_season_cache'):
-            state = self.dynasty_api.get_latest_state(self.dynasty_id)
-            self._season_cache = state['season'] if state else self._initialization_season
-        return self._season_cache
-
-    def refresh_season(self):
-        """Force reload of season year from database."""
-        if hasattr(self, '_season_cache'):
-            delattr(self, '_season_cache')
+        state = self.dynasty_api.get_latest_state(self.dynasty_id)
+        return state['season'] if state else self._initialization_season
 
     def get_state(self) -> Optional[Dict[str, Any]]:
         """
