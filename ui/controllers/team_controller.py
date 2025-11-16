@@ -18,16 +18,29 @@ class TeamController:
     Follows the pattern: View → Controller → Domain Model → Database API
     """
 
-    def __init__(self, db_path: str, dynasty_id: str, season: int = 2025):
+    def __init__(self, db_path: str, dynasty_id: str, main_window=None):
         """
         Initialize team controller.
 
         Args:
             db_path: Path to SQLite database
             dynasty_id: Dynasty identifier for data isolation
-            season: Current season year (default: 2025)
+            main_window: Reference to MainWindow for season access (optional)
         """
-        self.data_model = TeamDataModel(db_path, dynasty_id, season)
+        self.db_path = db_path
+        self.dynasty_id = dynasty_id
+        self.main_window = main_window
+
+    @property
+    def season(self) -> int:
+        """Current season year (proxied from main window)."""
+        if self.main_window is not None:
+            return self.main_window.season
+        return 2025  # Fallback for testing/standalone usage
+
+    def _get_data_model(self) -> TeamDataModel:
+        """Lazy-initialized data model with current season."""
+        return TeamDataModel(self.db_path, self.dynasty_id, self.season)
 
     def get_team_roster(self, team_id: int) -> List[Dict[str, Any]]:
         """
@@ -39,7 +52,7 @@ class TeamController:
         Returns:
             List of player dictionaries with position, attributes, contract info
         """
-        return self.data_model.get_team_roster(team_id)
+        return self._get_data_model().get_team_roster(team_id)
 
     def get_team_contracts(self, team_id: int) -> List[Dict[str, Any]]:
         """
@@ -51,7 +64,7 @@ class TeamController:
         Returns:
             List of contract dictionaries formatted for finances display
         """
-        return self.data_model.get_team_contracts(team_id)
+        return self._get_data_model().get_team_contracts(team_id)
 
     def get_cap_summary(self, team_id: int) -> Dict[str, Any]:
         """
@@ -63,7 +76,7 @@ class TeamController:
         Returns:
             Dict with cap_total, cap_used, cap_available, top_51_status, roster_count, etc.
         """
-        return self.data_model.get_cap_summary(team_id)
+        return self._get_data_model().get_cap_summary(team_id)
 
     def get_depth_chart(self, team_id: int) -> Dict[str, Any]:
         """
@@ -80,7 +93,7 @@ class TeamController:
                 ...
             }
         """
-        return self.data_model.get_full_depth_chart(team_id)
+        return self._get_data_model().get_full_depth_chart(team_id)
 
     def reorder_depth_chart(self, team_id: int, position: str, ordered_player_ids: List[int]) -> bool:
         """
@@ -94,7 +107,7 @@ class TeamController:
         Returns:
             True if reorder succeeded, False otherwise
         """
-        return self.data_model.reorder_position_depth_chart(team_id, position, ordered_player_ids)
+        return self._get_data_model().reorder_position_depth_chart(team_id, position, ordered_player_ids)
 
     def swap_starter_with_bench(
         self,
@@ -118,7 +131,7 @@ class TeamController:
         Returns:
             True if swap succeeded, False otherwise
         """
-        return self.data_model.swap_player_depths(team_id, starter_id, bench_id)
+        return self._get_data_model().swap_player_depths(team_id, starter_id, bench_id)
 
     def get_coaching_staff(self, team_id: int) -> Dict[str, Any]:
         """
@@ -130,7 +143,7 @@ class TeamController:
         Returns:
             Dict with head coach, coordinators, position coaches (empty dict for now)
         """
-        return self.data_model.get_coaching_staff(team_id)
+        return self._get_data_model().get_coaching_staff(team_id)
 
     def get_dynasty_team_id(self) -> Optional[int]:
         """
@@ -139,7 +152,7 @@ class TeamController:
         Returns:
             Team ID (1-32) if dynasty has a user team, None for commissioner mode
         """
-        return self.data_model.get_dynasty_team_id()
+        return self._get_data_model().get_dynasty_team_id()
 
     def get_dynasty_info(self) -> Dict[str, Any]:
         """
@@ -149,6 +162,6 @@ class TeamController:
             Dict with dynasty_id and season
         """
         return {
-            "dynasty_id": self.data_model.dynasty_id,
-            "season": self.data_model.season
+            "dynasty_id": self.dynasty_id,
+            "season": self.season
         }

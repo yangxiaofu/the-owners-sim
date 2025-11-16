@@ -1781,7 +1781,9 @@ class PlayoffController:
         """
         if new_wild_card_date:
             self.wild_card_start_date = new_wild_card_date
-            self.calendar.reset(new_wild_card_date)
+            # Use allow_backwards=True for testing/debugging scenarios
+            # This is a legitimate use case for reset() - complete restart
+            self.calendar.reset(new_wild_card_date, allow_backwards=True)
 
         # Delegate to state reset
         self.state.reset()

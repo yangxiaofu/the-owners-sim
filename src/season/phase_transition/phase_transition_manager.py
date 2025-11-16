@@ -54,7 +54,7 @@ class PhaseTransitionManager:
         self,
         phase_state: PhaseState,
         completion_checker: PhaseCompletionChecker,
-        transition_handlers: Dict[TransitionHandlerKey, Callable[[PhaseTransition], None]]
+        transition_handlers: Dict[TransitionHandlerKey, Callable[[PhaseTransition, Optional[int]], None]]
     ):
         """
         Initialize manager with injected dependencies.
@@ -64,7 +64,7 @@ class PhaseTransitionManager:
             completion_checker: Checker for determining if transitions should occur
             transition_handlers: Map of transition handler keys to handler functions
                 Format: {TransitionHandlerKey.OFFSEASON_TO_PRESEASON: handler_function}
-                Handler signature: handler(transition: PhaseTransition) -> None
+                Handler signature: handler(transition: PhaseTransition, season_year: Optional[int]) -> None
         """
         self.phase_state = phase_state
         self.completion_checker = completion_checker
@@ -196,7 +196,7 @@ class PhaseTransitionManager:
         try:
             # Execute the transition handler
             handler = self.handlers[handler_key]
-            handler(transition)
+            handler(transition, season_year=self.phase_state.season_year)
 
             print(f"[PRESEASON_DEBUG Point 4] ✅ Handler executed successfully")
 
@@ -245,7 +245,7 @@ class PhaseTransitionManager:
     def register_handler(
         self,
         handler_key: TransitionHandlerKey,
-        handler: Callable[[PhaseTransition], None]
+        handler: Callable[[PhaseTransition, Optional[int]], None]
     ) -> None:
         """
         Register a transition handler dynamically.
@@ -255,7 +255,7 @@ class PhaseTransitionManager:
             handler: Handler function for this transition
 
         Example:
-            def custom_handler(transition: PhaseTransition) -> None:
+            def custom_handler(transition: PhaseTransition, season_year: Optional[int] = None) -> None:
                 print(f"Handling: {transition}")
                 # Do transition work...
 

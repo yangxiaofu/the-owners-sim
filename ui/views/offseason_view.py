@@ -37,15 +37,14 @@ class OffseasonView(QWidget):
     Phase 4: Full implementation with offseason dashboard and dialogs
     """
 
-    def __init__(self, parent=None, db_path=None, dynasty_id=None, season=2025):
+    def __init__(self, parent=None, db_path=None, dynasty_id=None):
         super().__init__(parent)
         self.main_window = parent
         self.db_path = db_path or "data/database/nfl_simulation.db"
         self.dynasty_id = dynasty_id or "default"
-        self.season = season
 
         # Initialize controller
-        self.controller = PlayerController(self.db_path, self.dynasty_id, self.season)
+        self.controller = PlayerController(self.db_path, self.dynasty_id, main_window=parent)
 
         # Initialize draft class API
         self.draft_api = DraftClassAPI(self.db_path)
@@ -66,6 +65,13 @@ class OffseasonView(QWidget):
         self.tabs.addTab(self._create_draft_tab(), "Draft")
 
         layout.addWidget(self.tabs)
+
+    @property
+    def season(self) -> int:
+        """Current season year (proxied from parent/main window)."""
+        if self.parent() is not None and hasattr(self.parent(), 'season'):
+            return self.parent().season
+        return 2025  # Fallback for testing/standalone usage
 
     def _create_dashboard_tab(self) -> QWidget:
         """Create dashboard tab with offseason overview (wireframe only)."""

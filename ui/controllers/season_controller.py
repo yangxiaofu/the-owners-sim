@@ -20,16 +20,29 @@ class SeasonController:
     Follows the pattern: View → Controller → Engine/Database
     """
 
-    def __init__(self, db_path: str, dynasty_id: str, season: int = 2025):
+    def __init__(self, db_path: str, dynasty_id: str, main_window=None):
         """
         Initialize season controller.
 
         Args:
             db_path: Path to SQLite database
             dynasty_id: Dynasty identifier for data isolation
-            season: Current season year (default: 2025)
+            main_window: Reference to MainWindow for season access (optional)
         """
-        self.data_model = SeasonDataModel(db_path, dynasty_id, season)
+        self.db_path = db_path
+        self.dynasty_id = dynasty_id
+        self.main_window = main_window
+
+    @property
+    def season(self) -> int:
+        """Current season year (proxied from main window)."""
+        if self.main_window is not None:
+            return self.main_window.season
+        return 2025  # Fallback for testing/standalone usage
+
+    def _get_data_model(self) -> SeasonDataModel:
+        """Lazy-initialized data model with current season."""
+        return SeasonDataModel(self.db_path, self.dynasty_id, self.season)
 
     def get_all_teams(self) -> List[Team]:
         """
@@ -38,7 +51,7 @@ class SeasonController:
         Returns:
             List of Team objects with city, nickname, division, conference, etc.
         """
-        return self.data_model.get_all_teams()
+        return self._get_data_model().get_all_teams()
 
     def get_team_by_id(self, team_id: int) -> Optional[Team]:
         """
@@ -50,7 +63,7 @@ class SeasonController:
         Returns:
             Team object or None if not found
         """
-        return self.data_model.get_team_by_id(team_id)
+        return self._get_data_model().get_team_by_id(team_id)
 
     def get_teams_by_division(self, conference: str, division: str) -> List[Team]:
         """
@@ -63,7 +76,7 @@ class SeasonController:
         Returns:
             List of Team objects in the division
         """
-        return self.data_model.get_teams_by_division(conference, division)
+        return self._get_data_model().get_teams_by_division(conference, division)
 
     def get_teams_by_conference(self, conference: str) -> List[Team]:
         """
@@ -75,7 +88,7 @@ class SeasonController:
         Returns:
             List of Team objects in the conference
         """
-        return self.data_model.get_teams_by_conference(conference)
+        return self._get_data_model().get_teams_by_conference(conference)
 
     def get_team_standings(self) -> Dict[str, Any]:
         """
@@ -85,7 +98,7 @@ class SeasonController:
             Standings data structure with division/conference standings.
             Returns empty dict if no season initialized in database.
         """
-        return self.data_model.get_team_standings()
+        return self._get_data_model().get_team_standings()
 
     def get_team_record(self, team_id: int) -> Optional[Dict[str, int]]:
         """
@@ -97,7 +110,7 @@ class SeasonController:
         Returns:
             Dict with 'wins', 'losses', 'ties' or None if no data available
         """
-        return self.data_model.get_team_record(team_id)
+        return self._get_data_model().get_team_record(team_id)
 
     def has_season_data(self) -> bool:
         """
@@ -106,7 +119,7 @@ class SeasonController:
         Returns:
             True if standings data exists, False otherwise
         """
-        return self.data_model.has_season_data()
+        return self._get_data_model().has_season_data()
 
     def get_dynasty_info(self) -> Dict[str, str]:
         """
@@ -115,9 +128,9 @@ class SeasonController:
         Returns:
             Dict with dynasty_id and season
         """
-        return self.data_model.get_dynasty_info()
+        return self._get_data_model().get_dynasty_info()
 
-    def generate_initial_schedule(self, season_start_date: Optional[datetime] = None) -> Tuple[bool, Optional[str]]:
+    def generate_initial_schedule(self, season_year: int, season_start_date: Optional[datetime] = None) -> Tuple[bool, Optional[str]]:
         """
         Generate initial season schedule for a new dynasty.
 
@@ -125,6 +138,7 @@ class SeasonController:
         Should be called once when creating a new dynasty.
 
         Args:
+            season_year: Explicit season year (e.g., 2025) to avoid circular dependency
             season_start_date: Season start datetime (defaults to Sept 5, 8:00 PM)
 
         Returns:
@@ -132,4 +146,6 @@ class SeasonController:
             - (True, None) if successful
             - (False, "error message") if failed
         """
-        return self.data_model.generate_initial_schedule(season_start_date)
+        # Create data model with explicit season_year to avoid circular dependency
+        data_model = SeasonDataModel(self.db_path, self.dynasty_id, season_year)
+        return data_model.generate_initial_schedule(season_year=season_year, season_start_date=season_start_date)

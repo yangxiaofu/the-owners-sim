@@ -93,7 +93,7 @@ class RegularToPlayoffsHandler:
         self._rollback_data: Dict[str, Any] = {}
         self._logger = logging.getLogger(__name__)
 
-    def execute(self, transition: PhaseTransition) -> Any:
+    def execute(self, transition: PhaseTransition, season_year: Optional[int] = None) -> Any:
         """
         Execute the REGULAR_SEASON → PLAYOFFS transition.
 
@@ -109,6 +109,10 @@ class RegularToPlayoffsHandler:
 
         Args:
             transition: PhaseTransition model containing transition metadata
+            season_year: Optional season year to use for this transition.
+                If not provided, uses the year from construction.
+                This allows the same handler instance to be reused
+                for multiple years (Phase 4: Dynamic Handlers).
 
         Returns:
             Any: The created playoff controller instance (ready for simulation)
@@ -126,6 +130,9 @@ class RegularToPlayoffsHandler:
             >>> playoff_controller = handler.execute(transition)
             >>> # playoff_controller is now ready for playoff simulation
         """
+        # Phase 4: Use execution-time year if provided, otherwise use constructor year
+        effective_year = season_year if season_year is not None else self._season_year
+
         # Validate transition
         if transition.from_phase != SeasonPhase.REGULAR_SEASON:
             raise ValueError(
@@ -141,14 +148,14 @@ class RegularToPlayoffsHandler:
         if self._verbose_logging:
             self._logger.info(
                 f"Starting REGULAR_SEASON → PLAYOFFS transition for "
-                f"dynasty '{self._dynasty_id}', season {self._season_year}"
+                f"dynasty '{self._dynasty_id}', season {effective_year}"
             )
 
         # Step 1: Save rollback state
         self._rollback_data = {
             "previous_phase": transition.from_phase,
             "dynasty_id": self._dynasty_id,
-            "season_year": self._season_year
+            "season_year": effective_year
         }
 
         if self._verbose_logging:
@@ -159,15 +166,15 @@ class RegularToPlayoffsHandler:
             if self._verbose_logging:
                 self._logger.info(
                     f"Retrieving final standings for dynasty '{self._dynasty_id}', "
-                    f"season {self._season_year}"
+                    f"season {effective_year}"
                 )
 
-            standings = self._get_standings(self._dynasty_id, self._season_year)
+            standings = self._get_standings(self._dynasty_id, effective_year)
 
             if not standings:
                 raise RuntimeError(
                     f"Failed to retrieve standings for dynasty '{self._dynasty_id}', "
-                    f"season {self._season_year}. Standings data is empty."
+                    f"season {effective_year}. Standings data is empty."
                 )
 
             if self._verbose_logging:

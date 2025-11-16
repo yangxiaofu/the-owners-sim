@@ -393,6 +393,53 @@ class PhaseBoundaryDetector:
 
         return count
 
+    @staticmethod
+    def derive_season_year(date: Date) -> int:
+        """
+        Derive NFL season year from calendar date.
+
+        **SINGLE SOURCE OF TRUTH** for year-from-date conversion.
+
+        NFL Season Year Definition:
+        - Season year = year when that season's preseason started
+        - Preseason starts in early August (typically Aug 1-10)
+        - Season year boundary: August 1st
+
+        Examples:
+            >>> PhaseBoundaryDetector.derive_season_year(Date(2025, 8, 1))
+            2025  # preseason of 2025 season
+            >>> PhaseBoundaryDetector.derive_season_year(Date(2025, 12, 25))
+            2025  # regular season of 2025 season
+            >>> PhaseBoundaryDetector.derive_season_year(Date(2026, 1, 15))
+            2025  # playoffs of 2025 season (in calendar year 2026)
+            >>> PhaseBoundaryDetector.derive_season_year(Date(2026, 3, 15))
+            2025  # offseason after 2025 season
+            >>> PhaseBoundaryDetector.derive_season_year(Date(2026, 7, 31))
+            2025  # still in 2025 offseason
+            >>> PhaseBoundaryDetector.derive_season_year(Date(2026, 8, 1))
+            2026  # preseason of NEW 2026 season
+
+        Args:
+            date: Calendar date to derive season year from
+
+        Returns:
+            NFL season year (year when that season's preseason started)
+
+        Design Notes:
+            - Season year boundary: August 1st
+            - If month >= 8 (Aug-Dec): use current calendar year
+            - If month < 8 (Jan-Jul): use previous calendar year (still in previous season)
+            - This method should be used anywhere season year needs to be derived from a date
+            - Consolidates logic that was previously scattered across multiple modules
+        """
+        # Season year boundary: August 1st
+        # If month >= 8 (Aug-Dec): use current calendar year
+        # If month < 8 (Jan-Jul): use previous calendar year (still in previous season)
+        if date.month >= 8:
+            return date.year
+        else:
+            return date.year - 1
+
     # ==================== Private Helper Methods ====================
 
     def _get_phase_games(

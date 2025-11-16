@@ -25,13 +25,13 @@ class StatsLeadersWidget(QWidget):
     Integrated with StatsAPI for real database data.
     """
 
-    def __init__(self, parent=None, db_path: str = "data/database/nfl_simulation.db", dynasty_id: str = "default", season: int = 2025):
+    def __init__(self, parent=None, db_path: str = "data/database/nfl_simulation.db", dynasty_id: str = "default"):
         super().__init__(parent)
 
         # Store parameters
         self.db_path = db_path
         self.dynasty_id = dynasty_id
-        self.season = season
+        # Note: season property now proxied from parent
 
         # Initialize StatsAPI
         from statistics.stats_api import StatsAPI
@@ -72,6 +72,13 @@ class StatsLeadersWidget(QWidget):
 
         # Load initial data
         self.load_data()
+
+    @property
+    def season(self) -> int:
+        """Current season year (proxied from parent)."""
+        if self.parent() is not None and hasattr(self.parent(), 'season'):
+            return self.parent().season
+        return 2025  # Fallback for testing/standalone usage
 
     def showEvent(self, event):
         """

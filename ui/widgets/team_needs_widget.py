@@ -62,21 +62,20 @@ class TeamNeedsWidget(QWidget):
         'kicker', 'punter'
     ]
 
-    def __init__(self, db_path: str, dynasty_id: str, season: int, parent=None):
+    def __init__(self, db_path: str, dynasty_id: str, parent=None):
         """
         Initialize Team Needs widget.
 
         Args:
             db_path: Path to database
             dynasty_id: Dynasty identifier
-            season: Current season year
             parent: Parent widget
         """
         super().__init__(parent)
 
         self.db_path = db_path
         self.dynasty_id = dynasty_id
-        self.season = season
+        # Note: season property now proxied from parent
 
         # Initialize backend components
         self.needs_analyzer = TeamNeedsAnalyzer(db_path, dynasty_id)
@@ -91,6 +90,13 @@ class TeamNeedsWidget(QWidget):
         self.current_view = "OFFENSE"
 
         self._setup_ui()
+
+    @property
+    def season(self) -> int:
+        """Current season year (proxied from parent)."""
+        if self.parent() is not None and hasattr(self.parent(), 'season'):
+            return self.parent().season
+        return 2025  # Fallback for testing/standalone usage
 
     def _setup_ui(self):
         """Setup UI layout."""

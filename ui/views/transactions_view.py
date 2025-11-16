@@ -31,14 +31,12 @@ class TransactionsView(QWidget):
         self,
         parent=None,
         db_path: str = "data/database/nfl_simulation.db",
-        dynasty_id: str = "default",
-        season: int = 2025
+        dynasty_id: str = "default"
     ):
         super().__init__(parent)
         self.main_window = parent
         self.db_path = db_path
         self.dynasty_id = dynasty_id
-        self.season = season
 
         # Create layout
         layout = QVBoxLayout(self)
@@ -54,7 +52,7 @@ class TransactionsView(QWidget):
 
         # Dynasty info label
         dynasty_label = QLabel(
-            f"Dynasty: {dynasty_id} | Season: {season}"
+            f"Dynasty: {dynasty_id} | Season: {self.season}"
         )
         dynasty_label.setStyleSheet("font-size: 14px; color: #888;")
         dynasty_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -64,12 +62,19 @@ class TransactionsView(QWidget):
 
         # Transaction history widget (main content)
         self.transaction_widget = TransactionHistoryWidget(
-            self,
+            parent=self,
             db_path=db_path,
-            dynasty_id=dynasty_id,
-            season=season
+            dynasty_id=dynasty_id
+            # Note: season property now proxied from parent
         )
         layout.addWidget(self.transaction_widget)
+
+    @property
+    def season(self) -> int:
+        """Current season year (proxied from parent/main window)."""
+        if self.parent() is not None and hasattr(self.parent(), 'season'):
+            return self.parent().season
+        return 2025  # Fallback for testing/standalone usage
 
     def refresh(self):
         """

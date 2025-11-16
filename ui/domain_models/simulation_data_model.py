@@ -52,28 +52,57 @@ class SimulationDataModel:
         Args:
             db_path: Path to SQLite database
             dynasty_id: Dynasty identifier for data isolation
-            season: Current season year (default: 2025)
+            season: Current season year (optional, used only for new dynasty creation)
+                    NOTE: After initialization, use the season property which is the
+                    SINGLE SOURCE OF TRUTH loaded from database via get_latest_state()
         """
         self.db_path = db_path
         self.dynasty_id = dynasty_id
-        self.season = season
+        self._initialization_season = season  # Only used for new dynasty creation
 
         # Own the DynastyStateAPI instance (domain models own their APIs)
         self.dynasty_api = DynastyStateAPI(db_path)
 
+    @property
+    def season(self) -> int:
+        """
+        Current season year (SINGLE SOURCE OF TRUTH).
+
+        Lazy-loads from database using get_latest_state() which automatically
+        retrieves the most recent season without requiring a season filter.
+        This ensures the UI always displays the current season year.
+
+        Returns:
+            int: Current season year from database, or initialization season for new dynasties
+        """
+        if not hasattr(self, '_season_cache'):
+            state = self.dynasty_api.get_latest_state(self.dynasty_id)
+            self._season_cache = state['season'] if state else self._initialization_season
+        return self._season_cache
+
+    def refresh_season(self):
+        """Force reload of season year from database."""
+        if hasattr(self, '_season_cache'):
+            delattr(self, '_season_cache')
+
     def get_state(self) -> Optional[Dict[str, Any]]:
         """
         Load current simulation state from database.
+
+        Uses get_latest_state() which automatically retrieves the most recent
+        season without requiring a season filter. This ensures we always get
+        the current state even after season transitions.
 
         Returns:
             Dict with:
                 - current_date: str (YYYY-MM-DD)
                 - current_phase: str (REGULAR_SEASON, PLAYOFFS, OFFSEASON)
                 - current_week: Optional[int]
+                - season: int (current season year)
                 - last_simulated_game_id: Optional[str]
             or None if no state exists
         """
-        return self.dynasty_api.get_current_state(self.dynasty_id, self.season)
+        return self.dynasty_api.get_latest_state(self.dynasty_id)
 
     def save_state(
         self,

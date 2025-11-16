@@ -29,7 +29,17 @@ class SeasonView(QWidget):
         super().__init__(parent)
         self.main_window = parent
         self.controller = controller
+        self._setup_ui()
 
+    @property
+    def season(self) -> int:
+        """Current season year (proxied from parent/main window)."""
+        if self.parent() is not None and hasattr(self.parent(), 'season'):
+            return self.parent().season
+        return 2025  # Fallback for testing/standalone usage
+
+    def _setup_ui(self):
+        """Setup UI components."""
         # Placeholder layout
         layout = QVBoxLayout()
         layout.setContentsMargins(20, 20, 20, 20)

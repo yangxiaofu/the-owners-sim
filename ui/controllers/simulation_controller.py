@@ -62,13 +62,15 @@ class SimulationController(QObject):
         Args:
             db_path: Path to SQLite database
             dynasty_id: Dynasty identifier
-            season: Current season year
+            season: Current season year (optional, used only for new dynasty creation)
+                    NOTE: After initialization, use the season property which proxies
+                    to SimulationDataModel.season (SINGLE SOURCE OF TRUTH)
         """
         super().__init__()
 
         self.db_path = db_path
         self.dynasty_id = dynasty_id
-        self.season = season
+        self._initialization_season = season  # Only used for new dynasty creation
 
         # ============ SIMULATION SPEED SETTINGS ============
         # Read from centralized config (src/config/simulation_settings.py)
@@ -93,6 +95,19 @@ class SimulationController(QObject):
 
         # Phase 4: Initialize sync validator (will be ready after season_controller init)
         self._sync_validator = None  # Initialized lazily when calendar_manager is available
+
+    @property
+    def season(self) -> int:
+        """
+        Current season year (proxied from state model).
+
+        This property delegates to SimulationDataModel.season which is the
+        SINGLE SOURCE OF TRUTH loaded from database via get_latest_state().
+
+        Returns:
+            int: Current season year from database
+        """
+        return self.state_model.season
 
     def _init_season_controller(self):
         """Initialize or restore SeasonCycleController using already-loaded state."""
@@ -550,7 +565,7 @@ class SimulationController(QObject):
             "date": self.current_date_str,
             "phase": self.season_controller.phase_state.phase.value,
             "week": self.current_week,
-            "season": self.season,
+            "season": self.season,  # Uses property (SSOT from database)
             "dynasty_id": self.dynasty_id
         }
 

@@ -376,10 +376,10 @@ class DynastyInitializationService:
                 season_controller = SeasonController(
                     db_path=self.db_path,
                     dynasty_id=dynasty_id,
-                    season=season
+                    main_window=None  # No main_window during dynasty initialization
                 )
 
-                schedule_success, schedule_error = season_controller.generate_initial_schedule()
+                schedule_success, schedule_error = season_controller.generate_initial_schedule(season_year=season)
 
                 if schedule_success:
                     result['schedule_generated'] = True
@@ -543,7 +543,7 @@ class DynastyInitializationService:
             ...     dynasty_id="my_dynasty",
             ...     current_season=2025,
             ...     next_season=2026
-            ... )
+            ...
             >>> print(f"Ready for season {result['next_season']}")
         """
         start_time = time.time()

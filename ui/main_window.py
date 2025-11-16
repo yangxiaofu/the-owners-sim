@@ -51,7 +51,7 @@ class MainWindow(QMainWindow):
 
         self.db_path = db_path
         self.dynasty_id = dynasty_id
-        self.season = season
+        self._initialization_season = season  # Only used for new dynasty creation
 
         # Window setup
         self.setWindowTitle(f"The Owner's Sim - {dynasty_id}")
@@ -67,34 +67,47 @@ class MainWindow(QMainWindow):
         self._create_toolbar()
         self._create_statusbar()
 
+    @property
+    def season(self) -> int:
+        """
+        Current season year (proxied from simulation controller).
+
+        This property delegates to SimulationController.season which itself
+        delegates to SimulationDataModel.season (SINGLE SOURCE OF TRUTH).
+
+        Returns:
+            int: Current season year from database
+        """
+        return self.simulation_controller.season
+
     def _create_controllers(self):
         """Initialize all controllers for data access."""
         # Season controller for season management and calendar operations
         self.season_controller = SeasonController(
             db_path=self.db_path,
             dynasty_id=self.dynasty_id,
-            season=self.season
+            main_window=self  # Proxy pattern - uses main_window.season property
         )
 
         # League controller for league-wide statistics and standings
         self.league_controller = LeagueController(
             db_path=self.db_path,
             dynasty_id=self.dynasty_id,
-            season=self.season
+            main_window=self  # Proxy pattern - uses main_window.season property
         )
 
         # Calendar controller for event management
         self.calendar_controller = CalendarController(
             db_path=self.db_path,
             dynasty_id=self.dynasty_id,
-            season=self.season
+            main_window=self  # Proxy pattern - uses main_window.season property
         )
 
         # Simulation controller for season progression
         self.simulation_controller = SimulationController(
             db_path=self.db_path,
             dynasty_id=self.dynasty_id,
-            season=self.season
+            season=self._initialization_season  # Only for new dynasty creation
         )
 
         # Playoff controller for playoff bracket and seeding
@@ -119,20 +132,20 @@ class MainWindow(QMainWindow):
         self.team_view = TeamView(
             self,
             db_path=self.db_path,
-            dynasty_id=self.dynasty_id,
-            season=self.season
+            dynasty_id=self.dynasty_id
+            # Note: season property now proxied from parent (MainWindow)
         )
         self.player_view = PlayerView(
             self,
             db_path=self.db_path,
-            dynasty_id=self.dynasty_id,
-            season=self.season
+            dynasty_id=self.dynasty_id
+            # Note: season property now proxied from parent (MainWindow)
         )
         self.offseason_view = OffseasonView(
             self,
             db_path=self.db_path,
-            dynasty_id=self.dynasty_id,
-            season=self.season
+            dynasty_id=self.dynasty_id
+            # Note: season property now proxied from parent (MainWindow)
         )
         self.league_view = LeagueView(self, controller=self.league_controller)
         self.playoff_view = PlayoffView(self, controller=self.playoff_controller)
@@ -140,8 +153,8 @@ class MainWindow(QMainWindow):
         self.transactions_view = TransactionsView(
             self,
             db_path=self.db_path,
-            dynasty_id=self.dynasty_id,
-            season=self.season
+            dynasty_id=self.dynasty_id
+            # Note: season property now proxied from parent (MainWindow)
         )
 
         # Add tabs

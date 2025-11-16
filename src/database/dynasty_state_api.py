@@ -34,6 +34,36 @@ class DynastyStateAPI:
         self.db = DatabaseConnection(db_path)
         self.logger = logging.getLogger(self.__class__.__name__)
 
+    @staticmethod
+    def derive_season_from_date(date_str: str) -> int:
+        """
+        Derive NFL season year from date string.
+
+        This is the database layer's implementation of year-from-date conversion.
+        Should match PhaseBoundaryDetector.derive_season_year() logic.
+
+        Args:
+            date_str: Date in YYYY-MM-DD format
+
+        Returns:
+            NFL season year
+
+        Examples:
+            derive_season_from_date("2025-08-01") → 2025
+            derive_season_from_date("2026-01-15") → 2025  # Playoffs of 2025 season
+            derive_season_from_date("2026-07-31") → 2025  # Offseason of 2025
+            derive_season_from_date("2026-08-01") → 2026  # New season!
+        """
+        from datetime import datetime
+        date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+
+        # Season year boundary: August 1st
+        # Aug-Dec: current year, Jan-Jul: previous year
+        if date_obj.month >= 8:
+            return date_obj.year
+        else:
+            return date_obj.year - 1
+
     def get_current_state(
         self,
         dynasty_id: str,
@@ -144,6 +174,18 @@ class DynastyStateAPI:
             # DEFENSIVE: Delete any existing state first
             self.delete_state(dynasty_id, season)
 
+            # Validate season matches start_date (defensive check)
+            derived_season = self.derive_season_from_date(start_date)
+            if season != derived_season:
+                self.logger.warning(
+                    f"Season/date mismatch during initialization!\n"
+                    f"  Provided season: {season}\n"
+                    f"  Start date: {start_date}\n"
+                    f"  Derived season from date: {derived_season}\n"
+                    f"  Using derived season to maintain consistency."
+                )
+                season = derived_season
+
             # Insert fresh state
             # IMPORTANT: Quote "current_date" to avoid SQLite auto-fill with CURRENT_DATE
             query = """
@@ -194,6 +236,19 @@ class DynastyStateAPI:
             True if successful, False otherwise
         """
         try:
+            # Validate season matches current_date (defensive check)
+            derived_season = self.derive_season_from_date(current_date)
+            if season != derived_season:
+                self.logger.warning(
+                    f"Season/date mismatch detected!\n"
+                    f"  Provided season: {season}\n"
+                    f"  Current date: {current_date}\n"
+                    f"  Derived season from date: {derived_season}\n"
+                    f"  Using derived season to maintain consistency."
+                )
+                # Auto-correct: use derived season
+                season = derived_season
+
             # IMPORTANT: Quote "current_date" to avoid SQLite auto-fill with CURRENT_DATE
             query = """
                 INSERT OR REPLACE INTO dynasty_state

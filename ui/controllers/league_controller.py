@@ -33,23 +33,30 @@ class LeagueController:
     - TeamController: Team-specific data and roster management
     """
 
-    def __init__(self, db_path: str, dynasty_id: str, season: int = 2025):
+    def __init__(self, db_path: str, dynasty_id: str, main_window=None):
         """
         Initialize league controller.
 
         Args:
             db_path: Path to SQLite database
             dynasty_id: Dynasty identifier for data isolation
-            season: Current season year (default: 2025)
+            main_window: Reference to MainWindow for season access (optional)
         """
         self.db_path = db_path
         self.dynasty_id = dynasty_id
-        self.season = season
+        self.main_window = main_window
 
         # Initialize data access components
         self.team_loader = TeamDataLoader()
         self.db_api = DatabaseAPI(db_path)
         self.dynasty_api = DynastyStateAPI(db_path)  # For phase detection
+
+    @property
+    def season(self) -> int:
+        """Current season year (proxied from main window)."""
+        if self.main_window is not None:
+            return self.main_window.season
+        return 2025  # Fallback for testing/standalone usage
 
     def get_all_teams(self) -> List[Team]:
         """

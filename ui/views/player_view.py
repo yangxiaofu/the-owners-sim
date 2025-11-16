@@ -35,21 +35,27 @@ class PlayerView(QWidget):
     Phase 3: Full implementation with player stats and career history
     """
 
-    def __init__(self, parent=None, db_path=None, dynasty_id=None, season=2025):
+    def __init__(self, parent=None, db_path=None, dynasty_id=None):
         super().__init__(parent)
         self.main_window = parent
         self.db_path = db_path or "data/database/nfl_simulation.db"
         self.dynasty_id = dynasty_id or "default"
-        self.season = season
 
         # Initialize controller
-        self.controller = PlayerController(self.db_path, self.dynasty_id, self.season)
+        self.controller = PlayerController(self.db_path, self.dynasty_id, main_window=parent)
 
         # Initialize team loader
         self.team_loader = TeamDataLoader()
 
         # Setup UI
         self._setup_ui()
+
+    @property
+    def season(self) -> int:
+        """Current season year (proxied from parent/main window)."""
+        if self.parent() is not None and hasattr(self.parent(), 'season'):
+            return self.parent().season
+        return 2025  # Fallback for testing/standalone usage
 
     def _setup_ui(self):
         """Setup UI components."""

@@ -56,6 +56,13 @@ class CalendarView(QWidget):
         if self.controller:
             self.load_events()
 
+    @property
+    def season(self) -> int:
+        """Current season year (proxied from parent/main window)."""
+        if self.parent() is not None and hasattr(self.parent(), 'season'):
+            return self.parent().season
+        return 2025  # Fallback for testing/standalone usage
+
     def _get_initial_date(self) -> datetime:
         """
         Get initial date for calendar view.

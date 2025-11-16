@@ -25,16 +25,29 @@ class PlayerController:
     Follows pattern: View → Controller → Domain Model → Database API
     """
 
-    def __init__(self, db_path: str, dynasty_id: str, season: int = 2025):
+    def __init__(self, db_path: str, dynasty_id: str, main_window=None):
         """
         Initialize player controller.
 
         Args:
             db_path: Path to SQLite database
             dynasty_id: Dynasty identifier for data isolation
-            season: Current season year (default: 2025)
+            main_window: Reference to MainWindow for season access (optional)
         """
-        self.data_model = PlayerDataModel(db_path, dynasty_id, season)
+        self.db_path = db_path
+        self.dynasty_id = dynasty_id
+        self.main_window = main_window
+
+    @property
+    def season(self) -> int:
+        """Current season year (proxied from main window)."""
+        if self.main_window is not None:
+            return self.main_window.season
+        return 2025  # Fallback for testing/standalone usage
+
+    def _get_data_model(self) -> PlayerDataModel:
+        """Lazy-initialized data model with current season."""
+        return PlayerDataModel(self.db_path, self.dynasty_id, self.season)
 
     def get_free_agents(self) -> List[Dict[str, Any]]:
         """
@@ -43,7 +56,7 @@ class PlayerController:
         Returns:
             List of player dictionaries formatted for UI display
         """
-        return self.data_model.get_free_agents()
+        return self._get_data_model().get_free_agents()
 
     def get_team_roster(self, team_id: int) -> List[Dict[str, Any]]:
         """
@@ -55,7 +68,7 @@ class PlayerController:
         Returns:
             List of player dictionaries for team roster
         """
-        return self.data_model.get_team_roster(team_id)
+        return self._get_data_model().get_team_roster(team_id)
 
     def get_player_by_id(self, player_id: int) -> Optional[Dict[str, Any]]:
         """
@@ -67,7 +80,7 @@ class PlayerController:
         Returns:
             Player dictionary or None if not found
         """
-        return self.data_model.get_player_by_id(player_id)
+        return self._get_data_model().get_player_by_id(player_id)
 
     def get_dynasty_info(self) -> Dict[str, Any]:
         """
@@ -76,4 +89,4 @@ class PlayerController:
         Returns:
             Dict with dynasty_id
         """
-        return self.data_model.get_dynasty_info()
+        return self._get_data_model().get_dynasty_info()

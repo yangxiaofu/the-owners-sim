@@ -54,6 +54,13 @@ class PlayoffView(QWidget):
         if self.controller:
             self.refresh()
 
+    @property
+    def season(self) -> int:
+        """Current season year (proxied from parent/main window)."""
+        if self.parent() is not None and hasattr(self.parent(), 'season'):
+            return self.parent().season
+        return 2025  # Fallback for testing/standalone usage
+
     def _setup_ui(self) -> None:
         """Build the complete UI layout."""
         main_layout = QVBoxLayout(self)

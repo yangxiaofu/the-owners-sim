@@ -23,12 +23,12 @@ class TeamStatisticsWidget(QWidget):
     Integrated with StatsAPI for real database access.
     """
 
-    def __init__(self, parent=None, team_id: int = None, db_path: str = "data/database/nfl_simulation.db", dynasty_id: str = "default", season: int = 2025):
+    def __init__(self, parent=None, team_id: int = None, db_path: str = "data/database/nfl_simulation.db", dynasty_id: str = "default"):
         super().__init__(parent)
         self.team_id = team_id or 22  # Default to Detroit Lions
         self.db_path = db_path
         self.dynasty_id = dynasty_id
-        self.season = season
+        # Note: season property now proxied from parent
 
         # Initialize StatsAPI
         from statistics.stats_api import StatsAPI
@@ -53,6 +53,13 @@ class TeamStatisticsWidget(QWidget):
 
         # Load initial data
         self.load_team_data()
+
+    @property
+    def season(self) -> int:
+        """Current season year (proxied from parent)."""
+        if self.parent() is not None and hasattr(self.parent(), 'season'):
+            return self.parent().season
+        return 2025  # Fallback for testing/standalone usage
 
     def _create_header(self) -> QHBoxLayout:
         """Create header with team name and stats info."""

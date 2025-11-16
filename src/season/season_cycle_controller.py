@@ -1527,6 +1527,42 @@ class SeasonCycleController:
                 f"Dynasty: {self.dynasty_id}"
             )
 
+    def _derive_season_year_from_date(self, date: Date) -> int:
+        """
+        Derive season year from calendar date.
+
+        Delegates to PhaseBoundaryDetector for centralized logic.
+
+        Args:
+            date: Calendar date
+
+        Returns:
+            NFL season year derived from date
+        """
+        return self.boundary_detector.derive_season_year(date)
+
+    def _validate_season_year_matches_date(self) -> None:
+        """
+        Validate that season_year matches current calendar date.
+
+        Defensive check to catch drift between stored season_year
+        and what should be derived from current_date.
+
+        Raises:
+            RuntimeError: If season_year doesn't match derived year from date
+        """
+        current_date = self.calendar.get_current_date()
+        derived_year = self._derive_season_year_from_date(current_date)
+
+        if self.season_year != derived_year:
+            raise RuntimeError(
+                f"Season year drift detected!\n"
+                f"  Stored season_year: {self.season_year}\n"
+                f"  Current date: {current_date}\n"
+                f"  Derived year from date: {derived_year}\n"
+                f"  Drift amount: {self.season_year - derived_year} years"
+            )
+
     def _auto_recover_year_from_database(self, context: str = "Unknown") -> bool:
         """
         Auto-recover season_year from database if drift detected (Phase 5: Protective Guards).
@@ -1858,26 +1894,28 @@ class SeasonCycleController:
                         f"[NEW_SEASON_INIT] Ready for {self.season_year} season initialization"
                     )
 
-                # CRITICAL FIX: Advance calendar to preseason start date
-                # Without this, calendar stays at offseason date (e.g., Nov 10)
-                # but games are scheduled for preseason start (e.g., Aug 5 of next year)
-                # resulting in games never executing due to date mismatch
-                # Using PhaseBoundaryDetector for centralized boundary logic
-                from src.calendar.date_models import Date
-                preseason_start_date = self.boundary_detector.get_phase_start_date(
-                    SeasonPhase.PRESEASON,
-                    season_year=self.season_year
-                )
+                # Derive season year from current calendar date (natural advancement)
+                # Calendar has already advanced naturally through daily simulation
+                # No need to "jump" calendar - it's already at the correct date
+                current_date = self.calendar.get_current_date()
+                correct_year = self._derive_season_year_from_date(current_date)
 
                 if self.verbose_logging:
-                    old_date = self.calendar.get_current_date()
-                    print(f"[CALENDAR_ADVANCE] Jumping calendar from {old_date} to {preseason_start_date}")
+                    print(f"\n[YEAR_DERIVATION] Current date: {current_date}")
+                    print(f"[YEAR_DERIVATION] Derived season year: {correct_year}")
+                    print(f"[YEAR_DERIVATION] Previous season year: {self.season_year}")
 
-                # Jump calendar forward to preseason start (e.g., Nov 2025 → Aug 2026)
-                self.calendar.reset(preseason_start_date)
-
-                if self.verbose_logging:
-                    print(f"[CALENDAR_ADVANCE] Calendar now at {self.calendar.get_current_date()}")
+                # Update season_year to match calendar (if needed)
+                if correct_year != self.season_year:
+                    self.year_synchronizer.synchronize_year(
+                        correct_year,
+                        f"Derived from calendar date {current_date} (OFFSEASON→PRESEASON)"
+                    )
+                    if self.verbose_logging:
+                        print(f"[YEAR_SYNC] Season year updated: {self.season_year - 1} → {self.season_year}")
+                else:
+                    if self.verbose_logging:
+                        print(f"[YEAR_SYNC] Season year already correct ({correct_year}), no update needed")
 
                 # CRITICAL FIX #2: Update PhaseState with new season year
                 # This ensures SimulationExecutor queries for correct year games
@@ -1930,6 +1968,9 @@ class SeasonCycleController:
                         print(
                             f"[PHASE_TRANSITION] Active controller set: None (phase handlers active)"
                         )
+
+                    # Validate season_year matches date (defensive check)
+                    self._validate_season_year_matches_date()
 
                 except Exception as e:
                     # Rollback database state if transition fails

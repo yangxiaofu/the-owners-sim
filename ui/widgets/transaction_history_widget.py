@@ -32,15 +32,14 @@ class TransactionHistoryWidget(QWidget):
         self,
         parent=None,
         db_path: str = "data/database/nfl_simulation.db",
-        dynasty_id: str = "default",
-        season: int = 2025
+        dynasty_id: str = "default"
     ):
         super().__init__(parent)
 
         # Store parameters
         self.db_path = db_path
         self.dynasty_id = dynasty_id
-        self.season = season
+        # Note: season property now proxied from parent
 
         # Initialize TransactionAPI (follows StatsLeadersWidget pattern)
         import sys
@@ -72,6 +71,13 @@ class TransactionHistoryWidget(QWidget):
 
         # Load initial data
         self.load_transactions()
+
+    @property
+    def season(self) -> int:
+        """Current season year (proxied from parent)."""
+        if self.parent() is not None and hasattr(self.parent(), 'season'):
+            return self.parent().season
+        return 2025  # Fallback for testing/standalone usage
 
     def _create_header(self) -> QHBoxLayout:
         """Create header with title and refresh button."""

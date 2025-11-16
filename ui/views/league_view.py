@@ -42,7 +42,7 @@ class LeagueView(QWidget):
             self.player_controller = PlayerController(
                 controller.db_path,  # Direct access - LeagueController has db_path attribute
                 dynasty_info['dynasty_id'],
-                season=int(dynasty_info['season'])  # Pass season for accurate age calculation
+                main_window=parent  # Use main_window for season property access
             )
         else:
             self.player_controller = None
@@ -81,6 +81,18 @@ class LeagueView(QWidget):
         # Load initial data
         if self.controller:
             self.load_standings()
+
+    @property
+    def season(self) -> int:
+        """Current season year (proxied from controller or parent/main window)."""
+        # Try controller first (league view uses controller pattern)
+        if self.controller:
+            dynasty_info = self.controller.get_dynasty_info()
+            return int(dynasty_info.get('season', 2025))
+        # Fallback to parent if available
+        if self.parent() is not None and hasattr(self.parent(), 'season'):
+            return self.parent().season
+        return 2025  # Fallback for testing/standalone usage
 
     def _create_standings_tab(self) -> QWidget:
         """Create standings tab with 8 division tables in a scrollable area."""
@@ -319,12 +331,11 @@ class LeagueView(QWidget):
         if self.controller:
             dynasty_info = self.controller.get_dynasty_info()
             widget = StatsLeadersWidget(
-                self,
+                parent=self,  # Widget uses season property proxied from parent
                 db_path=self.controller.db_path,
-                dynasty_id=dynasty_info['dynasty_id'],
-                season=int(dynasty_info['season'])
+                dynasty_id=dynasty_info['dynasty_id']
             )
         else:
             # Fallback if no controller (shouldn't happen in production)
-            widget = StatsLeadersWidget(self)
+            widget = StatsLeadersWidget(parent=self)
         return widget

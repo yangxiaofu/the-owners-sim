@@ -348,11 +348,13 @@ class CalendarDataModel:
 
     def get_current_simulation_date(self) -> Optional[str]:
         """
-        Get current simulation date from dynasty_state table.
+        Get current simulation date from dynasty_state table (SSOT).
 
         BUSINESS LOGIC:
         --------------
         This method encapsulates database query logic for simulation state.
+        Uses get_latest_state() to always get the MOST RECENT simulation state
+        regardless of cached season value, preventing stale date bugs.
 
         WHY THIS BELONGS IN DOMAIN MODEL:
         ---------------------------------
@@ -361,10 +363,17 @@ class CalendarDataModel:
         - Reusable across multiple controllers
         - Testable without Qt
 
+        ARCHITECTURAL NOTE:
+        -------------------
+        Uses get_latest_state() instead of get_current_date(dynasty_id, season)
+        to avoid dependency on potentially stale cached season value. This ensures
+        "Jump to Today" always shows the actual current simulation date.
+
         Returns:
             Current simulation date as string (YYYY-MM-DD) or None if not found
         """
-        return self.dynasty_api.get_current_date(self.dynasty_id, self.season)
+        state = self.dynasty_api.get_latest_state(self.dynasty_id)
+        return state['current_date'] if state else None
 
     def get_event_details(self, event_id: str) -> Optional[Dict[str, Any]]:
         """

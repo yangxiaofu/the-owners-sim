@@ -42,15 +42,14 @@ class TeamView(QWidget):
     """
 
     def __init__(self, parent=None, db_path="data/database/nfl_simulation.db",
-                 dynasty_id="default", season=2025):
+                 dynasty_id="default"):
         super().__init__(parent)
         self.main_window = parent
         self.db_path = db_path
         self.dynasty_id = dynasty_id
-        self.season = season
 
         # Initialize controller (follows MVC pattern)
-        self.controller = TeamController(db_path, dynasty_id, season)
+        self.controller = TeamController(db_path, dynasty_id, main_window=parent)
 
         # Load all NFL teams for selector
         self.teams = get_all_teams()
@@ -80,6 +79,13 @@ class TeamView(QWidget):
 
         # Load initial roster for dynasty's team
         self._load_initial_roster()
+
+    @property
+    def season(self) -> int:
+        """Current season year (proxied from parent/main window)."""
+        if self.parent() is not None and hasattr(self.parent(), 'season'):
+            return self.parent().season
+        return 2025  # Fallback for testing/standalone usage
 
     def _create_top_bar(self) -> QHBoxLayout:
         """Create top bar with team selector and dynasty info."""
@@ -135,15 +141,15 @@ class TeamView(QWidget):
         self.staff_tab = StaffTabWidget()
         self.strategy_tab = StrategyTabWidget()
         self.statistics_tab = TeamStatisticsWidget(
+            parent=self,
             team_id=self.current_team_id,
             db_path=self.db_path,
-            dynasty_id=self.dynasty_id,
-            season=self.season
+            dynasty_id=self.dynasty_id
         )
         self.team_needs_tab = TeamNeedsWidget(
             db_path=self.db_path,
             dynasty_id=self.dynasty_id,
-            season=self.season
+            parent=self
         )
 
         # Connect depth chart signal for persistence

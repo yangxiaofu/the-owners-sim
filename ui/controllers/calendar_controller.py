@@ -26,17 +26,36 @@ class CalendarController:
     and event detail access. Follows the pattern: View → Controller → Database
     """
 
-    def __init__(self, db_path: str, dynasty_id: str, season: int = 2025):
+    def __init__(self, db_path: str, dynasty_id: str, main_window=None):
         """
         Initialize calendar controller.
 
         Args:
             db_path: Path to SQLite database
             dynasty_id: Dynasty identifier for data isolation
-            season: Current season year (default: 2025)
+            main_window: Reference to MainWindow for season access (optional)
         """
-        # Initialize domain model (handles all database access)
-        self.data_model = CalendarDataModel(db_path, dynasty_id, season)
+        self.db_path = db_path
+        self.dynasty_id = dynasty_id
+        self.main_window = main_window
+
+    @property
+    def season(self) -> int:
+        """Current season year (proxied from main window)."""
+        if self.main_window is not None:
+            return self.main_window.season
+        return 2025  # Fallback for testing/standalone usage
+
+    def _get_data_model(self) -> CalendarDataModel:
+        """
+        Lazy-initialized data model with current season.
+
+        Caches the CalendarDataModel instance for performance, as the model now
+        uses get_latest_state() which doesn't depend on a specific season value.
+        """
+        if not hasattr(self, '_data_model_cache'):
+            self._data_model_cache = CalendarDataModel(self.db_path, self.dynasty_id, self.season)
+        return self._data_model_cache
 
     def get_events_for_month(
         self,
@@ -55,7 +74,7 @@ class CalendarController:
         Returns:
             List of event dictionaries matching the criteria, ordered by timestamp
         """
-        return self.data_model.get_events_for_month(year, month, event_types)
+        return self._get_data_model().get_events_for_month(year, month, event_types)
 
     def get_event_details(self, event_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -67,7 +86,7 @@ class CalendarController:
         Returns:
             Event dictionary if found, None if not found
         """
-        return self.data_model.get_event_details(event_id)
+        return self._get_data_model().get_event_details(event_id)
 
     def get_dynasty_info(self) -> Dict[str, str]:
         """
@@ -76,7 +95,7 @@ class CalendarController:
         Returns:
             Dict with dynasty_id and season
         """
-        return self.data_model.get_dynasty_info()
+        return self._get_data_model().get_dynasty_info()
 
     def get_current_simulation_date(self) -> Optional[str]:
         """
@@ -85,4 +104,4 @@ class CalendarController:
         Returns:
             Current simulation date as string (YYYY-MM-DD) or None if not found
         """
-        return self.data_model.get_current_simulation_date()
+        return self._get_data_model().get_current_simulation_date()

@@ -150,6 +150,61 @@ class CalendarComponent:
                     }
                 )
 
+    def advance_to(self, target_date: Union[Date, PyDate, str]) -> DateAdvanceResult:
+        """
+        Advance calendar to a specific target date.
+
+        This is a convenience method for advancing to a known future date without
+        manually calculating the number of days. Enforces forward-only progression.
+
+        Args:
+            target_date: Target date to advance to (must be in the future)
+
+        Returns:
+            DateAdvanceResult with advancement details
+
+        Raises:
+            InvalidDateException: If target_date is invalid
+            CalendarStateException: If target_date is not in the future
+
+        Example:
+            # Jump from current date to preseason start
+            calendar.advance_to(Date(2026, 8, 1))
+        """
+        # Normalize target date
+        try:
+            target = normalize_date(target_date)
+        except ValueError as e:
+            raise InvalidDateException(date_string=str(target_date), original_error=e)
+
+        # Get current date (thread-safe)
+        current = self.get_current_date()
+
+        # Calculate days to advance
+        days_to_advance = current.days_until(target)
+
+        # Validate forward progression
+        if days_to_advance < 0:
+            raise CalendarStateException(
+                f"Cannot advance to past date! Current: {current}, Target: {target}",
+                state_info={
+                    "current_date": str(current),
+                    "target_date": str(target),
+                    "days_difference": days_to_advance
+                }
+            )
+        elif days_to_advance == 0:
+            # Already at target date - return no-op result
+            return DateAdvanceResult(
+                start_date=current,
+                end_date=current,
+                days_advanced=0
+            )
+
+        # Advance to target using standard advance() method
+        # This preserves statistics and thread-safety
+        return self.advance(days_to_advance)
+
     def get_current_date(self) -> Date:
         """
         Get the current calendar date.
@@ -195,15 +250,26 @@ class CalendarComponent:
                 "days_since_creation": days_since_creation
             }
 
-    def reset(self, new_date: Union[Date, PyDate, str]) -> None:
+    def reset(self, new_date: Union[Date, PyDate, str], allow_backwards: bool = False) -> None:
         """
         Reset calendar to a new date and clear statistics.
 
+        WARNING: This method clears all calendar statistics and should only be used for:
+        - Initial calendar setup
+        - Testing/debugging scenarios
+        - Intentional complete restarts
+
+        For normal forward time progression, use advance() or advance_to() instead.
+
         Args:
             new_date: New starting date
+            allow_backwards: If False, raises error if new_date is before current date.
+                           Set to True only for testing/debugging scenarios.
+                           Default: False (enforce forward-only progression)
 
         Raises:
             InvalidDateException: If new_date is invalid
+            CalendarStateException: If new_date is in the past and allow_backwards=False
         """
         try:
             normalized_date = normalize_date(new_date)
@@ -211,6 +277,20 @@ class CalendarComponent:
             raise InvalidDateException(date_string=str(new_date), original_error=e)
 
         with self._lock:
+            # Validate forward progression unless explicitly allowed
+            if not allow_backwards:
+                current = self._current_date
+                if normalized_date < current:
+                    raise CalendarStateException(
+                        f"Cannot reset to past date! Current: {current}, New: {normalized_date}. "
+                        f"Use advance_to() for forward progression, or pass allow_backwards=True for testing.",
+                        state_info={
+                            "current_date": str(current),
+                            "new_date": str(normalized_date),
+                            "allow_backwards": allow_backwards
+                        }
+                    )
+
             self._current_date = normalized_date
             self._creation_date = normalized_date
             self._total_days_advanced = 0

@@ -314,7 +314,7 @@ class SeasonDataModel:
 
     # ==================== Schedule Generation ====================
 
-    def generate_initial_schedule(self, season_start_date: Optional[datetime] = None) -> Tuple[bool, Optional[str]]:
+    def generate_initial_schedule(self, season_year: int, season_start_date: Optional[datetime] = None) -> Tuple[bool, Optional[str]]:
         """
         Generate initial season schedule for a new dynasty.
 
@@ -328,6 +328,7 @@ class SeasonDataModel:
         4. Stores events in event database with dynasty isolation
 
         Args:
+            season_year: Explicit season year to use for schedule generation
             season_start_date: Optional datetime for season start
                               Defaults to Sept 4, 12:00 AM (one day before first games)
                               This allows Sept 5 games to be simulated immediately
@@ -343,7 +344,7 @@ class SeasonDataModel:
             - Safe to call multiple times (idempotent if schedule exists)
 
         Example:
-            success, error = model.generate_initial_schedule()
+            success, error = model.generate_initial_schedule(season_year=2025)
             if success:
                 print("Schedule ready!")
             else:
@@ -353,12 +354,12 @@ class SeasonDataModel:
             # Use default season start date if not provided (Aug 1, 12:00 AM)
             # Start dynasty at beginning of preseason
             if not season_start_date:
-                season_start_date = datetime(self.season, 8, 1, 0, 0)
+                season_start_date = datetime(season_year, 8, 1, 0, 0)
 
             # ALWAYS initialize dynasty state with season start date
             # This ensures dynasty_state exists even if schedule already generated
             # Prevents race condition where SimulationController creates it with wrong date
-            self._initialize_dynasty_state(season_start_date)
+            self._initialize_dynasty_state(season_year, season_start_date)
 
             # Check if schedule already exists (avoid duplicate generation)
             existing_games = self.event_api.get_events_by_dynasty(
@@ -366,8 +367,13 @@ class SeasonDataModel:
                 event_type="GAME"
             )
 
+            print(f"[DEBUG] Existing games check: type={type(existing_games)}, len={len(existing_games) if hasattr(existing_games, '__len__') else 'N/A'}, bool={bool(existing_games)}")
+
             if existing_games:
+                print(f"[DEBUG] Schedule already exists ({len(existing_games)} games found), skipping generation")
                 return (True, None)  # Schedule already exists, nothing to do
+
+            print(f"[DEBUG] No existing games found, proceeding with schedule generation for dynasty '{self.dynasty_id}', season {season_year}")
 
             # Create schedule generator
             generator = RandomScheduleGenerator(
@@ -376,9 +382,9 @@ class SeasonDataModel:
             )
 
             # === STEP 1: Generate PRESEASON schedule (48 games, 3 weeks) ===
-            print(f"📅 Generating preseason schedule ({self.season})...")
+            print(f"📅 Generating preseason schedule ({season_year})...")
             preseason_events = generator.generate_preseason(
-                season_year=self.season,
+                season_year=season_year,
                 start_date=None  # Uses calculated preseason start (~3.5 weeks before regular season)
             )
 
@@ -388,13 +394,22 @@ class SeasonDataModel:
             print(f"✅ Preseason schedule generated: {len(preseason_events)} games")
 
             # === STEP 2: Generate REGULAR SEASON schedule (272 games, 17 weeks) ===
-            print(f"📅 Generating regular season schedule ({self.season})...")
+            print(f"📅 Generating regular season schedule ({season_year})...")
             schedule_events = generator.generate_season(
-                season_year=self.season,
+                season_year=season_year,
                 start_date=None  # Uses dynamic Labor Day calculation (first Thursday after Labor Day)
             )
 
             if schedule_events:
+                print(f"✅ Regular season schedule generated: {len(schedule_events)} games")
+
+                # Verify games were actually stored in database
+                stored_games = self.event_api.get_events_by_dynasty(
+                    dynasty_id=self.dynasty_id,
+                    event_type="GAME"
+                )
+                print(f"[DEBUG] Verification: {len(stored_games)} total games now in database")
+
                 return (True, None)
             else:
                 return (False, "Schedule generation returned no events")
@@ -406,7 +421,7 @@ class SeasonDataModel:
             traceback.print_exc()
             return (False, error_msg)
 
-    def _initialize_dynasty_state(self, season_start_date: datetime):
+    def _initialize_dynasty_state(self, season_year: int, season_start_date: datetime):
         """
         Initialize dynasty_state table with season start date.
 
@@ -416,6 +431,7 @@ class SeasonDataModel:
         - Proper error handling
 
         Args:
+            season_year: Explicit season year for dynasty state initialization
             season_start_date: Season start datetime
 
         Notes:
@@ -432,7 +448,7 @@ class SeasonDataModel:
         # Regular season starts in early September
         success = self.dynasty_api.initialize_state(
             dynasty_id=self.dynasty_id,
-            season=self.season,
+            season=season_year,
             start_date=date_str,
             start_week=1,
             start_phase=SeasonPhase.PRESEASON.value  # August 1 start = preseason, not regular season
