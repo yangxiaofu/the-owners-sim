@@ -11,7 +11,7 @@ Responsibilities:
 - Cache results for performance
 """
 
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Optional, Dict, Any, List, Tuple, Callable
 from datetime import datetime, timedelta
 import logging
 
@@ -55,7 +55,7 @@ class PhaseBoundaryDetector:
         self,
         event_db: EventDatabaseAPI,
         dynasty_id: str,
-        season_year: int,
+        get_season_year: Callable[[], int],
         db: Optional[UnifiedDatabaseAPI] = None,
         calendar: Optional[Any] = None,
         logger: Optional[logging.Logger] = None,
@@ -67,7 +67,7 @@ class PhaseBoundaryDetector:
         Args:
             event_db: Event database API for querying game events
             dynasty_id: Dynasty context for isolation
-            season_year: NFL season year (e.g., 2024 for 2024-25 season)
+            get_season_year: Callable that returns current season year (SSOT from controller)
             db: Optional unified database API (if available)
             calendar: Optional calendar manager for milestone queries
             logger: Optional logger instance
@@ -75,7 +75,7 @@ class PhaseBoundaryDetector:
         """
         self.event_db = event_db
         self.dynasty_id = dynasty_id
-        self.season_year = season_year
+        self._get_season_year = get_season_year
         self.db = db
         self.calendar = calendar
         self.logger = logger or logging.getLogger(__name__)
@@ -86,8 +86,22 @@ class PhaseBoundaryDetector:
 
         self.logger.info(
             f"PhaseBoundaryDetector initialized for dynasty={dynasty_id}, "
-            f"season_year={season_year}, caching={'enabled' if cache_results else 'disabled'}"
+            f"season_year=<dynamic>, caching={'enabled' if cache_results else 'disabled'}"
         )
+
+    @property
+    def season_year(self) -> int:
+        """
+        Get current season year from controller (SSOT).
+
+        This property dynamically queries the controller's season_year,
+        ensuring the detector always uses the current year even after
+        season transitions (e.g., OFFSEASON → PRESEASON year increment).
+
+        Returns:
+            Current season year from controller
+        """
+        return self._get_season_year()
 
     def get_last_game_date(self, phase: SeasonPhase) -> Date:
         """
@@ -129,6 +143,21 @@ class PhaseBoundaryDetector:
 
         # Convert timestamp to Date (timestamp is already a datetime object from EventDatabaseAPI)
         result = self._timestamp_to_date(timestamp)
+
+        # FAIL-LOUD VALIDATION: Check year consistency
+        if result.year != self.season_year:
+            error_msg = (
+                f"CRITICAL ERROR: Year mismatch detected in {phase.value} completion check!\n"
+                f"Detector season_year: {self.season_year}\n"
+                f"Last game date year: {result.year}\n"
+                f"Last game date: {result}\n"
+                f"Game ID: {last_game.get('game_id', 'unknown')}\n"
+                f"Dynasty: {self.dynasty_id}\n"
+                f"This indicates season_year desynchronization or stale cache.\n"
+                f"The PhaseBoundaryDetector must use current season_year from controller (SSOT)."
+            )
+            self.logger.error(error_msg)
+            raise ValueError(error_msg)
 
         self.logger.info(
             f"Last {phase.value} game date: {result} "

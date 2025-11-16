@@ -75,7 +75,7 @@ class PhaseCompletionChecker:
 
     # NFL season constants
     REGULAR_SEASON_GAME_COUNT = 272  # 32 teams × 17 games / 2
-    PRESEASON_GAME_COUNT = 100  # DIAGNOSTIC: Changed from 48 to test which check triggers early exit
+    PRESEASON_GAME_COUNT = 48  # 32 teams × 3 preseason games / 2
 
     def __init__(
         self,
@@ -189,76 +189,58 @@ class PhaseCompletionChecker:
         """
         Check if preseason is complete using pure logic.
 
-        This method determines preseason completion using two complementary
-        criteria (both are checked, either can trigger completion):
+        This method determines preseason completion using ONE SINGLE criterion:
 
-        1. Primary Check - Game Count:
+        1. Game Count Check:
            - NFL preseason = 32 teams × 3 games / 2 = 48 total games
            - If games_played >= 48, preseason is definitely complete
            - Most reliable indicator as it's based on concrete game results
 
-        2. Fallback Check - Date Progression:
-           - If current date > last scheduled preseason game date, preseason should be complete
-           - Handles edge cases where game counting might be unreliable
-           - Ensures calendar progression triggers transition even if game count off
-
-        The dual-criteria approach provides robustness against data inconsistencies
-        while maintaining clear, testable logic.
+        NO FALLBACK LOGIC:
+        - Fallback date checks silently hide year mismatch bugs
+        - If games haven't been played, preseason is NOT complete
+        - Fail loud, not silent
 
         Returns:
-            bool: True if preseason is complete (48+ games OR date past
-                last game), False otherwise.
+            bool: True if 48+ games played, False otherwise.
 
         Example:
             >>> checker.is_preseason_complete()
             True  # If 48 games played
 
             >>> checker.is_preseason_complete()
-            True  # If current date is Sept 5 and last game was Sept 3
-
-            >>> checker.is_preseason_complete()
-            False  # If 30 games played and current date is Aug 25
+            False  # If only 30 games played (even if date past end)
 
         Thread Safety:
             Thread-safe. No mutable state - all data retrieved via injected
             callables at invocation time.
 
         Performance:
-            O(1) time complexity. Performs 2 function calls and 2 comparisons.
+            O(1) time complexity. Performs 1 function call and 1 comparison.
         """
         # Diagnostic entry
         print("\n" + "="*80)
         print("[PHASE_COMPLETION_CHECK] is_preseason_complete() called")
         print("="*80)
 
-        # Primary check: Game count (most reliable)
+        # Game count check (ONLY check - NO FALLBACKS)
         games_played = self._get_games_played()
         print(f"[PHASE_COMPLETION_CHECK] games_played: {games_played}")
         print(f"[PHASE_COMPLETION_CHECK] PRESEASON_GAME_COUNT: {self.PRESEASON_GAME_COUNT}")
         print(f"[PHASE_COMPLETION_CHECK] Check: {games_played} >= {self.PRESEASON_GAME_COUNT}? {games_played >= self.PRESEASON_GAME_COUNT}")
 
         if games_played >= self.PRESEASON_GAME_COUNT:
-            print(f"[PHASE_COMPLETION_CHECK] ✓ PRIMARY CHECK PASSED - Preseason complete!")
+            print(f"[PHASE_COMPLETION_CHECK] ✓ GAME COUNT CHECK PASSED - Preseason complete!")
             print(f"[PHASE_COMPLETION_CHECK] → Returning True")
             print("="*80 + "\n")
             return True
 
-        # Fallback check: Date progression (handles edge cases)
-        print(f"[PHASE_COMPLETION_CHECK] Primary check failed ({games_played} < {self.PRESEASON_GAME_COUNT})")
-        print(f"[PHASE_COMPLETION_CHECK] Trying fallback check (date progression)...")
-
-        current_date = self._get_current_date()
-        last_game_date = self._get_last_preseason_game_date()
-
-        print(f"[PHASE_COMPLETION_CHECK] current_date: {current_date}")
-        print(f"[PHASE_COMPLETION_CHECK] last_game_date: {last_game_date}")
-        print(f"[PHASE_COMPLETION_CHECK] Check: {current_date} > {last_game_date}? {current_date > last_game_date}")
-
-        # Preseason complete if we've passed the last scheduled preseason game date
-        result = current_date > last_game_date
-        print(f"[PHASE_COMPLETION_CHECK] → Returning {result} (fallback check)")
+        # NO FALLBACK - Games must be played to completion
+        print(f"[PHASE_COMPLETION_CHECK] Game count check failed ({games_played} < {self.PRESEASON_GAME_COUNT})")
+        print(f"[PHASE_COMPLETION_CHECK] NO FALLBACK - Preseason NOT complete")
+        print(f"[PHASE_COMPLETION_CHECK] → Returning False")
         print("="*80 + "\n")
-        return result
+        return False
 
     def is_playoffs_complete(self) -> bool:
         """
@@ -354,11 +336,19 @@ class PhaseCompletionChecker:
         current_date = self._get_current_date()
         preseason_start = self._calculate_preseason_start()
 
-        # Debug logging to diagnose comparison issue
-        print(f"\n[OFFSEASON_COMPLETE_CHECK]")
-        print(f"  current_date: {current_date} (type: {type(current_date).__name__})")
-        print(f"  preseason_start: {preseason_start} (type: {type(preseason_start).__name__})")
-        print(f"  current_date >= preseason_start: {current_date >= preseason_start}")
+        # DIAGNOSTIC: Comprehensive offseason completion check
+        print(f"\n{'='*80}")
+        print(f"[OFFSEASON_COMPLETE_CHECK] DETAILED ANALYSIS")
+        print(f"{'='*80}")
+        print(f"  current_date: {current_date}")
+        print(f"  current_date type: {type(current_date).__name__}")
+        print(f"  current_date repr: {repr(current_date)}")
+        print(f"  preseason_start: {preseason_start}")
+        print(f"  preseason_start type: {type(preseason_start).__name__}")
+        print(f"  preseason_start repr: {repr(preseason_start)}")
+        print(f"  Comparison: {current_date} >= {preseason_start}")
+        print(f"  Result: {current_date >= preseason_start}")
+        print(f"{'='*80}\n")
 
         # Offseason is complete when we've reached preseason start date
         return current_date >= preseason_start
