@@ -80,6 +80,11 @@ class PlayerView(QWidget):
         # Connect signal AFTER populating
         self.team_selector.currentIndexChanged.connect(self._on_team_changed)
 
+        # Trigger initial load after signal is connected (deferred to avoid premature DB access)
+        # This loads the default selection ("Free Agents" at index 0) after UI is ready
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(100, lambda: self._on_team_changed(self.team_selector.currentIndex()))
+
         # Position filter
         position_label = QLabel("Position:")
         self.position_filter = QComboBox()
@@ -118,13 +123,9 @@ class PlayerView(QWidget):
         layout.addWidget(self.player_table)
 
         # Status label
-        self.status_label = QLabel("")
+        self.status_label = QLabel("Select a team or Free Agents to view players")
         self.status_label.setStyleSheet("color: #666;")
         layout.addWidget(self.status_label)
-
-        # Trigger initial load after all UI components are created
-        # (Signal may not fire when first item added to empty combo)
-        self._on_team_changed(0)
 
     def _populate_team_selector(self):
         """Populate team selector with all NFL teams + free agents."""

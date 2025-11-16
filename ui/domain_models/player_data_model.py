@@ -187,30 +187,45 @@ class PlayerDataModel:
         """
         import json
 
-        # Convert sqlite3.Row to dict if needed
-        if hasattr(player, 'keys'):
-            player = dict(zip(player.keys(), player))
+        # Convert sqlite3.Row to dict if needed (player is already a dict from database API)
+        if not isinstance(player, dict) and hasattr(player, 'keys'):
+            player = dict(player)  # Correct conversion for sqlite3.Row objects
 
         # Parse JSON fields if they're strings
         positions = player.get('positions', '[]')
         if isinstance(positions, str):
-            # Handle empty strings by using default
-            positions = json.loads(positions) if positions.strip() else []
+            try:
+                # Handle empty strings by using default
+                positions = json.loads(positions) if positions.strip() else []
+            except json.JSONDecodeError as e:
+                print(f"[WARNING PlayerDataModel] Failed to parse positions JSON for player {player.get('player_id', 'unknown')}: {e}")
+                positions = []
 
         attributes = player.get('attributes', '{}')
         if isinstance(attributes, str):
-            # Handle empty strings by using default
-            attributes = json.loads(attributes) if attributes.strip() else {}
+            try:
+                # Handle empty strings by using default
+                attributes = json.loads(attributes) if attributes.strip() else {}
+            except json.JSONDecodeError as e:
+                print(f"[WARNING PlayerDataModel] Failed to parse attributes JSON for player {player.get('player_id', 'unknown')}: {e}")
+                attributes = {}
 
         # Get primary position (first in list) and convert to display format
         primary_position_raw = positions[0] if positions else "N/A"
         primary_position = get_position_abbreviation(primary_position_raw) if primary_position_raw != "N/A" else "N/A"
 
-        # Get overall rating from attributes
-        overall = attributes.get('overall', 0)
+        # Get overall rating from attributes (ensure it's an int)
+        try:
+            overall = int(attributes.get('overall', 0))
+        except (ValueError, TypeError):
+            overall = 0
 
         # Calculate age - use birthdate if available, otherwise estimate from years_pro
-        years_pro = player.get('years_pro', 0)
+        # Ensure years_pro is an integer
+        try:
+            years_pro = int(player.get('years_pro', 0))
+        except (ValueError, TypeError):
+            years_pro = 0
         birthdate = player.get('birthdate')
 
         # Get current simulation date
@@ -229,8 +244,11 @@ class PlayerDataModel:
         last_name = player.get('last_name', '')
         full_name = f"{first_name} {last_name}"
 
-        # Get team status
-        team_id = player.get('team_id', 0)
+        # Get team status (ensure team_id is an integer)
+        try:
+            team_id = int(player.get('team_id', 0))
+        except (ValueError, TypeError):
+            team_id = 0
         status = "FREE AGENT" if team_id == 0 else "ACTIVE"
 
         # Generate contract desires for free agents, show N/A for team players
@@ -244,9 +262,20 @@ class PlayerDataModel:
             contract_str = 'N/A'
             salary_str = 'N/A'
 
+        # Ensure numeric fields are properly typed
+        try:
+            player_id = int(player.get('player_id', 0))
+        except (ValueError, TypeError):
+            player_id = 0
+
+        try:
+            number = int(player.get('number', 0))
+        except (ValueError, TypeError):
+            number = 0
+
         return {
-            'player_id': player.get('player_id'),
-            'number': player.get('number', 0),
+            'player_id': player_id,
+            'number': number,
             'name': full_name,
             'first_name': first_name,
             'last_name': last_name,

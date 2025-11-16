@@ -61,8 +61,8 @@ class RosterTableModel(QAbstractTableModel):
         self._checked_rows: set = set()  # Track which rows are checked
         self._headers = ["Sel", "#", "Name", "Pos", "Age", "OVR", "Contract", "Salary", "Stat"]
 
-        # Load mock data
-        self._load_mock_data()
+        # Start with empty table - data will be loaded via set_roster()
+        # (Mock data removed to prevent confusion with real player data)
 
     def _load_mock_data(self):
         """Load hardcoded sample player data."""
