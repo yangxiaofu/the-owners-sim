@@ -9,6 +9,7 @@ from typing import Dict, List, Any, Optional
 import logging
 from datetime import datetime, timedelta
 import json
+import sqlite3
 
 from .connection import DatabaseConnection
 from stores.standings_store import EnhancedTeamStanding, NFL_DIVISIONS, NFL_CONFERENCES
@@ -285,6 +286,44 @@ class DatabaseAPI:
         
         return game_list
 
+    def get_playoff_games_by_round(
+        self,
+        dynasty_id: str,
+        season: int,
+        round_name: str,
+        conn: Optional[sqlite3.Connection] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all playoff games for a specific round.
+
+        Args:
+            dynasty_id: Dynasty identifier
+            season: Season year
+            round_name: Round name (e.g., 'wild_card', 'divisional', 'conference', 'super_bowl')
+            conn: Optional database connection (uses internal connection if not provided)
+
+        Returns:
+            List of game dictionaries with game_id, teams, and scores
+        """
+        query = """
+            SELECT game_id, away_team_id, home_team_id, away_score, home_score
+            FROM games
+            WHERE dynasty_id = ? AND season = ? AND season_type = 'playoffs'
+            AND game_id LIKE ?
+        """
+        game_id_pattern = f"playoff_{season}_{round_name}_%"
+
+        if conn:
+            cursor = conn.execute(query, (dynasty_id, season, game_id_pattern))
+            results = [dict(row) for row in cursor.fetchall()]
+        else:
+            results = self.db_connection.execute_query(
+                query,
+                (dynasty_id, season, game_id_pattern)
+            )
+
+        return results if results else []
+
     def get_games_by_date_range(
         self,
         dynasty_id: str,
@@ -329,6 +368,78 @@ class DatabaseAPI:
             (dynasty_id, start_timestamp_ms, end_timestamp_ms)
         )
         return results if results else []
+
+    def get_team_opponents(
+        self,
+        dynasty_id: str,
+        team_id: int,
+        season: int,
+        season_type: str = "regular_season",
+        conn: Optional[sqlite3.Connection] = None
+    ) -> List[int]:
+        """
+        Get list of opponent team_ids that a team faced in a season.
+
+        This method queries the games table to find all teams that played
+        against the specified team, returning opponents in the order they
+        were played (by week). Useful for head-to-head tiebreaker calculations,
+        schedule analysis, and strength of schedule calculations.
+
+        Args:
+            dynasty_id: Dynasty identifier
+            team_id: Team identifier (1-32)
+            season: Season year
+            season_type: Type of season (default: "regular_season")
+            conn: Optional database connection (uses internal connection if not provided)
+
+        Returns:
+            List of opponent team_ids in the order they were played.
+            Returns empty list if no games found.
+
+        Example:
+            >>> api = DatabaseAPI()
+            >>> opponents = api.get_team_opponents("my_dynasty", 7, 2024)
+            >>> print(f"Team 7 played against: {opponents}")
+            Team 7 played against: [3, 12, 15, 20, 8, 14, 9, 22, 5, 18, 11, 27, 4, 16, 25, 30, 1]
+        """
+        query = '''
+            SELECT DISTINCT
+                CASE
+                    WHEN home_team_id = ? THEN away_team_id
+                    ELSE home_team_id
+                END as opponent_id,
+                week
+            FROM games
+            WHERE dynasty_id = ?
+              AND season = ?
+              AND season_type = ?
+              AND (home_team_id = ? OR away_team_id = ?)
+            ORDER BY week
+        '''
+
+        # Use provided connection or get internal connection
+        should_close = conn is None
+        if conn is None:
+            conn = self.db_connection.get_connection()
+
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, (team_id, dynasty_id, season, season_type, team_id, team_id))
+            results = cursor.fetchall()
+
+            # Extract opponent_ids from results (first column)
+            opponent_ids = [row[0] for row in results]
+
+            self.logger.debug(
+                f"Found {len(opponent_ids)} opponents for team_id={team_id}, "
+                f"dynasty_id={dynasty_id}, season={season}, season_type={season_type}"
+            )
+
+            return opponent_ids
+
+        finally:
+            if should_close:
+                conn.close()
 
     def get_team_standing(self, dynasty_id: str, team_id: int, season: int, season_type: str = "regular_season") -> Optional[EnhancedTeamStanding]:
         """
@@ -381,12 +492,12 @@ class DatabaseAPI:
     def _get_empty_standings(self) -> Dict[str, Any]:
         """
         Get empty standings structure for new seasons.
-        
+
         Returns:
             Empty standings with all teams at 0-0
         """
         standings_data = {}
-        
+
         # Initialize all divisions with 0-0 records
         for division, team_ids in NFL_DIVISIONS.items():
             division_teams = []
@@ -397,7 +508,7 @@ class DatabaseAPI:
                     'standing': standing
                 })
             standings_data[division] = division_teams
-        
+
         # Initialize conferences
         conferences_data = {}
         for conference, team_ids in NFL_CONFERENCES.items():
@@ -409,7 +520,7 @@ class DatabaseAPI:
                     'standing': standing
                 })
             conferences_data[conference] = conference_teams
-        
+
         # Initialize overall
         overall_teams = []
         for team_id in range(1, 33):
@@ -418,7 +529,7 @@ class DatabaseAPI:
                 'team_id': team_id,
                 'standing': standing
             })
-        
+
         return {
             'divisions': standings_data,
             'conferences': conferences_data,

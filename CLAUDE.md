@@ -143,6 +143,18 @@ python demo/offseason_demo/offseason_demo.py  # Interactive NFL offseason simula
 # - Calendar advancement with automatic deadline triggering
 # See demo/offseason_demo/README.md for detailed usage
 
+# Draft Order Demo
+PYTHONPATH=src python demo/draft_order_demo/draft_order_demo.py  # Interactive draft order calculation demo
+# Terminal-based interactive NFL draft order demonstration:
+# - View complete 7-round draft order (262 picks)
+# - Display Round 1 with team names, records, SOS values
+# - View all picks for any team
+# - Show detailed SOS calculations for any team
+# - Explain tiebreaker rules and draft order logic
+# - Color-coded output by playoff elimination round
+# See demo/draft_order_demo/README.md for detailed usage
+# Demonstrates: draft order calculation, SOS tiebreakers, playoff-based ordering
+
 # Offseason AI Logic Demos (Phase 2 Complete)
 PYTHONPATH=src python demo/ai_logic/demo_franchise_tag_ai.py  # AI franchise tag candidate evaluation
 PYTHONPATH=src python demo/ai_logic/demo_free_agency_ai.py  # AI free agency simulation (30-day 3-tier system)

@@ -293,6 +293,19 @@ class SimulationWorkflow:
         away_score = random.randint(10, 35)
         home_score = random.randint(10, 35)
 
+        # Prevent ties in playoff games (NFL playoffs cannot end in ties)
+        is_playoff = (hasattr(game_event, 'season_type') and
+                      game_event.season_type == 'playoffs') or \
+                     (hasattr(game_event, 'game_id') and
+                      'playoff_' in str(game_event.game_id))
+
+        if is_playoff and away_score == home_score:
+            # Add 1 to random team to break tie (50/50 chance)
+            if random.random() < 0.5:
+                away_score += 1
+            else:
+                home_score += 1
+
         # Fake game data matching real simulation structure
         fake_data = {
             'away_score': away_score,

@@ -635,6 +635,47 @@ class DatabaseConnection:
             )
         ''')
 
+        # Draft order table (NFL draft pick order after playoffs)
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS draft_order (
+                -- Primary Key
+                pick_id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                -- Dynasty Context
+                dynasty_id TEXT NOT NULL,
+                season INTEGER NOT NULL,
+
+                -- Pick Position
+                round_number INTEGER NOT NULL CHECK(round_number BETWEEN 1 AND 7),
+                pick_in_round INTEGER NOT NULL CHECK(pick_in_round >= 1),
+                overall_pick INTEGER NOT NULL CHECK(overall_pick >= 1),
+
+                -- Pick Ownership
+                original_team_id INTEGER NOT NULL CHECK(original_team_id BETWEEN 1 AND 32),
+                current_team_id INTEGER NOT NULL CHECK(current_team_id BETWEEN 1 AND 32),
+
+                -- Pick Execution
+                player_id INTEGER,
+                draft_class_id TEXT,
+                is_executed INTEGER DEFAULT 0,
+
+                -- Compensatory Picks
+                is_compensatory INTEGER DEFAULT 0,
+                comp_round_end INTEGER DEFAULT 0,
+
+                -- Trade Information
+                acquired_via_trade BOOLEAN NOT NULL DEFAULT FALSE,
+                trade_date TIMESTAMP,
+                original_trade_id TEXT,
+
+                -- Metadata
+                created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+                updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
+
+                FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE
+            )
+        ''')
+
         # Create indexes for performance
         conn.execute("CREATE INDEX IF NOT EXISTS idx_games_dynasty_season ON games(dynasty_id, season, week)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_games_teams ON games(home_team_id, away_team_id)")
@@ -690,6 +731,14 @@ class DatabaseConnection:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_contract_details_contract ON contract_year_details(contract_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_contract_details_season ON contract_year_details(season_year)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_contract_details_contract_year ON contract_year_details(contract_id, contract_year)")
+
+        # Draft order indexes
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_draft_order_dynasty ON draft_order(dynasty_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_draft_order_season ON draft_order(season)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_draft_order_dynasty_season ON draft_order(dynasty_id, season)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_draft_order_overall ON draft_order(overall_pick)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_draft_order_team ON draft_order(current_team_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_draft_order_round ON draft_order(round_number, pick_in_round)")
 
         # Initialize standings for dynasties with games but missing standings
         self._initialize_standings_if_empty(conn)

@@ -195,4 +195,62 @@ class MilestoneType:
     SCHEDULE_RELEASE = "SCHEDULE_RELEASE"
     HALL_OF_FAME_INDUCTION = "HALL_OF_FAME_INDUCTION"
     DRAFT_ORDER_FINALIZED = "DRAFT_ORDER_FINALIZED"
+    DRAFT_ORDER_SET = "DRAFT_ORDER_SET"
     COMP_PICKS_AWARDED = "COMP_PICKS_AWARDED"
+
+
+def create_draft_order_milestone(
+    season_year: int,
+    event_date: Date,
+    dynasty_id: str,
+    total_picks: int = 224,
+    event_id: Optional[str] = None
+) -> MilestoneEvent:
+    """
+    Create a milestone event for draft order calculation.
+
+    This milestone marks when the NFL draft order has been calculated
+    and set for the upcoming draft. Typically occurs after the Super Bowl
+    when all playoff results are finalized.
+
+    Args:
+        season_year: NFL season year for the draft
+        event_date: Date when draft order was calculated
+        dynasty_id: Dynasty context for isolation
+        total_picks: Total number of picks in the draft (default: 224 base picks, compensatory picks not yet implemented)
+        event_id: Optional unique identifier
+
+    Returns:
+        MilestoneEvent configured for draft order calculation
+
+    Example:
+        >>> from calendar.date_models import Date
+        >>> milestone = create_draft_order_milestone(
+        ...     season_year=2025,
+        ...     event_date=Date(2025, 2, 15),
+        ...     dynasty_id="my_dynasty",
+        ...     total_picks=262
+        ... )
+        >>> result = milestone.simulate()
+        >>> print(result.data['message'])
+        Milestone reached: 2025 NFL Draft Order Set
+    """
+    description = f"{season_year} NFL Draft Order Set"
+
+    metadata = {
+        "season_year": season_year,
+        "total_picks": total_picks,
+        "calculation_timestamp": datetime.now().isoformat(),
+        "rounds": 7,
+        "picks_per_round": total_picks // 7
+    }
+
+    return MilestoneEvent(
+        milestone_type=MilestoneType.DRAFT_ORDER_SET,
+        description=description,
+        season_year=season_year,
+        event_date=event_date,
+        dynasty_id=dynasty_id,
+        event_id=event_id,
+        metadata=metadata
+    )

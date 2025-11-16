@@ -419,11 +419,6 @@ class SeasonCycleController:
                 dynasty_id=dynasty_id,
                 season_year=self.season_year,  # Phase 2: Use database-loaded value
                 verbose_logging=verbose_logging,
-                # Draft order calculation parameters
-                get_regular_season_standings=self._get_regular_season_standings_for_handler,
-                get_playoff_bracket=self._get_playoff_bracket_for_handler,
-                schedule_event=self._schedule_event_for_handler,
-                database_path=self.database_path,
             )
 
             # Create OFFSEASON → PRESEASON handler
@@ -529,11 +524,6 @@ class SeasonCycleController:
         """
         Advance simulation by 1 day using phase handler strategy pattern.
 
-        REFACTORED: Controller now owns calendar advancement.
-        - Controller advances calendar ONCE at the start
-        - Handlers renamed to simulate_day(current_date) and never touch calendar
-        - Eliminates double-advance bug on phase transition days
-
         Unified phase handling: routes to appropriate phase handler based on current phase.
         All phases (preseason, regular season, playoffs, offseason) now use consistent
         controller → handler delegation pattern.
@@ -559,7 +549,7 @@ class SeasonCycleController:
         print(f"\n{'='*100}")
         print(f"[DIAGNOSTIC] advance_day() ENTRY")
         print(f"{'='*100}")
-        print(f"[DIAGNOSTIC] Current date BEFORE advance: {self.calendar.get_current_date()}")
+        print(f"[DIAGNOSTIC] Current date: {self.calendar.get_current_date()}")
         print(f"[DIAGNOSTIC] Current phase: {self.phase_state.phase.value}")
         print(f"[DIAGNOSTIC] Season year: {self.season_year}")
         dynasty_state = self.db.dynasty_get_latest_state()
@@ -571,24 +561,17 @@ class SeasonCycleController:
             print(f"[DIAGNOSTIC] Database state: NO STATE FOUND")
         print(f"{'='*100}\n")
 
-        # CRITICAL FIX: Controller advances calendar ONCE before everything else
-        # This prevents double-advance bug on transition days (e.g., Aug 4→5)
-        self.calendar.advance(days=1)
-        current_date = self.calendar.get_current_date()
-
-        print(f"\n[CALENDAR_ADVANCE] Controller advanced calendar by 1 day")
-        print(f"  New current date: {current_date}")
-        print(f"")
-
-        # Check for phase transitions using NEW date
-        # If transition occurs, we'll use the NEW phase handler for today's simulation
+        # FIX: Check for phase transitions BEFORE getting handler
+        # This ensures we use the correct handler for the current date
+        # Prevents issue where games are skipped on transition day (e.g., Aug 5 preseason games)
         phase_transition = self._check_phase_transition()
 
         if phase_transition and self.verbose_logging:
-            print(f"\n[PHASE_TRANSITION] Transition occurred on {current_date}")
+            print(f"\n[PHASE_TRANSITION_BEFORE_HANDLER] Transition occurred before handler execution")
             print(f"  From: {phase_transition.get('from_phase')}")
             print(f"  To: {phase_transition.get('to_phase')}")
-            print(f"  Will use {phase_transition.get('to_phase')} handler to simulate {current_date}")
+            print(f"  Current date: {self.calendar.get_current_date()}")
+            print(f"  Will use {phase_transition.get('to_phase')} handler for today's simulation")
 
         # DIAGNOSTIC: Log handler selection
         print(f"\n[DIAGNOSTIC] HANDLER SELECTION")
@@ -611,18 +594,16 @@ class SeasonCycleController:
                 f"Available handlers: {list(self.phase_handlers.keys())}"
             )
 
-        # Execute phase-specific simulation via handler
-        # Handler ONLY simulates the given date - it does NOT advance calendar
-        result = handler.simulate_day(current_date)
+        # Execute phase-specific logic via handler
+        result = handler.advance_day()
 
         # DIAGNOSTIC: Log handler result
         print(f"\n[DIAGNOSTIC] HANDLER RESULT")
         print(f"  Handler: {type(handler).__name__}")
-        print(f"  Simulated date: {current_date}")
         print(f"  Games played: {result.get('games_played', 0)}")
         print(f"  Results count: {len(result.get('results', []))}")
         print(f"  Success: {result.get('success', 'NOT_SET')}")
-        print(f"  Calendar date unchanged: {self.calendar.get_current_date()}")
+        print(f"  Current date after handler: {self.calendar.get_current_date()}")
         print(f"")
 
         # Update statistics (common for all phases)
@@ -2911,52 +2892,6 @@ class SeasonCycleController:
             "season_year": self.season_year,
             "dynasty_id": self.dynasty_id,
         }
-
-    def _get_regular_season_standings_for_handler(self) -> List[Any]:
-        """
-        Get regular season standings for draft order calculation.
-
-        Returns:
-            List of team standings dicts with team_id, wins, losses, ties, win_percentage
-        """
-        standings_dict = self.db.standings_get(
-            season=self.season_year,
-            season_type="regular_season"
-        )
-
-        # Extract overall standings list and convert to expected format
-        overall_standings = standings_dict.get('overall', [])
-
-        result = []
-        for team_data in overall_standings:
-            standing = team_data['standing']
-            result.append({
-                'team_id': team_data['team_id'],
-                'wins': standing.wins,
-                'losses': standing.losses,
-                'ties': standing.ties,
-                'win_percentage': standing.win_percentage
-            })
-
-        return result
-
-    def _get_playoff_bracket_for_handler(self) -> Dict[str, Any]:
-        """
-        Get playoff bracket for draft order calculation.
-
-        Returns:
-            Playoff bracket dictionary with all rounds and results
-        """
-        return self.playoff_controller.get_current_bracket()
-
-    def _schedule_event_for_handler(self, event: Any) -> None:
-        """
-        Schedule an event (for draft order milestone).
-
-        Args:
-            event: Event object to schedule
-        """
-        self.event_db.insert_event(event)
 
     def _generate_preseason_schedule_for_handler(
         self, season_year: int

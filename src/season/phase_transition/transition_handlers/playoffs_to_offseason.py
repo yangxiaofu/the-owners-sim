@@ -32,12 +32,17 @@ Usage:
     print(f"Champion: {result['champion_team_id']}")
 """
 
-from typing import Any, Dict, Callable, Optional
+from typing import Any, Dict, Callable, Optional, List
 import logging
 from datetime import datetime
 
 from ..models import PhaseTransition
 from src.calendar.season_phase_tracker import SeasonPhase
+from src.offseason.draft_order_service import DraftOrderService, TeamRecord
+from src.database.draft_order_database_api import DraftOrderDatabaseAPI, DraftPick
+from src.database.api import DatabaseAPI
+from src.events.milestone_event import create_draft_order_milestone
+from src.calendar.date_models import Date
 
 
 class PlayoffsToOffseasonHandler:
@@ -77,7 +82,12 @@ class PlayoffsToOffseasonHandler:
         update_database_phase: Callable[[str, int], None],  # FIX: Add season_year parameter
         dynasty_id: str,
         season_year: int,
-        verbose_logging: bool = False
+        verbose_logging: bool = False,
+        # New dependencies for draft order calculation
+        get_regular_season_standings: Optional[Callable[[], List[Dict[str, Any]]]] = None,
+        get_playoff_bracket: Optional[Callable[[], Dict[str, Any]]] = None,
+        schedule_event: Optional[Callable[[Any], None]] = None,
+        database_path: Optional[str] = None
     ):
         """
         Initialize PlayoffsToOffseasonHandler with injectable dependencies.
@@ -103,6 +113,13 @@ class PlayoffsToOffseasonHandler:
             dynasty_id: Dynasty identifier for isolation
             season_year: Current season year (e.g., 2024)
             verbose_logging: Enable detailed logging output (default: False)
+            get_regular_season_standings: Optional callable that returns regular season standings
+                Example: lambda: db.standings_get(season=season_year, season_type="regular_season")
+            get_playoff_bracket: Optional callable that returns playoff bracket with results
+                Example: lambda: playoff_controller.get_current_bracket()
+            schedule_event: Optional callable that schedules an event to the calendar
+                Example: lambda event: event_db.schedule_event(event)
+            database_path: Optional path to database for draft order persistence
 
         Raises:
             ValueError: If any required callable is None
@@ -129,6 +146,15 @@ class PlayoffsToOffseasonHandler:
         self._dynasty_id = dynasty_id
         self._season_year = season_year
         self._verbose_logging = verbose_logging
+
+        # Draft order calculation dependencies
+        self._get_regular_season_standings = get_regular_season_standings
+        self._get_playoff_bracket = get_playoff_bracket
+        self._schedule_event = schedule_event
+        self._database_path = database_path or "data/database/nfl_simulation.db"
+
+        # Initialize DatabaseAPI for SOS calculations
+        self._db_api = DatabaseAPI(self._database_path)
 
         # State storage
         self._season_summary: Optional[Dict[str, Any]] = None
@@ -227,12 +253,37 @@ class PlayoffsToOffseasonHandler:
                 f"Runner-up={self._season_summary.get('runner_up_team_id')}"
             )
 
-            # Step 4: Schedule offseason events
+            # Step 4: Calculate and save draft order (if dependencies available)
+            draft_order_calculated = False
+            if self._can_calculate_draft_order():
+                try:
+                    self._log_debug("Calculating draft order...")
+                    draft_order_calculated = self._calculate_and_save_draft_order(effective_year)
+                    if draft_order_calculated:
+                        self._log_info("Draft order calculated and saved successfully")
+                    else:
+                        # FAIL-LOUD: Raise exception instead of continuing silently
+                        error_msg = (
+                            "Draft order calculation failed. Cannot proceed to offseason without valid draft order. "
+                            "Check logs above for validation errors (expected 224 base picks)."
+                        )
+                        self._log_error(error_msg)
+                        raise RuntimeError(error_msg)
+                except RuntimeError:
+                    # Re-raise RuntimeError from validation failure
+                    raise
+                except Exception as e:
+                    # FAIL-LOUD: Raise exception for unexpected errors
+                    error_msg = f"Unexpected error during draft order calculation: {e}"
+                    self._log_error(error_msg)
+                    raise RuntimeError(error_msg) from e
+
+            # Step 5: Schedule offseason events
             self._log_debug(f"Scheduling offseason events for {effective_year}...")
             self._schedule_offseason_events(effective_year)
             self._log_info("Offseason events scheduled successfully")
 
-            # Step 5: Update database phase
+            # Step 6: Update database phase
             self._log_debug("Updating database phase to OFFSEASON...")
             self._update_database_phase("OFFSEASON", effective_year)  # FIX: Pass season_year
             self._log_info("Database phase updated to OFFSEASON")
@@ -242,6 +293,7 @@ class PlayoffsToOffseasonHandler:
                 "success": True,
                 "champion_team_id": champion_team_id,
                 "season_summary": self._season_summary,
+                "draft_order_calculated": draft_order_calculated,
                 "offseason_events_scheduled": True,
                 "database_updated": True,
                 "timestamp": datetime.now().isoformat(),
@@ -350,6 +402,258 @@ class PlayoffsToOffseasonHandler:
         }
         self._log_debug(f"Rollback state: {self._rollback_state}")
 
+    def _can_calculate_draft_order(self) -> bool:
+        """
+        Check if all dependencies are available for draft order calculation.
+
+        Returns:
+            True if draft order can be calculated, False otherwise
+        """
+        return all([
+            self._get_regular_season_standings is not None,
+            self._get_playoff_bracket is not None,
+            self._schedule_event is not None
+        ])
+
+    def _calculate_and_save_draft_order(self, season_year: int) -> bool:
+        """
+        Calculate draft order from regular season standings and playoff results,
+        save to database, and schedule the draft order milestone event.
+
+        Args:
+            season_year: Current season year (draft will be for season_year + 1)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Step 1: Get regular season standings
+            self._log_debug("Fetching regular season standings...")
+            standings_data = self._get_regular_season_standings()
+
+            if not standings_data or len(standings_data) != 32:
+                self._log_error(f"Invalid standings data: expected 32 teams, got {len(standings_data) if standings_data else 0}")
+                return False
+
+            # Convert to TeamRecord objects
+            standings = []
+            for team_data in standings_data:
+                standings.append(TeamRecord(
+                    team_id=team_data['team_id'],
+                    wins=team_data['wins'],
+                    losses=team_data['losses'],
+                    ties=team_data['ties'],
+                    win_percentage=team_data.get('win_percentage',
+                                                  team_data['wins'] / (team_data['wins'] + team_data['losses'] + team_data['ties'])
+                                                  if (team_data['wins'] + team_data['losses'] + team_data['ties']) > 0 else 0.0)
+                ))
+
+            # Step 2: Get playoff bracket and extract losers
+            self._log_debug("Fetching playoff bracket...")
+            bracket = self._get_playoff_bracket()
+
+            playoff_results = self._extract_playoff_results(bracket)
+            if not playoff_results:
+                self._log_error("Failed to extract playoff results from bracket")
+                return False
+
+            # Step 3: Calculate draft order
+            self._log_debug("Calculating draft order...")
+            draft_year = season_year + 1
+            draft_service = DraftOrderService(dynasty_id=self._dynasty_id, season_year=draft_year)
+
+            # Calculate real strength of schedule for all teams
+            self._log_info("Calculating strength of schedule for draft order tiebreakers...")
+
+            for team in standings:
+                try:
+                    # Query database for team's regular season opponents
+                    opponents = self._db_api.get_team_opponents(
+                        dynasty_id=self._dynasty_id,
+                        team_id=team.team_id,
+                        season=season_year,
+                        season_type="regular_season"
+                    )
+
+                    if opponents:
+                        # Calculate real SOS using opponent records
+                        sos = draft_service.calculate_strength_of_schedule(
+                            team_id=team.team_id,
+                            all_standings=standings,
+                            schedule=opponents
+                        )
+                        self._log_debug(f"Team {team.team_id} SOS: {sos:.3f} (based on {len(opponents)} opponents)")
+                    else:
+                        # Fall back to 0.500 if no opponents found
+                        self._log_warning(f"No opponents found for team {team.team_id}, using default SOS 0.500")
+                        draft_service._sos_cache[team.team_id] = 0.500
+
+                except Exception as e:
+                    # Graceful failure: log error and use default
+                    self._log_error(f"Error calculating SOS for team {team.team_id}: {e}")
+                    draft_service._sos_cache[team.team_id] = 0.500
+
+            self._log_info("Strength of schedule calculations complete")
+
+            draft_picks = draft_service.calculate_draft_order(standings, playoff_results)
+
+            if not draft_picks or len(draft_picks) != 224:
+                self._log_error(f"Invalid draft order: expected 224 base picks (compensatory picks not yet implemented), got {len(draft_picks) if draft_picks else 0}")
+                return False
+
+            # Step 4: Save to database
+            self._log_debug(f"Saving {len(draft_picks)} draft picks to database...")
+            draft_db_api = DraftOrderDatabaseAPI(self._database_path)
+
+            # Convert to DraftPick objects
+            db_picks = []
+            for pick in draft_picks:
+                db_picks.append(DraftPick(
+                    pick_id=None,  # Auto-generated
+                    dynasty_id=self._dynasty_id,
+                    season=draft_year,
+                    round_number=pick.round_number,
+                    pick_in_round=pick.pick_in_round,
+                    overall_pick=pick.overall_pick,
+                    original_team_id=pick.original_team_id,
+                    current_team_id=pick.team_id,
+                    player_id=None,
+                    draft_class_id=None,
+                    is_executed=False,
+                    is_compensatory=False,
+                    comp_round_end=False,
+                    acquired_via_trade=False,
+                    trade_date=None,
+                    original_trade_id=None
+                ))
+
+            success = draft_db_api.save_draft_order(db_picks)
+            if not success:
+                self._log_error("Failed to save draft order to database")
+                return False
+
+            # Step 5: Create and schedule draft order milestone event
+            self._log_debug("Creating draft order milestone event...")
+
+            # Calculate milestone date (2 weeks after Super Bowl, around mid-February)
+            milestone_date = Date(draft_year, 2, 15)
+
+            milestone_event = create_draft_order_milestone(
+                season_year=draft_year,
+                event_date=milestone_date,
+                dynasty_id=self._dynasty_id,
+                total_picks=224  # Base picks only (compensatory picks not yet implemented)
+            )
+
+            if self._schedule_event:
+                self._schedule_event(milestone_event)
+                self._log_info(f"Draft order milestone scheduled for {milestone_date}")
+
+            return True
+
+        except Exception as e:
+            self._log_error(f"Error calculating draft order: {e}", exc_info=True)
+            return False
+
+    def _extract_playoff_results(self, bracket: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Extract playoff losers from bracket for draft order calculation.
+
+        Args:
+            bracket: Playoff bracket dictionary with round brackets
+
+        Returns:
+            Dictionary with playoff results in format expected by DraftOrderService:
+            {
+                'wild_card_losers': List[int],  # 6 teams
+                'divisional_losers': List[int],  # 4 teams
+                'conference_losers': List[int],  # 2 teams
+                'super_bowl_loser': int,
+                'super_bowl_winner': int
+            }
+            Returns None if extraction fails
+        """
+        try:
+            results = {
+                'wild_card_losers': [],
+                'divisional_losers': [],
+                'conference_losers': [],
+                'super_bowl_loser': None,
+                'super_bowl_winner': None
+            }
+
+            # Helper function to get losers from game results
+            def get_losers_from_games(games_list):
+                losers = []
+                for game in games_list:
+                    # Game dict has away_team_id, home_team_id, away_score, home_score
+                    if 'away_score' in game and 'home_score' in game:
+                        if game['away_score'] < game['home_score']:
+                            losers.append(game['away_team_id'])
+                        elif game['home_score'] < game['away_score']:
+                            losers.append(game['home_team_id'])
+                return losers
+
+            # Query database for actual game results with scores
+            # Wild Card round - get game results from database
+            wc_games = self._db_api.get_playoff_games_by_round(
+                dynasty_id=self._dynasty_id,
+                season=self._season_year,
+                round_name='wild_card'
+            )
+            results['wild_card_losers'] = get_losers_from_games(wc_games)
+
+            # Divisional round
+            div_games = self._db_api.get_playoff_games_by_round(
+                dynasty_id=self._dynasty_id,
+                season=self._season_year,
+                round_name='divisional'
+            )
+            results['divisional_losers'] = get_losers_from_games(div_games)
+
+            # Conference Championship round
+            conf_games = self._db_api.get_playoff_games_by_round(
+                dynasty_id=self._dynasty_id,
+                season=self._season_year,
+                round_name='conference'
+            )
+            results['conference_losers'] = get_losers_from_games(conf_games)
+
+            # Super Bowl
+            sb_games = self._db_api.get_playoff_games_by_round(
+                dynasty_id=self._dynasty_id,
+                season=self._season_year,
+                round_name='super_bowl'
+            )
+            if sb_games and len(sb_games) > 0:
+                sb_game = sb_games[0]
+                if sb_game['away_score'] < sb_game['home_score']:
+                    results['super_bowl_loser'] = sb_game['away_team_id']
+                    results['super_bowl_winner'] = sb_game['home_team_id']
+                elif sb_game['home_score'] < sb_game['away_score']:
+                    results['super_bowl_loser'] = sb_game['home_team_id']
+                    results['super_bowl_winner'] = sb_game['away_team_id']
+
+            # Validate counts
+            if len(results['wild_card_losers']) != 6:
+                self._log_error(f"Expected 6 wild card losers, got {len(results['wild_card_losers'])}")
+                return None
+            if len(results['divisional_losers']) != 4:
+                self._log_error(f"Expected 4 divisional losers, got {len(results['divisional_losers'])}")
+                return None
+            if len(results['conference_losers']) != 2:
+                self._log_error(f"Expected 2 conference losers, got {len(results['conference_losers'])}")
+                return None
+            if results['super_bowl_loser'] is None or results['super_bowl_winner'] is None:
+                self._log_error("Super Bowl loser or winner not found in bracket")
+                return None
+
+            return results
+
+        except Exception as e:
+            self._log_error(f"Error extracting playoff results: {e}", exc_info=True)
+            return None
+
     def _log_debug(self, message: str) -> None:
         """Log debug message if verbose logging is enabled."""
         if self._verbose_logging:
@@ -359,6 +663,10 @@ class PlayoffsToOffseasonHandler:
         """Log info message."""
         self._logger.info(f"[PlayoffsToOffseasonHandler] {message}")
 
-    def _log_error(self, message: str) -> None:
+    def _log_warning(self, message: str) -> None:
+        """Log warning message."""
+        self._logger.warning(f"[PlayoffsToOffseasonHandler] {message}")
+
+    def _log_error(self, message: str, exc_info: bool = False) -> None:
         """Log error message."""
-        self._logger.error(f"[PlayoffsToOffseasonHandler] {message}")
+        self._logger.error(f"[PlayoffsToOffseasonHandler] {message}", exc_info=exc_info)
