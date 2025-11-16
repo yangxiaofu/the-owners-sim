@@ -74,13 +74,15 @@ class OffseasonController:
         # Track days simulated in offseason
         self.days_simulated = 0
 
-    def advance_day(self) -> Dict[str, Any]:
+    def simulate_day(self, current_date) -> Dict[str, Any]:
         """
-        Advance offseason by one day.
+        Simulate offseason events for the given date (calendar managed by SeasonCycleController).
 
-        Executes any scheduled offseason events for the current day and
-        advances the calendar. Offseason events include franchise tags,
-        free agency signings, draft selections, roster cuts, and deadlines.
+        REFACTORED: No longer advances calendar - controller handles that.
+        This method only executes offseason events for the date provided.
+
+        Args:
+            current_date: Date object for the day to simulate (from controller)
 
         Returns:
             Dictionary with simulation results containing:
@@ -95,10 +97,8 @@ class OffseasonController:
         """
         # Execute any scheduled offseason events for this day
         try:
-            current_date = self.calendar.get_current_date()
-
             if self.verbose_logging:
-                print(f"\n[OFFSEASON_DAY] Advancing offseason day: {current_date}")
+                print(f"\n[OFFSEASON_DAY] Simulating offseason day: {current_date}")
 
             # Create SimulationExecutor to trigger events
             executor = SimulationExecutor(
@@ -112,17 +112,14 @@ class OffseasonController:
                 verbose_logging=True,  # Enable diagnostic output for event filtering
             )
 
-            # Simulate events for current day
+            # Simulate events for the given date (no calendar advancement)
             event_results = executor.simulate_day(current_date)
 
-            # Advance calendar
-            self.calendar.advance(1)
+            # Track days simulated (no calendar advancement)
             self.days_simulated += 1
 
             if self.verbose_logging:
-                print(
-                    f"[OFFSEASON_DAY] Calendar advanced successfully to: {self.calendar.get_current_date()}"
-                )
+                print(f"[OFFSEASON_DAY] Simulated offseason events for {current_date}")
 
             # Note: Phase transitions are handled by SeasonCycleController
             # This controller only handles daily operations within offseason phase
@@ -139,20 +136,36 @@ class OffseasonController:
             }
 
         except Exception as e:
-            self.logger.error(f"Error during offseason day advancement: {e}")
-            # Fallback to basic advancement
-            self.calendar.advance(1)
-            self.days_simulated += 1
-
+            self.logger.error(f"Error during offseason day simulation: {e}")
+            # Fallback response
             return {
-                "date": str(self.calendar.get_current_date()),
+                "date": str(current_date),
                 "games_played": 0,
                 "results": [],
                 "current_phase": "offseason",
                 "phase_transition": None,
                 "success": True,
-                "message": "Season complete. No more games to simulate.",
+                "message": "Offseason day simulation failed.",
             }
+
+    def advance_day(self) -> Dict[str, Any]:
+        """
+        Advance calendar by one day and simulate (backward compatibility wrapper).
+
+        DEPRECATED: Use simulate_day(current_date) when called from SeasonCycleController.
+        This method exists for backward compatibility with demos and standalone usage.
+
+        Returns:
+            Dictionary with simulation results (same as simulate_day)
+        """
+        # Get current date before advancing
+        current_date = self.calendar.get_current_date()
+
+        # Advance calendar (for backward compatibility)
+        self.calendar.advance(1)
+
+        # Call simulate_day() with the current date
+        return self.simulate_day(current_date)
 
     def get_days_simulated(self) -> int:
         """Get number of days simulated in offseason."""
