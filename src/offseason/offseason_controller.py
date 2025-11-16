@@ -183,21 +183,26 @@ class OffseasonController:
 
     # ========== Public API: Calendar Advancement ==========
 
-    def advance_day(self) -> Dict[str, Any]:
+    def simulate_day(self, current_date) -> Dict[str, Any]:
         """
-        Advance calendar by one day.
+        Simulate offseason activities for the given date (calendar managed by SeasonCycleController).
+
+        REFACTORED: No longer advances calendar - controller handles that.
+        This method only processes offseason events for the date provided.
+
+        Args:
+            current_date: Date object for the day to simulate (from controller)
 
         Returns:
             Dictionary with:
-                - new_date: Updated calendar date
+                - new_date: Current date (for compatibility)
                 - phase_changed: Whether phase changed
                 - new_phase: New phase if changed
                 - deadlines_passed: List of deadline types passed
                 - events_triggered: List of automatic events
         """
-        # Advance calendar
-        self.calendar.advance_day()
-        new_date = self.get_current_date()
+        # Use provided date instead of advancing calendar
+        new_date = current_date
 
         # Check for phase change
         old_phase = self.current_phase
