@@ -263,3 +263,71 @@ class LeagueController:
             'dynasty_id': self.dynasty_id,
             'season': self.season
         }
+
+    def _get_draft_data_model(self):
+        """
+        Get or create draft data model.
+
+        Uses lazy initialization pattern - creates model on first access
+        and caches for subsequent calls.
+
+        Returns:
+            DraftDataModel instance for draft data access
+        """
+        if not hasattr(self, '_draft_model'):
+            # Lazy initialization - create on first access
+            # Import here to avoid circular dependencies
+            import sys
+            import os
+            ui_path = os.path.dirname(os.path.dirname(__file__))
+            if ui_path not in sys.path:
+                sys.path.insert(0, ui_path)
+
+            from domain_models.draft_data_model import DraftDataModel
+
+            # Calculate draft year - always current season + 1
+            # Example: In offseason 2025, draft year is 2026 (using 2025 season results)
+            # DraftDataModel will query season - 1 for standings (2026 - 1 = 2025)
+            draft_year = self.season + 1
+
+            self._draft_model = DraftDataModel(
+                db_path=self.db_path,
+                dynasty_id=self.dynasty_id,
+                season=draft_year
+            )
+
+        return self._draft_model
+
+    def get_draft_order(self, round_number: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Get draft order for specific round or all rounds.
+
+        Args:
+            round_number: Optional round number (1-7). If None, returns all rounds.
+
+        Returns:
+            Dict with keys: 'picks', 'errors', 'warnings', 'playoffs_complete'
+        """
+        return self._get_draft_data_model().get_draft_order(round_number)
+
+    def get_team_draft_picks(self, team_id: int) -> List[Dict[str, Any]]:
+        """
+        Get all draft picks for a specific team.
+
+        Args:
+            team_id: Team ID (1-32)
+
+        Returns:
+            List of team's picks across all 7 rounds
+        """
+        return self._get_draft_data_model().get_team_draft_picks(team_id)
+
+    def get_draft_summary(self) -> Dict[str, Any]:
+        """
+        Get draft summary statistics.
+
+        Returns:
+            Dict with keys: 'total_picks', 'picks_made', 'picks_remaining',
+            'current_round', 'current_pick'
+        """
+        return self._get_draft_data_model().get_draft_summary()

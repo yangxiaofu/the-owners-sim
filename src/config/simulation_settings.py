@@ -18,7 +18,7 @@ class SimulationSettings:
     # CHANGE THESE TO SPEED UP SIMULATIONS
     # ================================================================
 
-    SKIP_GAME_SIMULATION = True
+    SKIP_GAME_SIMULATION = False
     # True:  Use fake game scores (instant, ~0.001s per game)
     # False: Run full play-by-play simulation (realistic, ~2-5s per game)
 

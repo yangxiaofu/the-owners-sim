@@ -441,6 +441,66 @@ class DatabaseAPI:
             if should_close:
                 conn.close()
 
+    def get_all_team_schedules(
+        self,
+        dynasty_id: str,
+        season: int,
+        season_type: str = "regular_season"
+    ) -> Dict[int, List[int]]:
+        """
+        Get schedules for all 32 NFL teams in one batch operation.
+
+        Efficiently queries schedules for all teams at once, useful for
+        strength of schedule calculations in draft order determination.
+
+        Args:
+            dynasty_id: Dynasty identifier
+            season: Season year
+            season_type: Type of season (default: "regular_season")
+
+        Returns:
+            Dict mapping team_id → List[opponent_team_ids]
+            Example:
+            {
+                1: [3, 12, 15, 20, ...],  # Team 1's opponents
+                2: [4, 11, 16, 19, ...],  # Team 2's opponents
+                ...
+                32: [1, 5, 9, 13, ...]     # Team 32's opponents
+            }
+
+        Example:
+            >>> api = DatabaseAPI()
+            >>> schedules = api.get_all_team_schedules("my_dynasty", 2024)
+            >>> print(f"Team 7 played {len(schedules[7])} games")
+            Team 7 played 17 games
+        """
+        schedules = {}
+
+        # Get one connection and reuse it for all 32 queries
+        conn = self.db_connection.get_connection()
+
+        try:
+            # Query all 32 teams (NFL has team_ids 1-32)
+            for team_id in range(1, 33):
+                opponents = self.get_team_opponents(
+                    dynasty_id=dynasty_id,
+                    team_id=team_id,
+                    season=season,
+                    season_type=season_type,
+                    conn=conn  # Reuse connection
+                )
+                schedules[team_id] = opponents
+
+            self.logger.debug(
+                f"Retrieved schedules for all 32 teams: "
+                f"dynasty_id={dynasty_id}, season={season}, season_type={season_type}"
+            )
+
+            return schedules
+
+        finally:
+            conn.close()
+
     def get_team_standing(self, dynasty_id: str, team_id: int, season: int, season_type: str = "regular_season") -> Optional[EnhancedTeamStanding]:
         """
         Get standing for a specific team and season type.

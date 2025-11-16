@@ -22,6 +22,7 @@ from models.roster_table_model import RosterTableModel
 from controllers.league_controller import LeagueController
 from controllers.player_controller import PlayerController
 from widgets.stats_leaders_widget import StatsLeadersWidget
+from widgets.draft_board_widget import DraftBoardWidget
 
 
 class LeagueView(QWidget):
@@ -75,6 +76,7 @@ class LeagueView(QWidget):
         self.tabs.addTab(self._create_standings_tab(), "Standings")
         self.tabs.addTab(self._create_free_agents_tab(), "Free Agents")
         self.tabs.addTab(self._create_stats_leaders_tab(), "Stats Leaders")
+        self.tabs.addTab(self._create_draft_tab(), "Draft")
 
         layout.addWidget(self.tabs)
 
@@ -338,4 +340,15 @@ class LeagueView(QWidget):
         else:
             # Fallback if no controller (shouldn't happen in production)
             widget = StatsLeadersWidget(parent=self)
+        return widget
+
+    def _create_draft_tab(self) -> QWidget:
+        """Create draft tab with draft order and picks."""
+        if self.controller:
+            widget = DraftBoardWidget(
+                parent=self,
+                controller=self.controller  # Pass controller, not domain model
+            )
+        else:
+            widget = DraftBoardWidget(parent=self, controller=None)
         return widget

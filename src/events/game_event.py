@@ -127,6 +127,13 @@ class GameEvent(BaseEvent):
             # Extract final score
             final_score = self._simulator.get_final_score()
 
+            # Debug logging for final_score from FullGameSimulator
+            print(f"\n[DEBUG GameEvent] final_score from FullGameSimulator:")
+            print(f"  winner_id: {final_score.get('winner_id')}")
+            print(f"  winner_name: {final_score.get('winner_name')}")
+            print(f"  scores: {final_score.get('scores')}")
+            print(f"  game_completed: {final_score.get('game_completed')}\n")
+
             # Build result data
             result_data = {
                 "game_id": self._game_id,

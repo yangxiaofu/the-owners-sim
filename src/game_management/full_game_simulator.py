@@ -526,11 +526,17 @@ class FullGameSimulator:
         for team_id in game_result.final_score.keys():
             team_names[team_id] = self._get_team_name(team_id)
             
+        # Debug logging for winner extraction
+        winner_id = game_result.winner.team_id if game_result.winner else None
+        winner_name = game_result.winner.full_name if game_result.winner else None
+        print(f"[DEBUG FullGameSimulator] Extracting winner from game_result: "
+              f"winner_id={winner_id}, winner_name={winner_name}")
+
         return {
             "scores": scores,  # Team ID keyed: {22: 21, 23: 14}
             "team_names": team_names,  # Team ID to name mapping: {22: "Detroit Lions", 23: "Green Bay Packers"}
-            "winner_id": game_result.winner.team_id if game_result.winner else None,
-            "winner_name": game_result.winner.full_name if game_result.winner else None,
+            "winner_id": winner_id,
+            "winner_name": winner_name,
             "total_plays": game_result.total_plays,
             "total_drives": game_result.total_drives,
             "game_duration_minutes": game_result.game_duration_minutes,

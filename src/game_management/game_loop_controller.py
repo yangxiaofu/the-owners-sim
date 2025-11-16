@@ -136,7 +136,7 @@ class GameLoopController:
     def run_game(self) -> GameResult:
         """
         Main game simulation method that orchestrates complete NFL game
-        
+
         Returns:
             GameResult with comprehensive game statistics and drive summaries
         """
@@ -493,7 +493,11 @@ class GameLoopController:
             winner = self.away_team
         else:
             winner = None  # Tie (shouldn't happen in NFL)
-        
+
+        # Debug logging for winner calculation
+        print(f"[DEBUG GameLoopController] Winner calculated: {winner.full_name if winner else 'TIE'} "
+              f"(team_id={winner.team_id if winner else None}, home={home_score}, away={away_score})")
+
         # Finalize statistics
         final_score_dict = {
             self.home_team.team_id: home_score,
@@ -528,7 +532,7 @@ class GameLoopController:
             assert hasattr(first_player, 'player_name'), f"PlayerGameStats object missing player_name: {type(first_player)}, available attributes: {dir(first_player)}"
             assert hasattr(first_player, 'passing_yards'), f"PlayerGameStats object missing stats: {type(first_player)}, available attributes: {dir(first_player)}"
 
-        return GameResult(
+        game_result = GameResult(
             home_team=self.home_team,
             away_team=self.away_team,
             final_score=final_score_dict,
@@ -539,12 +543,20 @@ class GameLoopController:
             overtime_played=False,  # TODO: Implement overtime detection
             date=self.game_date,
             season_type=self.season_type,  # ✅ FIX: Pass season_type to GameResult
+            winner=winner,  # ✅ FIX: Pass calculated winner to GameResult
             # ✅ FIXED: Direct object access - guaranteed objects with attributes
             player_stats=player_stats,              # List[PlayerStats] - guaranteed objects
             home_team_stats=home_team_stats,        # TeamStats - guaranteed object
             away_team_stats=away_team_stats,        # TeamStats - guaranteed object
             final_statistics=comprehensive_stats    # Dict for serialization
         )
+
+        # Debug logging for GameResult
+        print(f"[DEBUG GameLoopController] GameResult created with winner: "
+              f"{game_result.winner.full_name if game_result.winner else 'None'} "
+              f"(team_id={game_result.winner.team_id if game_result.winner else None})")
+
+        return game_result
     
     def get_current_game_state(self) -> Dict[str, Any]:
         """Get current game state for external monitoring"""

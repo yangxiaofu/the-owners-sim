@@ -306,10 +306,23 @@ class SimulationWorkflow:
             else:
                 home_score += 1
 
+        # Calculate winner_id from scores
+        if away_score > home_score:
+            winner_id = game_event.away_team_id
+            winner_name = f"Team {game_event.away_team_id}"
+        elif home_score > away_score:
+            winner_id = game_event.home_team_id
+            winner_name = f"Team {game_event.home_team_id}"
+        else:
+            winner_id = None  # Tie (shouldn't happen in playoffs)
+            winner_name = None
+
         # Fake game data matching real simulation structure
         fake_data = {
             'away_score': away_score,
             'home_score': home_score,
+            'winner_id': winner_id,  # ✅ FIX: Add winner_id for draft order
+            'winner_name': winner_name,  # ✅ FIX: Add winner_name for display
             'total_plays': random.randint(120, 150),  # Realistic play count
             'game_duration_minutes': 180,  # Standard 3-hour game
             'overtime_periods': 0,
@@ -437,12 +450,38 @@ class SimulationWorkflow:
             # for proper calendar deduplication
             game_id = game_event.get_game_id()
 
+            # Debug: Log what simulation_result.data contains
+            print(f"\n[DEBUG SimulationWorkflow] simulation_result.data contents:")
+            print(f"  home_score: {simulation_result.data.get('home_score')}")
+            print(f"  away_score: {simulation_result.data.get('away_score')}")
+            print(f"  winner_id (from data): {simulation_result.data.get('winner_id')}")
+            print(f"  winner_name (from data): {simulation_result.data.get('winner_name')}")
+
+            # Extract scores for winner calculation
+            home_score = simulation_result.data['home_score']
+            away_score = simulation_result.data['away_score']
+
+            # Calculate winner_id from scores
+            if away_score > home_score:
+                winner_id = game_event.away_team_id
+                winner_name = f"Team {game_event.away_team_id}"  # TODO: Get actual team name
+            elif home_score > away_score:
+                winner_id = game_event.home_team_id
+                winner_name = f"Team {game_event.home_team_id}"  # TODO: Get actual team name
+            else:
+                winner_id = None  # Tie
+                winner_name = None
+
+            print(f"[DEBUG SimulationWorkflow] Calculated winner_id: {winner_id} (from scores: away={away_score}, home={home_score})")
+
             # Prepare game result data structure
             game_result_data = {
                 'home_team_id': game_event.home_team_id,
                 'away_team_id': game_event.away_team_id,
-                'home_score': simulation_result.data['home_score'],
-                'away_score': simulation_result.data['away_score'],
+                'home_score': home_score,
+                'away_score': away_score,
+                'winner_id': winner_id,  # ✅ ADD: Winner ID for draft order calculation
+                'winner_name': winner_name,  # ✅ ADD: Winner name for display
                 'total_plays': simulation_result.data['total_plays'],
                 'game_duration_minutes': simulation_result.data.get('game_duration_minutes', 180),
                 'overtime_periods': simulation_result.data.get('overtime_periods', 0),
@@ -458,6 +497,7 @@ class SimulationWorkflow:
             _debug_logger.info(f"  Game ID: {game_id}")
             _debug_logger.info(f"  Teams: Away {game_result_data['away_team_id']} @ Home {game_result_data['home_team_id']}")
             _debug_logger.info(f"  Scores: {game_result_data['away_score']}-{game_result_data['home_score']}")
+            _debug_logger.info(f"  Winner: {game_result_data['winner_id']} ({game_result_data['winner_name']})")
             _debug_logger.info(f"  Season: {game_result_data['season']}, Week: {game_result_data['week']}, Type: {game_result_data['season_type']}")
             _debug_logger.info(f"  Dynasty: {self.config.dynasty_id}")
             _debug_logger.info(f"  Player stats count: {len(player_stats)}")
