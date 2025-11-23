@@ -331,3 +331,39 @@ class LeagueController:
             'current_round', 'current_pick'
         """
         return self._get_draft_data_model().get_draft_summary()
+
+    def get_draft_prospects(
+        self,
+        position_filter: Optional[str] = None,
+        limit: int = 300
+    ) -> List[Dict[str, Any]]:
+        """
+        Get draft prospects with optional position filter.
+
+        Args:
+            position_filter: Position to filter by (QB, RB, WR, etc.) or None for all
+            limit: Maximum number of prospects to return
+
+        Returns:
+            List of prospect dictionaries with all prospect data
+        """
+        return self._get_draft_data_model().get_available_prospects(
+            position_filter=position_filter,
+            limit=limit
+        )
+
+    def get_prospect_detail(self, player_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get detailed information for a single prospect.
+
+        Args:
+            player_id: Prospect's player ID
+
+        Returns:
+            Prospect dictionary with all data, or None if not found
+        """
+        draft_model = self._get_draft_data_model()
+        return draft_model.draft_class_api.get_prospect_by_id(
+            player_id=player_id,
+            dynasty_id=self.dynasty_id
+        )

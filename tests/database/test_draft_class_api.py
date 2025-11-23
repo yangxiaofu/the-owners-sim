@@ -1208,6 +1208,136 @@ def test_convert_prospect_to_player_not_found_error(
     assert "not found" in str(exc_info.value).lower()
 
 
+def test_generate_draft_class_with_shared_connection(
+    draft_api,
+    initialized_dynasty,
+    test_season
+):
+    """
+    Test that generate_draft_class() works with shared connection (transaction mode).
+
+    Validates:
+    - Shared connection parameter accepted
+    - No auto-commit when using shared connection
+    - Transaction can be rolled back
+    - Manual commit persists data
+    """
+    dynasty_id = initialized_dynasty
+    season = test_season
+
+    # Create connection to share
+    conn = sqlite3.connect(draft_api.database_path, timeout=30.0)
+    conn.execute("PRAGMA foreign_keys = ON")
+
+    try:
+        # Generate draft class with shared connection
+        prospects_generated = draft_api.generate_draft_class(
+            dynasty_id=dynasty_id,
+            season=season,
+            connection=conn  # Share connection
+        )
+
+        # Verify prospects were generated
+        assert prospects_generated == 224
+
+        # Verify data exists in connection's view (uncommitted)
+        cursor = conn.execute(
+            "SELECT COUNT(*) FROM draft_prospects WHERE dynasty_id = ? AND draft_class_id LIKE ?",
+            (dynasty_id, f"DRAFT_{dynasty_id}_{season}")
+        )
+        assert cursor.fetchone()[0] == 224
+
+        # Rollback to test transaction mode
+        conn.rollback()
+
+        # Verify data was rolled back
+        cursor = conn.execute(
+            "SELECT COUNT(*) FROM draft_prospects WHERE dynasty_id = ? AND draft_class_id LIKE ?",
+            (dynasty_id, f"DRAFT_{dynasty_id}_{season}")
+        )
+        assert cursor.fetchone()[0] == 0
+
+        # Generate again and commit this time
+        prospects_generated = draft_api.generate_draft_class(
+            dynasty_id=dynasty_id,
+            season=season,
+            connection=conn
+        )
+
+        assert prospects_generated == 224
+
+        # Commit transaction
+        conn.commit()
+
+        # Verify data persisted
+        cursor = conn.execute(
+            "SELECT COUNT(*) FROM draft_prospects WHERE dynasty_id = ? AND draft_class_id LIKE ?",
+            (dynasty_id, f"DRAFT_{dynasty_id}_{season}")
+        )
+        assert cursor.fetchone()[0] == 224
+
+    finally:
+        conn.close()
+
+
+def test_dynasty_has_draft_class_with_shared_connection(
+    draft_api,
+    initialized_dynasty,
+    test_season
+):
+    """
+    Test that dynasty_has_draft_class() works with shared connection.
+
+    Validates:
+    - Shared connection parameter accepted
+    - Correct results returned using shared connection
+    """
+    dynasty_id = initialized_dynasty
+    season = test_season
+
+    # Create connection to share
+    conn = sqlite3.connect(draft_api.database_path, timeout=30.0)
+    conn.execute("PRAGMA foreign_keys = ON")
+
+    try:
+        # Check before generation (should be False)
+        has_draft = draft_api.dynasty_has_draft_class(
+            dynasty_id=dynasty_id,
+            season=season,
+            connection=conn
+        )
+        assert has_draft is False
+
+        # Generate draft class
+        draft_api.generate_draft_class(
+            dynasty_id=dynasty_id,
+            season=season,
+            connection=conn
+        )
+
+        # Check after generation (should be True, even before commit)
+        has_draft = draft_api.dynasty_has_draft_class(
+            dynasty_id=dynasty_id,
+            season=season,
+            connection=conn
+        )
+        assert has_draft is True
+
+        # Commit
+        conn.commit()
+
+        # Check after commit (should still be True)
+        has_draft = draft_api.dynasty_has_draft_class(
+            dynasty_id=dynasty_id,
+            season=season,
+            connection=conn
+        )
+        assert has_draft is True
+
+    finally:
+        conn.close()
+
+
 # ============================================================================
 # TEST SUMMARY
 # ============================================================================
@@ -1222,8 +1352,9 @@ def test_suite_summary():
     - Draft Execution: 4 tests
     - Dynasty Isolation: 2 tests
     - Error Handling: 2 tests
+    - Transaction Support: 2 tests (NEW)
 
-    Total: 18 tests
+    Total: 20 tests
 
     Key Features Tested:
     - 224 prospect generation (7 rounds × 32 picks)
@@ -1238,5 +1369,7 @@ def test_suite_summary():
     - ID collision prevention with existing rosters
     - Cascade deletes
     - Error handling for edge cases
+    - Transaction mode (shared connection support)
+    - Rollback safety (transaction atomicity)
     """
     pass

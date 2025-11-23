@@ -343,12 +343,42 @@ class LeagueView(QWidget):
         return widget
 
     def _create_draft_tab(self) -> QWidget:
-        """Create draft tab with draft order and picks."""
+        """Create draft tab with draft order and draft prospects sub-tabs."""
+        from PySide6.QtWidgets import QVBoxLayout, QTabWidget
+
+        # Container widget
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Sub-tabs for Draft Order vs Draft Prospects
+        sub_tabs = QTabWidget()
+        sub_tabs.addTab(self._create_draft_order_widget(), "Draft Order")
+        sub_tabs.addTab(self._create_draft_prospects_widget(), "Draft Prospects")
+
+        layout.addWidget(sub_tabs)
+        return container
+
+    def _create_draft_order_widget(self) -> QWidget:
+        """Create draft order widget (original draft board)."""
         if self.controller:
             widget = DraftBoardWidget(
                 parent=self,
-                controller=self.controller  # Pass controller, not domain model
+                controller=self.controller
             )
         else:
             widget = DraftBoardWidget(parent=self, controller=None)
+        return widget
+
+    def _create_draft_prospects_widget(self) -> QWidget:
+        """Create draft prospects browser widget."""
+        from ui.widgets.draft_prospects_widget import DraftProspectsWidget
+
+        if self.controller:
+            widget = DraftProspectsWidget(
+                parent=self,
+                controller=self.controller
+            )
+        else:
+            widget = DraftProspectsWidget(parent=self, controller=None)
         return widget

@@ -5,10 +5,11 @@ Applies GM personality traits to trade asset valuations and decision-making.
 Translates abstract GM traits (0.0-1.0) into concrete value multipliers.
 """
 
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict
 from dataclasses import dataclass
 
 from team_management.gm_archetype import GMArchetype
+from team_management.players.player import Player
 from transactions.models import TradeAsset, AssetType, DraftPick
 
 
@@ -825,3 +826,251 @@ class PersonalityModifiers:
         max_ratio = min(1.40, max(1.10, max_ratio))
 
         return (min_ratio, max_ratio)
+
+    # ============================================================================
+    # FREE AGENCY MODIFIERS
+    # ============================================================================
+
+    @classmethod
+    def apply_free_agency_modifier(
+        cls,
+        player: Player,
+        market_value: Dict,
+        gm: GMArchetype,
+        team_context: TeamContext
+    ) -> Dict:
+        """
+        Apply GM personality modifiers to free agent contract value.
+
+        Modifies the market_value dict's AAV based on GM personality traits.
+        Different from trade modifiers - operates on contract values, not player values.
+
+        Trait Modifiers Applied:
+        1. win_now_mentality: Premium for proven starters (80+ OVR)
+        2. cap_management: Discount/premium based on cap discipline
+        3. veteran_preference: Age-based modifier for 30+ players
+        4. star_chasing: Premium for elite free agents (90+ OVR)
+        5. risk_tolerance: Discount for injury-prone players
+
+        Args:
+            player: Player being evaluated for free agency
+            market_value: Market value dict with 'aav', 'years', 'total', 'guaranteed'
+            gm: GM archetype with trait values
+            team_context: Current team situation
+
+        Returns:
+            Modified market_value dict with GM perception applied
+        """
+        # Create a copy to avoid mutating original
+        modified_value = market_value.copy()
+
+        # 1. Win-Now Premium (proven starters)
+        if player.overall >= 80 and gm.win_now_mentality > 0.5:
+            # High win_now GMs overpay for proven starters
+            # 0.5 trait = 1.0x, 1.0 trait = 1.4x
+            multiplier = 1.0 + ((gm.win_now_mentality - 0.5) * 0.8)
+            modified_value['aav'] *= multiplier
+
+        # 2. Cap Management Discipline
+        if player.overall < 85:
+            # Cap-conscious GMs discount non-elite players
+            # 0.0 trait = 1.0x, 1.0 trait = 0.6x
+            multiplier = 1.0 - (gm.cap_management * 0.4)
+            modified_value['aav'] *= multiplier
+
+        # 3. Veteran Preference (age factor)
+        if player.age >= 30:
+            if gm.veteran_preference > 0.5:
+                # Veteran-preferring GMs pay more for 30+ age players
+                # 0.5 trait = 1.0x, 1.0 trait = 1.2x
+                multiplier = 1.0 + ((gm.veteran_preference - 0.5) * 0.4)
+            else:
+                # Youth-focused GMs discount 30+ age players
+                # 0.0 trait = 0.8x, 0.5 trait = 1.0x
+                multiplier = 1.0 - ((0.5 - gm.veteran_preference) * 0.4)
+            modified_value['aav'] *= multiplier
+
+        # 4. Star Chasing Premium (elite free agents)
+        if player.overall >= 90:
+            # Star-chasing GMs overpay significantly for elite FAs
+            # 0.0 trait = 1.0x, 1.0 trait = 1.5x
+            multiplier = 1.0 + (gm.star_chasing * 0.5)
+            modified_value['aav'] *= multiplier
+
+        # 5. Risk Tolerance (injury-prone players)
+        if hasattr(player, 'injury_prone') and player.injury_prone:
+            if gm.risk_tolerance < 0.5:
+                # Risk-averse GMs discount injury-prone players
+                # 0.0 trait = 0.7x, 0.5 trait = 1.0x
+                multiplier = 1.0 - ((0.5 - gm.risk_tolerance) * 0.6)
+                modified_value['aav'] *= multiplier
+
+        return modified_value
+
+    # ============================================================================
+    # DRAFT MODIFIERS
+    # ============================================================================
+
+    @classmethod
+    def apply_draft_modifier(
+        cls,
+        prospect: Dict,
+        draft_position: int,
+        gm: GMArchetype,
+        team_context: TeamContext
+    ) -> float:
+        """
+        Apply GM personality modifiers to draft prospect value.
+
+        Applies 6 trait-based modifiers to prospect evaluation:
+        1. Risk Tolerance: High-ceiling vs high-floor prospects
+        2. Win-Now Mentality: Polished vs raw prospects
+        3. Premium Position Focus: QB/Edge/LT premium
+        4. Veteran Preference: Older prospect preference
+        5. Draft Pick Value: BPA vs need-based selection
+        6. Situational Awareness: (Reserved for future)
+
+        Args:
+            prospect: Prospect dict with overall, position, age, potential
+            draft_position: Overall pick number (1-262)
+            gm: GM archetype with trait values
+            team_context: Team context with top_needs list
+
+        Returns:
+            Modified prospect value (multiplicative modifiers stacked)
+        """
+        # Start with base prospect value
+        base_value = float(prospect['overall'])
+
+        # Get optional fields with defaults
+        prospect_age = prospect.get('age', 21)
+        prospect_potential = prospect.get('potential', prospect['overall'])
+        prospect_position = prospect.get('position', '').lower()
+
+        # 1. Risk Tolerance: High-ceiling vs high-floor prospects
+        upside = prospect_potential - prospect['overall']
+        if upside > 10:
+            # High-ceiling prospect (raw, boom/bust)
+            if gm.risk_tolerance > 0.5:
+                # Risk-tolerant GMs love upside
+                # 0.5 trait = 1.0x, 1.0 trait = 1.2x
+                multiplier = 1.0 + ((gm.risk_tolerance - 0.5) * 0.4)
+                base_value *= multiplier
+            else:
+                # Risk-averse GMs discount boom/bust prospects
+                # 0.0 trait = 0.9x, 0.5 trait = 1.0x
+                multiplier = 1.0 - ((0.5 - gm.risk_tolerance) * 0.2)
+                base_value *= multiplier
+
+        # 2. Win-Now Mentality: Polished vs raw prospects
+        if prospect_age >= 23:
+            # Older prospect = more polished, NFL-ready
+            # Win-now GMs premium polished prospects
+            # 0.0 trait = 1.0x, 1.0 trait = 1.3x
+            multiplier = 1.0 + (gm.win_now_mentality * 0.3)
+            base_value *= multiplier
+
+        # 3. Premium Position Focus: QB/Edge/LT premium
+        premium_positions = {'quarterback', 'qb', 'defensive_end', 'edge_rusher',
+                           'edge', 'left_tackle', 'lt', 'offensive_tackle'}
+        if prospect_position in premium_positions:
+            # GMs with high premium_position_focus pay up for QB/Edge/LT
+            # 0.0 trait = 1.0x, 1.0 trait = 1.3x
+            multiplier = 1.0 + (gm.premium_position_focus * 0.3)
+            base_value *= multiplier
+
+        # 4. Veteran Preference: Older prospect preference
+        if prospect_age >= 24:
+            # 24+ year old prospects (5th year seniors, etc.)
+            # Veteran-preferring GMs like mature prospects
+            # 0.0 trait = 1.0x, 1.0 trait = 1.2x
+            multiplier = 1.0 + (gm.veteran_preference * 0.2)
+            base_value *= multiplier
+
+        # 5. Draft Pick Value: BPA vs need-based selection
+        top_needs = team_context.top_needs or []
+        if gm.draft_pick_value <= 0.7:
+            # Need-based GM (draft_pick_value <= 0.7)
+            if top_needs and prospect_position == top_needs[0]:
+                # Critical need match (top need)
+                base_value *= 1.5
+            elif top_needs and prospect_position in top_needs[:3]:
+                # Top-3 need match
+                base_value *= 1.2
+        # BPA GMs (draft_pick_value > 0.7) get no need bonuses
+
+        # 6. Situational Awareness
+        # Reserved for Phase 3 - not implemented
+
+        return base_value
+
+    # ============================================================================
+    # ROSTER CUT MODIFIERS
+    # ============================================================================
+
+    @classmethod
+    def apply_roster_cut_modifier(
+        cls,
+        player: 'Player',
+        objective_value: float,
+        gm: GMArchetype,
+        team_context: TeamContext
+    ) -> float:
+        """
+        Apply GM personality modifiers to roster cut decision.
+
+        Uses 3 trait modifiers to adjust player value based on GM archetype:
+        1. Loyalty: Keep long-tenured players (5+ years with team)
+        2. Cap Management: Discount expensive players (>$5M cap hit)
+        3. Veteran Preference: Boost/discount based on age (30+ years old)
+
+        Args:
+            player: Player object with age, years_with_team, cap_hit
+            objective_value: Base value score from roster evaluation (0-100)
+            gm: GM archetype with personality traits
+            team_context: Team situation context
+
+        Returns:
+            Modified player value (higher = more likely to keep)
+
+        Example:
+            # Loyal GM evaluating long-tenured veteran
+            player = Player(age=32, years_with_team=8, cap_hit=7_000_000)
+            objective_value = 68.0
+            gm = GMArchetype(loyalty=0.8, cap_management=0.9, veteran_preference=0.6)
+
+            modified = apply_roster_cut_modifier(player, objective_value, gm, team_context)
+            # Result: ~74.7 (loyalty 1.32x, cap_mgmt 0.8x, vet_pref 1.04x)
+        """
+        modified_value = float(objective_value)
+
+        # Modifier 1: Loyalty (Tenure Bonus)
+        # Long-tenured players (5+ years) get value boost from loyal GMs
+        years_with_team = getattr(player, 'years_with_team', 0)
+        if years_with_team >= 5:
+            # loyalty trait: 0.0-1.0 → multiplier: 1.0x-1.4x
+            tenure_multiplier = 1.0 + (gm.loyalty * 0.4)
+            modified_value *= tenure_multiplier
+
+        # Modifier 2: Cap Management (Expensive Player Discount)
+        # Expensive players (>$5M cap hit) get value discount from cap-conscious GMs
+        cap_hit = getattr(player, 'cap_hit', 0)
+        if cap_hit > 5_000_000:
+            # Only apply discount if GM is cap-conscious (cap_management > 0.7)
+            if gm.cap_management > 0.7:
+                cap_discount_multiplier = 0.8
+                modified_value *= cap_discount_multiplier
+
+        # Modifier 3: Veteran Preference (Age Factor)
+        # Veterans (30+ age) get boosted/discounted based on GM's veteran preference
+        age = getattr(player, 'age', 25)
+        if age >= 30:
+            if gm.veteran_preference > 0.5:
+                # Veteran-preferring GMs boost veteran value
+                vet_multiplier = 1.0 + ((gm.veteran_preference - 0.5) * 0.4)
+            else:
+                # Youth-focused GMs discount veteran value
+                vet_multiplier = 1.0 - ((0.5 - gm.veteran_preference) * 0.4)
+            modified_value *= vet_multiplier
+
+        return modified_value

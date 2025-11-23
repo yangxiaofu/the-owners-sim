@@ -13,6 +13,11 @@ from offseason.team_needs_analyzer import TeamNeedsAnalyzer
 from offseason.market_value_calculator import MarketValueCalculator
 from salary_cap.cap_database_api import CapDatabaseAPI
 from database.player_roster_api import PlayerRosterAPI
+from transactions.team_context_service import TeamContextService
+from transactions.personality_modifiers import TeamContext, PersonalityModifiers
+from team_management.gm_archetype import GMArchetype
+from team_management.gm_archetype_factory import GMArchetypeFactory
+from team_management.players.player import Player
 
 
 class FreeAgencyManager:
@@ -33,7 +38,8 @@ class FreeAgencyManager:
         dynasty_id: str,
         season_year: int,
         enable_persistence: bool = True,
-        verbose_logging: bool = False
+        verbose_logging: bool = False,
+        gm_archetype: Optional[GMArchetype] = None
     ):
         """
         Initialize free agency manager.
@@ -44,12 +50,14 @@ class FreeAgencyManager:
             season_year: NFL season year (e.g., 2024)
             enable_persistence: Whether to save FA actions to database
             verbose_logging: Enable detailed logging
+            gm_archetype: GM personality for decision-making (None = neutral behavior)
         """
         self.database_path = database_path
         self.dynasty_id = dynasty_id
         self.season_year = season_year
         self.enable_persistence = enable_persistence
         self.verbose_logging = verbose_logging
+        self.gm = gm_archetype
 
         # Will be initialized when needed
         self.free_agent_pool = None
@@ -60,6 +68,8 @@ class FreeAgencyManager:
         self.market_calc = MarketValueCalculator()
         self.cap_api = CapDatabaseAPI(database_path)
         self.player_api = PlayerRosterAPI(database_path)
+        self.context_service = TeamContextService(database_path, dynasty_id)
+        self.gm_factory = GMArchetypeFactory()
 
     def get_free_agent_pool(
         self,
@@ -320,13 +330,38 @@ class FreeAgencyManager:
             )
 
             if matching_fa:
-                # Generate contract offer
+                # Generate contract offer (base market value)
                 contract = self.market_calc.calculate_player_value(
                     position=matching_fa['position'],
                     overall=matching_fa['overall'],
                     age=matching_fa.get('age', 27),
                     years_pro=matching_fa.get('years_pro', 4)
                 )
+
+                # Create team-specific GM archetype for personality-driven behavior
+                team_gm = self.gm_factory.get_team_archetype(team_id)
+                # Create minimal Player object for modifier method
+                player = Player(
+                    name=matching_fa['player_name'],
+                    number=0,  # Not needed for FA evaluation
+                    primary_position=matching_fa['position'],
+                    player_id=matching_fa['player_id']
+                )
+                player.overall = matching_fa['overall']
+                player.age = matching_fa.get('age', 27)
+                player.injury_prone = matching_fa.get('injury_prone', False)
+
+                # Get team context for modifier calculation
+                team_context = self._get_team_context(team_id)
+
+                # Apply personality-based modifier to contract
+                modified_contract = PersonalityModifiers.apply_free_agency_modifier(
+                    player=player,
+                    market_value=contract,
+                    gm=team_gm,
+                    team_context=team_context
+                )
+                contract = modified_contract  # Use modified contract
 
                 # Mock signing (no database persistence for now)
                 signing = {
@@ -373,3 +408,23 @@ class FreeAgencyManager:
 
         # Return highest overall player
         return max(matching_fas, key=lambda x: x['overall'])
+
+    def _get_team_context(self, team_id: int) -> TeamContext:
+        """
+        Build team context for personality modifiers.
+
+        Delegates to TeamContextService for reusable context building.
+
+        Args:
+            team_id: Team ID (1-32)
+
+        Returns:
+            TeamContext with current team situation
+        """
+        return self.context_service.build_team_context(
+            team_id=team_id,
+            season=self.season_year,
+            needs_analyzer=self.needs_analyzer,
+            is_offseason=True,
+            roster_mode="offseason"  # Free agency uses top-51 rule
+        )

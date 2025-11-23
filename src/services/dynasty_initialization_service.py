@@ -223,6 +223,7 @@ class DynastyInitializationService:
         4. Load player rosters from JSON (all 32 teams + free agents)
         5. Generate depth charts (all 32 teams)
         6. Initialize player contracts
+        6.5. Generate draft class for next season (224 prospects)
         7. COMMIT (critical - must happen before schedule generation)
         8. Generate schedule (separate transaction)
         9. Verify dynasty state exists
@@ -242,6 +243,8 @@ class DynastyInitializationService:
                 'dynasty_id': str,
                 'players_loaded': int,
                 'depth_charts_created': int,
+                'draft_class_generated': bool,
+                'draft_prospects_count': int,
                 'schedule_generated': bool,
                 'state_initialized': bool,
                 'offseason_simulated': bool,
@@ -264,6 +267,8 @@ class DynastyInitializationService:
             'dynasty_id': dynasty_id,
             'players_loaded': 0,
             'depth_charts_created': 0,
+            'draft_class_generated': False,
+            'draft_prospects_count': 0,
             'schedule_generated': False,
             'state_initialized': False,
             'offseason_simulated': False,
@@ -357,6 +362,63 @@ class DynastyInitializationService:
             except Exception as contract_error:
                 self.logger.warning(f"Contract initialization failed: {contract_error}")
                 print(f"⚠️  Contract initialization failed (non-critical): {contract_error}")
+
+            # Step 6.5: Generate draft class for upcoming draft
+            print(f"🏈 Step 6.5: Generating draft class for {season + 1} draft...")
+
+            # Pre-flight check: Verify player_generation module is available
+            try:
+                from player_generation.generators.player_generator import PlayerGenerator
+                from player_generation.generators.draft_class_generator import DraftClassGenerator
+            except ImportError as import_error:
+                error_msg = f"CRITICAL: player_generation module not available: {import_error}"
+                self.logger.error(error_msg)
+                print(f"❌ {error_msg}")
+                raise RuntimeError(error_msg) from import_error
+
+            from database.draft_class_api import DraftClassAPI
+
+            draft_class_api = DraftClassAPI(self.db_path)
+            draft_season = season + 1  # Generate for NEXT season's draft
+
+            # Check if draft class already exists (idempotent)
+            if not draft_class_api.dynasty_has_draft_class(dynasty_id, draft_season, connection=conn):
+                prospects_generated = draft_class_api.generate_draft_class(
+                    dynasty_id=dynasty_id,
+                    season=draft_season,
+                    connection=conn  # Share transaction
+                )
+                print(f"✅ Draft class generated: {prospects_generated} prospects for {draft_season} draft")
+
+                # Update result dict
+                result['draft_class_generated'] = True
+                result['draft_prospects_count'] = prospects_generated
+            else:
+                print(f"✅ Draft class already exists for {draft_season}")
+
+                # Query existing prospect count
+                existing_count = draft_class_api.get_draft_prospects_count(dynasty_id, draft_season, connection=conn)
+                result['draft_class_generated'] = True
+                result['draft_prospects_count'] = existing_count
+
+            # CRITICAL VALIDATION: Verify draft class was created successfully
+            if not draft_class_api.dynasty_has_draft_class(dynasty_id, draft_season, connection=conn):
+                error_msg = f"CRITICAL: Draft class generation failed - no draft class found for {draft_season}"
+                self.logger.error(error_msg)
+                print(f"❌ {error_msg}")
+                raise Exception(error_msg)
+
+            # CRITICAL VALIDATION: Verify exactly 224 prospects were created (7 rounds × 32 picks)
+            expected_prospects = 224
+            actual_prospects = result['draft_prospects_count']
+
+            if actual_prospects != expected_prospects:
+                error_msg = f"CRITICAL: Draft class validation failed - expected {expected_prospects} prospects, got {actual_prospects}"
+                self.logger.error(error_msg)
+                print(f"❌ {error_msg}")
+                raise Exception(error_msg)
+
+            print(f"✅ Draft class validated: {actual_prospects} prospects for {draft_season} draft")
 
             # Step 7: COMMIT - Critical transaction boundary
             print(f"💾 Step 7: Committing dynasty to database...")
@@ -464,6 +526,7 @@ class DynastyInitializationService:
             print(f"Dynasty ID: {dynasty_id}")
             print(f"Players Loaded: {result['players_loaded']}")
             print(f"Depth Charts: {result['depth_charts_created']}/32")
+            print(f"Draft Class: {result['draft_prospects_count']} prospects for {season + 1} draft")
             print(f"Schedule: {'Generated' if result['schedule_generated'] else 'Failed'}")
             print(f"State: {'Initialized' if result['state_initialized'] else 'Failed'}")
             print(f"Offseason: {'Simulated' if result['offseason_simulated'] else 'Skipped'}")

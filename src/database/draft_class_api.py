@@ -90,7 +90,12 @@ class DraftClassAPI_IMPL:
     # GENERATION METHODS
     # ========================================================================
 
-    def generate_draft_class(self, dynasty_id: str, season: int) -> int:
+    def generate_draft_class(
+        self,
+        dynasty_id: str,
+        season: int,
+        connection: Optional[sqlite3.Connection] = None
+    ) -> int:
         """
         Generate a complete draft class using player generation system.
 
@@ -100,6 +105,9 @@ class DraftClassAPI_IMPL:
         Args:
             dynasty_id: Dynasty identifier
             season: Season year for draft class
+            connection: Optional shared connection for transaction participation.
+                       If provided, uses shared connection (caller manages commit).
+                       If None, creates own connection and auto-commits.
 
         Returns:
             Total number of prospects generated
@@ -109,7 +117,7 @@ class DraftClassAPI_IMPL:
             RuntimeError: If generation fails
         """
         # Check if draft class already exists
-        if self.dynasty_has_draft_class(dynasty_id, season):
+        if self.dynasty_has_draft_class(dynasty_id, season, connection=connection):
             raise ValueError(
                 f"Draft class already exists for dynasty '{dynasty_id}', season {season}. "
                 f"Delete existing draft class first to regenerate."
@@ -138,11 +146,19 @@ class DraftClassAPI_IMPL:
             draft_class_id = f"DRAFT_{dynasty_id}_{season}"
             generation_date = datetime.now()
 
-            with sqlite3.connect(self.database_path, timeout=30.0) as conn:
-                conn.execute("PRAGMA foreign_keys = ON")
+            # Use provided connection OR create own
+            should_close = connection is None
+            if connection is None:
+                connection = sqlite3.connect(self.database_path, timeout=30.0)
+                self.logger.debug("Using auto-commit mode (own connection)")
+            else:
+                self.logger.debug("Using transaction mode (shared connection)")
+
+            try:
+                connection.execute("PRAGMA foreign_keys = ON")
 
                 # Insert draft class metadata
-                conn.execute('''
+                connection.execute('''
                     INSERT INTO draft_classes (
                         draft_class_id, dynasty_id, season,
                         generation_date, total_prospects, status
@@ -152,38 +168,58 @@ class DraftClassAPI_IMPL:
                 # Insert all prospects using pre-generated player_ids
                 for player_id, prospect in zip(player_ids, generated_prospects):
                     # Insert prospect
-                    self._insert_prospect(player_id, prospect, draft_class_id, dynasty_id, conn)
+                    self._insert_prospect(player_id, prospect, draft_class_id, dynasty_id, connection)
 
-                conn.commit()
+                # Only commit if we created the connection (auto-commit mode)
+                if should_close:
+                    connection.commit()
+                    self.logger.debug("Auto-committed transaction")
 
-            self.logger.info(
-                f"✅ Draft class generation complete: {len(generated_prospects)} prospects created"
-            )
+                self.logger.info(
+                    f"✅ Draft class generation complete: {len(generated_prospects)} prospects created"
+                )
 
-            return len(generated_prospects)
+                return len(generated_prospects)
+
+            finally:
+                if should_close and connection:
+                    connection.close()
 
         except Exception as e:
             self.logger.error(f"Draft class generation failed: {e}")
             raise RuntimeError(f"Failed to generate draft class: {e}")
 
-    def dynasty_has_draft_class(self, dynasty_id: str, season: int) -> bool:
+    def dynasty_has_draft_class(
+        self,
+        dynasty_id: str,
+        season: int,
+        connection: Optional[sqlite3.Connection] = None
+    ) -> bool:
         """
         Check if dynasty has a draft class for given season.
 
         Args:
             dynasty_id: Dynasty identifier
             season: Season year
+            connection: Optional shared connection for transaction participation
 
         Returns:
             True if draft class exists
         """
-        with sqlite3.connect(self.database_path, timeout=30.0) as conn:
-            cursor = conn.execute('''
+        should_close = connection is None
+        if connection is None:
+            connection = sqlite3.connect(self.database_path, timeout=30.0)
+
+        try:
+            cursor = connection.execute('''
                 SELECT COUNT(*) FROM draft_classes
                 WHERE dynasty_id = ? AND season = ?
             ''', (dynasty_id, season))
             count = cursor.fetchone()[0]
             return count > 0
+        finally:
+            if should_close and connection:
+                connection.close()
 
     def _insert_prospect(
         self,
@@ -294,6 +330,41 @@ class DraftClassAPI_IMPL:
             ''', (dynasty_id, season))
             row = cursor.fetchone()
             return dict(row) if row else None
+
+    def get_draft_prospects_count(
+        self,
+        dynasty_id: str,
+        season: int,
+        connection: Optional[sqlite3.Connection] = None
+    ) -> int:
+        """
+        Get total count of draft prospects in a draft class.
+
+        Args:
+            dynasty_id: Dynasty identifier
+            season: Season year
+            connection: Optional shared connection for transaction participation
+
+        Returns:
+            Number of prospects in draft class (0 if draft class doesn't exist)
+        """
+        draft_class_id = f"DRAFT_{dynasty_id}_{season}"
+
+        query = '''
+            SELECT COUNT(*) as count
+            FROM draft_prospects
+            WHERE draft_class_id = ?
+        '''
+
+        if connection:
+            cursor = connection.execute(query, (draft_class_id,))
+            result = cursor.fetchone()
+            return result[0] if result else 0
+        else:
+            with sqlite3.connect(self.database_path, timeout=30.0) as conn:
+                cursor = conn.execute(query, (draft_class_id,))
+                result = cursor.fetchone()
+                return result[0] if result else 0
 
     def get_all_prospects(
         self,

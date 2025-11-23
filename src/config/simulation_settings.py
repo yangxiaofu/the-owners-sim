@@ -4,6 +4,7 @@ Centralized Simulation Speed Settings
 Simple True/False toggles to skip expensive operations.
 Change these settings to speed up simulations for testing.
 """
+from operator import truediv
 
 
 class SimulationSettings:
@@ -18,7 +19,7 @@ class SimulationSettings:
     # CHANGE THESE TO SPEED UP SIMULATIONS
     # ================================================================
 
-    SKIP_GAME_SIMULATION = False
+    SKIP_GAME_SIMULATION = True
     # True:  Use fake game scores (instant, ~0.001s per game)
     # False: Run full play-by-play simulation (realistic, ~2-5s per game)
 

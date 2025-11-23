@@ -5,6 +5,7 @@ OOTP-inspired main application window with tab-based navigation.
 """
 import sys
 import os
+from typing import Dict, Any
 
 from PySide6.QtWidgets import (
     QMainWindow, QTabWidget, QToolBar, QStatusBar,
@@ -27,6 +28,11 @@ from ui.views.transactions_view import TransactionsView
 ui_path = os.path.dirname(__file__)
 if ui_path not in sys.path:
     sys.path.insert(0, ui_path)
+
+# Add project root to path for demo imports
+project_root = os.path.dirname(ui_path)
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 from controllers.season_controller import SeasonController
 from controllers.calendar_controller import CalendarController
@@ -52,6 +58,9 @@ class MainWindow(QMainWindow):
         self.db_path = db_path
         self.dynasty_id = dynasty_id
         self._initialization_season = season  # Only used for new dynasty creation
+
+        # Load user team ID from dynasty (None if league-wide view)
+        self.user_team_id = self._load_user_team_id()
 
         # Window setup
         self.setWindowTitle(f"The Owner's Sim - {dynasty_id}")
@@ -79,6 +88,43 @@ class MainWindow(QMainWindow):
             int: Current season year from database
         """
         return self.simulation_controller.season
+
+    def _load_user_team_id(self) -> int | None:
+        """
+        Load user's team ID from dynasty database.
+
+        Returns:
+            Team ID (1-32) if user controls a team, None if league-wide view
+        """
+        try:
+            # Add src to path for database imports
+            import sys
+            from pathlib import Path
+            src_path = Path(__file__).parent.parent / "src"
+            if str(src_path) not in sys.path:
+                sys.path.insert(0, str(src_path))
+
+            from database.dynasty_database_api import DynastyDatabaseAPI
+
+            dynasty_api = DynastyDatabaseAPI(self.db_path)
+            dynasty_info = dynasty_api.get_dynasty(self.dynasty_id)
+
+            if dynasty_info:
+                team_id = dynasty_info.get('team_id')
+                if team_id:
+                    print(f"[INFO MainWindow] User team loaded: Team ID {team_id}")
+                else:
+                    print(f"[INFO MainWindow] League-wide dynasty (no user team)")
+                return team_id
+            else:
+                print(f"[WARNING MainWindow] Dynasty '{self.dynasty_id}' not found in database")
+                return None
+
+        except Exception as e:
+            print(f"[ERROR MainWindow] Failed to load user team ID: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
 
     def _create_controllers(self):
         """Initialize all controllers for data access."""
@@ -294,6 +340,12 @@ class MainWindow(QMainWindow):
         # Tools Menu
         tools_menu = menubar.addMenu("&Tools")
         tools_menu.addAction(self._create_action(
+            "Draft Day &Demo",
+            self._launch_draft_demo,
+            "Launch interactive draft day simulation"
+        ))
+        tools_menu.addSeparator()
+        tools_menu.addAction(self._create_action(
             "&Preferences",
             self._show_settings,
             "Application preferences"
@@ -460,7 +512,27 @@ class MainWindow(QMainWindow):
         )
 
     def _sim_day(self):
-        """Simulate one day."""
+        """Simulate one day (with draft day interception)."""
+        # CHECK FOR DRAFT DAY BEFORE SIMULATION
+        draft_event = self.simulation_controller.check_for_draft_day_event()
+
+        if draft_event and self.user_team_id:
+            # Draft day detected - launch interactive dialog
+            success = self._handle_draft_day_interactive(draft_event)
+
+            if not success:
+                # User cancelled or dialog failed
+                QMessageBox.information(
+                    self,
+                    "Draft Cancelled",
+                    "Draft day simulation was cancelled. Calendar will not advance."
+                )
+                return
+
+            # Draft completed successfully - continue with normal simulation
+            # (this will mark the draft event as completed in the database)
+
+        # Normal simulation flow
         result = self.simulation_controller.advance_day()
 
         if result['success']:
@@ -757,6 +829,118 @@ class MainWindow(QMainWindow):
                 "Transaction AI Debug Log Error",
                 f"Failed to load transaction AI debug log:\n\n{str(e)}\n\n{error_details}"
             )
+
+    def _launch_draft_demo(self):
+        """Launch Draft Day Demo in a modal dialog."""
+        import random
+        from pathlib import Path
+
+        try:
+            from demo.draft_day_demo.draft_day_dialog import DraftDayDialog
+            from demo.draft_day_demo.draft_demo_controller import DraftDemoController
+            from demo.draft_day_demo.setup_demo_database import setup_draft_demo_database
+
+            # Setup demo database path
+            demo_db = Path("demo/draft_day_demo/draft_demo.db")
+
+            # Create database if doesn't exist
+            if not demo_db.exists():
+                QMessageBox.information(
+                    self,
+                    "Setting Up Demo",
+                    "First time setup: Creating draft demo database...\n\n"
+                    "This will generate 224 prospects and may take 10-15 seconds."
+                )
+
+                success = setup_draft_demo_database(str(demo_db))
+
+                if not success:
+                    QMessageBox.critical(
+                        self,
+                        "Setup Failed",
+                        "Failed to create draft demo database.\n\n"
+                        "Check console for error details."
+                    )
+                    return
+
+            # Random team assignment
+            user_team_id = random.randint(1, 32)
+
+            # Create controller
+            controller = DraftDemoController(
+                db_path=str(demo_db),
+                dynasty_id="draft_day_demo",
+                season=2026,
+                user_team_id=user_team_id
+            )
+
+            # Launch dialog
+            dialog = DraftDayDialog(
+                controller=controller,
+                parent=self
+            )
+
+            dialog.exec()
+
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            QMessageBox.critical(
+                self,
+                "Draft Demo Error",
+                f"Failed to launch Draft Day Demo:\n\n{str(e)}\n\n{error_details}"
+            )
+
+    def _handle_draft_day_interactive(self, draft_event: Dict[str, Any]) -> bool:
+        """
+        Launch interactive draft day dialog.
+
+        Args:
+            draft_event: Draft day event data from database
+
+        Returns:
+            True if draft completed successfully, False if cancelled
+        """
+        try:
+            # Import here to avoid circular dependency
+            from demo.draft_day_demo.draft_demo_controller import DraftDemoController
+            from demo.draft_day_demo.draft_day_dialog import DraftDayDialog
+            from PySide6.QtWidgets import QDialog
+
+            # Get season from event or current state
+            draft_season = draft_event.get('season', self.season)
+
+            print(f"[INFO MainWindow] Launching draft day dialog for season {draft_season}, team {self.user_team_id}")
+
+            # Create controller (uses MAIN database, not demo database)
+            controller = DraftDemoController(
+                db_path=self.db_path,
+                dynasty_id=self.dynasty_id,
+                season=draft_season,
+                user_team_id=self.user_team_id
+            )
+
+            # Launch dialog (modal - blocks until draft completes)
+            dialog = DraftDayDialog(controller=controller, parent=self)
+            result = dialog.exec()
+
+            # Check if user completed the draft
+            if result == QDialog.DialogCode.Accepted:
+                print(f"[INFO MainWindow] Draft completed successfully")
+                return True
+            else:
+                print(f"[INFO MainWindow] Draft cancelled by user")
+                return False
+
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            QMessageBox.critical(
+                self,
+                "Draft Day Error",
+                f"Failed to launch draft day dialog:\n\n{str(e)}\n\n{error_details}"
+            )
+            return False
 
     def _on_skip_to_new_season(self):
         """Skip remaining offseason events and start new season."""

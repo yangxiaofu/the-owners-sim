@@ -1602,15 +1602,72 @@ class OffseasonController:
         except Exception as e:
             self.logger.error(f"Error in free agency simulation: {e}")
 
-        # Step 3: Roster Cuts (90 → 53)
+        # Step 3: Draft Simulation (7 rounds)
         if self.verbose_logging:
-            print("STEP 3: Roster Cuts")
+            print("STEP 3: Draft Simulation")
+            print("-" * 80)
+
+        draft_picks_count = 0
+
+        try:
+            # Check if draft order exists
+            draft_order = self.draft_manager.draft_order_api.get_draft_order(
+                dynasty_id=self.dynasty_id,
+                season=self.season_year
+            )
+
+            if not draft_order:
+                if self.verbose_logging:
+                    print(f"⚠️  No draft order found for {self.season_year}. Skipping draft simulation.")
+                    print(f"   Generate draft order first using DraftOrderGenerator.")
+            else:
+                # Generate draft class (if not already exists)
+                try:
+                    draft_class = self.draft_manager.generate_draft_class()
+                    if self.verbose_logging:
+                        print(f"✅ Draft class ready: {len(draft_class)} prospects available")
+                except Exception as e:
+                    if self.verbose_logging:
+                        print(f"⚠️  Draft class already exists or error: {e}")
+
+                # Simulate draft for all AI teams (user team's picks will be auto-selected)
+                if self.verbose_logging:
+                    print(f"\n🏈 Simulating {self.season_year} NFL Draft...")
+
+                draft_results = self.draft_manager.simulate_draft(
+                    user_team_id=user_team_id if user_team_id else 0,  # AI handles user picks if user_team_id=0
+                    verbose=False  # Set to True for pick-by-pick details
+                )
+
+                draft_picks_count = len(draft_results)
+
+                if self.verbose_logging:
+                    print(f"✅ Draft complete: {draft_picks_count} picks executed")
+
+        except Exception as e:
+            self.logger.error(f"Error in draft simulation: {e}")
+            if self.verbose_logging:
+                print(f"❌ Draft simulation failed: {e}")
+                import traceback
+                traceback.print_exc()
+
+        if self.verbose_logging:
+            print()
+
+        # Step 4: Roster Cuts (90 → 53)
+        if self.verbose_logging:
+            print("STEP 4: Roster Cuts")
             print("-" * 80)
 
         for team_id in ai_teams:
             try:
-                # AI performs roster cuts
-                cut_result = self.roster_manager.finalize_53_man_roster_ai(team_id)
+                # Get GM archetype for this team
+                from team_management.gm_archetype_factory import GMArchetypeFactory
+                gm_factory = GMArchetypeFactory()
+                gm = gm_factory.get_team_archetype(team_id)
+
+                # AI performs roster cuts with GM personality modifiers
+                cut_result = self.roster_manager.finalize_53_man_roster_ai(team_id, gm_archetype=gm)
 
                 cuts_made = cut_result.get('total_cut', 0)
                 roster_cuts_count += cuts_made
@@ -1625,11 +1682,12 @@ class OffseasonController:
             print(f"\n✅ Made {roster_cuts_count} roster cuts across all teams\n")
 
         # Summary
-        total_transactions = franchise_tags_count + fa_signings_count + roster_cuts_count
+        total_transactions = franchise_tags_count + fa_signings_count + draft_picks_count + roster_cuts_count
 
         result = {
             'franchise_tags_applied': franchise_tags_count,
             'free_agent_signings': fa_signings_count,
+            'draft_picks_made': draft_picks_count,
             'roster_cuts_made': roster_cuts_count,
             'total_transactions': total_transactions,
             'ai_teams_processed': len(ai_teams)
@@ -1642,6 +1700,7 @@ class OffseasonController:
             print(f"  Total Transactions: {total_transactions}")
             print(f"  - Franchise Tags: {franchise_tags_count}")
             print(f"  - Free Agency: {fa_signings_count}")
+            print(f"  - Draft Picks: {draft_picks_count}")
             print(f"  - Roster Cuts: {roster_cuts_count}")
             print("=" * 80)
             print()

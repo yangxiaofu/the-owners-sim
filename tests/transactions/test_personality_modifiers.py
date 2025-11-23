@@ -895,3 +895,726 @@ class TestEdgeCases:
         )
         # Should default to 0.5 win percentage
         assert 0.50 <= total <= 2.00
+
+
+# ============================================================================
+# TEST FREE AGENCY MODIFIERS
+# ============================================================================
+
+class TestFreeAgencyModifier:
+    """Tests for apply_free_agency_modifier() method"""
+
+    # ========== FIXTURES ==========
+
+    @pytest.fixture
+    def elite_fa_wr(self):
+        """Elite 92 OVR free agent wide receiver, age 28"""
+        from team_management.players.player import Player
+        player = Player(
+            name="Elite FA WR",
+            number=1,
+            primary_position="wide_receiver",
+            player_id=2001
+        )
+        player.ratings['overall'] = 92
+        player.overall = 92  # Also set as attribute for convenience
+        player.age = 28
+        player.injury_prone = False
+        return player
+
+    @pytest.fixture
+    def veteran_starter_rb(self):
+        """Veteran 82 OVR starter running back, age 31"""
+        from team_management.players.player import Player
+        player = Player(
+            name="Veteran RB",
+            number=2,
+            primary_position="running_back",
+            player_id=2002
+        )
+        player.ratings['overall'] = 82
+        player.overall = 82  # Also set as attribute for convenience
+        player.age = 31
+        player.injury_prone = False
+        return player
+
+    @pytest.fixture
+    def injury_prone_te(self):
+        """Injury-prone 85 OVR tight end"""
+        from team_management.players.player import Player
+        player = Player(
+            name="Injury-Prone TE",
+            number=3,
+            primary_position="tight_end",
+            player_id=2003
+        )
+        player.ratings['overall'] = 85
+        player.overall = 85  # Also set as attribute for convenience
+        player.age = 26
+        player.injury_prone = True
+        return player
+
+    @pytest.fixture
+    def average_cb(self):
+        """Average 75 OVR cornerback, age 25"""
+        from team_management.players.player import Player
+        player = Player(
+            name="Average CB",
+            number=4,
+            primary_position="cornerback",
+            player_id=2004
+        )
+        player.ratings['overall'] = 75
+        player.overall = 75  # Also set as attribute for convenience
+        player.age = 25
+        player.injury_prone = False
+        return player
+
+    @pytest.fixture
+    def market_value_15m(self):
+        """$15M AAV market value"""
+        return {
+            'aav': 15_000_000,
+            'years': 4,
+            'total': 60_000_000,
+            'guaranteed': 30_000_000
+        }
+
+    @pytest.fixture
+    def market_value_5m(self):
+        """$5M AAV market value"""
+        return {
+            'aav': 5_000_000,
+            'years': 3,
+            'total': 15_000_000,
+            'guaranteed': 10_000_000
+        }
+
+    @pytest.fixture
+    def win_now_gm(self):
+        """Win-Now GM (high win_now_mentality, low cap_management)"""
+        return GMArchetype(
+            name="Win-Now GM",
+            description="Aggressive, win-now focused",
+            win_now_mentality=0.9,
+            cap_management=0.3,
+            star_chasing=0.7,
+            veteran_preference=0.6,
+            risk_tolerance=0.5
+        )
+
+    @pytest.fixture
+    def rebuilder_gm(self):
+        """Rebuilder GM (low win_now, high cap_management)"""
+        return GMArchetype(
+            name="Rebuilder GM",
+            description="Patient, cap-conscious rebuilder",
+            win_now_mentality=0.2,
+            cap_management=0.9,
+            star_chasing=0.2,
+            veteran_preference=0.3,
+            risk_tolerance=0.5
+        )
+
+    # ========== INDIVIDUAL MODIFIER TESTS ==========
+
+    def test_win_now_premium_for_proven_starters(
+        self, veteran_starter_rb, market_value_15m, win_now_gm, contender_context
+    ):
+        """Win-Now GMs overpay for proven starters (80+ OVR)"""
+        result = PersonalityModifiers.apply_free_agency_modifier(
+            veteran_starter_rb, market_value_15m, win_now_gm, contender_context
+        )
+        # Multiple modifiers apply:
+        # 1. win_now (82 OVR >= 80): 1.0 + ((0.9 - 0.5) * 0.8) = 1.32
+        # 2. cap_management (82 OVR < 85): 1.0 - (0.3 * 0.4) = 0.88
+        # Combined: 15M * 1.32 * 0.88 ≈ 17.424M
+        assert result['aav'] > 15_000_000
+        assert result['aav'] <= 21_000_000  # Max 1.4x
+        assert 17_000_000 < result['aav'] < 19_000_000  # Expected range with stacking
+
+    def test_cap_management_discount(
+        self, veteran_starter_rb, market_value_15m, rebuilder_gm, rebuilding_context
+    ):
+        """Cap-conscious GMs discount non-elite players (< 85 OVR)"""
+        result = PersonalityModifiers.apply_free_agency_modifier(
+            veteran_starter_rb, market_value_15m, rebuilder_gm, rebuilding_context
+        )
+        # Multiple modifiers apply:
+        # 1. cap_management (82 OVR < 85): 1.0 - (0.9 * 0.4) = 0.64
+        # 2. veteran_preference (age 31 >= 30, vet_pref=0.3 < 0.5): 1.0 - ((0.5 - 0.3) * 0.4) = 0.92
+        # Combined: 15M * 0.64 * 0.92 ≈ 8.832M
+        assert result['aav'] < 15_000_000
+        assert result['aav'] >= 8_500_000  # Min with stacking
+        assert 8_500_000 < result['aav'] < 9_500_000  # Expected range with stacking
+
+    def test_veteran_preference_premium(
+        self, veteran_starter_rb, market_value_15m, contender_context
+    ):
+        """Veteran-preferring GMs pay more for 30+ age players"""
+        gm = GMArchetype(name="Veteran-Focused GM", description="Prefers veterans", veteran_preference=0.9)
+        result = PersonalityModifiers.apply_free_agency_modifier(
+            veteran_starter_rb, market_value_15m, gm, contender_context
+        )
+        # Multiple modifiers apply:
+        # 1. cap_management (82 OVR < 85, default=0.5): 1.0 - (0.5 * 0.4) = 0.8
+        # 2. veteran_preference (age 31 >= 30, vet_pref=0.9 > 0.5): 1.0 + ((0.9 - 0.5) * 0.4) = 1.16
+        # Combined: 15M * 0.8 * 1.16 = 13.92M
+        assert result['aav'] < 15_000_000  # Cap discount outweighs vet premium
+        assert 13_500_000 < result['aav'] < 14_500_000  # Expected range with stacking
+
+    def test_veteran_preference_discount(
+        self, veteran_starter_rb, market_value_15m, rebuilding_context
+    ):
+        """Youth-focused GMs discount 30+ age players"""
+        gm = GMArchetype(name="Youth-Focused GM", description="Prefers young players", veteran_preference=0.1)
+        result = PersonalityModifiers.apply_free_agency_modifier(
+            veteran_starter_rb, market_value_15m, gm, rebuilding_context
+        )
+        # Multiple modifiers apply:
+        # 1. cap_management (82 OVR < 85, default=0.5): 1.0 - (0.5 * 0.4) = 0.8
+        # 2. veteran_preference (age 31 >= 30, vet_pref=0.1 < 0.5): 1.0 - ((0.5 - 0.1) * 0.4) = 0.84
+        # Combined: 15M * 0.8 * 0.84 = 10.08M
+        assert result['aav'] < 15_000_000
+        assert 9_500_000 < result['aav'] < 11_000_000  # Expected range with stacking
+
+    def test_star_chasing_premium(
+        self, elite_fa_wr, market_value_15m, contender_context
+    ):
+        """Star-chasing GMs overpay for elite FAs (90+ OVR)"""
+        gm = GMArchetype(name="Star Chaser GM", description="Loves elite players", star_chasing=0.9)
+        result = PersonalityModifiers.apply_free_agency_modifier(
+            elite_fa_wr, market_value_15m, gm, contender_context
+        )
+        # Expected: 15M * 1.45 = 21.75M
+        # Formula: 1.0 + (0.9 * 0.5) = 1.45
+        assert result['aav'] > 15_000_000
+        assert result['aav'] <= 22_500_000  # Max 1.5x
+        assert 20_000_000 < result['aav'] < 23_000_000
+
+    def test_risk_tolerance_discount(
+        self, injury_prone_te, market_value_15m, contender_context
+    ):
+        """Risk-averse GMs discount injury-prone players"""
+        gm = GMArchetype(name="Risk-Averse GM", description="Avoids risky players", risk_tolerance=0.2)
+        result = PersonalityModifiers.apply_free_agency_modifier(
+            injury_prone_te, market_value_15m, gm, contender_context
+        )
+        # Expected: 15M * 0.82 = 12.3M
+        # Formula: 1.0 - ((0.5 - 0.2) * 0.6) = 0.82
+        assert result['aav'] < 15_000_000
+        assert result['aav'] >= 10_500_000  # Min 0.7x
+        assert 11_500_000 < result['aav'] < 13_000_000
+
+    def test_risk_neutral_for_injury_prone_at_threshold(
+        self, injury_prone_te, market_value_15m, contender_context
+    ):
+        """Risk-tolerant GMs (>= 0.5) don't discount injury-prone players"""
+        gm = GMArchetype(name="Risk-Tolerant GM", description="Accepts risky players", risk_tolerance=0.6)
+        result = PersonalityModifiers.apply_free_agency_modifier(
+            injury_prone_te, market_value_15m, gm, contender_context
+        )
+        # No discount since risk_tolerance >= 0.5
+        assert result['aav'] == 15_000_000
+
+    # ========== COMBINED MODIFIER TESTS ==========
+
+    def test_combined_modifiers_win_now(
+        self, elite_fa_wr, market_value_15m, win_now_gm, contender_context
+    ):
+        """Multiple modifiers stack multiplicatively"""
+        result = PersonalityModifiers.apply_free_agency_modifier(
+            elite_fa_wr, market_value_15m, win_now_gm, contender_context
+        )
+        # Expected: Multiple bonuses stack
+        # 1. win_now (elite_fa_wr is 92 OVR >= 80): ~1.32x
+        # 2. star_chasing (92 OVR >= 90): ~1.35x
+        # Combined: 15M * 1.32 * 1.35 ≈ 26.7M
+        assert result['aav'] > 20_000_000  # Significant overpay
+        assert result['aav'] > 25_000_000  # Multiple multipliers
+
+    def test_combined_modifiers_rebuilder(
+        self, veteran_starter_rb, market_value_15m, rebuilder_gm, rebuilding_context
+    ):
+        """Rebuilder applies multiple discounts"""
+        result = PersonalityModifiers.apply_free_agency_modifier(
+            veteran_starter_rb, market_value_15m, rebuilder_gm, rebuilding_context
+        )
+        # Expected: Multiple discounts stack
+        # 1. cap_management (82 OVR < 85): 0.64x
+        # 2. veteran_preference (age 31 >= 30, vet_pref=0.3): 0.88x
+        # Combined: 15M * 0.64 * 0.88 ≈ 8.45M
+        assert result['aav'] < 15_000_000
+        assert result['aav'] < 10_000_000  # Multiple discounts
+        assert 7_500_000 < result['aav'] < 9_500_000
+
+    # ========== EDGE CASE TESTS ==========
+
+    def test_backward_compatibility_no_injury_prone(
+        self, average_cb, market_value_5m, contender_context
+    ):
+        """Handles players without injury_prone attribute"""
+        # Remove injury_prone attribute
+        delattr(average_cb, 'injury_prone')
+        gm = GMArchetype(name="Risk-Averse GM", description="Avoids risky players", risk_tolerance=0.1)
+        result = PersonalityModifiers.apply_free_agency_modifier(
+            average_cb, market_value_5m, gm, contender_context
+        )
+        # Should not crash, just skip injury modifier
+        # But cap_management still applies (75 OVR < 85, default=0.5): 1.0 - (0.5 * 0.4) = 0.8
+        # 5M * 0.8 = 4M
+        assert result['aav'] == 4_000_000
+
+    def test_original_dict_not_mutated(
+        self, elite_fa_wr, market_value_15m, win_now_gm, contender_context
+    ):
+        """Original market_value dict is not mutated"""
+        original_aav = market_value_15m['aav']
+        result = PersonalityModifiers.apply_free_agency_modifier(
+            elite_fa_wr, market_value_15m, win_now_gm, contender_context
+        )
+        # Original should be unchanged
+        assert market_value_15m['aav'] == original_aav
+        # Result should be modified
+        assert result['aav'] != original_aav
+
+    def test_no_modifiers_apply(
+        self, average_cb, market_value_5m, neutral_gm, rebuilding_context
+    ):
+        """Player with no modifier triggers returns original value"""
+        # average_cb: 75 OVR (< 80, not star), age 25 (< 30), not injury-prone
+        # neutral_gm: All traits = 0.5
+        result = PersonalityModifiers.apply_free_agency_modifier(
+            average_cb, market_value_5m, neutral_gm, rebuilding_context
+        )
+        # Only cap_management applies (75 OVR < 85): 1.0 - (0.5 * 0.4) = 0.8
+        assert result['aav'] < 5_000_000
+        assert 3_500_000 < result['aav'] < 4_500_000
+
+    def test_all_dict_keys_preserved(
+        self, elite_fa_wr, market_value_15m, win_now_gm, contender_context
+    ):
+        """All keys in market_value dict are preserved"""
+        result = PersonalityModifiers.apply_free_agency_modifier(
+            elite_fa_wr, market_value_15m, win_now_gm, contender_context
+        )
+        # All original keys should be present
+        assert 'aav' in result
+        assert 'years' in result
+        assert 'total' in result
+        assert 'guaranteed' in result
+
+    def test_extreme_multiplier_stacking(
+        self, elite_fa_wr, market_value_15m, contender_context
+    ):
+        """Extreme GM traits don't produce unrealistic values"""
+        extreme_gm = GMArchetype(
+            name="Extreme GM",
+            description="All traits at extremes",
+            win_now_mentality=1.0,
+            star_chasing=1.0,
+            cap_management=0.0,
+            veteran_preference=1.0,
+            risk_tolerance=1.0
+        )
+        result = PersonalityModifiers.apply_free_agency_modifier(
+            elite_fa_wr, market_value_15m, extreme_gm, contender_context
+        )
+        # Even with extreme traits, should remain somewhat reasonable
+        # Max expected: ~1.4 (win_now) * 1.5 (star) = 2.1x = 31.5M
+        assert result['aav'] < 35_000_000  # Extreme but not absurd
+
+    # ========== BEHAVIORAL DIFFERENTIATION TESTS ==========
+
+    def test_win_now_vs_rebuilder_variance(
+        self, veteran_starter_rb, market_value_15m,
+        win_now_gm, rebuilder_gm, contender_context, rebuilding_context
+    ):
+        """Win-Now and Rebuilder GMs show ≥20% AAV variance"""
+        win_now_result = PersonalityModifiers.apply_free_agency_modifier(
+            veteran_starter_rb, market_value_15m, win_now_gm, contender_context
+        )
+        rebuilder_result = PersonalityModifiers.apply_free_agency_modifier(
+            veteran_starter_rb, market_value_15m, rebuilder_gm, rebuilding_context
+        )
+
+        # Calculate variance
+        variance = abs(win_now_result['aav'] - rebuilder_result['aav']) / market_value_15m['aav']
+
+        # Should show ≥20% variance (from specification)
+        assert variance >= 0.20, f"Variance {variance:.2%} is below 20% threshold"
+
+        # Win-Now should pay more than Rebuilder
+        assert win_now_result['aav'] > rebuilder_result['aav']
+
+
+# ============================================================================
+# TESTS - ROSTER CUT MODIFIERS (PHASE 3)
+# ============================================================================
+
+class TestLoyaltyModifier:
+    """Tests for loyalty modifier (tenure bonus)."""
+
+    def test_loyal_gm_boosts_long_tenured_player(self, rebuilding_context):
+        """Loyal GM gives value boost to long-tenured players (5+ years)."""
+        from team_management.players.player import Player
+
+        # Create loyal GM
+        loyal_gm = GMArchetype(
+            name="Loyal GM",
+            description="Values team loyalty",
+            loyalty=0.9,
+            cap_management=0.5,
+            veteran_preference=0.5
+        )
+
+        # Create long-tenured player (7 years with team)
+        player = Player(
+            name="Veteran Player",
+            number=99,
+            primary_position="linebacker",
+            player_id=3001
+        )
+        player.years_with_team = 7
+        player.age = 28
+        player.cap_hit = 4_000_000
+
+        objective_value = 70.0
+
+        modified_value = PersonalityModifiers.apply_roster_cut_modifier(
+            player, objective_value, loyal_gm, rebuilding_context
+        )
+
+        # Expected: 70 * 1.36 = 95.2
+        # Formula: 1.0 + (0.9 * 0.4) = 1.36
+        assert modified_value > objective_value
+        assert 94.0 < modified_value < 96.0
+
+    def test_ruthless_gm_minimal_tenure_bonus(self, rebuilding_context):
+        """Ruthless GM gives minimal tenure bonus."""
+        from team_management.players.player import Player
+
+        # Create ruthless GM
+        ruthless_gm = GMArchetype(
+            name="Ruthless GM",
+            description="No sentiment",
+            loyalty=0.1,
+            cap_management=0.5,
+            veteran_preference=0.5
+        )
+
+        # Create long-tenured player (8 years with team)
+        player = Player(
+            name="Veteran Player",
+            number=98,
+            primary_position="safety",
+            player_id=3002
+        )
+        player.years_with_team = 8
+        player.age = 29
+        player.cap_hit = 3_500_000
+
+        objective_value = 68.0
+
+        modified_value = PersonalityModifiers.apply_roster_cut_modifier(
+            player, objective_value, ruthless_gm, rebuilding_context
+        )
+
+        # Expected: 68 * 1.04 = 70.72
+        # Formula: 1.0 + (0.1 * 0.4) = 1.04
+        assert modified_value > objective_value
+        assert 70.0 < modified_value < 72.0
+
+
+class TestCapManagementModifier:
+    """Tests for cap management modifier (expensive player discount)."""
+
+    def test_cap_conscious_gm_discounts_expensive_player(self, rebuilding_context):
+        """Cap-conscious GM discounts expensive players (>$5M cap hit)."""
+        from team_management.players.player import Player
+
+        # Create cap-conscious GM
+        cap_conscious_gm = GMArchetype(
+            name="Cap-Conscious GM",
+            description="Values cap space",
+            loyalty=0.5,
+            cap_management=0.9,
+            veteran_preference=0.5
+        )
+
+        # Create expensive player ($8M cap hit)
+        player = Player(
+            name="Expensive Player",
+            number=97,
+            primary_position="wide_receiver",
+            player_id=3003
+        )
+        player.years_with_team = 3
+        player.age = 27
+        player.cap_hit = 8_000_000
+
+        objective_value = 75.0
+
+        modified_value = PersonalityModifiers.apply_roster_cut_modifier(
+            player, objective_value, cap_conscious_gm, rebuilding_context
+        )
+
+        # Expected: 75 * 0.8 = 60.0
+        # Formula: 0.8x discount for expensive player
+        assert modified_value < objective_value
+        assert 59.0 < modified_value < 61.0
+
+    def test_cap_flexible_gm_no_discount(self, rebuilding_context):
+        """Cap-flexible GM does not discount expensive players."""
+        from team_management.players.player import Player
+
+        # Create cap-flexible GM (cap_management <= 0.7)
+        cap_flexible_gm = GMArchetype(
+            name="Cap-Flexible GM",
+            description="Not worried about cap",
+            loyalty=0.5,
+            cap_management=0.3,
+            veteran_preference=0.5
+        )
+
+        # Create expensive player ($7M cap hit)
+        player = Player(
+            name="Expensive Player",
+            number=96,
+            primary_position="running_back",
+            player_id=3004
+        )
+        player.years_with_team = 2
+        player.age = 26
+        player.cap_hit = 7_000_000
+
+        objective_value = 72.0
+
+        modified_value = PersonalityModifiers.apply_roster_cut_modifier(
+            player, objective_value, cap_flexible_gm, rebuilding_context
+        )
+
+        # Expected: 72 * 1.0 = 72.0 (no discount since cap_management <= 0.7)
+        assert modified_value == objective_value
+
+
+class TestVeteranPreferenceRosterCuts:
+    """Tests for veteran preference modifier (age factor)."""
+
+    def test_veteran_preferring_gm_boosts_old_player(self, rebuilding_context):
+        """Veteran-preferring GM boosts 30+ age players."""
+        from team_management.players.player import Player
+
+        # Create veteran-preferring GM
+        vet_pref_gm = GMArchetype(
+            name="Veteran-Preferring GM",
+            description="Loves experience",
+            loyalty=0.5,
+            cap_management=0.5,
+            veteran_preference=0.9
+        )
+
+        # Create 32-year-old player
+        player = Player(
+            name="Old Player",
+            number=95,
+            primary_position="linebacker",
+            player_id=3005
+        )
+        player.years_with_team = 4
+        player.age = 32
+        player.cap_hit = 4_500_000
+
+        objective_value = 65.0
+
+        modified_value = PersonalityModifiers.apply_roster_cut_modifier(
+            player, objective_value, vet_pref_gm, rebuilding_context
+        )
+
+        # Expected: 65 * 1.16 = 75.4
+        # Formula: 1.0 + ((0.9 - 0.5) * 0.4) = 1.16
+        assert modified_value > objective_value
+        assert 74.5 < modified_value < 76.5
+
+    def test_youth_focused_gm_discounts_old_player(self, rebuilding_context):
+        """Youth-focused GM discounts 30+ age players."""
+        from team_management.players.player import Player
+
+        # Create youth-focused GM
+        youth_gm = GMArchetype(
+            name="Youth-Focused GM",
+            description="Prefers young talent",
+            loyalty=0.5,
+            cap_management=0.5,
+            veteran_preference=0.2
+        )
+
+        # Create 31-year-old player
+        player = Player(
+            name="Old Player",
+            number=94,
+            primary_position="cornerback",
+            player_id=3006
+        )
+        player.years_with_team = 3
+        player.age = 31
+        player.cap_hit = 3_000_000
+
+        objective_value = 70.0
+
+        modified_value = PersonalityModifiers.apply_roster_cut_modifier(
+            player, objective_value, youth_gm, rebuilding_context
+        )
+
+        # Expected: 70 * 0.88 = 61.6
+        # Formula: 1.0 - ((0.5 - 0.2) * 0.4) = 0.88
+        assert modified_value < objective_value
+        assert 60.5 < modified_value < 62.5
+
+
+class TestRosterCutCombinedModifiers:
+    """Tests for combined roster cut modifiers."""
+
+    def test_all_modifiers_stack_multiplicatively(self, rebuilding_context):
+        """All 3 modifiers stack multiplicatively."""
+        from team_management.players.player import Player
+
+        # Create GM with all 3 traits active
+        gm = GMArchetype(
+            name="Complex GM",
+            description="Multiple traits",
+            loyalty=0.8,
+            cap_management=0.9,
+            veteran_preference=0.6
+        )
+
+        # Create player triggering all 3 modifiers
+        # 32 years old, 7 years tenure, $7M cap hit
+        player = Player(
+            name="Complex Player",
+            number=93,
+            primary_position="defensive_end",
+            player_id=3007
+        )
+        player.age = 32
+        player.years_with_team = 7
+        player.cap_hit = 7_000_000
+
+        objective_value = 68.0
+
+        modified_value = PersonalityModifiers.apply_roster_cut_modifier(
+            player, objective_value, gm, rebuilding_context
+        )
+
+        # Expected: 68 * 1.32 * 0.8 * 1.04 ≈ 74.7
+        # loyalty: 1.0 + (0.8 * 0.4) = 1.32
+        # cap_mgmt: 0.8 (expensive player, cap_management > 0.7)
+        # vet_pref: 1.0 + ((0.6 - 0.5) * 0.4) = 1.04
+        assert 73.5 < modified_value < 75.5
+
+    def test_offsetting_modifiers(self, rebuilding_context):
+        """Loyalty and cap management can offset each other."""
+        from team_management.players.player import Player
+
+        # Create GM with high loyalty AND high cap management
+        gm = GMArchetype(
+            name="Conflicted GM",
+            description="Loyalty vs cap discipline",
+            loyalty=0.9,  # Boosts tenure
+            cap_management=0.9,  # Discounts expensive
+            veteran_preference=0.5
+        )
+
+        # Create expensive veteran with tenure
+        player = Player(
+            name="Expensive Vet",
+            number=92,
+            primary_position="quarterback",
+            player_id=3008
+        )
+        player.years_with_team = 8  # Triggers loyalty boost
+        player.age = 28  # No vet preference modifier
+        player.cap_hit = 8_000_000  # Triggers cap discount
+
+        objective_value = 80.0
+
+        modified_value = PersonalityModifiers.apply_roster_cut_modifier(
+            player, objective_value, gm, rebuilding_context
+        )
+
+        # Expected: 80 * 1.36 * 0.8 = 87.04
+        # loyalty: 1.0 + (0.9 * 0.4) = 1.36
+        # cap_mgmt: 0.8
+        # Net result: modifiers offset but loyalty wins slightly
+        assert modified_value > objective_value  # Loyalty wins
+        assert 86.0 < modified_value < 89.0
+
+
+class TestRosterCutEdgeCases:
+    """Tests for edge cases in roster cut modifiers."""
+
+    def test_missing_years_with_team_field(self, rebuilding_context):
+        """Handle missing years_with_team field gracefully."""
+        from team_management.players.player import Player
+
+        # Create loyal GM
+        loyal_gm = GMArchetype(
+            name="Loyal GM",
+            description="Values tenure",
+            loyalty=0.9,
+            cap_management=0.5,
+            veteran_preference=0.5
+        )
+
+        # Create player WITHOUT years_with_team attribute
+        player = Player(
+            name="Unknown Tenure",
+            number=91,
+            primary_position="tight_end",
+            player_id=3009
+        )
+        # Don't set years_with_team (tests getattr default=0)
+        player.age = 27
+        player.cap_hit = 3_000_000
+
+        objective_value = 65.0
+
+        modified_value = PersonalityModifiers.apply_roster_cut_modifier(
+            player, objective_value, loyal_gm, rebuilding_context
+        )
+
+        # Expected: 65 * 1.0 = 65.0 (no tenure bonus, defaults to 0 years)
+        assert modified_value == objective_value
+
+    def test_missing_cap_hit_field(self, rebuilding_context):
+        """Handle missing cap_hit field gracefully."""
+        from team_management.players.player import Player
+
+        # Create cap-conscious GM
+        cap_gm = GMArchetype(
+            name="Cap-Conscious GM",
+            description="Watches cap",
+            loyalty=0.5,
+            cap_management=0.9,
+            veteran_preference=0.5
+        )
+
+        # Create player WITHOUT cap_hit attribute
+        player = Player(
+            name="Unknown Cap Hit",
+            number=90,
+            primary_position="offensive_tackle",
+            player_id=3010
+        )
+        player.years_with_team = 2
+        player.age = 26
+        # Don't set cap_hit (tests getattr default=0)
+
+        objective_value = 70.0
+
+        modified_value = PersonalityModifiers.apply_roster_cut_modifier(
+            player, objective_value, cap_gm, rebuilding_context
+        )
+
+        # Expected: 70 * 1.0 = 70.0 (no cap discount, defaults to $0)
+        assert modified_value == objective_value

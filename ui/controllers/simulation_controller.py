@@ -23,6 +23,7 @@ from season.season_cycle_controller import SeasonCycleController
 from src.calendar.date_models import Date
 from src.calendar.season_phase_tracker import SeasonPhase
 from src.config.simulation_settings import SimulationSettings
+from src.events.event_database_api import EventDatabaseAPI
 
 from ui.domain_models.simulation_data_model import SimulationDataModel
 
@@ -86,6 +87,9 @@ class SimulationController(QObject):
 
         # Domain model for state persistence and retrieval
         self.state_model = SimulationDataModel(db_path, dynasty_id, season)
+
+        # Event database API for draft day detection
+        self.event_db = EventDatabaseAPI(db_path)
 
         # Load current state from database FIRST (establishes current_date_str, current_phase, current_week)
         self._load_state()
@@ -425,6 +429,47 @@ class SimulationController(QObject):
             Display name for UI button (e.g., "Franchise Tags", "Free Agency", "Draft")
         """
         return self.season_controller.get_next_offseason_milestone_name()
+
+    def check_for_draft_day_event(self) -> Optional[Dict[str, Any]]:
+        """
+        Check if today's date has a draft day event.
+
+        This method allows the UI layer to intercept draft day events BEFORE
+        simulation runs, enabling interactive draft dialog to launch.
+
+        Returns:
+            Event dict if draft day found, None otherwise:
+            {
+                'event_id': int,
+                'event_type': 'DRAFT_DAY',
+                'event_date': str,
+                'season': int,
+                'dynasty_id': str,
+                ...
+            }
+        """
+        try:
+            current_date = self.get_current_date()
+
+            # Query events for today
+            events = self.event_db.get_events_by_date(
+                date=current_date,
+                dynasty_id=self.dynasty_id
+            )
+
+            # Check for draft day event
+            for event in events:
+                if event.get('event_type') == 'DRAFT_DAY':
+                    self._logger.info(
+                        f"Draft day event detected: {current_date}, season {event.get('season')}"
+                    )
+                    return event
+
+            return None
+
+        except Exception as e:
+            self._logger.error(f"Error checking for draft day event: {e}")
+            return None
 
     def advance_to_end_of_phase(self, progress_callback=None) -> Dict[str, Any]:
         """

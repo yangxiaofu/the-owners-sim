@@ -1,0 +1,273 @@
+"""
+PATCH: DraftBoardWidget Error Handling
+
+This patch adds error and warning handling to DraftBoardWidget.
+Apply these changes to ui/widgets/draft_board_widget.py
+
+Changes:
+1. Add warning banner widget to header
+2. Update _load_round1_data() to handle result dict format
+3. Update _load_all_rounds_data() to handle result dict format
+4. Update _load_team_view_data() to handle result dict format
+5. Add _show_error_banner() and _show_warning_banner() methods
+6. Update _populate_table() to handle empty picks with error display
+"""
+
+# ========================================================================
+# 1. Add warning/error banner to __init__()
+# ========================================================================
+
+# Add after line 92 (after layout.addWidget(self.tabs)):
+
+        # Warning/error banner (hidden by default)
+        self.warning_banner = QLabel()
+        self.warning_banner.setStyleSheet(
+            "background-color: #FFF3CD; color: #856404; "
+            "padding: 10px; border-radius: 5px; margin-top: 10px;"
+        )
+        self.warning_banner.setWordWrap(True)
+        self.warning_banner.setVisible(False)
+        layout.addWidget(self.warning_banner)
+
+        self.error_banner = QLabel()
+        self.error_banner.setStyleSheet(
+            "background-color: #F8D7DA; color: #721C24; "
+            "padding: 10px; border-radius: 5px; margin-top: 10px;"
+        )
+        self.error_banner.setWordWrap(True)
+        self.error_banner.setVisible(False)
+        layout.addWidget(self.error_banner)
+
+
+# ========================================================================
+# 2. Update _load_round1_data() to handle result dict
+# ========================================================================
+
+# REPLACE the entire _load_round1_data() method with:
+
+    def _load_round1_data(self):
+        """Load Round 1 data (picks 1-32) with error handling."""
+        if not self.draft_model:
+            return
+
+        # Get Round 1 picks (now returns dict with 'picks', 'errors', 'warnings')
+        result = self.draft_model.get_draft_order(round_number=1)
+
+        # Check for errors
+        if result.get('errors'):
+            self._show_error_banner(result['errors'])
+            self._populate_table(self.round1_table, [])  # Show empty state
+            self.round1_info_label.setText("Error loading draft data")
+            return
+
+        # Check for warnings
+        if result.get('warnings'):
+            self._show_warning_banner(result['warnings'])
+
+        # Check playoff status
+        if not result.get('playoffs_complete', True):
+            # Add warning about incomplete playoffs
+            self._show_warning_banner([
+                "⚠ Playoffs not complete. Draft order includes non-playoff teams only."
+            ])
+
+        # Get picks
+        picks = result.get('picks', [])
+
+        # Populate table
+        self._populate_table(self.round1_table, picks)
+
+        # Update info label
+        if picks:
+            self.round1_info_label.setText(f"Round 1 - {len(picks)} picks")
+        else:
+            self.round1_info_label.setText("Round 1 - No picks available")
+
+
+# ========================================================================
+# 3. Update _load_all_rounds_data() to handle result dict
+# ========================================================================
+
+# REPLACE the entire _load_all_rounds_data() method with:
+
+    def _load_all_rounds_data(self):
+        """Load all rounds data (picks 1-224) with error handling."""
+        if not self.draft_model:
+            return
+
+        # Get round filter
+        round_filter_text = self.round_filter.currentText()
+        if round_filter_text == "All":
+            result = self.draft_model.get_draft_order()
+        else:
+            round_num = int(round_filter_text)
+            result = self.draft_model.get_draft_order(round_number=round_num)
+
+        # Check for errors
+        if result.get('errors'):
+            self._show_error_banner(result['errors'])
+            self._populate_table(self.all_rounds_table, [])
+            self.all_rounds_info_label.setText("Error loading draft data")
+            return
+
+        # Check for warnings
+        if result.get('warnings'):
+            self._show_warning_banner(result['warnings'])
+
+        # Check playoff status
+        if not result.get('playoffs_complete', True):
+            self._show_warning_banner([
+                "⚠ Playoffs not complete. Draft order may be incomplete."
+            ])
+
+        # Get picks
+        picks = result.get('picks', [])
+
+        # Populate table
+        self._populate_table(self.all_rounds_table, picks)
+
+        # Update info label
+        if round_filter_text == "All":
+            if picks:
+                self.all_rounds_info_label.setText(f"All rounds - {len(picks)} picks")
+            else:
+                self.all_rounds_info_label.setText("No draft data available")
+        else:
+            if picks:
+                self.all_rounds_info_label.setText(f"Round {round_filter_text} - {len(picks)} picks")
+            else:
+                self.all_rounds_info_label.setText(f"Round {round_filter_text} - No picks available")
+
+
+# ========================================================================
+# 4. Update _load_team_view_data() to handle result dict
+# ========================================================================
+
+# REPLACE the entire _load_team_view_data() method with:
+
+    def _load_team_view_data(self):
+        """Load team-specific draft picks with error handling."""
+        if not self.draft_model or self.team_combo.count() == 0:
+            return
+
+        # Get selected team
+        team_id = self.team_combo.currentData()
+        if team_id is None:
+            return
+
+        # Get team picks
+        # Note: get_team_draft_picks() calls get_draft_order() internally,
+        # but doesn't return errors/warnings. We need to handle this.
+        try:
+            picks = self.draft_model.get_team_draft_picks(team_id)
+
+            # Populate table
+            self._populate_table(self.team_view_table, picks, team_view=True)
+
+            # Update info label
+            team_name = self.team_combo.currentText()
+            if picks:
+                self.team_view_info_label.setText(f"{team_name} - {len(picks)} picks")
+            else:
+                self.team_view_info_label.setText(f"{team_name} - No picks (data may be incomplete)")
+
+        except Exception as e:
+            # Error getting team picks
+            self._show_error_banner([f"Error loading team picks: {str(e)}"])
+            self._populate_table(self.team_view_table, [], team_view=True)
+            self.team_view_info_label.setText("Error loading team picks")
+
+
+# ========================================================================
+# 5. Add banner display methods
+# ========================================================================
+
+# Add these new methods after _load_team_view_data():
+
+    def _show_error_banner(self, errors: list):
+        """
+        Display error banner with error messages.
+
+        Args:
+            errors: List of error message strings
+        """
+        if not errors:
+            self.error_banner.setVisible(False)
+            return
+
+        # Format error messages
+        error_text = "❌ <b>Error:</b><br>" + "<br>".join(f"• {error}" for error in errors)
+        self.error_banner.setText(error_text)
+        self.error_banner.setVisible(True)
+
+        # Hide warning banner (error takes precedence)
+        self.warning_banner.setVisible(False)
+
+    def _show_warning_banner(self, warnings: list):
+        """
+        Display warning banner with warning messages.
+
+        Args:
+            warnings: List of warning message strings
+        """
+        if not warnings:
+            self.warning_banner.setVisible(False)
+            return
+
+        # Don't show warnings if errors are being displayed
+        if self.error_banner.isVisible():
+            return
+
+        # Format warning messages
+        warning_text = "⚠ <b>Warning:</b><br>" + "<br>".join(f"• {warning}" for warning in warnings)
+        self.warning_banner.setText(warning_text)
+        self.warning_banner.setVisible(True)
+
+    def _clear_banners(self):
+        """Clear all error and warning banners."""
+        self.error_banner.setVisible(False)
+        self.warning_banner.setVisible(False)
+
+
+# ========================================================================
+# 6. Update load_data() to clear banners
+# ========================================================================
+
+# REPLACE the load_data() method with:
+
+    def load_data(self):
+        """Load all draft data from draft model."""
+        # Clear previous errors/warnings
+        self._clear_banners()
+
+        if not self.draft_model:
+            self._show_no_data_state()
+            return
+
+        # Update summary
+        self._update_summary()
+
+        # Populate team combo if not already populated
+        if self.team_combo.count() == 0:
+            self._populate_team_combo()
+
+        # Load data for each tab
+        self._load_round1_data()
+        self._load_all_rounds_data()
+        self._load_team_view_data()
+
+
+# ========================================================================
+# USAGE EXAMPLE
+# ========================================================================
+
+# After applying these changes, the widget will:
+# 1. Display red error banner when draft order calculation fails
+# 2. Display yellow warning banner when playoffs are incomplete
+# 3. Show empty table with helpful message when no data available
+# 4. Gracefully handle missing standings, incomplete playoffs, etc.
+
+# Example error scenarios:
+# - Missing standings: "No standings data found. Please complete a regular season first."
+# - Incomplete playoffs: "Playoffs not complete. Draft order includes non-playoff teams only."
+# - Database error: "Error fetching playoff results: [error message]"
