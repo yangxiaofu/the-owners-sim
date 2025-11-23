@@ -49,7 +49,7 @@ class DraftDayEvent(BaseEvent):
             event_date: Date when draft occurs
             dynasty_id: Dynasty context for isolation (REQUIRED)
             database_path: Path to SQLite database
-            user_team_id: User's team ID (1-32) for manual selections (None = all AI)
+            user_team_id: User's team ID (1-32) for manual selections (None = fetch from dynasties table)
             user_picks: Optional dict mapping {overall_pick: player_id} for manual picks
             verbose: If True, print pick-by-pick results during simulation
             event_id: Unique identifier (auto-generated if not provided)
@@ -65,13 +65,46 @@ class DraftDayEvent(BaseEvent):
         self.event_date = event_date
         self.dynasty_id = dynasty_id
         self.database_path = database_path
-        self.user_team_id = user_team_id
+        self._user_team_id = user_team_id  # Private: use property for access
         self.user_picks = user_picks or {}
         self.verbose = verbose
 
         # Lazy initialization
         self._draft_manager = None
         self._cached_result = None
+
+    @property
+    def user_team_id(self) -> int:
+        """
+        Get user team ID dynamically from dynasty record.
+
+        Returns cached value if provided at initialization, otherwise
+        queries dynasties table to fetch current user team.
+
+        Returns:
+            int: User's controlled team ID (1-32)
+
+        Raises:
+            ValueError: If dynasty not found or user_team_id not set
+        """
+        # Return cached value if explicitly provided
+        if self._user_team_id is not None:
+            return self._user_team_id
+
+        # Fetch from database
+        from database.dynasty_database_api import DynastyDatabaseAPI
+
+        dynasty_api = DynastyDatabaseAPI(self.database_path)
+        dynasty = dynasty_api.get_dynasty_by_id(self.dynasty_id)
+
+        if dynasty and dynasty.get('team_id'):
+            return dynasty['team_id']
+
+        # Fallback error
+        raise ValueError(
+            f"No user_team_id found for dynasty '{self.dynasty_id}'. "
+            f"Dynasty must have team_id set in dynasties table."
+        )
 
     def get_event_type(self) -> str:
         """Return event type identifier."""
@@ -297,5 +330,48 @@ class DraftDayEvent(BaseEvent):
         """Detailed representation for debugging."""
         return (
             f"DraftDayEvent(season={self.season_year}, date={self.event_date}, "
-            f"dynasty={self.dynasty_id}, user_team={self.user_team_id})"
+            f"dynasty={self.dynasty_id}, user_team={self._user_team_id})"
+        )
+
+    @classmethod
+    def from_database(cls, event_data: Dict[str, Any]) -> 'DraftDayEvent':
+        """
+        Reconstruct DraftDayEvent from database storage.
+
+        Args:
+            event_data: Event dictionary from EventDatabaseAPI with structure:
+                {
+                    'event_id': str,
+                    'event_type': str,
+                    'timestamp': int,
+                    'dynasty_id': str,
+                    'data': {
+                        'parameters': {
+                            'season_year': int,
+                            'event_date': str,
+                            'database_path': str,
+                            'user_team_id': int,
+                            'user_picks': dict,
+                            'verbose': bool,
+                            'dynasty_id': str
+                        },
+                        'results': dict or None,
+                        'metadata': dict
+                    }
+                }
+
+        Returns:
+            Reconstructed DraftDayEvent instance
+        """
+        params = event_data['data']['parameters']
+
+        return cls(
+            season_year=params['season_year'],
+            event_date=Date.from_string(params['event_date']),
+            dynasty_id=params['dynasty_id'],
+            database_path=params.get('database_path', 'data/database/nfl_simulation.db'),
+            user_team_id=params.get('user_team_id'),
+            user_picks=params.get('user_picks', {}),
+            verbose=params.get('verbose', False),
+            event_id=event_data['event_id']
         )
