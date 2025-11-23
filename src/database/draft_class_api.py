@@ -39,12 +39,15 @@ class DraftClassAPI_IMPL:
     - Transaction support for draft execution
     """
 
-    def __init__(self, database_path: str = "data/database/nfl_simulation.db"):
+    def __init__(self, database_path: str = "data/database/nfl_simulation.db", skip_schema_check: bool = False):
         """
         Initialize Draft Class Database API.
 
         Args:
             database_path: Path to SQLite database
+            skip_schema_check: If True, skip automatic schema initialization.
+                              Useful when using shared transactions - caller should
+                              call _ensure_schema_exists(connection) manually.
         """
         self.database_path = database_path
         self.logger = logging.getLogger(__name__)
@@ -56,11 +59,18 @@ class DraftClassAPI_IMPL:
         from database.player_roster_api import PlayerRosterAPI
         self.player_api = PlayerRosterAPI(database_path)
 
-        # Ensure schema exists
-        self._ensure_schema_exists()
+        # Ensure schema exists (unless caller will do it manually with shared connection)
+        if not skip_schema_check:
+            self._ensure_schema_exists()
 
-    def _ensure_schema_exists(self) -> None:
-        """Ensure draft class tables exist."""
+    def _ensure_schema_exists(self, connection=None) -> None:
+        """
+        Ensure draft class tables exist.
+
+        Args:
+            connection: Optional shared connection to use for transaction safety.
+                       If None, creates its own connection (may conflict with open transactions).
+        """
         migration_path = Path(__file__).parent / "migrations" / "add_draft_tables.sql"
 
         if not migration_path.exists():
@@ -68,7 +78,15 @@ class DraftClassAPI_IMPL:
             return
 
         try:
-            with sqlite3.connect(self.database_path, timeout=30.0) as conn:
+            # Use shared connection if provided, otherwise create new one
+            if connection is not None:
+                conn = connection
+                should_close = False
+            else:
+                conn = sqlite3.connect(self.database_path, timeout=30.0)
+                should_close = True
+
+            try:
                 conn.execute("PRAGMA foreign_keys = ON")
 
                 # Check if tables exist
@@ -79,9 +97,22 @@ class DraftClassAPI_IMPL:
                     # Run migration
                     with open(migration_path, 'r') as f:
                         migration_sql = f.read()
-                    conn.executescript(migration_sql)
-                    conn.commit()
+
+                    # IMPORTANT: executescript() closes pending transactions
+                    # We need to use execute() for individual statements instead
+                    for statement in migration_sql.split(';'):
+                        statement = statement.strip()
+                        if statement:  # Skip empty statements
+                            conn.execute(statement)
+
+                    if should_close:
+                        conn.commit()  # Only commit if we own the connection
+
                     self.logger.info("Draft class schema initialized successfully")
+            finally:
+                if should_close:
+                    conn.close()
+
         except Exception as e:
             self.logger.error(f"Error ensuring schema exists: {e}")
             raise

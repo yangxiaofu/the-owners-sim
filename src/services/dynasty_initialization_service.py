@@ -378,7 +378,14 @@ class DynastyInitializationService:
 
             from database.draft_class_api import DraftClassAPI
 
-            draft_class_api = DraftClassAPI(self.db_path)
+            # Create DraftClassAPI with skip_schema_check=True to avoid lock conflict
+            # We'll call _ensure_schema_exists with shared connection manually
+            draft_class_api = DraftClassAPI(self.db_path, skip_schema_check=True)
+
+            # CRITICAL: Ensure schema exists using shared connection to avoid database lock
+            # conflict from creating its own connection during transaction
+            draft_class_api._ensure_schema_exists(connection=conn)
+
             draft_season = season + 1  # Generate for NEXT season's draft
 
             # Check if draft class already exists (idempotent)
