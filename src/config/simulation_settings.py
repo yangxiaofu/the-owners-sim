@@ -27,6 +27,6 @@ class SimulationSettings:
     # True:  Skip AI trade evaluation (no CPU-intensive trade analysis)
     # False: Run full transaction AI (evaluates trades for all 32 teams)
 
-    SKIP_OFFSEASON_EVENTS = True
+    SKIP_OFFSEASON_EVENTS = False
     # True:  Skip offseason event processing (faster offseason)
     # False: Run all offseason events (franchise tags, free agency, etc.)

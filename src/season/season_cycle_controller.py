@@ -369,7 +369,10 @@ class SeasonCycleController:
                 database_api=self.database_api,
                 season_year=self.season_year
             ),
-            SeasonPhase.OFFSEASON: OffseasonHandler(self.offseason_controller),
+            SeasonPhase.OFFSEASON: OffseasonHandler(
+                offseason_controller=self.offseason_controller,
+                simulation_executor=self.simulation_executor
+            ),
             # PLAYOFFS handler added dynamically when playoff_controller is created
         }
 
