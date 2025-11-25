@@ -38,6 +38,7 @@ class CalendarModel(QAbstractTableModel):
     COLOR_DEADLINE = QColor("#FFC8C8")  # Light red
     COLOR_WINDOW = QColor("#FFFFC8")    # Light yellow
     COLOR_MILESTONE = QColor("#DCFFDC") # Light green
+    COLOR_DRAFT_DAY = QColor("#E6D4FF")  # Light purple
 
     def __init__(self, parent=None):
         """Initialize calendar model."""
@@ -128,6 +129,8 @@ class CalendarModel(QAbstractTableModel):
                 return self.COLOR_WINDOW
             elif event_type == 'MILESTONE':
                 return self.COLOR_MILESTONE
+            elif event_type == 'DRAFT_DAY':
+                return self.COLOR_DRAFT_DAY
 
             return None
 
@@ -316,6 +319,11 @@ class CalendarModel(QAbstractTableModel):
         elif event_type == 'MILESTONE':
             # Use description field from parameters
             return parameters.get('description', 'Milestone Event')
+
+        elif event_type == 'DRAFT_DAY':
+            # Show draft year from parameters
+            draft_year = parameters.get('season_year', 'Unknown')
+            return f"{draft_year} NFL Draft Day"
 
         # Fallback: try to get a description from parameters or data
         return parameters.get('description', data.get('description', 'Unknown Event'))

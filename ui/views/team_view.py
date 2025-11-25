@@ -170,10 +170,10 @@ class TeamView(QWidget):
         """Create status bar showing roster count, cap space, and dead money."""
         status_bar = QHBoxLayout()
 
-        # Roster count (mock data)
-        roster_label = QLabel("Roster: 53/53")
-        roster_label.setStyleSheet("font-size: 12px; padding: 5px 10px;")
-        status_bar.addWidget(roster_label)
+        # Roster count (dynamic - will be updated after roster loads)
+        self.roster_count_label = QLabel("Roster: 0 active / 0 total (90 max)")
+        self.roster_count_label.setStyleSheet("font-size: 12px; padding: 5px 10px;")
+        status_bar.addWidget(self.roster_count_label)
 
         # Separator
         sep1 = QLabel("|")
@@ -202,6 +202,17 @@ class TeamView(QWidget):
 
         return status_bar
 
+    def _update_roster_count(self, active_count: int, total_count: int):
+        """
+        Update roster count display in status bar.
+
+        Args:
+            active_count: Number of active roster players
+            total_count: Total roster size (active + inactive)
+        """
+        if hasattr(self, 'roster_count_label'):
+            self.roster_count_label.setText(f"Roster: {active_count} active / {total_count} total (90 max)")
+
     def _on_team_changed(self, index: int):
         """
         Handle team selector change - loads real data from database.
@@ -212,10 +223,15 @@ class TeamView(QWidget):
         if team_id:
             self.current_team_id = team_id
 
-            # Load roster data from controller
+            # Load roster data from controller (use get_full_roster for complete data)
             try:
-                roster_data = self.controller.get_team_roster(team_id)
+                roster_data = self.controller.get_full_roster(team_id)
                 self.roster_tab.set_roster_data(roster_data)
+
+                # Update roster count in status bar
+                active_count = sum(1 for p in roster_data if p.get('roster_status') == 'active')
+                total_count = len(roster_data)
+                self._update_roster_count(active_count, total_count)
             except Exception as e:
                 print(f"[ERROR TeamView] Failed to load roster for team {team_id}: {e}")
                 # Keep mock data on error
@@ -315,9 +331,14 @@ class TeamView(QWidget):
     def _load_initial_roster(self):
         """Load roster, finances, and depth chart for dynasty's team on initialization."""
         try:
-            # Load roster
-            roster_data = self.controller.get_team_roster(self.current_team_id)
+            # Load roster (use get_full_roster for complete data)
+            roster_data = self.controller.get_full_roster(self.current_team_id)
             self.roster_tab.set_roster_data(roster_data)
+
+            # Update roster count in status bar
+            active_count = sum(1 for p in roster_data if p.get('roster_status') == 'active')
+            total_count = len(roster_data)
+            self._update_roster_count(active_count, total_count)
         except Exception as e:
             print(f"[ERROR TeamView] Failed to load initial roster for team {self.current_team_id}: {e}")
             # Keep mock data on error

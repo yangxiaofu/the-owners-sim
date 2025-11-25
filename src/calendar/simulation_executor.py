@@ -41,6 +41,7 @@ from events import EventDatabaseAPI, GameEvent, EventResult
 from events.contract_events import FranchiseTagEvent, TransitionTagEvent, PlayerReleaseEvent, ContractRestructureEvent
 from events.free_agency_events import UFASigningEvent, RFAOfferSheetEvent
 from events.deadline_event import DeadlineEvent
+from events.draft_day_event import DraftDayEvent
 from events.milestone_event import MilestoneEvent
 from events.schedule_release_event import ScheduleReleaseEvent
 from events.window_event import WindowEvent
@@ -586,6 +587,9 @@ class SimulationExecutor:
             return MilestoneEvent.from_database(event_data)
         elif event_type == "WINDOW":
             return WindowEvent.from_database(event_data)
+        elif event_type == "DRAFT_DAY":
+            # Interactive NFL Draft event
+            return DraftDayEvent.from_database(event_data)
         else:
             raise ValueError(f"Unknown event type: {event_type}")
 
@@ -829,6 +833,14 @@ class SimulationExecutor:
         ]
         all_events_for_dynasty.extend(dynasty_milestone_events)
 
+        # Get draft day events (dynasty-specific)
+        draft_day_events = self.event_db.get_events_by_type("DRAFT_DAY")
+        dynasty_draft_day_events = [
+            e for e in draft_day_events
+            if e.get('dynasty_id') == self.dynasty_id
+        ]
+        all_events_for_dynasty.extend(dynasty_draft_day_events)
+
         # Filter by date
         events_for_date = []
         target_date_str = str(target_date)
@@ -874,6 +886,29 @@ class SimulationExecutor:
 
         if duplicates_removed > 0:
             print(f"⚠️  Removed {duplicates_removed} duplicate event(s) for {target_date}")
+
+        # FILTER ALREADY-EXECUTED EVENTS: Skip events with results field populated
+        # This prevents re-execution of interactive events (draft, milestones)
+        # that have already been handled
+        filtered_events = []
+        already_executed_count = 0
+
+        for event_data in deduplicated_events:
+            # Check if event has results field (indicates already executed)
+            if event_data.get('data', {}).get('results') is not None:
+                already_executed_count += 1
+                if self.verbose_logging:
+                    event_id = event_data.get('event_id', event_data.get('game_id', 'unknown'))
+                    print(f"  [EVENT_FILTER] Skipping already-executed event: {event_id}")
+                continue
+
+            filtered_events.append(event_data)
+
+        if already_executed_count > 0:
+            print(f"✓ Skipped {already_executed_count} already-executed event(s) for {target_date}")
+
+        # Use filtered_events for the rest of the method
+        deduplicated_events = filtered_events
 
         # DIAGNOSTIC: Final game query summary
         print(f"\n[SIM_EXECUTOR] GAME QUERY SUMMARY FOR {target_date}")

@@ -871,6 +871,111 @@ class UnifiedDatabaseAPI:
 
         return results
 
+    def events_get_games_by_week(
+        self,
+        season: int,
+        week: int,
+        season_type: str = 'regular_season'
+    ) -> List[Dict[str, Any]]:
+        """
+        Get scheduled games from events table for a specific week.
+
+        The schedule is stored as GAME events in the events table with
+        game parameters in the JSON data field.
+
+        Args:
+            season: Season year (e.g., 2025)
+            week: Week number (1-18 for regular season)
+            season_type: Type of season ('regular_season', 'preseason', 'playoffs')
+
+        Returns:
+            List of game dictionaries with keys:
+            - event_id: The event ID (used as game_id for tracking)
+            - home_team_id: Home team ID
+            - away_team_id: Away team ID
+            - week: Week number
+            - season: Season year
+            - season_type: Season type
+            - game_date: Game date string
+            - results: None if not played, dict with scores if played
+        """
+        query = """
+            SELECT event_id, data FROM events
+            WHERE dynasty_id = ? AND event_type = 'GAME'
+            AND json_extract(data, '$.parameters.season') = ?
+            AND json_extract(data, '$.parameters.week') = ?
+            AND json_extract(data, '$.parameters.season_type') = ?
+            ORDER BY json_extract(data, '$.parameters.game_date')
+        """
+        results = self._execute_query(query, (self.dynasty_id, season, week, season_type))
+
+        # Transform to game format
+        games = []
+        for row in results:
+            data = json.loads(row['data']) if isinstance(row['data'], str) else row['data']
+            params = data.get('parameters', {})
+            results_data = data.get('results')
+
+            games.append({
+                'event_id': row['event_id'],
+                'game_id': data.get('metadata', {}).get('game_id', row['event_id']),
+                'home_team_id': params.get('home_team_id'),
+                'away_team_id': params.get('away_team_id'),
+                'week': params.get('week'),
+                'season': params.get('season'),
+                'season_type': params.get('season_type'),
+                'game_date': params.get('game_date'),
+                'home_score': results_data.get('home_score') if results_data else None,
+                'away_score': results_data.get('away_score') if results_data else None,
+            })
+
+        return games
+
+    def events_update_game_result(
+        self,
+        event_id: str,
+        home_score: int,
+        away_score: int
+    ) -> bool:
+        """
+        Update a GAME event with the simulation result.
+
+        Args:
+            event_id: The event ID of the game
+            home_score: Home team final score
+            away_score: Away team final score
+
+        Returns:
+            True if update succeeded, False otherwise
+        """
+        # First get the current event data
+        query = "SELECT data FROM events WHERE event_id = ? AND dynasty_id = ?"
+        results = self._execute_query(query, (event_id, self.dynasty_id))
+
+        if not results:
+            return False
+
+        data = json.loads(results[0]['data']) if isinstance(results[0]['data'], str) else results[0]['data']
+
+        # Update results
+        data['results'] = {
+            'home_score': home_score,
+            'away_score': away_score,
+            'completed': True
+        }
+
+        # Save back to database
+        update_query = "UPDATE events SET data = ? WHERE event_id = ? AND dynasty_id = ?"
+        try:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(update_query, (json.dumps(data), event_id, self.dynasty_id))
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception as e:
+            print(f"[ERROR] Failed to update game result: {e}")
+            return False
+
     def events_get_by_date_range(
         self,
         start_timestamp: int,
@@ -2434,7 +2539,9 @@ class UnifiedDatabaseAPI:
         game_result: Dict[str, Any]
     ) -> bool:
         """
-        Insert a game result into the database.
+        Insert or update a game result in the database.
+
+        Uses INSERT OR REPLACE to handle re-simulation of existing games.
 
         Args:
             game_result: Game result dictionary with all required fields
@@ -2444,7 +2551,7 @@ class UnifiedDatabaseAPI:
         """
         try:
             query = '''
-                INSERT INTO games (
+                INSERT OR REPLACE INTO games (
                     dynasty_id, game_id, season, week, season_type, game_type,
                     game_date, home_team_id, away_team_id, home_score, away_score,
                     total_plays, game_duration_minutes, overtime_periods

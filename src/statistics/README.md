@@ -79,7 +79,7 @@ The module creates a `player_season_stats` table with:
 
 ## Documentation
 
-Full API documentation: [`docs/api/season_stats_aggregator.md`](../../docs/api/season_stats_aggregator.md)
+Full API documentation: [`docs/api/season_stats_aggregator.md`](../../docs/archive/api/season_stats_aggregator.md)
 
 ## Testing
 

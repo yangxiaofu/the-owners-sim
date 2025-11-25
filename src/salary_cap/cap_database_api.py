@@ -29,14 +29,20 @@ class CapDatabaseAPI:
     - Type-safe operations
     """
 
-    def __init__(self, database_path: str = "data/database/nfl_simulation.db"):
+    def __init__(
+        self,
+        database_path: str = "data/database/nfl_simulation.db",
+        dynasty_id: Optional[str] = None
+    ):
         """
         Initialize Cap Database API.
 
         Args:
             database_path: Path to SQLite database
+            dynasty_id: Optional default dynasty context (can be overridden per method)
         """
         self.database_path = database_path
+        self.dynasty_id = dynasty_id
         self.logger = logging.getLogger(__name__)
 
         # Ensure database directory exists
@@ -498,17 +504,66 @@ class CapDatabaseAPI:
 
         Returns:
             cap_id of inserted record
+
+        Raises:
+            ValueError: If team cap already exists but couldn't be retrieved
+            RuntimeError: If database operation fails or lastrowid is invalid
+            sqlite3.IntegrityError: If foreign key constraint fails
+            sqlite3.OperationalError: If database is locked or inaccessible
         """
-        with sqlite3.connect(self.database_path) as conn:
-            cursor = conn.execute('''
-                INSERT OR REPLACE INTO team_salary_cap (
-                    team_id, season, dynasty_id,
-                    salary_cap_limit, carryover_from_previous,
-                    is_top_51_active
-                ) VALUES (?, ?, ?, ?, ?, TRUE)
-            ''', (team_id, season, dynasty_id, salary_cap_limit, carryover_from_previous))
-            conn.commit()
-            return cursor.lastrowid
+        try:
+            with sqlite3.connect(self.database_path) as conn:
+                conn.execute("PRAGMA foreign_keys = ON")
+
+                cursor = conn.execute('''
+                    INSERT INTO team_salary_cap (
+                        team_id, season, dynasty_id,
+                        salary_cap_limit, carryover_from_previous,
+                        is_top_51_active
+                    ) VALUES (?, ?, ?, ?, ?, TRUE)
+                ''', (team_id, season, dynasty_id, salary_cap_limit, carryover_from_previous))
+
+                conn.commit()
+                cap_id = cursor.lastrowid
+
+                if cap_id is None or cap_id == 0:
+                    raise RuntimeError(
+                        f"Failed to initialize team cap for team_id={team_id}, "
+                        f"season={season}, dynasty_id={dynasty_id}: Invalid lastrowid"
+                    )
+
+                self.logger.info(
+                    f"Initialized team cap: team_id={team_id}, season={season}, "
+                    f"dynasty_id={dynasty_id}, cap_id={cap_id}"
+                )
+
+                return cap_id
+
+        except sqlite3.IntegrityError as e:
+            if "UNIQUE constraint failed" in str(e):
+                self.logger.warning(
+                    f"Team cap already exists for team_id={team_id}, season={season}, "
+                    f"dynasty_id={dynasty_id}"
+                )
+                # Don't raise - cap already exists is OK, return existing cap_id
+                existing = self.get_team_cap_summary(team_id, season, dynasty_id)
+                if existing:
+                    return existing.get('cap_id', 0)
+                raise ValueError(
+                    f"Team cap exists but couldn't retrieve it for team {team_id}, "
+                    f"season {season}, dynasty {dynasty_id}"
+                ) from e
+            else:
+                self.logger.error(f"Integrity error initializing team cap: {e}")
+                raise
+
+        except sqlite3.OperationalError as e:
+            self.logger.error(f"Database error initializing team cap: {e}")
+            raise RuntimeError(f"Database error: {e}") from e
+
+        except Exception as e:
+            self.logger.error(f"Unexpected error initializing team cap: {e}")
+            raise
 
     def update_team_cap(
         self,
@@ -606,6 +661,34 @@ class CapDatabaseAPI:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute('''
                 SELECT * FROM vw_team_cap_summary
+                WHERE team_id = ? AND season = ? AND dynasty_id = ?
+            ''', (team_id, season, dynasty_id))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def get_team_cap(
+        self,
+        team_id: int,
+        season: int,
+        dynasty_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get team salary cap record (raw table data).
+
+        This is different from get_team_cap_summary() which queries the view.
+
+        Args:
+            team_id: Team ID
+            season: Season year
+            dynasty_id: Dynasty identifier
+
+        Returns:
+            Cap record dict or None if not found
+        """
+        with sqlite3.connect(self.database_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute('''
+                SELECT * FROM team_salary_cap
                 WHERE team_id = ? AND season = ? AND dynasty_id = ?
             ''', (team_id, season, dynasty_id))
             row = cursor.fetchone()
@@ -1069,6 +1152,8 @@ class CapDatabaseAPI_DEPRECATED:
         from database.unified_api import UnifiedDatabaseAPI
         self._unified = UnifiedDatabaseAPI(database_path, dynasty_id=dynasty_id)
         self._dynasty_id = dynasty_id
+        self._database_path = database_path
+        self.logger = logging.getLogger(__name__)
 
     @property
     def dynasty_id(self) -> str:
@@ -1084,7 +1169,7 @@ class CapDatabaseAPI_DEPRECATED:
     @property
     def database_path(self) -> str:
         """Get database path."""
-        return self._unified.database_path
+        return self._database_path
 
     # ========================================================================
     # CONTRACT OPERATIONS (8 methods)
@@ -1339,18 +1424,69 @@ class CapDatabaseAPI_DEPRECATED:
         salary_cap_limit: int,
         carryover_from_previous: int = 0
     ) -> int:
-        """Forward to unified API: cap_initialize_team."""
+        """
+        DEPRECATED: Initialize team salary cap for a season.
+
+        Raises:
+            ValueError: If team cap already exists but couldn't be retrieved
+            RuntimeError: If database operation fails or lastrowid is invalid
+            sqlite3.IntegrityError: If foreign key constraint fails
+            sqlite3.OperationalError: If database is locked or inaccessible
+        """
         self.dynasty_id = dynasty_id
-        with sqlite3.connect(self.database_path) as conn:
-            cursor = conn.execute('''
-                INSERT OR REPLACE INTO team_salary_cap (
-                    team_id, season, dynasty_id,
-                    salary_cap_limit, carryover_from_previous,
-                    is_top_51_active
-                ) VALUES (?, ?, ?, ?, ?, TRUE)
-            ''', (team_id, season, dynasty_id, salary_cap_limit, carryover_from_previous))
-            conn.commit()
-            return cursor.lastrowid
+        try:
+            with sqlite3.connect(self.database_path) as conn:
+                conn.execute("PRAGMA foreign_keys = ON")
+
+                cursor = conn.execute('''
+                    INSERT INTO team_salary_cap (
+                        team_id, season, dynasty_id,
+                        salary_cap_limit, carryover_from_previous,
+                        is_top_51_active
+                    ) VALUES (?, ?, ?, ?, ?, TRUE)
+                ''', (team_id, season, dynasty_id, salary_cap_limit, carryover_from_previous))
+
+                conn.commit()
+                cap_id = cursor.lastrowid
+
+                if cap_id is None or cap_id == 0:
+                    raise RuntimeError(
+                        f"Failed to initialize team cap for team_id={team_id}, "
+                        f"season={season}, dynasty_id={dynasty_id}: Invalid lastrowid"
+                    )
+
+                self.logger.info(
+                    f"[DEPRECATED] Initialized team cap: team_id={team_id}, season={season}, "
+                    f"dynasty_id={dynasty_id}, cap_id={cap_id}"
+                )
+
+                return cap_id
+
+        except sqlite3.IntegrityError as e:
+            if "UNIQUE constraint failed" in str(e):
+                self.logger.warning(
+                    f"[DEPRECATED] Team cap already exists for team_id={team_id}, season={season}, "
+                    f"dynasty_id={dynasty_id}"
+                )
+                # Don't raise - cap already exists is OK, return existing cap_id
+                existing = self.get_team_cap_summary(team_id, season, dynasty_id)
+                if existing:
+                    return existing.get('cap_id', 0)
+                raise ValueError(
+                    f"Team cap exists but couldn't retrieve it for team {team_id}, "
+                    f"season {season}, dynasty {dynasty_id}"
+                ) from e
+            else:
+                self.logger.error(f"[DEPRECATED] Integrity error initializing team cap: {e}")
+                raise
+
+        except sqlite3.OperationalError as e:
+            self.logger.error(f"[DEPRECATED] Database error initializing team cap: {e}")
+            raise RuntimeError(f"Database error: {e}") from e
+
+        except Exception as e:
+            self.logger.error(f"[DEPRECATED] Unexpected error initializing team cap: {e}")
+            raise
 
     def update_team_cap(
         self,
@@ -1736,4 +1872,6 @@ class CapDatabaseAPI_DEPRECATED:
 
 
 # Create alias for backward compatibility
-CapDatabaseAPI = CapDatabaseAPI_DEPRECATED
+# DISABLED: UnifiedDatabaseAPI.cap_get_team_summary() not implemented yet
+# TODO: Re-enable when UnifiedDatabaseAPI is fully implemented
+# CapDatabaseAPI = CapDatabaseAPI_DEPRECATED

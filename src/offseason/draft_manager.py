@@ -139,15 +139,22 @@ class DraftManager:
         Args:
             round_num: Draft round (1-7)
             pick_num: Pick number within round (1-32+)
-            player_id: ID of player being drafted
+            player_id: ID of prospect being drafted (temporary ID)
             team_id: Team making the pick
 
         Returns:
-            Dictionary with pick details and result
+            Dictionary with pick details including:
+            - player_id: NEW roster player ID (different from prospect ID)
+            - prospect_id: Original prospect ID (for draft history)
+            - prospect: Full prospect data
+            - round, pick, team_id: Draft pick metadata
         """
+        # Store original prospect ID before conversion
+        prospect_id = player_id
+
         # Mark prospect as drafted
         prospect = self.draft_api.mark_prospect_drafted(
-            player_id=player_id,
+            player_id=prospect_id,
             team_id=team_id,
             actual_round=round_num,
             actual_pick=pick_num,
@@ -155,8 +162,9 @@ class DraftManager:
         )
 
         # Convert prospect to player in main roster
+        # IMPORTANT: Returns a NEW player_id (different from prospect_id)
         final_player_id = self.draft_api.convert_prospect_to_player(
-            player_id=player_id,
+            player_id=prospect_id,  # Pass prospect's temporary ID
             team_id=team_id,
             dynasty_id=self.dynasty_id
         )
@@ -165,7 +173,8 @@ class DraftManager:
         # TODO: Trigger DraftPickEvent (future integration with event system)
 
         return {
-            'player_id': final_player_id,
+            'player_id': final_player_id,  # NEW roster player ID
+            'prospect_id': prospect_id,    # Original prospect ID (for history)
             'prospect': prospect,
             'round': round_num,
             'pick': pick_num,
@@ -281,6 +290,19 @@ class DraftManager:
                 f"season {self.season_year}. Generate draft order first."
             )
 
+        # Check if draft_classes parent record exists first
+        draft_class_info = self.draft_api.get_draft_class_info(
+            dynasty_id=self.dynasty_id,
+            season=self.season_year
+        )
+
+        if not draft_class_info:
+            raise ValueError(
+                f"No draft_classes record found for dynasty '{self.dynasty_id}' "
+                f"season {self.season_year}. The draft class metadata is missing. "
+                f"Run draft class generation or check database integrity."
+            )
+
         # Get available prospects
         available_prospects = self.draft_api.get_all_prospects(
             dynasty_id=self.dynasty_id,
@@ -290,8 +312,9 @@ class DraftManager:
 
         if not available_prospects:
             raise ValueError(
-                f"No draft class found for dynasty '{self.dynasty_id}' "
-                f"season {self.season_year}. Generate draft class first."
+                f"Draft class exists for dynasty '{self.dynasty_id}' season {self.season_year} "
+                f"but has no available prospects. All prospects may be drafted already, "
+                f"or the draft class may have been generated with 0 prospects."
             )
 
         if verbose:
@@ -303,6 +326,51 @@ class DraftManager:
         if verbose:
             print("🧠 Initializing GM personalities and team contexts...")
 
+        # Ensure all teams have salary cap initialized for this season
+        from salary_cap.cap_database_api import CapDatabaseAPI
+        cap_db = CapDatabaseAPI(self.database_path)
+        league_cap = cap_db.get_salary_cap_for_season(self.season_year)
+
+        if not league_cap:
+            raise ValueError(
+                f"No salary cap defined for season {self.season_year}. "
+                f"Cannot initialize team caps."
+            )
+
+        if verbose:
+            print(f"💰 Initializing salary caps for all 32 teams (${league_cap:,})...")
+
+        initialized_count = 0
+        failed_teams = []
+
+        for team_id in range(1, 33):
+            try:
+                existing = cap_db.get_team_cap_summary(team_id, self.season_year, self.dynasty_id)
+                if not existing:
+                    cap_db.initialize_team_cap(
+                        team_id, self.season_year, self.dynasty_id, league_cap, 0
+                    )
+                    initialized_count += 1
+            except Exception as e:
+                failed_teams.append((team_id, str(e)))
+                if verbose:
+                    print(f"  ❌ Failed to initialize cap for team {team_id}: {e}")
+
+        if verbose:
+            print(f"  ✅ Initialized {initialized_count} teams")
+
+        # Validate ALL teams have caps
+        missing_teams = []
+        for team_id in range(1, 33):
+            if not cap_db.get_team_cap_summary(team_id, self.season_year, self.dynasty_id):
+                missing_teams.append(team_id)
+
+        if missing_teams:
+            raise RuntimeError(
+                f"Salary cap initialization incomplete. Missing caps for teams: "
+                f"{missing_teams}. Failed teams: {failed_teams}"
+            )
+
         team_gms = {}
         team_contexts = {}
 
@@ -313,7 +381,8 @@ class DraftManager:
                 season=self.season_year,
                 needs_analyzer=self.needs_analyzer,
                 is_offseason=True,
-                roster_mode="offseason"
+                roster_mode="offseason",
+                completed_season=self.season_year - 1  # Use previous season for standings
             )
 
         if verbose:
@@ -334,11 +403,11 @@ class DraftManager:
 
             # Check if user team with manual selection
             if team_id == user_team_id and pick_num in user_picks:
-                selected_player_id = user_picks[pick_num]
+                selected_prospect_id = user_picks[pick_num]
 
                 if verbose:
                     print(f"👤 Pick {pick_num} (R{pick.round_number}.{pick.pick_in_round}): "
-                          f"User manual selection - Player {selected_player_id}")
+                          f"User manual selection - Prospect {selected_prospect_id}")
 
             else:
                 # AI team selection based on needs
@@ -381,7 +450,7 @@ class DraftManager:
                         print(f"\n⚠️  No more prospects available! Draft ended at pick {pick_num}")
                     break
 
-                selected_player_id = best_prospect['player_id']
+                selected_prospect_id = best_prospect['player_id']
 
                 if verbose:
                     top_need = team_needs[0]['position'] if team_needs else 'Unknown'
@@ -396,7 +465,7 @@ class DraftManager:
                 result = self.make_draft_selection(
                     round_num=pick.round_number,
                     pick_num=pick.pick_in_round,
-                    player_id=selected_player_id,
+                    player_id=selected_prospect_id,  # Prospect's temporary ID
                     team_id=team_id
                 )
 
@@ -404,10 +473,14 @@ class DraftManager:
                 result['overall_pick'] = pick_num
                 results.append(result)
 
+                # Log ID transformation if verbose
+                if verbose and result.get('prospect_id') != result.get('player_id'):
+                    print(f"   → Prospect ID {result['prospect_id']} → Player ID {result['player_id']}")
+
                 # Remove drafted prospect from available pool
                 available_prospects = [
                     p for p in available_prospects
-                    if p['player_id'] != selected_player_id
+                    if p['player_id'] != selected_prospect_id  # Match against prospect ID
                 ]
 
             except Exception as e:

@@ -166,12 +166,21 @@ class DraftClassAPI_IMPL:
             draft_gen = DraftClassGenerator(player_gen)
             generated_prospects = draft_gen.generate_draft_class(year=season)
 
-            # Pre-generate all player_ids BEFORE opening database connection
+            # Pre-generate all player_ids using shared connection if provided
             # This avoids database locks from nested connections
+            if connection is not None:
+                # Temporarily set shared connection on player_api to avoid lock
+                old_shared_conn = getattr(self.player_api, 'shared_conn', None)
+                self.player_api.shared_conn = connection
+
             player_ids = []
             for _ in generated_prospects:
                 player_id = self.player_api._get_next_player_id(dynasty_id)
                 player_ids.append(player_id)
+
+            # Restore original shared_conn state
+            if connection is not None:
+                self.player_api.shared_conn = old_shared_conn
 
             # Create draft class record
             draft_class_id = f"DRAFT_{dynasty_id}_{season}"
@@ -646,17 +655,18 @@ class DraftClassAPI_IMPL:
         """
         Convert drafted prospect to active player on team roster.
 
-        IMPORTANT: Uses SAME player_id (no ID conversion). The prospect's
-        player_id becomes the player's player_id in the players table.
+        IMPORTANT: This method generates a NEW player_id from the players table
+        sequence. The prospect's player_id is temporary and is NOT used in the
+        players table. This prevents ID collisions with existing roster players.
 
         Args:
-            player_id: Player ID (same ID used in draft_prospects)
-            team_id: Team ID (1-32)
+            player_id: Prospect's temporary player_id (from draft_prospects table)
+            team_id: Team that drafted the prospect (1-32)
             dynasty_id: Dynasty identifier
             jersey_number: Optional jersey number (auto-assigned if None)
 
         Returns:
-            player_id of created player (same as input player_id)
+            int: NEW player_id assigned from players table (different from prospect_id)
 
         Raises:
             ValueError: If prospect not found or not drafted
@@ -669,6 +679,15 @@ class DraftClassAPI_IMPL:
 
         if not prospect['is_drafted']:
             raise ValueError(f"Prospect {player_id} has not been drafted yet")
+
+        # Generate NEW player_id from players table sequence
+        # This prevents ID collisions with existing roster players
+        new_player_id = self.player_api._get_next_player_id(dynasty_id)
+
+        self.logger.info(
+            f"Converting prospect {player_id} → new player {new_player_id} "
+            f"for team {team_id} in dynasty '{dynasty_id}'"
+        )
 
         # Auto-assign jersey number if not provided
         if jersey_number is None:
@@ -695,14 +714,14 @@ class DraftClassAPI_IMPL:
         positions = [prospect['position']]
 
         # Create player record using PlayerRosterAPI
-        # IMPORTANT: We pass player_id directly to maintain same ID
+        # IMPORTANT: We use NEW player_id to prevent ID collisions
         with sqlite3.connect(self.database_path, timeout=30.0) as conn:
             conn.execute("PRAGMA foreign_keys = ON")
 
-            # Insert player with SAME player_id
+            # Insert player with NEW player_id
             self.player_api._insert_player(
                 dynasty_id=dynasty_id,
-                player_id=player_id,  # Use same ID!
+                player_id=new_player_id,  # Use NEW ID!
                 source_player_id=f"DRAFT_{prospect['draft_class_id']}_{player_id}",
                 first_name=prospect['first_name'],
                 last_name=prospect['last_name'],
@@ -717,18 +736,42 @@ class DraftClassAPI_IMPL:
             self.player_api._add_to_roster(
                 dynasty_id=dynasty_id,
                 team_id=team_id,
-                player_id=player_id,
+                player_id=new_player_id,  # Use NEW ID!
                 depth_order=99  # Rookies start at bottom of depth chart
             )
 
             conn.commit()
 
+        # Update prospect record with final roster player_id for tracking
+        # This enables queries like "show all players from 2025 draft class"
+        try:
+            with sqlite3.connect(self.database_path, timeout=30.0) as mapping_conn:
+                mapping_conn.execute(
+                    '''
+                    UPDATE draft_prospects
+                    SET roster_player_id = ?
+                    WHERE player_id = ? AND dynasty_id = ?
+                    ''',
+                    (new_player_id, player_id, dynasty_id)
+                )
+                mapping_conn.commit()
+
+            self.logger.info(
+                f"Updated prospect {player_id} with roster_player_id={new_player_id}"
+            )
+        except Exception as e:
+            # Non-critical - log warning but don't fail conversion
+            self.logger.warning(
+                f"Failed to update prospect {player_id} with roster_player_id: {e}. "
+                f"Conversion succeeded but mapping not recorded."
+            )
+
         self.logger.info(
-            f"Converted prospect {player_id} to player for team {team_id} "
+            f"Converted prospect {player_id} to player {new_player_id} for team {team_id} "
             f"(jersey #{jersey_number})"
         )
 
-        return player_id
+        return new_player_id
 
     def complete_draft_class(
         self,
@@ -788,6 +831,69 @@ class DraftClassAPI_IMPL:
         self.logger.info(
             f"Deleted draft class {draft_class_id} and all associated prospects"
         )
+
+    def repair_orphaned_prospects(self, dynasty_id: str, season: int) -> bool:
+        """
+        Repair orphaned draft prospects by creating missing parent record in draft_classes.
+
+        Use this when draft_prospects rows exist but no corresponding draft_classes record exists.
+
+        Args:
+            dynasty_id: Dynasty identifier
+            season: Draft season year
+
+        Returns:
+            True if parent record was created, False if it already existed or no orphans found
+
+        Raises:
+            ValueError: If no orphaned prospects found for this dynasty/season
+        """
+        draft_class_id = f"DRAFT_{dynasty_id}_{season}"
+
+        # Check if parent record already exists
+        existing_info = self.get_draft_class_info(dynasty_id=dynasty_id, season=season)
+        if existing_info:
+            self.logger.info(f"Draft class {draft_class_id} already has parent record. No repair needed.")
+            return False
+
+        # Count orphaned prospects
+        with sqlite3.connect(self.database_path, timeout=30.0) as conn:
+            cursor = conn.execute(
+                "SELECT COUNT(*) as count FROM draft_prospects WHERE draft_class_id = ?",
+                (draft_class_id,)
+            )
+            orphan_count = cursor.fetchone()[0]
+
+        if orphan_count == 0:
+            raise ValueError(
+                f"No orphaned prospects found for {draft_class_id}. "
+                f"Cannot create parent record."
+            )
+
+        # Create missing parent record
+        self.logger.warning(
+            f"Found {orphan_count} orphaned prospects for {draft_class_id}. "
+            f"Creating missing parent record in draft_classes table."
+        )
+
+        with sqlite3.connect(self.database_path, timeout=30.0) as conn:
+            conn.execute(
+                """
+                INSERT INTO draft_classes (
+                    draft_class_id,
+                    dynasty_id,
+                    season,
+                    generation_date,
+                    total_prospects,
+                    status
+                ) VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?, 'active')
+                """,
+                (draft_class_id, dynasty_id, season, orphan_count)
+            )
+            conn.commit()
+
+        self.logger.info(f"Successfully created parent record for {draft_class_id} with {orphan_count} prospects.")
+        return True
 
 
 

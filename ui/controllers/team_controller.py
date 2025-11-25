@@ -42,6 +42,18 @@ class TeamController:
         """Lazy-initialized data model with current season."""
         return TeamDataModel(self.db_path, self.dynasty_id, self.season)
 
+    def get_full_roster(self, team_id: int) -> List[Dict[str, Any]]:
+        """
+        Get FULL team roster including inactive players.
+
+        Args:
+            team_id: Team ID (1-32)
+
+        Returns:
+            List of player dictionaries with roster_status field
+        """
+        return self._get_data_model().get_full_roster(team_id)
+
     def get_team_roster(self, team_id: int) -> List[Dict[str, Any]]:
         """
         Get team roster with all player data.

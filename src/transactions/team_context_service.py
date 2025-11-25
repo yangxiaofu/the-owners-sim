@@ -53,13 +53,16 @@ class TeamContextService:
             season_type="regular_season"
         )
 
-        # Extract team's record from standings
-        for team_standing in standings:
-            if team_standing['team_id'] == team_id:
+        # Extract team's record from standings (use 'overall' key for flat list)
+        overall_standings = standings.get('overall', [])
+
+        for team_data in overall_standings:
+            if team_data['team_id'] == team_id:
+                standing = team_data['standing']  # EnhancedTeamStanding object
                 return {
-                    'wins': team_standing.get('wins', 0),
-                    'losses': team_standing.get('losses', 0),
-                    'ties': team_standing.get('ties', 0)
+                    'wins': standing.wins,
+                    'losses': standing.losses,
+                    'ties': standing.ties
                 }
 
         # Fallback if team not found (preseason scenario)
@@ -92,7 +95,8 @@ class TeamContextService:
         season: int,
         needs_analyzer: Optional[TeamNeedsAnalyzer] = None,
         is_offseason: bool = True,
-        roster_mode: str = "offseason"
+        roster_mode: str = "offseason",
+        completed_season: Optional[int] = None
     ) -> TeamContext:
         """
         Build complete team context from database state.
@@ -104,16 +108,20 @@ class TeamContextService:
 
         Args:
             team_id: Team ID (1-32)
-            season: Season year (e.g., 2024)
+            season: Season year for cap space/roster analysis (e.g., 2026 for upcoming season)
             needs_analyzer: Optional TeamNeedsAnalyzer for positional needs
             is_offseason: Whether this is offseason context
             roster_mode: "offseason" or "regular_season" for cap calculations
+            completed_season: Optional season year for standings (e.g., 2025 for just-finished season).
+                            If None, uses `season`. Useful during draft when season=2026 but
+                            standings are from 2025.
 
         Returns:
             TeamContext with current team situation
         """
-        # 1. Get team record
-        team_record = self.get_team_record(team_id, season)
+        # 1. Get team record from completed season (or current season if not specified)
+        record_season = completed_season if completed_season is not None else season
+        team_record = self.get_team_record(team_id, record_season)
 
         # 2. Get cap space
         cap_space = self.get_team_cap_space(team_id, season, roster_mode)

@@ -1,6 +1,0 @@
-# Auto-generated demo database (can be regenerated)
-demo.db
-
-# Python cache
-__pycache__/
-*.pyc

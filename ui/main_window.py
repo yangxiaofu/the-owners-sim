@@ -7,9 +7,11 @@ import sys
 import os
 from typing import Dict, Any
 
+from datetime import datetime
+
 from PySide6.QtWidgets import (
     QMainWindow, QTabWidget, QToolBar, QStatusBar,
-    QLabel, QMessageBox
+    QLabel, QMessageBox, QProgressDialog, QApplication
 )
 from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QAction
@@ -164,6 +166,7 @@ class MainWindow(QMainWindow):
         # Connect simulation signals to UI updates
         self.simulation_controller.date_changed.connect(self._on_date_changed)
         self.simulation_controller.games_played.connect(self._on_games_played)
+        self.simulation_controller.checkpoint_saved.connect(self._on_checkpoint_saved)
 
     def _create_central_widget(self):
         """Create central tab widget with primary views."""
@@ -512,7 +515,7 @@ class MainWindow(QMainWindow):
         )
 
     def _sim_day(self):
-        """Simulate one day (with draft day interception)."""
+        """Simulate one day (with draft day and milestone event interception)."""
         # CHECK FOR DRAFT DAY BEFORE SIMULATION
         draft_event = self.simulation_controller.check_for_draft_day_event()
 
@@ -529,18 +532,95 @@ class MainWindow(QMainWindow):
                 )
                 return
 
-            # Draft completed successfully - continue with normal simulation
-            # (this will mark the draft event as completed in the database)
+            # Draft completed successfully - calendar already advanced by draft dialog
+            # DO NOT call advance_day() again to prevent double execution
+
+            # Refresh calendar view to show new date
+            self.calendar_view.refresh_current_date()
+
+            # Show success message
+            current_date_str = self.simulation_controller.get_current_date()
+            formatted_date = self._format_date(current_date_str)
+            QMessageBox.information(
+                self,
+                "Draft Complete",
+                f"Draft day completed successfully!\n\nAdvanced to: {formatted_date}"
+            )
+
+            return  # Exit here to prevent second execution via advance_day()
+
+        # CHECK FOR OTHER INTERACTIVE MILESTONE EVENTS (franchise tags, free agency, roster cuts, cap compliance)
+        milestone_event = self.simulation_controller.check_for_interactive_event()
+
+        if milestone_event and self.user_team_id:
+            event_type = milestone_event.get('event_type')
+            params = milestone_event.get('data', {}).get('parameters', {})
+
+            # Route to appropriate handler based on event type
+            if event_type == 'DEADLINE':
+                deadline_type = params.get('deadline_type')
+
+                if deadline_type == 'FRANCHISE_TAG':
+                    success = self._handle_franchise_tag_interactive(milestone_event)
+                    event_name = "Franchise Tag Deadline"
+                    if success:
+                        self._mark_event_executed(milestone_event, "Franchise tag deadline processed")
+
+                elif deadline_type == 'FINAL_ROSTER_CUTS':
+                    success = self._handle_roster_cuts_interactive(milestone_event)
+                    event_name = "Final Roster Cuts Deadline"
+                    if success:
+                        self._mark_event_executed(milestone_event, "Final roster cuts completed")
+
+                elif deadline_type == 'SALARY_CAP_COMPLIANCE':
+                    success = self._handle_cap_compliance_interactive(milestone_event)
+                    event_name = "Salary Cap Compliance Deadline"
+                    if success:
+                        self._mark_event_executed(milestone_event, "Salary cap compliance verified")
+                else:
+                    success = True  # Unknown deadline type, allow simulation to proceed
+                    event_name = "Offseason Deadline"
+
+            elif event_type == 'WINDOW':
+                window_name = params.get('window_name')
+
+                if window_name == 'FREE_AGENCY':
+                    success = self._handle_free_agency_interactive(milestone_event)
+                    event_name = "Free Agency Period"
+                    if success:
+                        self._mark_event_executed(milestone_event, "Free agency period started")
+                else:
+                    success = True  # Unknown window type, allow simulation to proceed
+                    event_name = "Offseason Window"
+            else:
+                success = True  # Unknown event type, allow simulation to proceed
+                event_name = "Offseason Event"
+
+            if not success:
+                # User cancelled or dialog failed
+                QMessageBox.information(
+                    self,
+                    f"{event_name} Cancelled",
+                    f"{event_name} was cancelled. Calendar will not advance."
+                )
+                return
+
+            # Event completed successfully - continue with normal simulation
 
         # Normal simulation flow
         result = self.simulation_controller.advance_day()
 
         if result['success']:
-            # Show results
-            msg = result['message']
+            # Get current date after simulation
+            current_date_str = self.simulation_controller.get_current_date()
+            formatted_date = self._format_date(current_date_str)
+
+            # Build message with date
+            msg = f"Simulated: {formatted_date}\n\n{result['message']}"
             if result['games_played'] > 0:
-                msg += f"\n\n{result['games_played']} games simulated"
-            QMessageBox.information(self, "Simulation Complete", msg)
+                msg += f"\n\nGames played: {result['games_played']}"
+
+            QMessageBox.information(self, "Day Simulation Complete", msg)
 
             # Refresh calendar view (re-sync date and reload events)
             if hasattr(self, 'calendar_view'):
@@ -554,136 +634,247 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Simulation Failed", result['message'])
 
     def _sim_week(self):
-        """Simulate one week."""
-        result = self.simulation_controller.advance_week()
+        """
+        Simulate one week with milestone detection in UI layer.
 
-        if result.get('success', False):
-            # Show results
-            msg = result.get('message', 'Week simulated successfully')
-            games_played = result.get('games_played', 0)
-            if games_played > 0:
-                msg += f"\n\n{games_played} games simulated this week"
+        Uses an iterative approach that checks for milestones after each one
+        is handled, ensuring no milestones are skipped.
 
-            QMessageBox.information(self, "Week Simulation Complete", msg)
+        This refactor moves milestone detection from backend to UI layer,
+        achieving proper MVC separation (backend simulates, UI routes).
+        """
+        start_date_str = self.simulation_controller.get_current_date()
+        milestones_handled = []
+        days_simulated = 0
+        max_days = 7
 
-            # Refresh calendar view (re-sync date and reload events)
-            if hasattr(self, 'calendar_view'):
-                self.calendar_view.refresh_current_date()
+        print(f"\n[SIM_WEEK] ===== Starting _sim_week() =====")
+        print(f"[SIM_WEEK] Start date: {start_date_str}")
+        print(f"[SIM_WEEK] Max days: {max_days}")
 
-            # Refresh playoff view if playoffs tab is visible (playoffs or offseason)
-            if self.simulation_controller.get_current_phase() in ["playoffs", "offseason"]:
-                if hasattr(self, 'playoff_view'):
-                    self.playoff_view.refresh()
-        else:
-            QMessageBox.warning(
-                self,
-                "Week Simulation Failed",
-                result.get('message', 'Unknown error')
-            )
+        while days_simulated < max_days:
+            # Check for milestone on current day or ahead (within remaining days)
+            remaining_days = max_days - days_simulated
+            current_date = self.simulation_controller.get_current_date()
+
+            print(f"\n[SIM_WEEK] --- Loop iteration ---")
+            print(f"[SIM_WEEK] Current date: {current_date}")
+            print(f"[SIM_WEEK] Days simulated: {days_simulated}")
+            print(f"[SIM_WEEK] Remaining days: {remaining_days}")
+            print(f"[SIM_WEEK] Checking milestones with days_ahead={remaining_days + 1}")
+
+            milestone = self.simulation_controller.check_upcoming_milestones(days_ahead=remaining_days + 1)
+
+            if milestone:
+                days_until = milestone['days_until']
+                print(f"[SIM_WEEK] Milestone found: {milestone['display_name']} (days_until={days_until})")
+
+                # Only handle if milestone is within our remaining simulation window
+                if days_until <= remaining_days:
+                    if days_until > 0:
+                        # Simulate days BEFORE milestone
+                        print(f"[SIM_WEEK] Advancing {days_until} days BEFORE milestone")
+                        result = self.simulation_controller.advance_days(days_until)
+                        if not result['success']:
+                            QMessageBox.warning(self, "Simulation Failed", result['message'])
+                            return
+                        days_simulated += days_until
+                        print(f"[SIM_WEEK] Now at date: {self.simulation_controller.get_current_date()}")
+
+                    # Handle the milestone
+                    print(f"[SIM_WEEK] Handling milestone: {milestone['display_name']}")
+                    if self.user_team_id:
+                        success = self._handle_interactive_event_router(milestone['event'])
+                        print(f"[SIM_WEEK] Handler returned: {success}")
+                        if not success:
+                            # User cancelled
+                            end_date_str = self.simulation_controller.get_current_date()
+                            QMessageBox.information(
+                                self,
+                                "Milestone Paused",
+                                f"Simulation paused at {milestone['display_name']}.\n\n"
+                                f"Calendar: {self._format_date(end_date_str)}\n\n"
+                                "You can resume simulation when ready."
+                            )
+                            return
+
+                    milestones_handled.append(milestone['display_name'])
+
+                    # STOP at milestone - don't continue simulating
+                    # User must click "Sim Week" again to continue past this milestone
+                    end_date_str = self.simulation_controller.get_current_date()
+                    date_range = self._format_date_range(start_date_str, end_date_str)
+
+                    if days_simulated > 0:
+                        msg = f"Simulated {days_simulated} day(s).\n\n{date_range}\n\nStopped at: {milestone['display_name']}"
+                    else:
+                        msg = f"Stopped at: {milestone['display_name']}\n\nDate: {self._format_date(end_date_str)}"
+
+                    print(f"\n[SIM_WEEK] ===== STOPPING at milestone =====")
+                    print(f"[SIM_WEEK] Milestone: {milestone['display_name']}")
+                    print(f"[SIM_WEEK] Current date: {end_date_str}")
+                    print(f"[SIM_WEEK] Days simulated before stop: {days_simulated}")
+                    print(f"[SIM_WEEK] =====================================\n")
+
+                    QMessageBox.information(self, "Milestone Reached", msg)
+                    self._refresh_views_after_simulation()
+                    return  # STOP HERE - don't continue past milestone
+                else:
+                    # Milestone is beyond our remaining window - simulate remaining days
+                    print(f"[SIM_WEEK] Milestone beyond window (days_until={days_until} > remaining={remaining_days})")
+                    if remaining_days > 0:
+                        print(f"[SIM_WEEK] Simulating remaining {remaining_days} days")
+                        result = self.simulation_controller.advance_days(remaining_days)
+                        if not result['success']:
+                            QMessageBox.warning(self, "Simulation Failed", result['message'])
+                            return
+                        days_simulated += remaining_days
+            else:
+                # No more milestones - simulate remaining days
+                print(f"[SIM_WEEK] No milestone found, simulating remaining {remaining_days} days")
+                if remaining_days > 0:
+                    result = self.simulation_controller.advance_days(remaining_days)
+                    if not result['success']:
+                        QMessageBox.warning(self, "Simulation Failed", result['message'])
+                        return
+                    days_simulated += remaining_days
+
+        # Show completion message
+        end_date_str = self.simulation_controller.get_current_date()
+        date_range = self._format_date_range(start_date_str, end_date_str)
+        msg = f"Week simulated successfully.\n\n{date_range}"
+
+        if milestones_handled:
+            msg += f"\n\nMilestones handled: {', '.join(milestones_handled)}"
+
+        print(f"\n[SIM_WEEK] ===== Completed _sim_week() =====")
+        print(f"[SIM_WEEK] End date: {end_date_str}")
+        print(f"[SIM_WEEK] Milestones handled: {milestones_handled}")
+        print(f"[SIM_WEEK] =====================================\n")
+
+        QMessageBox.information(self, "Week Complete", msg)
+
+        # Refresh views
+        self._refresh_views_after_simulation()
 
     def _sim_to_phase_end(self):
-        """Simulate to end of current phase with progress dialog."""
-        from PySide6.QtWidgets import QProgressDialog, QApplication
+        """Simulate to end of current phase, pausing at interactive events."""
+        starting_phase = self.simulation_controller.get_current_phase()
+        start_date_str = self.simulation_controller.get_current_date()
 
         # Create progress dialog
         progress = QProgressDialog(
-            "Simulating...",
+            "Simulating to end of phase...",
             "Cancel",
-            0,
-            100,  # Will update max dynamically
+            0, 100,
             self
         )
-        progress.setWindowTitle("Season Simulation")
         progress.setWindowModality(Qt.WindowModal)
-        progress.setMinimumDuration(0)  # Show immediately
 
-        weeks_completed = 0
+        days_simulated = 0
+        total_games_played = 0
+        MAX_DAYS = 365
 
-        # Progress callback
-        def update_progress(week_num, games_played):
-            nonlocal weeks_completed
-            weeks_completed = week_num
-            progress.setValue(week_num)
-            progress.setLabelText(
-                f"Simulating week {week_num}...\n{games_played} games simulated"
-            )
-            QApplication.processEvents()
+        try:
+            while days_simulated < MAX_DAYS:
+                # Check if user cancelled progress dialog
+                if progress.wasCanceled():
+                    raise InterruptedError("User cancelled simulation")
 
-            # Check if user cancelled
-            if progress.wasCanceled():
-                # TODO: Implement cancellation logic if needed
-                pass
+                # Check for interactive event BEFORE advancing day
+                interactive_event = self.simulation_controller.check_for_interactive_event()
 
-        # Execute simulation
-        summary = self.simulation_controller.advance_to_end_of_phase(
-            progress_callback=update_progress
-        )
+                if interactive_event and self.user_team_id:
+                    # Close progress dialog
+                    progress.close()
 
-        progress.close()
+                    # Launch interactive dialog
+                    success = self._handle_interactive_event_router(interactive_event)
 
-        # Force Qt event processing to ensure date_changed signal is handled
-        # This prevents stale phase display in status bar
-        QApplication.processEvents()
+                    if not success:
+                        # User cancelled - show partial completion
+                        end_date_str = self.simulation_controller.get_current_date()
+                        date_range = self._format_date_range(start_date_str, end_date_str)
 
-        # Manually trigger status bar refresh to ensure phase updates
-        current_date = self.simulation_controller.get_current_date()
-        self._on_date_changed(current_date)
+                        QMessageBox.information(
+                            self,
+                            "Phase Simulation Paused",
+                            f"Simulation paused at user's request.\n\n"
+                            f"{date_range}\n\n"
+                            f"Days simulated: {days_simulated}\n"
+                            f"Games played: {total_games_played}\n\n"
+                            f"Calendar updated to {self._format_date(end_date_str)}.\n"
+                            "You can resume simulation when ready."
+                        )
+                        return
 
-        # Show summary dialog
-        if summary.get('success', False):
-            # Detect if this is a milestone stop (offseason) vs phase completion
-            if 'milestone_reached' in summary:
-                # Offseason milestone stop - show milestone details
-                title = "Milestone Reached"
-                msg = (
-                    f"Stopped at: {summary['milestone_reached']}\n\n"
-                    f"Milestone Type: {summary.get('milestone_type', 'N/A')}\n"
-                    f"Milestone Date: {summary.get('milestone_date', 'N/A')}\n"
-                    f"Days Advanced: {summary.get('days_simulated', 0)}\n\n"
-                    f"Still in: {summary['ending_phase'].replace('_', ' ').title()}"
-                )
-            else:
-                # Phase completion - show phase summary
-                title = "Simulation Complete"
-                phase_name = summary['starting_phase'].replace('_', ' ').title()
+                    # Recreate progress dialog for remainder
+                    progress = QProgressDialog(
+                        "Simulating to end of phase...",
+                        "Cancel",
+                        0, 100,
+                        self
+                    )
+                    progress.setWindowModality(Qt.WindowModal)
+                    progress.setValue(min(99, days_simulated // 7))
 
-                # Determine next phase for message (use next_phase if available, otherwise ending_phase)
-                next_phase_display = summary.get('next_phase', summary.get('ending_phase'))
+                # Advance day
+                result = self.simulation_controller.advance_day()
 
-                # Build base message
-                msg = (
-                    f"{phase_name} Complete!\n\n"
-                    f"Weeks Simulated: {summary['weeks_simulated']}\n"
-                    f"Games Played: {summary['total_games']}\n"
-                    f"End Date: {summary['end_date']}"
-                )
+                if result['success']:
+                    days_simulated += 1
+                    total_games_played += result.get('games_played', 0)
 
-                # Add next phase info if available
-                if next_phase_display:
-                    msg += f"\n\nNow entering: {next_phase_display.replace('_', ' ').title()}"
+                    # Update progress
+                    progress.setValue(min(99, days_simulated // 7))
+                    QApplication.processEvents()
+
+                    # Check for phase transition
+                    current_phase = self.simulation_controller.get_current_phase()
+                    if current_phase != starting_phase:
+                        break
                 else:
-                    msg += "\n\nPhase complete!"
-            QMessageBox.information(self, title, msg)
+                    progress.close()
+                    QMessageBox.warning(self, "Simulation Failed", result['message'])
+                    return
 
-            # Automatically advance one day to trigger phase transition
-            # This ensures the phase indicator updates correctly (e.g., Preseason → Regular Season)
-            if summary.get('next_phase') and not summary.get('phase_transition'):
-                # Only advance if we haven't already transitioned (stopped at phase boundary)
-                self.simulation_controller.advance_day()
+            progress.close()
+
+            # Show completion message
+            end_date_str = self.simulation_controller.get_current_date()
+            date_range = self._format_date_range(start_date_str, end_date_str)
+            current_phase = self.simulation_controller.get_current_phase()
+
+            msg = (
+                f"Phase simulation complete.\n\n"
+                f"{date_range}\n\n"
+                f"Days simulated: {days_simulated}\n"
+                f"Games played: {total_games_played}\n\n"
+                f"Current phase: {current_phase.replace('_', ' ').title()}"
+            )
+            QMessageBox.information(self, "Phase Complete", msg)
 
             # Refresh views
+            QApplication.processEvents()
             if hasattr(self, 'calendar_view'):
                 self.calendar_view.refresh_current_date()
-            if hasattr(self, 'playoff_view') and summary['ending_phase'] == 'playoffs':
+            if hasattr(self, 'playoff_view'):
                 self.playoff_view.refresh()
 
-            # Force status bar refresh as additional safety net
-            self._refresh_status_bar()
-        else:
-            QMessageBox.warning(
+        except InterruptedError:
+            progress.close()
+
+            end_date_str = self.simulation_controller.get_current_date()
+            date_range = self._format_date_range(start_date_str, end_date_str)
+
+            QMessageBox.information(
                 self,
-                "Simulation Failed",
-                summary.get('message', 'Unknown error')
+                "Simulation Cancelled",
+                f"Simulation cancelled by user.\n\n"
+                f"{date_range}\n\n"
+                f"Days simulated: {days_simulated}\n"
+                f"Games played: {total_games_played}\n\n"
+                f"Calendar updated to {self._format_date(end_date_str)}."
             )
 
     def _show_depth_chart(self):
@@ -903,8 +1094,8 @@ class MainWindow(QMainWindow):
         """
         try:
             # Import here to avoid circular dependency
-            from demo.draft_day_demo.draft_demo_controller import DraftDemoController
-            from demo.draft_day_demo.draft_day_dialog import DraftDayDialog
+            from ui.controllers.draft_dialog_controller import DraftDialogController
+            from ui.dialogs.draft_day_dialog import DraftDayDialog
             from PySide6.QtWidgets import QDialog
 
             # Get season from event or current state
@@ -913,10 +1104,10 @@ class MainWindow(QMainWindow):
             print(f"[INFO MainWindow] Launching draft day dialog for season {draft_season}, team {self.user_team_id}")
 
             # Create controller (uses MAIN database, not demo database)
-            controller = DraftDemoController(
-                db_path=self.db_path,
+            controller = DraftDialogController(
+                database_path=self.db_path,
                 dynasty_id=self.dynasty_id,
-                season=draft_season,
+                season_year=draft_season,
                 user_team_id=self.user_team_id
             )
 
@@ -927,6 +1118,10 @@ class MainWindow(QMainWindow):
             # Check if user completed the draft
             if result == QDialog.DialogCode.Accepted:
                 print(f"[INFO MainWindow] Draft completed successfully")
+
+                # Mark draft event as executed to prevent re-triggering
+                self._mark_event_executed(draft_event, "Draft completed successfully")
+
                 return True
             else:
                 print(f"[INFO MainWindow] Draft cancelled by user")
@@ -942,16 +1137,288 @@ class MainWindow(QMainWindow):
             )
             return False
 
+    def _handle_franchise_tag_interactive(self, event: Dict[str, Any]) -> bool:
+        """
+        Handle franchise tag deadline event (STUB).
+
+        TODO: Implement interactive franchise tag dialog showing:
+        - List of pending free agents eligible for franchise/transition tags
+        - Team's available cap space
+        - Tag cost estimates
+        - UI to apply franchise/transition tags
+
+        Args:
+            event: Franchise tag deadline event data
+
+        Returns:
+            True to allow simulation to proceed, False to cancel
+        """
+        print(f"[STUB] Franchise tag deadline detected: {event.get('event_date')}")
+        print("[STUB] Interactive franchise tag dialog not yet implemented")
+        print("[STUB] Allowing simulation to proceed...")
+
+        # Mark event as executed to prevent re-triggering
+        self._mark_event_executed(event, "Franchise tag deadline handled (stub)")
+
+        return True  # Allow simulation to proceed for now
+
+    def _handle_roster_cuts_interactive(self, event: Dict[str, Any]) -> bool:
+        """
+        Handle final roster cuts deadline event (STUB).
+
+        TODO: Implement interactive roster cuts dialog showing:
+        - Current roster size (90+ players)
+        - Target roster size (53 players)
+        - Depth chart with cut recommendations
+        - UI to make roster cut decisions
+
+        Args:
+            event: Roster cuts deadline event data
+
+        Returns:
+            True to allow simulation to proceed, False to cancel
+        """
+        print(f"[STUB] Final roster cuts deadline detected: {event.get('event_date')}")
+        print("[STUB] Interactive roster cuts dialog not yet implemented")
+        print("[STUB] Allowing simulation to proceed...")
+
+        # Mark event as executed to prevent re-triggering
+        self._mark_event_executed(event, "Roster cuts deadline handled (stub)")
+
+        return True  # Allow simulation to proceed for now
+
+    def _handle_free_agency_interactive(self, event: Dict[str, Any]) -> bool:
+        """
+        Handle free agency period start event (STUB).
+
+        TODO: Implement interactive free agency dialog showing:
+        - Available free agents with ratings/stats
+        - Team needs analysis
+        - Cap space available
+        - UI to make free agent offers and signings
+
+        Args:
+            event: Free agency window start event data
+
+        Returns:
+            True to allow simulation to proceed, False to cancel
+        """
+        print(f"[STUB] Free agency period start detected: {event.get('event_date')}")
+        print("[STUB] Interactive free agency dialog not yet implemented")
+        print("[STUB] Allowing simulation to proceed...")
+
+        # Mark event as executed to prevent re-triggering
+        self._mark_event_executed(event, "Free agency start handled (stub)")
+
+        return True  # Allow simulation to proceed for now
+
+    def _handle_cap_compliance_interactive(self, event: Dict[str, Any]) -> bool:
+        """
+        Handle salary cap compliance deadline event (STUB).
+
+        TODO: Implement interactive cap compliance dialog showing:
+        - Current cap situation (over/under)
+        - Required cuts/restructures to achieve compliance
+        - Contract restructure options
+        - UI to make cap-saving decisions
+
+        Args:
+            event: Cap compliance deadline event data
+
+        Returns:
+            True to allow simulation to proceed, False to cancel
+        """
+        print(f"[STUB] Salary cap compliance deadline detected: {event.get('event_date')}")
+        print("[STUB] Interactive cap compliance dialog not yet implemented")
+        print("[STUB] Allowing simulation to proceed...")
+
+        # Mark event as executed to prevent re-triggering
+        self._mark_event_executed(event, "Cap compliance deadline handled (stub)")
+
+        return True  # Allow simulation to proceed for now
+
+    def _handle_generic_deadline_interactive(self, event: Dict[str, Any], deadline_type: str) -> bool:
+        """
+        Handle deadline types without specific handlers.
+
+        Shows an informational dialog and allows simulation to proceed.
+        This ensures unknown deadline types don't silently pass through.
+
+        Args:
+            event: Event dictionary from database
+            deadline_type: The type of deadline (e.g., 'RFA_TENDER')
+
+        Returns:
+            True (always allows simulation to proceed after showing info)
+        """
+        display_name = deadline_type.replace('_', ' ').title() if deadline_type else 'Unknown'
+
+        QMessageBox.information(
+            self,
+            f"Deadline: {display_name}",
+            f"The {display_name} deadline has been reached.\n\n"
+            f"This is an informational milestone. Click OK to continue simulation."
+        )
+
+        # Mark event as executed to prevent re-triggering
+        self._mark_event_executed(event, f"Generic deadline handled: {display_name}")
+
+        return True
+
+    def _mark_event_executed(self, event: Dict[str, Any], message: str) -> None:
+        """
+        Mark milestone event as executed by setting results field.
+
+        This prevents the event from re-triggering when user clicks "Sim Day"
+        again on the same date (e.g., after going back in calendar).
+
+        Args:
+            event: Event dictionary from database
+            message: Human-readable completion message
+        """
+        from datetime import datetime
+
+        try:
+            # Add execution results to event data
+            if 'data' not in event:
+                event['data'] = {}
+
+            event['data']['results'] = {
+                'success': True,
+                'executed_at': datetime.now().isoformat(),
+                'message': message
+            }
+
+            print(f"[DEBUG _mark_event_executed] Event ID: {event.get('event_id')}")
+            print(f"[DEBUG _mark_event_executed] Event type: {event.get('event_type')}")
+            print(f"[DEBUG _mark_event_executed] Setting results: {event['data']['results']}")
+
+            # Update in database via calendar controller's data model
+            calendar_data_model = self.calendar_controller._get_data_model()
+            calendar_data_model.event_api.update_event_by_dict(event)
+
+            print(f"[INFO MainWindow] Marked event as executed: {message}")
+
+            # Verify the update worked by re-querying
+            event_id = event.get('event_id')
+            if event_id:
+                updated_event = calendar_data_model.event_api.get_event_by_id(event_id)
+                if updated_event:
+                    updated_results = updated_event.get('data', {}).get('results')
+                    print(f"[DEBUG _mark_event_executed] Verification - results in DB: {updated_results}")
+                else:
+                    print(f"[DEBUG _mark_event_executed] Verification - could not re-query event")
+
+        except Exception as e:
+            print(f"[ERROR MainWindow] Failed to mark event as executed: {e}")
+            import traceback
+            traceback.print_exc()
+            # Don't raise - this is non-critical, simulation can proceed
+
+    def _format_date_range(self, start_date_str: str, end_date_str: str) -> str:
+        """
+        Format date range as 'Feb 25, 2025 → Mar 3, 2025'.
+
+        Args:
+            start_date_str: ISO format start date (e.g., "2025-02-25")
+            end_date_str: ISO format end date (e.g., "2025-03-03")
+
+        Returns:
+            Formatted date range string
+        """
+        try:
+            start = datetime.fromisoformat(start_date_str)
+            end = datetime.fromisoformat(end_date_str)
+            return f"{start.strftime('%b %d, %Y')} → {end.strftime('%b %d, %Y')}"
+        except (ValueError, AttributeError):
+            return f"{start_date_str} → {end_date_str}"
+
+    def _format_date(self, date_str: str) -> str:
+        """
+        Format single date as 'Feb 25, 2025'.
+
+        Args:
+            date_str: ISO format date string (e.g., "2025-02-25")
+
+        Returns:
+            Formatted date string
+        """
+        try:
+            dt = datetime.fromisoformat(date_str)
+            return dt.strftime("%b %d, %Y")
+        except (ValueError, AttributeError):
+            return date_str
+
+    def _handle_interactive_event_router(self, event: Dict[str, Any]) -> bool:
+        """
+        Route interactive event to appropriate handler dialog.
+
+        This centralizes event routing logic used by Sim Day, Sim Week, and
+        Sim to Phase End operations. Prevents code duplication.
+
+        Args:
+            event: Event dict from check_for_interactive_event()
+
+        Returns:
+            True if event handled successfully, False if user cancelled
+        """
+        event_type = event.get('event_type')
+        params = event.get('data', {}).get('parameters', {})
+
+        # Draft day event
+        if event_type == 'DRAFT_DAY':
+            return self._handle_draft_day_interactive(event)
+
+        # Deadline events (franchise tag, roster cuts, cap compliance)
+        elif event_type == 'DEADLINE':
+            deadline_type = params.get('deadline_type')
+
+            if deadline_type == 'FRANCHISE_TAG':
+                return self._handle_franchise_tag_interactive(event)
+            elif deadline_type == 'FINAL_ROSTER_CUTS':
+                return self._handle_roster_cuts_interactive(event)
+            elif deadline_type == 'SALARY_CAP_COMPLIANCE':
+                return self._handle_cap_compliance_interactive(event)
+            else:
+                # Unknown deadline type - show info dialog and mark as handled
+                return self._handle_generic_deadline_interactive(event, deadline_type)
+
+        # Window events (free agency start)
+        elif event_type == 'WINDOW':
+            window_name = params.get('window_name')
+
+            if window_name == 'FREE_AGENCY':
+                return self._handle_free_agency_interactive(event)
+
+        # Unknown event type - allow simulation to proceed
+        return True
+
     def _on_skip_to_new_season(self):
         """Skip remaining offseason events and start new season."""
-        # Confirm with user
-        reply = QMessageBox.question(
+        # Build enhanced warning message
+        warning_text = (
+            "⚠️ WARNING: You are about to skip all remaining offseason events.\n\n"
+            "The following interactive milestones will be AUTO-SIMULATED:\n\n"
+            "• Franchise Tag Deadline\n"
+            "• Free Agency Period\n"
+            "• NFL Draft\n"
+            "• Final Roster Cuts\n"
+            "• Salary Cap Compliance\n\n"
+            "You will NOT be able to:\n"
+            "• Apply franchise tags to your players\n"
+            "• Sign free agents\n"
+            "• Make draft picks\n"
+            "• Finalize roster cuts\n\n"
+            "AI will make ALL decisions for your team during these events.\n\n"
+            "Are you ABSOLUTELY SURE you want to skip the entire offseason?"
+        )
+
+        reply = QMessageBox.warning(
             self,
-            "Skip to New Season",
-            "Are you sure you want to skip the remaining offseason?\n\n"
-            "This will simulate all pending offseason events and advance to the new season.",
+            "Skip to New Season - Confirmation Required",
+            warning_text,
             QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
+            QMessageBox.No  # Default to No for safety
         )
 
         if reply == QMessageBox.Yes:
@@ -989,12 +1456,17 @@ class MainWindow(QMainWindow):
             self.sim_phase_action.setText("Sim to Offseason")
             self.sim_phase_action.setToolTip("Simulate rest of playoffs")
         else:  # offseason
-            # Get next milestone name from backend
-            next_milestone = self.simulation_controller.get_next_milestone_name()
+            # Get next milestone action from backend (returns detailed state info)
+            action = self.simulation_controller.get_next_milestone_action()
 
-            # Update "Sim to Phase End" button text
-            self.sim_phase_action.setText(f"Sim to {next_milestone}")
-            self.sim_phase_action.setToolTip(f"Simulate to next offseason milestone: {next_milestone}")
+            # Update button text from action
+            self.sim_phase_action.setText(action["text"])
+
+            # Update tooltip with detailed information
+            self.sim_phase_action.setToolTip(action["tooltip"])
+
+            # Enable/disable button based on action type
+            self.sim_phase_action.setEnabled(action["enabled"])
 
             # Show "Skip to New Season" button
             self.skip_to_new_season_action.setVisible(True)
@@ -1097,6 +1569,43 @@ class MainWindow(QMainWindow):
             self.transactions_view.transaction_widget.refresh()
             print(f"[DEBUG MainWindow] Transactions refreshed after {len(game_results)} games")
 
+    def _on_checkpoint_saved(self, day_num: int, date_str: str):
+        """
+        Handle checkpoint saved signal during week simulation.
+
+        Displays progress feedback in status bar as each day completes.
+        Implements incremental persistence feedback for Issue #1.
+
+        Args:
+            day_num: Day number (1-7) that was just saved
+            date_str: Date string for the saved checkpoint
+        """
+        # Update status bar with checkpoint progress
+        formatted_date = self._format_date(date_str)
+        self.statusBar().showMessage(
+            f"Checkpoint saved: Day {day_num}/7 ({formatted_date})",
+            2000  # 2 second timeout
+        )
+        print(f"[DEBUG MainWindow] Checkpoint {day_num}/7 saved: {date_str}")
+
+    def _format_date(self, date_str: str) -> str:
+        """Format date string for display (e.g., '2025-09-05' -> 'Sep 5, 2025')."""
+        from datetime import datetime
+        try:
+            dt = datetime.fromisoformat(date_str)
+            return dt.strftime("%b %d, %Y")
+        except (ValueError, AttributeError):
+            return date_str
+
+    def _format_date_range(self, start_date: str, end_date: str) -> str:
+        """Format date range for display (e.g., 'Sep 5, 2025 - Sep 12, 2025')."""
+        formatted_start = self._format_date(start_date)
+        formatted_end = self._format_date(end_date)
+
+        if formatted_start == formatted_end:
+            return formatted_start
+        return f"{formatted_start} - {formatted_end}"
+
     def _on_tab_changed(self, index: int):
         """Handle tab change - refresh data when switching to certain tabs."""
         # League tab (index 5) - refresh standings
@@ -1110,3 +1619,19 @@ class MainWindow(QMainWindow):
         # Playoffs tab (index 7) - refresh bracket and seeding
         elif index == 7 and hasattr(self, 'playoff_view'):
             self.playoff_view.refresh()
+
+    def _refresh_views_after_simulation(self):
+        """
+        Refresh UI views after simulation completes.
+
+        Consolidates view refresh logic used by Sim Day, Sim Week, and
+        Sim to Phase End operations. Prevents code duplication.
+        """
+        # Refresh calendar view (re-sync date and reload events)
+        if hasattr(self, 'calendar_view'):
+            self.calendar_view.refresh_current_date()
+
+        # Refresh playoff view if in playoffs or offseason
+        if self.simulation_controller.get_current_phase() in ["playoffs", "offseason"]:
+            if hasattr(self, 'playoff_view'):
+                self.playoff_view.refresh()

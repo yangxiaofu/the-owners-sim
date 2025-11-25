@@ -30,7 +30,6 @@ class PreseasonHandler:
         self.season_year = season_year
 
         # Add state tracking for consistency with RegularSeasonHandler
-        self.current_week = 1
         self.total_games_played = 0
         self.total_days_simulated = 0
 

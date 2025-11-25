@@ -10,6 +10,7 @@ from datetime import datetime
 import logging
 
 from .connection import DatabaseConnection
+from .sync_exceptions import CalendarSyncPersistenceException
 
 
 class DynastyStateAPI:
@@ -77,11 +78,12 @@ class DynastyStateAPI:
             season: Season year
 
         Returns:
-            Dict with current_date, current_phase, current_week, last_simulated_game_id
-            or None if no state exists
+            Dict with current_date, current_phase, current_week, last_simulated_game_id,
+            current_draft_pick, draft_in_progress or None if no state exists
         """
         query = """
-            SELECT "current_date", "current_phase", "current_week", last_simulated_game_id
+            SELECT "current_date", "current_phase", "current_week", last_simulated_game_id,
+                   current_draft_pick, draft_in_progress
             FROM dynasty_state
             WHERE dynasty_id = ? AND season = ?
         """
@@ -94,7 +96,9 @@ class DynastyStateAPI:
                 'current_date': row['current_date'],
                 'current_phase': row['current_phase'],
                 'current_week': row['current_week'],
-                'last_simulated_game_id': row['last_simulated_game_id']
+                'last_simulated_game_id': row['last_simulated_game_id'],
+                'current_draft_pick': row.get('current_draft_pick', 0),
+                'draft_in_progress': bool(row.get('draft_in_progress', 0))
             }
             return state
 
@@ -114,17 +118,20 @@ class DynastyStateAPI:
             dynasty_id: Dynasty identifier
 
         Returns:
-            Dict with season, current_date, current_phase, current_week, last_simulated_game_id
-            or None if no state exists for this dynasty
+            Dict with season, current_date, current_phase, current_week, last_simulated_game_id,
+            current_draft_pick, draft_in_progress or None if no state exists for this dynasty
 
         Examples:
             >>> api = DynastyStateAPI()
             >>> state = api.get_latest_state("my_dynasty")
             >>> if state:
             ...     print(f"Season: {state['season']}, Phase: {state['current_phase']}")
+            ...     if state['draft_in_progress']:
+            ...         print(f"Draft in progress at pick {state['current_draft_pick']}")
         """
         query = """
-            SELECT season, "current_date", "current_phase", "current_week", last_simulated_game_id
+            SELECT season, "current_date", "current_phase", "current_week", last_simulated_game_id,
+                   current_draft_pick, draft_in_progress
             FROM dynasty_state
             WHERE dynasty_id = ?
             ORDER BY season DESC
@@ -140,7 +147,9 @@ class DynastyStateAPI:
                 'current_date': row['current_date'],
                 'current_phase': row['current_phase'],
                 'current_week': row['current_week'],
-                'last_simulated_game_id': row['last_simulated_game_id']
+                'last_simulated_game_id': row['last_simulated_game_id'],
+                'current_draft_pick': row.get('current_draft_pick', 0),
+                'draft_in_progress': bool(row.get('draft_in_progress', 0))
             }
             return state
 
@@ -219,7 +228,8 @@ class DynastyStateAPI:
         current_date: str,
         current_phase: str,
         current_week: Optional[int] = None,
-        last_simulated_game_id: Optional[str] = None
+        last_simulated_game_id: Optional[str] = None,
+        connection: Optional[Any] = None
     ) -> bool:
         """
         Update existing dynasty state.
@@ -231,9 +241,15 @@ class DynastyStateAPI:
             current_phase: Current phase (regular_season, playoffs, offseason)
             current_week: Current week number
             last_simulated_game_id: ID of last simulated game
+            connection: Optional SQLite connection for transaction support.
+                        If provided, executes within existing transaction.
+                        If None, creates new connection (default behavior).
 
         Returns:
-            True if successful, False otherwise
+            True if successful
+
+        Raises:
+            CalendarSyncPersistenceException: If database update fails (fail-loud)
         """
         try:
             # Validate season matches current_date (defensive check)
@@ -257,15 +273,134 @@ class DynastyStateAPI:
                 VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """
 
-            rows_affected = self.db.execute_update(
-                query,
-                (dynasty_id, season, current_date, current_phase, current_week, last_simulated_game_id)
-            )
+            # Execute using provided connection (transaction support) or create new connection
+            if connection:
+                # Use provided connection (part of transaction)
+                cursor = connection.cursor()
+                cursor.execute(query, (dynasty_id, season, current_date, current_phase, current_week, last_simulated_game_id))
+                rows_affected = cursor.rowcount
+            else:
+                # Legacy behavior: create new connection
+                rows_affected = self.db.execute_update(
+                    query,
+                    (dynasty_id, season, current_date, current_phase, current_week, last_simulated_game_id)
+                )
 
-            return rows_affected > 0
+            # FAIL-LOUD: If no rows affected, dynasty/season doesn't exist
+            if rows_affected == 0:
+                self.logger.error(
+                    f"Dynasty state update failed - no rows affected!\n"
+                    f"  Dynasty ID: {dynasty_id}\n"
+                    f"  Season: {season}\n"
+                    f"  Date: {current_date}\n"
+                    f"  Phase: {current_phase}",
+                    exc_info=True
+                )
+                raise CalendarSyncPersistenceException(
+                    operation="dynasty_state_update",
+                    sync_point="update_state",
+                    state_info={
+                        "dynasty_id": dynasty_id,
+                        "season": season,
+                        "current_date": current_date,
+                        "current_phase": current_phase,
+                        "current_week": current_week,
+                        "reason": "No rows affected - dynasty/season may not exist"
+                    }
+                )
+
+            return True
+
+        except CalendarSyncPersistenceException:
+            # Re-raise our custom exception without wrapping
+            raise
 
         except Exception as e:
+            # Log and wrap database errors
             self.logger.error(f"Error updating dynasty state: {e}", exc_info=True)
+            raise CalendarSyncPersistenceException(
+                operation="dynasty_state_update",
+                sync_point="update_state",
+                state_info={
+                    "dynasty_id": dynasty_id,
+                    "season": season,
+                    "current_date": current_date,
+                    "current_phase": current_phase,
+                    "current_week": current_week,
+                    "error": str(e)
+                }
+            ) from e
+
+    def update_draft_progress(
+        self,
+        dynasty_id: str,
+        season: int,
+        current_pick: int,
+        in_progress: bool
+    ) -> bool:
+        """
+        Update draft progress for a dynasty.
+
+        Args:
+            dynasty_id: Dynasty identifier
+            season: Season year
+            current_pick: Current draft pick number (0-262, 0 means not started)
+            in_progress: Whether draft is currently active
+
+        Returns:
+            True if successful, False otherwise
+
+        Raises:
+            ValueError: If current_pick is out of valid range (0-262)
+        """
+        # Validate draft pick range
+        if not (0 <= current_pick <= 262):
+            raise ValueError(
+                f"Invalid draft pick number: {current_pick}. Must be 0-262."
+            )
+
+        try:
+            query = """
+                UPDATE dynasty_state
+                SET current_draft_pick = ?,
+                    draft_in_progress = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE dynasty_id = ? AND season = ?
+            """
+
+            # Convert boolean to integer (SQLite doesn't have boolean type)
+            in_progress_int = 1 if in_progress else 0
+
+            rows_affected = self.db.execute_update(
+                query,
+                (current_pick, in_progress_int, dynasty_id, season)
+            )
+
+            if rows_affected == 0:
+                self.logger.warning(
+                    f"Draft progress update affected 0 rows - dynasty/season may not exist.\n"
+                    f"  Dynasty ID: {dynasty_id}\n"
+                    f"  Season: {season}\n"
+                    f"  Pick: {current_pick}\n"
+                    f"  In Progress: {in_progress}"
+                )
+                return False
+
+            self.logger.info(
+                f"Draft progress updated: {dynasty_id} S{season} - Pick {current_pick}, "
+                f"Active: {in_progress}"
+            )
+            return True
+
+        except Exception as e:
+            self.logger.error(
+                f"Error updating draft progress: {e}\n"
+                f"  Dynasty ID: {dynasty_id}\n"
+                f"  Season: {season}\n"
+                f"  Pick: {current_pick}\n"
+                f"  In Progress: {in_progress}",
+                exc_info=True
+            )
             return False
 
     def delete_state(

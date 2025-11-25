@@ -22,17 +22,18 @@ For individual phase control, use SeasonController or PlayoffController directly
 """
 
 import logging
+import traceback
 from datetime import timedelta, datetime, date
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Callable
 
 # Use try/except to handle both production and test imports
 # Try src.calendar first to avoid conflict with Python's builtin calendar module
 try:
-    from src.calendar.date_models import Date
+    from src.calendar.date_models import Date, normalize_date
     from src.calendar.season_phase_tracker import SeasonPhase
     from src.calendar.phase_state import PhaseState
 except (ModuleNotFoundError, ImportError):
-    from src.calendar.date_models import Date
+    from src.calendar.date_models import Date, normalize_date
     from src.calendar.season_phase_tracker import SeasonPhase
     from src.calendar.phase_state import PhaseState
 
@@ -528,6 +529,151 @@ class SeasonCycleController:
 
     # ========== Public API ==========
 
+    def _build_offseason_complete_result(
+        self, starting_phase: str, starting_year: int
+    ) -> Dict[str, Any]:
+        """
+        Build success result dict when offseason completes and transitions to preseason.
+
+        Args:
+            starting_phase: Phase at start of operation
+            starting_year: Season year at start of operation
+
+        Returns:
+            Success result dictionary with transition metadata
+        """
+        self.logger.info(
+            f"Offseason complete! Transitioned from season {starting_year} to {self.season_year}"
+        )
+        return {
+            "success": True,
+            "message": f"Offseason complete! Transitioned from {starting_phase.upper()} to {self.phase_state.phase.value.upper()}. New season {self.season_year} initialized.",
+            "starting_phase": starting_phase,
+            "ending_phase": self.phase_state.phase.value,
+            "starting_year": starting_year,
+            "season_year": self.season_year,
+            "transition_occurred": True,
+            "new_season": True,
+            "weeks_simulated": 0,
+            "total_games": 0,
+            "days_simulated": 0,
+            "events_executed": 0,
+            "start_date": str(self.calendar.get_current_date()),
+            "end_date": str(self.calendar.get_current_date()),
+        }
+
+    def _handle_no_milestone_found(self, starting_phase: str) -> Dict[str, Any]:
+        """
+        Handle case where no offseason milestone exists.
+
+        Attempts to get preseason start date and builds user-friendly error message
+        with guidance on how to proceed.
+
+        Args:
+            starting_phase: Phase at start of operation
+
+        Returns:
+            Error result dict with guidance for user
+        """
+        current_date = self.calendar.get_current_date()
+
+        # Get preseason start date for user guidance
+        try:
+            preseason_start = self._get_preseason_start_date()
+            days_until = (preseason_start - current_date).days
+            preseason_date_str = preseason_start.strftime("%b %d, %Y")
+
+            self.logger.warning(
+                f"No offseason milestone found. Waiting for preseason to start. "
+                f"Current date: {current_date}. Preseason starts: {preseason_date_str} ({days_until} days)."
+            )
+
+            error_msg = (
+                f"No more offseason milestones.\n\n"
+                f"Current date: {current_date.strftime('%b %d, %Y')}\n"
+                f"Preseason starts: {preseason_date_str}\n"
+                f"Days remaining: {days_until}\n\n"
+                f"Use 'Advance Day' or 'Advance Week' to continue."
+            )
+        except Exception as e:
+            # Fallback if we can't determine preseason start
+            self.logger.warning(
+                f"No offseason milestone found and cannot determine preseason start. "
+                f"Current date: {current_date}. Error: {e}"
+            )
+            error_msg = (
+                f"No offseason milestone found and offseason not complete.\n\n"
+                f"Current date: {current_date}\n"
+                f"Unable to determine preseason start date. This may indicate a database or calendar configuration issue."
+            )
+
+        if self.verbose_logging:
+            print(f"\n{'='*80}")
+            print(f"[ERROR] NO OFFSEASON MILESTONES FOUND")
+            print(f"{'='*80}")
+            print(error_msg)
+            print(f"{'='*80}\n")
+
+        return {
+            "success": False,
+            "message": error_msg,
+            "starting_phase": starting_phase,
+            "ending_phase": self.phase_state.phase.value,
+            "season_year": self.season_year,
+            "transition_occurred": False,
+            "error_type": "incomplete_offseason_no_milestones",
+            "weeks_simulated": 0,
+            "total_games": 0,
+            "days_simulated": 0,
+            "events_executed": 0,
+            "start_date": str(self.calendar.get_current_date()),
+            "end_date": str(self.calendar.get_current_date()),
+        }
+
+    def _enrich_milestone_result(
+        self,
+        result: Dict[str, Any],
+        next_milestone: Dict[str, Any],
+        starting_phase: str,
+        starting_year: int,
+    ) -> Dict[str, Any]:
+        """
+        Add milestone-specific metadata to simulation result.
+
+        Detects phase transitions and adds UI-expected keys.
+
+        Args:
+            result: Base simulation result dict
+            next_milestone: Milestone event that was reached
+            starting_phase: Phase at start of operation
+            starting_year: Season year at start of operation
+
+        Returns:
+            Enriched result dict with milestone metadata
+        """
+        # Detect if transition occurred during simulation
+        transition_occurred = self.phase_state.phase.value != starting_phase
+
+        if transition_occurred:
+            self.logger.info(
+                f"Phase transition occurred during simulation to {next_milestone['display_name']}"
+            )
+
+        # Add milestone-specific info to result
+        result["milestone_reached"] = next_milestone["display_name"]
+        result["milestone_type"] = next_milestone["event_type"]
+        result["milestone_date"] = str(next_milestone["event_date"])
+
+        # Add keys UI expects
+        result["starting_phase"] = starting_phase
+        result["ending_phase"] = self.phase_state.phase.value
+        result["weeks_simulated"] = result["days_simulated"] // 7
+        result["total_games"] = result.get("games_played", 0)
+        result["phase_transition"] = transition_occurred
+        result["transition_occurred"] = transition_occurred
+
+        return result
+
     def advance_day(self) -> Dict[str, Any]:
         """
         Advance simulation by 1 day using phase handler strategy pattern.
@@ -680,12 +826,21 @@ class SeasonCycleController:
 
         return result
 
-    def advance_week(self) -> Dict[str, Any]:
+    def advance_week(
+        self,
+        checkpoint_callback: Optional[Callable[[int, Dict[str, Any]], None]] = None
+    ) -> Dict[str, Any]:
         """
-        Advance simulation by up to 7 days.
+        Advance simulation by up to 7 days with optional daily checkpoints.
 
         Stops early if phase transition or milestone occurs.
         advance_day() handles all phase-specific logic and event simulation.
+
+        Args:
+            checkpoint_callback: Optional callback called after each day.
+                                Signature: callback(day_num, day_result)
+                                If callback raises exception, week simulation aborts
+                                and returns partial results.
 
         Returns:
             Dictionary with weekly summary
@@ -695,22 +850,53 @@ class SeasonCycleController:
 
         start_date = str(self.calendar.get_current_date())
 
+        # DIAGNOSTIC LOGGING: Always log phase state at advance_week entry
+        print(f"\n[WEEK ENTRY] ===== advance_week() START =====")
+        print(f"[WEEK ENTRY] Start date: {start_date}")
+        print(f"[WEEK ENTRY] Phase: {self.phase_state.phase.value}")
+        print(f"[WEEK ENTRY] skip_offseason_events: {self.skip_offseason_events}")
+        print(f"[WEEK ENTRY] ====================================\n")
+
         # Simple loop - advance_day() does all the work
         daily_results = []
+        milestone_info = None  # Track milestone if detected
 
         if self.verbose_logging:
             print(f"\n[WEEK] Starting week from {start_date}, phase={self.phase_state.phase.value}")
 
         for day_num in range(7):
+            current_loop_date = self.calendar.get_current_date()
+            print(f"\n[WEEK] ==== Day {day_num + 1}/7 ====")
+            print(f"[WEEK] Current calendar date: {current_loop_date}")
+
             if self.verbose_logging:
                 print(f"[WEEK] Day {day_num + 1}/7")
 
             # advance_day() handles: phase detection, event extraction, simulation, transitions
+            print(f"[WEEK] Executing advance_day()...")
             day_result = self.advance_day()
             daily_results.append(day_result)
+            print(f"[WEEK] advance_day() complete, new date: {self.calendar.get_current_date()}")
 
-            # Stop early if phase transition or milestone occurred
+            # Call checkpoint callback after each day (if provided)
+            if checkpoint_callback:
+                try:
+                    checkpoint_callback(day_num, day_result)
+                except Exception as e:
+                    # Checkpoint callback failed - abort week simulation
+                    print(f"[WEEK] ❌ Checkpoint callback failed on day {day_num + 1}: {e}")
+                    logging.error(f"Checkpoint callback failed on day {day_num}: {e}")
+                    # Return partial results with error info
+                    return self._aggregate_week_results(
+                        daily_results,
+                        start_date,
+                        str(self.calendar.get_current_date()),
+                        None  # No milestone info on checkpoint failure
+                    )
+
+            # Always stop on phase transitions (checked AFTER execution)
             if day_result.get("phase_transition"):
+                print(f"[WEEK] Phase transition detected - STOPPING WEEK EARLY")
                 if self.verbose_logging:
                     print(f"[WEEK] Phase transition on day {day_num + 1} - stopping week early")
                 break
@@ -718,7 +904,7 @@ class SeasonCycleController:
         end_date = str(self.calendar.get_current_date())
 
         # Aggregate results from daily calls
-        week_summary = self._aggregate_week_results(daily_results, start_date, end_date)
+        week_summary = self._aggregate_week_results(daily_results, start_date, end_date, milestone_info)
 
         if self.verbose_logging:
             print(f"[WEEK] Week complete: {start_date} → {end_date}")
@@ -727,11 +913,144 @@ class SeasonCycleController:
 
         return week_summary
 
+    def advance_days(self, num_days: int, checkpoint_callback=None) -> Dict[str, Any]:
+        """
+        Advance simulation by exactly N days (no early stopping for milestones).
+
+        Unlike advance_week(), this method does NOT check for milestones or stop early.
+        It simulates exactly the specified number of days, only stopping for phase
+        transitions. This method is used by the UI layer for fine-grained simulation
+        control (e.g., simulating up to but not including a milestone date).
+
+        Args:
+            num_days: Number of days to simulate (1-365)
+            checkpoint_callback: Optional callback(day_num, day_result) for incremental persistence
+
+        Returns:
+            Dictionary with simulation results:
+            {
+                'success': bool,
+                'days_simulated': int,
+                'date': str,                  # Final date
+                'current_phase': str,
+                'games_played': int,
+                'num_trades': int,
+                'daily_results': List[Dict],
+                'phase_transition': Optional[Dict],  # If phase changed
+                'message': str
+            }
+
+        Raises:
+            ValueError: If num_days < 1 or > 365
+
+        Examples:
+            # Simulate 3 days before Draft Day
+            result = controller.advance_days(3)
+
+            # Then handle Draft Day in UI
+            # Then simulate 4 more days
+            result = controller.advance_days(4)
+        """
+        if num_days < 1 or num_days > 365:
+            raise ValueError(f"num_days must be 1-365, got {num_days}")
+
+        start_date = str(self.calendar.get_current_date())
+        daily_results = []
+
+        print(f"\n[DAYS] ===== Simulating {num_days} days =====")
+        print(f"[DAYS] Start date: {start_date}")
+
+        for day_num in range(num_days):
+            if self.verbose_logging:
+                current = str(self.calendar.get_current_date())
+                print(f"\n[DAYS] --- Day {day_num + 1}/{num_days}: {current} ---")
+
+            # No milestone checks - just simulate
+            day_result = self.advance_day()
+            daily_results.append(day_result)
+
+            # Execute checkpoint callback if provided
+            if checkpoint_callback:
+                try:
+                    checkpoint_callback(day_num, day_result)
+                except Exception as e:
+                    # Checkpoint callback failed - abort simulation
+                    print(f"[DAYS] ❌ Checkpoint callback failed on day {day_num + 1}: {e}")
+                    logging.error(f"Checkpoint callback failed on day {day_num}: {e}")
+                    # Return partial results with error info
+                    return self._aggregate_days_results(
+                        daily_results,
+                        start_date,
+                        str(self.calendar.get_current_date()),
+                        checkpoint_failed=True
+                    )
+
+            # Stop early only on phase transitions (not milestones)
+            if day_result.get("phase_transition"):
+                print(f"[DAYS] Phase transition detected on day {day_num + 1} - STOPPING EARLY")
+                break
+
+        end_date = str(self.calendar.get_current_date())
+
+        # Aggregate results from daily calls
+        result = self._aggregate_days_results(daily_results, start_date, end_date)
+
+        if self.verbose_logging:
+            print(f"[DAYS] Complete: {start_date} → {end_date}")
+            print(f"[DAYS] Days simulated: {result['days_simulated']}")
+            print(f"[DAYS] Games: {result['games_played']}, Trades: {result['num_trades']}")
+
+        return result
+
+    def _aggregate_days_results(
+        self,
+        daily_results: List[Dict[str, Any]],
+        start_date: str,
+        end_date: str,
+        checkpoint_failed: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Aggregate daily results for advance_days() method.
+
+        Args:
+            daily_results: List of results from each advance_day() call
+            start_date: Start date
+            end_date: End date
+            checkpoint_failed: True if checkpoint callback failed
+
+        Returns:
+            Dictionary with aggregated results
+        """
+        # Count games and trades
+        total_games = sum(len(day.get('results', [])) for day in daily_results)
+        total_trades = sum(day.get('num_trades', 0) for day in daily_results)
+
+        # Check for phase transition in any day
+        phase_transition = None
+        for day in daily_results:
+            if day.get('phase_transition'):
+                phase_transition = day['phase_transition']
+                break
+
+        return {
+            'success': not checkpoint_failed,
+            'days_simulated': len(daily_results),
+            'date': end_date,
+            'current_phase': self.phase_state.phase.value,
+            'games_played': total_games,
+            'num_trades': total_trades,
+            'daily_results': daily_results,
+            'phase_transition': phase_transition,
+            'message': f"Simulated {len(daily_results)} days: {start_date} → {end_date}" +
+                      (f" (checkpoint failed)" if checkpoint_failed else "")
+        }
+
     def _aggregate_week_results(
         self,
         daily_results: List[Dict[str, Any]],
         start_date: str,
-        end_date: str
+        end_date: str,
+        milestone_info: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Aggregate daily results into weekly summary.
@@ -740,9 +1059,10 @@ class SeasonCycleController:
             daily_results: List of results from each advance_day() call
             start_date: Week start date
             end_date: Week end date
+            milestone_info: Milestone detection info if week stopped early
 
         Returns:
-            Dictionary with aggregated weekly results
+            Dictionary with aggregated weekly results including milestone info
         """
         # Accumulate from daily results
         total_games = sum(r.get("games_played", 0) for r in daily_results)
@@ -774,7 +1094,7 @@ class SeasonCycleController:
         else:
             message = f"Week complete ({start_date} → {end_date}). {total_games} games, {len(all_transactions)} trades."
 
-        return {
+        result = {
             "success": True,
             "week_complete": True,
             "current_phase": self.phase_state.phase.value,
@@ -787,7 +1107,18 @@ class SeasonCycleController:
             "num_trades": len(all_transactions),
             "events_triggered": events_triggered,
             "message": message,
+            "days_simulated": len(daily_results),
         }
+
+        # Add milestone info if detected (week stopped early)
+        if milestone_info:
+            result['milestone_detected'] = True
+            result['milestone_type'] = milestone_info['milestone_type']
+            result['milestone_date'] = milestone_info['milestone_date']
+        else:
+            result['milestone_detected'] = False
+
+        return result
 
     def simulate_to_end(self) -> Dict[str, Any]:
         """
@@ -953,60 +1284,10 @@ class SeasonCycleController:
 
                 if transition_result and transition_result.get("to_phase"):
                     # Transition happened (OFFSEASON → PRESEASON)
-                    self.logger.info(
-                        f"Offseason complete! Transitioned from season {starting_year} to {self.season_year}"
-                    )
-                    return {
-                        "success": True,
-                        "message": f"Offseason complete! Transitioned from {starting_phase.upper()} to {self.phase_state.phase.value.upper()}. New season {self.season_year} initialized.",
-                        "starting_phase": starting_phase,
-                        "ending_phase": self.phase_state.phase.value,
-                        "starting_year": starting_year,
-                        "season_year": self.season_year,
-                        "transition_occurred": True,
-                        "new_season": True,
-                        "weeks_simulated": 0,
-                        "total_games": 0,
-                        "days_simulated": 0,
-                        "events_executed": 0,
-                        "start_date": str(self.calendar.get_current_date()),
-                        "end_date": str(self.calendar.get_current_date()),
-                    }
+                    return self._build_offseason_complete_result(starting_phase, starting_year)
                 else:
-                    # No transition occurred - truly an error state
-                    current_date = self.calendar.get_current_date()
-                    self.logger.warning(
-                        f"No offseason milestone found and offseason not complete. "
-                        f"Current date: {current_date}. This may indicate a database or calendar configuration issue."
-                    )
-                    error_msg = (
-                        f"No offseason milestone found and offseason not complete.\n\n"
-                        f"Current date: {current_date}\n"
-                        f"This may indicate missing milestones in the database or a calendar configuration issue."
-                    )
-
-                    if self.verbose_logging:
-                        print(f"\n{'='*80}")
-                        print(f"[ERROR] NO OFFSEASON MILESTONES FOUND")
-                        print(f"{'='*80}")
-                        print(error_msg)
-                        print(f"{'='*80}\n")
-
-                    return {
-                        "success": False,
-                        "message": error_msg,
-                        "starting_phase": starting_phase,
-                        "ending_phase": self.phase_state.phase.value,
-                        "season_year": self.season_year,
-                        "transition_occurred": False,
-                        "error_type": "incomplete_offseason_no_milestones",
-                        "weeks_simulated": 0,
-                        "total_games": 0,
-                        "days_simulated": 0,
-                        "events_executed": 0,
-                        "start_date": str(self.calendar.get_current_date()),
-                        "end_date": str(self.calendar.get_current_date()),
-                    }
+                    # No transition occurred - waiting for preseason start
+                    return self._handle_no_milestone_found(starting_phase)
             except Exception as e:
                 self.logger.error(f"Transition check failed: {e}", exc_info=True)
                 return {
@@ -1029,28 +1310,8 @@ class SeasonCycleController:
             milestone_date, execute_events=True, progress_callback=progress_callback
         )
 
-        # Detect if transition occurred during simulation
-        transition_occurred = self.phase_state.phase.value != starting_phase
-
-        if transition_occurred:
-            self.logger.info(
-                f"Phase transition occurred during simulation to {next_milestone['display_name']}"
-            )
-
-        # Add milestone-specific info to result
-        result["milestone_reached"] = next_milestone["display_name"]
-        result["milestone_type"] = next_milestone["event_type"]
-        result["milestone_date"] = str(milestone_date)
-
-        # Add keys UI expects
-        result["starting_phase"] = starting_phase
-        result["ending_phase"] = self.phase_state.phase.value
-        result["weeks_simulated"] = result["days_simulated"] // 7
-        result["total_games"] = result.get("games_played", 0)
-        result["phase_transition"] = transition_occurred
-        result["transition_occurred"] = transition_occurred
-
-        return result
+        # Enrich result with milestone metadata and return
+        return self._enrich_milestone_result(result, next_milestone, starting_phase, starting_year)
 
     def simulate_to_date(
         self, target_date: Date, execute_events: bool = True, progress_callback=None
@@ -1160,22 +1421,151 @@ class SeasonCycleController:
         """
         Get display name for next offseason milestone (for UI button text).
 
+        DEPRECATED: Use get_next_milestone_action() instead for more detailed info.
+
         Returns:
             Display name like "Franchise Tags", "Free Agency", "Draft", etc.
-            Returns "Next Season" if no more milestones.
+            Returns descriptive text if no more milestones (e.g., "Next Season", "Wait 62 days").
         """
+        # Use new action logic for consistency
+        action = self.get_next_milestone_action()
+
+        # Return milestone name if available, otherwise use action text
+        return action.get("milestone_name", action["text"])
+
+    def get_next_milestone_action(self) -> Dict[str, Any]:
+        """
+        Determine what action the "Next Milestone" button should take.
+
+        Analyzes current state to determine what action is available:
+        - simulate_to_milestone: Next offseason milestone exists
+        - start_preseason: Preseason start date reached
+        - wait: Waiting for preseason to begin
+        - disabled: Not in offseason phase
+
+        Returns:
+            Dict with action information:
+            {
+                'action': str - Action type (simulate_to_milestone|start_preseason|wait|disabled)
+                'text': str - Button text to display
+                'tooltip': str - Detailed tooltip text
+                'enabled': bool - Whether button should be enabled
+                'milestone_name': str - Milestone name (if applicable)
+                'milestone_date': str - Milestone date in "MMM DD, YYYY" format (if applicable)
+                'days_remaining': int - Days until milestone/preseason (if applicable)
+            }
+        """
+        # Check if in offseason phase
         if self.phase_state.phase != SeasonPhase.OFFSEASON:
-            return "Next Phase"
+            return {
+                "action": "disabled",
+                "text": "Not in Offseason",
+                "tooltip": f"Currently in {self.phase_state.phase.value.replace('_', ' ').title()}",
+                "enabled": False,
+            }
 
         current_date = self.calendar.get_current_date()
+
+        # Validate current_date (fix: Issue #3 - None check)
+        if not current_date:
+            self.logger.error("Failed to get current date from calendar")
+            return {
+                "action": "disabled",
+                "text": "Error",
+                "tooltip": "Unable to determine current date. Check database configuration.",
+                "enabled": False,
+            }
+
+        # Check for next milestone
         next_milestone = self.db.events_get_next_offseason_milestone(
             current_date=current_date, season_year=self.season_year
         )
 
-        if not next_milestone:
-            return "Next Season"
+        if next_milestone:
+            # Milestone exists - can simulate to it
+            milestone_date = next_milestone["event_date"]  # Date object
+            milestone_date = normalize_date(milestone_date)  # Fix: Ensure Date compatibility across import paths
+            milestone_name = next_milestone["display_name"]
 
-        return next_milestone["display_name"]
+            # Calculate days remaining (fix: Issue #5 - use days_until() method)
+            days_away = current_date.days_until(milestone_date)
+
+            # Edge case: milestone already passed or is today (fix: Issue #6)
+            if days_away <= 0:
+                self.logger.warning(
+                    f"Milestone {milestone_name} is today or has passed (days_away={days_away}). "
+                    f"Skipping to check for next milestone."
+                )
+                # Treat as no milestone - will fall through to preseason check
+                next_milestone = None
+            else:
+                # Format date for display (fix: Issue #1 - use to_python_date())
+                date_str = milestone_date.to_python_date().strftime("%b %d, %Y")
+
+                # Build tooltip with details
+                tooltip = (
+                    f"Simulate to: {milestone_name}\n"
+                    f"Date: {date_str}\n"
+                    f"Days away: {days_away}"
+                )
+
+                return {
+                    "action": "simulate_to_milestone",
+                    "text": f"Sim to {milestone_name}",
+                    "tooltip": tooltip,
+                    "enabled": True,
+                    "milestone_name": milestone_name,
+                    "milestone_date": date_str,
+                    "days_remaining": days_away,
+                }
+
+        # If we reach here, no valid future milestone exists
+        # Check if ready for preseason
+        try:
+            preseason_start = self._get_preseason_start_date()
+        except Exception as e:
+            # If we can't determine preseason start, show error state
+            self.logger.error(f"Failed to determine preseason start date: {e}")
+            return {
+                "action": "disabled",
+                "text": "Error",
+                "tooltip": "Unable to determine preseason start date. Check database configuration.",
+                "enabled": False,
+            }
+
+        # Normalize preseason_start to ensure Date compatibility across import paths
+        preseason_start = normalize_date(preseason_start)
+
+        # Check if preseason start reached
+        if current_date >= preseason_start:
+            return {
+                "action": "start_preseason",
+                "text": "Start Preseason",
+                "tooltip": "All offseason milestones complete. Ready to transition to preseason.",
+                "enabled": True,
+            }
+
+        # Waiting for preseason - calculate days remaining (fix: Issue #5 - use days_until())
+        days_until = current_date.days_until(preseason_start)
+        # Format date for display (fix: Issue #1 - use to_python_date())
+        preseason_date_str = preseason_start.to_python_date().strftime("%b %d, %Y")
+
+        # Build detailed tooltip
+        tooltip = (
+            f"No milestones remaining.\n"
+            f"Preseason starts: {preseason_date_str}\n"
+            f"Days remaining: {days_until}\n\n"
+            f"Use 'Advance Day' or 'Advance Week' to continue."
+        )
+
+        return {
+            "action": "wait",
+            "text": f"Wait {days_until} days",
+            "tooltip": tooltip,
+            "enabled": False,  # Disable button when waiting
+            "days_remaining": days_until,
+            "preseason_start": preseason_date_str,
+        }
 
     def simulate_to_new_season(self, progress_callback=None) -> Dict[str, Any]:
         """
@@ -2686,7 +3076,7 @@ class SeasonCycleController:
         in April of the following calendar year.
 
         Example: 2024 season (Sept 2024 → Feb 2025)
-                 → Generate 2024 draft class in Sept 2024
+                 → Generate 2025 draft class in Sept 2024
                  → Draft occurs April 2025
                  → Drafted players join teams for 2025 season
         """
@@ -3159,6 +3549,33 @@ class SeasonCycleController:
             )
 
         return milestone_date
+
+    def _get_preseason_start_date(self) -> Date:
+        """
+        Get preseason start date with fallback calculation.
+
+        Tries to get date from database PRESEASON_START milestone first.
+        Falls back to calculation if milestone not found.
+
+        Returns:
+            Date representing when preseason begins
+
+        Raises:
+            RuntimeError: Only if both database query and fallback calculation fail
+        """
+        try:
+            # Try database milestone first (preferred source)
+            return self._get_preseason_start_from_milestone()
+        except RuntimeError:
+            # Fallback to calculation if milestone missing
+            self.logger.warning(
+                f"PRESEASON_START milestone not found in database for season {self.season_year}. "
+                f"Using fallback calculation."
+            )
+            # Import here to avoid circular dependency
+            from calendar.phase_boundary_detector import PhaseBoundaryDetector
+            detector = PhaseBoundaryDetector(database_path=self.db_path)
+            return detector._calculate_preseason_start(self.season_year)
 
     def _update_database_phase_for_handler(self, phase: str, season_year: int) -> None:
         """

@@ -202,7 +202,7 @@ ls -la ui/views/
 ## Resources
 
 - [PySide6 Documentation](https://doc.qt.io/qtforpython-6/)
-- [UI Development Plan](../docs/plans/ui_development_plan.md)
+- [UI Development Plan](../docs/archive/plans/ui_development_plan.md)
 - [OOTP Baseball](https://www.ootpdevelopments.com/) - Design inspiration
 
 ---

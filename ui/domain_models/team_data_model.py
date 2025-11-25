@@ -73,6 +73,67 @@ class TeamDataModel:
 
     # ==================== Team Roster Operations ====================
 
+    def get_full_roster(self, team_id: int) -> List[Dict[str, Any]]:
+        """
+        Get FULL team roster including inactive players (active + inactive).
+
+        Unlike get_team_roster(), this returns ALL players regardless of roster_status.
+        Useful for complete roster management and tracking 90-man roster.
+
+        Args:
+            team_id: Team ID (1-32)
+
+        Returns:
+            List of player dictionaries with all roster players (active + inactive).
+            Each player dict includes 'roster_status' field ('active' or 'inactive').
+
+        Example:
+            full_roster = model.get_full_roster(22)  # Detroit Lions
+            active_count = sum(1 for p in full_roster if p.get('roster_status') == 'active')
+            total_count = len(full_roster)
+        """
+        try:
+            # Get full roster from PlayerRosterAPI (includes roster_status)
+            full_roster_players = self.player_roster_api.get_full_roster(
+                dynasty_id=self.dynasty_id,
+                team_id=team_id
+            )
+
+            # Convert sqlite3.Row objects to dictionaries
+            full_roster_players = [dict(player) for player in full_roster_players]
+
+            # Get all contracts for team
+            contracts = self.cap_db_api.get_team_contracts(
+                team_id=team_id,
+                season=self.season,
+                dynasty_id=self.dynasty_id,
+                active_only=True
+            )
+
+            # Convert contracts to dicts if needed
+            contracts = [dict(c) if not isinstance(c, dict) else c for c in contracts]
+
+            # Create lookup dict for fast contract access
+            contract_map = {c['player_id']: c for c in contracts}
+
+            # Merge players with contracts and format
+            formatted_roster = []
+            for player in full_roster_players:
+                contract = contract_map.get(player['player_id'])
+                formatted_player = self._merge_player_contract(player, contract)
+                # Preserve roster_status from database
+                formatted_player['roster_status'] = player.get('roster_status', 'active')
+                formatted_roster.append(formatted_player)
+
+            return formatted_roster
+
+        except Exception as e:
+            # Gracefully handle missing data
+            print(f"[ERROR TeamDataModel] No full roster data available for team {team_id}: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+
     def get_team_roster(self, team_id: int) -> List[Dict[str, Any]]:
         """
         Get complete team roster with contract information merged.
@@ -113,6 +174,88 @@ class TeamDataModel:
         try:
             # Step 1: Get roster from database
             roster_players = self.player_roster_api.get_team_roster(
+                dynasty_id=self.dynasty_id,
+                team_id=team_id
+            )
+
+            # Convert sqlite3.Row objects to dictionaries
+            roster_players = [dict(player) for player in roster_players]
+
+            # Step 2: Get all contracts for team
+            contracts = self.cap_db_api.get_team_contracts(
+                team_id=team_id,
+                season=self.season,
+                dynasty_id=self.dynasty_id,
+                active_only=True
+            )
+
+            # Convert contracts to dicts if needed
+            contracts = [dict(c) if not isinstance(c, dict) else c for c in contracts]
+
+            # Step 3: Create lookup dict for fast contract access
+            contract_map = {c['player_id']: c for c in contracts}
+
+            # Step 4: Merge players with contracts and format
+            formatted_roster = []
+            for player in roster_players:
+                contract = contract_map.get(player['player_id'])
+                formatted_player = self._merge_player_contract(player, contract)
+                formatted_roster.append(formatted_player)
+
+            return formatted_roster
+
+        except Exception as e:
+            # Gracefully handle missing data - roster might not be initialized yet
+            print(f"[ERROR TeamDataModel] No roster data available for team {team_id}: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+
+    def get_full_roster(self, team_id: int) -> List[Dict[str, Any]]:
+        """
+        Get FULL team roster including inactive players.
+
+        Unlike get_team_roster(), this returns ALL players on the roster
+        regardless of roster_status (active/inactive). Use for UI roster display
+        where we want to show complete roster with status indicators.
+
+        Args:
+            team_id: Team ID (1-32)
+
+        Returns:
+            List of player dictionaries with format:
+            [
+                {
+                    'player_id': int,
+                    'number': int,
+                    'name': str,          # "Last, First" format
+                    'position': str,      # First position from positions list
+                    'age': int,           # Calculated from years_pro
+                    'overall': int,       # Rating from attributes
+                    'contract': str,      # "2yr/$45.0M" or "N/A"
+                    'salary': str,        # "$22.5M" or "$0"
+                    'status': str,        # 'ACT', 'IR', 'PUP', etc.
+                    'roster_status': str  # 'active' or 'inactive'
+                },
+                ...
+            ]
+
+            Returns empty list [] if:
+            - Team has no roster in database
+            - Dynasty not initialized
+            - Database query fails
+
+        Example:
+            full_roster = model.get_full_roster(22)  # Detroit Lions (all 60 players)
+            active_roster = model.get_team_roster(22)  # Detroit Lions (53 active only)
+
+            for player in full_roster:
+                status_icon = "✓" if player['roster_status'] == 'active' else "○"
+                print(f"{status_icon} {player['number']} {player['name']}")
+        """
+        try:
+            # Step 1: Get FULL roster from database (no status filter)
+            roster_players = self.player_roster_api.get_full_roster(
                 dynasty_id=self.dynasty_id,
                 team_id=team_id
             )
@@ -214,6 +357,9 @@ class TeamDataModel:
         # Get status (default to 'ACT' if not specified)
         status = player.get('status', 'ACT')
 
+        # Get roster_status (active or inactive)
+        roster_status = player.get('roster_status', 'active')
+
         return {
             'player_id': player['player_id'],
             'number': player.get('number', 0),
@@ -223,7 +369,8 @@ class TeamDataModel:
             'overall': overall,
             'contract': contract_str,
             'salary': salary_str,
-            'status': status
+            'status': status,
+            'roster_status': roster_status  # NEW: Active or inactive
         }
 
     def _format_contract(self, contract: Optional[Dict[str, Any]]) -> str:

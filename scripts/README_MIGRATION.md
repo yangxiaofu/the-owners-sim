@@ -278,8 +278,8 @@ For issues or questions:
 
 ## Related Documentation
 
-- [Full Season Simulation Plan](/docs/plans/full_season_simulation_plan.md) - Overall architecture
-- [Database Schema Documentation](/docs/schema/database_schema.md) - Complete schema reference
+- [Full Season Simulation Plan](/docs/archive/plans/full_season_simulation_plan.md) - Overall architecture
+- [Database Schema Documentation](/docs/archive/schema/database_schema.md) - Complete schema reference
 - [Interactive Season Sim Guide](/demo/interactive_season_sim/QUICK_START.md) - User guide
 
 ---

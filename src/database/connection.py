@@ -380,6 +380,8 @@ class DatabaseConnection:
                 current_phase TEXT NOT NULL,
                 current_week INTEGER,
                 last_simulated_game_id TEXT,
+                current_draft_pick INTEGER DEFAULT 0,
+                draft_in_progress INTEGER DEFAULT 0,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
                 FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id),

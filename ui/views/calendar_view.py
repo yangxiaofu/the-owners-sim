@@ -47,7 +47,7 @@ class CalendarView(QWidget):
         self.current_date = self._get_initial_date()
 
         # Track active filters
-        self.active_filters: Set[str] = {"GAME", "DEADLINE", "WINDOW", "MILESTONE", "SCHEDULE_RELEASE"}
+        self.active_filters: Set[str] = {"GAME", "DEADLINE", "WINDOW", "MILESTONE", "SCHEDULE_RELEASE", "DRAFT_DAY"}
 
         # Build UI
         self._setup_ui()

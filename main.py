@@ -6,7 +6,18 @@ Desktop Application Entry Point
 OOTP-inspired NFL management simulation game with deep statistical analysis.
 """
 import sys
+import os
 from pathlib import Path
+
+# Add project root and src to Python path for imports
+# This allows imports like 'from events.game_event import GameEvent'
+_project_root = Path(__file__).parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+_src_dir = _project_root / "src"
+if str(_src_dir) not in sys.path:
+    sys.path.insert(0, str(_src_dir))
+
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
 from ui.main_window import MainWindow
@@ -34,7 +45,8 @@ def main():
 
     # Apply database migrations BEFORE showing dynasty dialog
     # This ensures the schema is up-to-date before any dynasty creation
-    db_path = "data/database/nfl_simulation.db"  # Default database path
+    # Use local path to avoid OneDrive sync conflicts with SQLite
+    db_path = os.path.expanduser("~/the-owners-sim-data/database/nfl_simulation.db")
 
     # Apply salary cap schema migration (idempotent - safe to run multiple times)
     # This creates all 8 salary cap tables including cap_transactions
@@ -63,7 +75,7 @@ def main():
 
         migration_path = Path(__file__).parent / "src" / "database" / "migrations" / "003_player_transactions_table.sql"
         if migration_path.exists():
-            conn = sqlite3.connect(db_path)
+
             try:
                 with open(migration_path, 'r') as f:
                     migration_sql = f.read()

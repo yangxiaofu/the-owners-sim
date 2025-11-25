@@ -46,16 +46,42 @@ class PlayerRosterAPI:
             Next available player_id (auto-incrementing)
         """
         if dynasty_id not in self._player_id_counter:
-            # Initialize counter - check database for max existing ID
-            query = "SELECT COALESCE(MAX(player_id), 0) as max_id FROM players WHERE dynasty_id = ?"
+            # Check if draft_prospects table exists (it's created later during draft class generation)
+            check_query = "SELECT name FROM sqlite_master WHERE type='table' AND name='draft_prospects'"
 
             if self.shared_conn:
                 cursor = self.shared_conn.cursor()
-                cursor.execute(query, (dynasty_id,))
+                cursor.execute(check_query)
+                draft_table_exists = cursor.fetchone() is not None
+            else:
+                result = self.db_connection.execute_query(check_query)
+                draft_table_exists = len(result) > 0
+
+            # Initialize counter - check BOTH tables if draft_prospects exists
+            # This prevents ID collisions when draft prospects are created before rosters
+            if draft_table_exists:
+                # Query BOTH tables for maximum player_id
+                query = """
+                    SELECT COALESCE(
+                        MAX(COALESCE(
+                            (SELECT MAX(player_id) FROM players WHERE dynasty_id = ?),
+                            (SELECT MAX(player_id) FROM draft_prospects WHERE dynasty_id = ?)
+                        )), 0
+                    ) as max_id
+                """
+                params = (dynasty_id, dynasty_id)
+            else:
+                # Fallback: Query ONLY players table (draft_prospects doesn't exist yet)
+                query = "SELECT COALESCE(MAX(player_id), 0) as max_id FROM players WHERE dynasty_id = ?"
+                params = (dynasty_id,)
+
+            if self.shared_conn:
+                cursor = self.shared_conn.cursor()
+                cursor.execute(query, params)
                 result = cursor.fetchone()
                 max_id = result[0] if result else 0
             else:
-                result = self.db_connection.execute_query(query, (dynasty_id,))
+                result = self.db_connection.execute_query(query, params)
                 max_id = result[0]['max_id'] if result else 0
 
             self._player_id_counter[dynasty_id] = max_id + 1
@@ -267,6 +293,56 @@ class PlayerRosterAPI:
             WHERE p.dynasty_id = ?
                 AND p.team_id = ?
                 AND tr.roster_status = 'active'
+            ORDER BY tr.depth_chart_order, p.number
+        """
+
+        roster = self.db_connection.execute_query(query, (dynasty_id, team_id))
+
+        if not roster:
+            raise ValueError(
+                f"❌ No roster found in database for dynasty '{dynasty_id}', team {team_id}.\n"
+                f"   Database is not initialized. Create a new dynasty to load rosters."
+            )
+
+        return roster  # Already converted to dicts by execute_query()
+
+    def get_full_roster(self, dynasty_id: str, team_id: int) -> List[Dict[str, Any]]:
+        """
+        Load FULL team roster (active + inactive players).
+
+        Unlike get_team_roster(), this method returns ALL players on the roster
+        regardless of roster_status. Use for UI display and roster management.
+
+        Args:
+            dynasty_id: Dynasty context
+            team_id: Team ID (1-32)
+
+        Returns:
+            List of player dictionaries with all roster players (active + inactive)
+
+        Raises:
+            ValueError: If no roster found (database not initialized)
+        """
+        query = """
+            SELECT
+                p.player_id,
+                p.first_name,
+                p.last_name,
+                p.number,
+                p.team_id,
+                p.positions,
+                p.attributes,
+                p.status,
+                p.years_pro,
+                p.birthdate,
+                tr.depth_chart_order,
+                tr.roster_status
+            FROM players p
+            JOIN team_rosters tr
+                ON p.dynasty_id = tr.dynasty_id
+                AND p.player_id = tr.player_id
+            WHERE p.dynasty_id = ?
+                AND p.team_id = ?
             ORDER BY tr.depth_chart_order, p.number
         """
 

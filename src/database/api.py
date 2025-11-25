@@ -501,6 +501,61 @@ class DatabaseAPI:
         finally:
             conn.close()
 
+    def get_week_for_date(
+        self,
+        dynasty_id: str,
+        season: int,
+        date_str: str
+    ) -> Optional[int]:
+        """
+        Query schedules table to find which week contains the given date.
+
+        This is the single source of truth for week numbers, replacing manual tracking.
+
+        Args:
+            dynasty_id: Dynasty identifier
+            season: Season year
+            date_str: Date string in YYYY-MM-DD format
+
+        Returns:
+            Week number if date has scheduled games, None otherwise
+        """
+        query = '''
+            SELECT DISTINCT week
+            FROM schedules
+            WHERE dynasty_id = ?
+              AND season = ?
+              AND scheduled_date = ?
+            ORDER BY week
+            LIMIT 1
+        '''
+
+        try:
+            results = self.db_connection.execute_query(
+                query,
+                (dynasty_id, season, date_str)
+            )
+
+            if not results:
+                self.logger.debug(
+                    f"No week found for date {date_str} "
+                    f"(dynasty_id={dynasty_id}, season={season})"
+                )
+                return None
+
+            week = results[0]['week']
+            self.logger.debug(
+                f"Found week {week} for date {date_str} "
+                f"(dynasty_id={dynasty_id}, season={season})"
+            )
+            return week
+
+        except Exception as e:
+            self.logger.error(
+                f"Error querying week for date {date_str}: {e}"
+            )
+            return None
+
     def get_team_standing(self, dynasty_id: str, team_id: int, season: int, season_type: str = "regular_season") -> Optional[EnhancedTeamStanding]:
         """
         Get standing for a specific team and season type.

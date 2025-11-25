@@ -22,6 +22,7 @@ from typing import Dict, Any, Optional
 from datetime import date
 import sys
 import os
+import logging
 
 # Add src to path for imports
 src_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'src')
@@ -29,6 +30,8 @@ if src_path not in sys.path:
     sys.path.insert(0, src_path)
 
 from database.dynasty_state_api import DynastyStateAPI
+from database.sync_exceptions import CalendarSyncPersistenceException
+from database.api import DatabaseAPI
 
 
 class SimulationDataModel:
@@ -59,9 +62,11 @@ class SimulationDataModel:
         self.db_path = db_path
         self.dynasty_id = dynasty_id
         self._initialization_season = season  # Only used for new dynasty creation
+        self.logger = logging.getLogger(__name__)
 
-        # Own the DynastyStateAPI instance (domain models own their APIs)
+        # Own the database API instances (domain models own their APIs)
         self.dynasty_api = DynastyStateAPI(db_path)
+        self.db_api = DatabaseAPI(db_path)
 
     @property
     def season(self) -> int:
@@ -103,33 +108,45 @@ class SimulationDataModel:
         current_date: str,
         current_phase: str,
         current_week: Optional[int] = None,
-        last_simulated_game_id: Optional[str] = None
+        last_simulated_game_id: Optional[str] = None,
+        connection: Optional[Any] = None
     ) -> bool:
         """
         Save current simulation state to database.
+
+        Raises CalendarSyncPersistenceException if database write fails.
+        This ensures fail-loud behavior and prevents silent persistence failures.
 
         Args:
             current_date: Date string (YYYY-MM-DD)
             current_phase: REGULAR_SEASON, PLAYOFFS, or OFFSEASON
             current_week: Current week number (optional)
             last_simulated_game_id: ID of last simulated game (optional)
+            connection: Optional SQLite connection for transaction support.
+                        If provided, executes within existing transaction.
+                        If None, creates new connection (default behavior).
 
         Returns:
-            True if save successful, False otherwise
+            True if save successful
+
+        Raises:
+            CalendarSyncPersistenceException: If database write fails
         """
-        success = self.dynasty_api.update_state(
+        # This raises CalendarSyncPersistenceException if it fails
+        # No need to check return value - exception handling does it for us
+        self.dynasty_api.update_state(
             dynasty_id=self.dynasty_id,
             season=self.season,
             current_date=current_date,
             current_phase=current_phase,
             current_week=current_week,
-            last_simulated_game_id=last_simulated_game_id
+            last_simulated_game_id=last_simulated_game_id,
+            connection=connection
         )
 
-        if not success:
-            print(f"[ERROR SimulationDataModel] Failed to save dynasty state for {self.dynasty_id} season {self.season}")
-
-        return success
+        # If we reach here, save succeeded
+        self.logger.debug(f"Dynasty state saved: dynasty_id={self.dynasty_id}, season={self.season}, date={current_date}, phase={current_phase}")
+        return True
 
     def initialize_state(
         self,
@@ -273,13 +290,36 @@ class SimulationDataModel:
 
     def get_current_week(self) -> Optional[int]:
         """
-        Get current week number.
+        Get current week number by querying schedule database.
+
+        This is the single source of truth for week numbers. The schedule table
+        maps dates to weeks, eliminating the need for manual tracking.
 
         Returns:
-            Week number or None if no state exists or not applicable
+            Week number for preseason/regular season phases, None for playoffs/offseason
+            or if no schedule exists for the current date
         """
         state = self.get_state()
-        return state['current_week'] if state else None
+        if not state:
+            return None
+
+        phase = state['current_phase']
+
+        # Only applicable for phases with weeks (preseason and regular season)
+        if phase not in ['PRESEASON', 'REGULAR_SEASON']:
+            return None
+
+        # Query schedule database to find week for current date
+        current_date = state['current_date']
+        season_year = state['season']
+
+        week = self.db_api.get_week_for_date(
+            dynasty_id=self.dynasty_id,
+            season=season_year,
+            date_str=current_date
+        )
+
+        return week
 
     def delete_state(self) -> int:
         """

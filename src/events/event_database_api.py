@@ -804,6 +804,62 @@ class EventDatabaseAPI:
             self.logger.error(f"Error updating event: {e}")
             return False
 
+    def update_event_by_dict(self, event_dict: Dict[str, Any]) -> bool:
+        """
+        Update event from dictionary format (UI layer compatibility).
+
+        This is a convenience method for updating events when you have a dictionary
+        representation rather than a BaseEvent object. Commonly used by UI controllers.
+
+        Args:
+            event_dict: Event dictionary with 'event_id' and 'data' keys
+
+        Returns:
+            True if update succeeded, False otherwise
+
+        Example:
+            event_dict = {
+                'event_id': 'draft_2025_001',
+                'data': {
+                    'parameters': {...},
+                    'results': {'success': True, 'executed_at': '2025-04-27T10:00:00'},
+                    'metadata': {...}
+                }
+            }
+            api.update_event_by_dict(event_dict)
+        """
+        if not event_dict or 'event_id' not in event_dict:
+            self.logger.error("Invalid event_dict: missing event_id")
+            return False
+
+        event_id = event_dict['event_id']
+        data = event_dict.get('data', {})
+        data_json = json.dumps(data)
+
+        try:
+            conn = sqlite3.connect(self.db_path, timeout=30.0)
+            cursor = conn.cursor()
+
+            cursor.execute(
+                "UPDATE events SET data = ? WHERE event_id = ?",
+                (data_json, event_id)
+            )
+
+            rows_updated = cursor.rowcount
+            conn.commit()
+            conn.close()
+
+            if rows_updated > 0:
+                self.logger.info(f"Updated event {event_id} from dictionary")
+                return True
+            else:
+                self.logger.warning(f"No event found with id {event_id}")
+                return False
+
+        except Exception as e:
+            self.logger.error(f"Error updating event from dict: {e}")
+            return False
+
     def delete_events_by_game_id(self, game_id: str) -> int:
         """
         Delete all events for a specific game.

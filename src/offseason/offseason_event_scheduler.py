@@ -20,6 +20,7 @@ from events.deadline_event import DeadlineEvent, DeadlineType
 from events.window_event import WindowEvent, WindowName
 from events.milestone_event import MilestoneEvent
 from events.schedule_release_event import ScheduleReleaseEvent
+from events.draft_day_event import DraftDayEvent
 from events.event_database_api import EventDatabaseAPI
 
 
@@ -62,9 +63,6 @@ class OffseasonEventScheduler:
 
 
         # Schedule different event types
-
-
-
         print(f"[EVENT_SCHEDULER] Step 2: Scheduling deadline events...")
         deadline_count = self._schedule_deadline_events(milestones, season_year, dynasty_id, event_db)
         print(f"[EVENT_SCHEDULER] ✓ Deadline events scheduled: {deadline_count}")
@@ -417,8 +415,8 @@ class OffseasonEventScheduler:
 
         # Define which milestone types should create basic MilestoneEvents
         # NOTE: SCHEDULE_RELEASE excluded - uses custom ScheduleReleaseEvent
+        # NOTE: DRAFT excluded - uses custom DraftDayEvent below
         milestone_type_map = {
-            MilestoneType.DRAFT: "DRAFT",
             MilestoneType.NEW_LEAGUE_YEAR: "NEW_LEAGUE_YEAR",
             MilestoneType.SCOUTING_COMBINE: "COMBINE_START",
             MilestoneType.ROOKIE_MINICAMP: "ROOKIE_MINICAMP",
@@ -439,16 +437,33 @@ class OffseasonEventScheduler:
                 event_db.insert_event(milestone_event)
                 count += 1
 
+        # Special case: NFL Draft - uses interactive DraftDayEvent
+        # Calculate last Thursday in April dynamically
+        # NOTE: Draft year is season_year + 1 (e.g., 2025 season → 2026 draft)
+        draft_date = self._calculate_last_thursday_april(season_year + 1)
+
+        draft_day_event = DraftDayEvent(
+            season_year=season_year + 1,  # Draft year (next season, not current)
+            event_date=draft_date,
+            dynasty_id=dynasty_id,
+            user_team_id=1,  # Default to team 1 (will be overridden by dynasty_state if needed)
+            verbose=False
+        )
+        event_db.insert_event(draft_day_event)
+        count += 1
+        print(f"[DRAFT_EVENT] Scheduled interactive NFL Draft for {draft_date} (last Thursday in April)")
+
+        # Fetch preseason start milestone (used for both schedule release and preseason event)
+        preseason_start_milestone = milestone_dict.get(MilestoneType.PRESEASON_START)
+        if not preseason_start_milestone:
+            raise RuntimeError(
+                f"PRESEASON_START milestone required for schedule generation and preseason scheduling. "
+                f"Check SeasonMilestoneCalculator for season {season_year}."
+            )
+
         # Special case: Schedule Release - uses custom event that generates games
         schedule_release_milestone = milestone_dict.get(MilestoneType.SCHEDULE_RELEASE)
         if schedule_release_milestone:
-            # Get preseason start date for schedule generation
-            preseason_start_milestone = milestone_dict.get(MilestoneType.PRESEASON_START)
-            if not preseason_start_milestone:
-                raise RuntimeError(
-                    f"PRESEASON_START milestone required for schedule generation"
-                )
-
             schedule_release_event = ScheduleReleaseEvent(
                 season_year=season_year,  # Use season parameter (consistent with other milestones)
                 event_date=schedule_release_milestone.date,
@@ -490,14 +505,7 @@ class OffseasonEventScheduler:
         count += 1
 
         # Add Preseason Start (first Thursday in August - target for "Skip to New Season")
-        # Must be provided by SeasonMilestoneCalculator - no fallback
-        preseason_start_milestone = milestone_dict.get(MilestoneType.PRESEASON_START)
-        if not preseason_start_milestone:
-            raise RuntimeError(
-                f"PRESEASON_START milestone not calculated by SeasonMilestoneCalculator "
-                f"for season {season_year}. Check milestone calculator implementation."
-            )
-
+        # Reuse preseason_start_milestone from line 459 (already validated)
         preseason_date = preseason_start_milestone.date
 
         preseason_start_event = MilestoneEvent(
@@ -649,3 +657,53 @@ class OffseasonEventScheduler:
             days_to_thursday = 7 - weekday + 3
 
         return aug_1.add_days(days_to_thursday)
+
+    def _calculate_last_thursday_april(self, year: int) -> Date:
+        """
+        Calculate last Thursday in April for NFL Draft date.
+
+        The NFL Draft always starts on the final Thursday of April, regardless
+        of whether April has 4 or 5 Thursdays.
+
+        Args:
+            year: Year to calculate for (e.g., 2025 for 2025 NFL Draft)
+
+        Returns:
+            Date object representing the last Thursday in April
+
+        Examples:
+            >>> self._calculate_last_thursday_april(2015)
+            Date(2015, 4, 30)  # 5th Thursday
+            >>> self._calculate_last_thursday_april(2020)
+            Date(2020, 4, 23)  # 4th Thursday
+            >>> self._calculate_last_thursday_april(2025)
+            Date(2025, 4, 24)  # 4th Thursday
+        """
+        # April always has 30 days
+        end_of_month = Date(year, 4, 30)
+
+        # Calculate offset to Thursday (weekday 3)
+        # Python weekday: Monday=0, Tuesday=1, Wednesday=2, Thursday=3, ...
+        py_date = end_of_month.to_python_date()
+        current_weekday = py_date.weekday()
+
+        # Calculate days to go back to reach Thursday
+        # If end_of_month is Thursday (3), offset=0
+        # If end_of_month is Friday (4), offset=1 (go back 1 day to Thursday)
+        # If end_of_month is Wednesday (2), offset=6 (go back 6 days to last Thursday)
+        if current_weekday >= 3:
+            # Thursday or later in the week - go back to Thursday
+            days_back = current_weekday - 3
+        else:
+            # Monday, Tuesday, or Wednesday - go back to previous Thursday
+            days_back = current_weekday + 4  # (7 - 3 + current_weekday)
+
+        last_thursday = end_of_month.add_days(-days_back)
+
+        # Special case: Starting in 2020, the NFL avoids April 30 for the draft
+        # If the calculated date is April 30 and year >= 2020, use the previous Thursday (April 23)
+        # This is likely due to preference to keep all 3 draft days within April
+        if last_thursday.day == 30 and year >= 2020:
+            last_thursday = Date(year, 4, 23)
+
+        return last_thursday

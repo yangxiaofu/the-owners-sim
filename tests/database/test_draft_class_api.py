@@ -815,20 +815,20 @@ def test_mark_prospect_drafted(
         assert player_id not in available_ids
 
 
-def test_convert_prospect_to_player_same_id(
+def test_convert_prospect_generates_new_player_id(
     draft_api,
     initialized_dynasty,
     test_season,
     mock_generated_prospects
 ):
     """
-    Test convert_prospect_to_player uses SAME player_id.
+    Test that conversion generates NEW player_id different from prospect_id.
 
     Validates:
-    - Prospect's player_id becomes player's player_id
-    - No ID conversion or mapping required
-    - Player record created in database
-    - Player added to team roster
+    - NEW player_id is different from prospect_id
+    - NEW player_id is a positive integer
+    - Prevents ID collision with existing roster players
+    - Prospect and player have different IDs
     """
     with patch('player_generation.generators.player_generator.PlayerGenerator') as mock_player_gen, \
          patch('player_generation.generators.draft_class_generator.DraftClassGenerator') as mock_draft_gen:
@@ -850,11 +850,11 @@ def test_convert_prospect_to_player_same_id(
         )
 
         test_prospect = prospects[0]
-        player_id = test_prospect['player_id']
+        prospect_id = test_prospect['player_id']
 
         # Mark as drafted first
         draft_api.mark_prospect_drafted(
-            player_id=player_id,
+            player_id=prospect_id,
             team_id=7,
             actual_round=1,
             actual_pick=1,
@@ -862,25 +862,391 @@ def test_convert_prospect_to_player_same_id(
         )
 
         # Convert to player
-        returned_player_id = draft_api.convert_prospect_to_player(
-            player_id=player_id,
+        new_player_id = draft_api.convert_prospect_to_player(
+            player_id=prospect_id,
             team_id=7,
             dynasty_id=initialized_dynasty,
             jersey_number=10
         )
 
-        # Validate SAME ID returned
-        assert returned_player_id == player_id
+        # NEW player_id should be different from prospect_id
+        assert new_player_id != prospect_id
+        assert new_player_id > 0
 
-        # Verify player exists in database with SAME ID
+
+def test_convert_prospect_adds_to_roster(
+    draft_api,
+    initialized_dynasty,
+    test_season,
+    mock_generated_prospects
+):
+    """
+    Test that converted player is actually added to team roster.
+
+    Validates:
+    - Player exists in players table with NEW player_id
+    - Player exists in team_rosters table
+    - Player has correct team_id
+    - Player attributes carried over from prospect
+    """
+    with patch('player_generation.generators.player_generator.PlayerGenerator') as mock_player_gen, \
+         patch('player_generation.generators.draft_class_generator.DraftClassGenerator') as mock_draft_gen:
+
+        mock_draft_gen_instance = Mock()
+        mock_draft_gen_instance.generate_draft_class.return_value = mock_generated_prospects
+        mock_draft_gen.return_value = mock_draft_gen_instance
+
+        draft_api.generate_draft_class(
+            dynasty_id=initialized_dynasty,
+            season=test_season
+        )
+
+        # Get first prospect
+        prospects = draft_api.get_all_prospects(
+            dynasty_id=initialized_dynasty,
+            season=test_season,
+            available_only=True
+        )
+
+        test_prospect = prospects[0]
+        prospect_id = test_prospect['player_id']
+        team_id = 7
+
+        # Mark as drafted
+        draft_api.mark_prospect_drafted(
+            player_id=prospect_id,
+            team_id=team_id,
+            actual_round=1,
+            actual_pick=1,
+            dynasty_id=initialized_dynasty
+        )
+
+        # Convert to player
+        new_player_id = draft_api.convert_prospect_to_player(
+            player_id=prospect_id,
+            team_id=team_id,
+            dynasty_id=initialized_dynasty
+        )
+
+        # Verify player exists in players table
+        with sqlite3.connect(draft_api.database_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT * FROM players WHERE player_id = ? AND dynasty_id = ?",
+                (new_player_id, initialized_dynasty)
+            )
+            player_row = cursor.fetchone()
+            assert player_row is not None
+            assert player_row['team_id'] == team_id
+            assert player_row['first_name'] == test_prospect['first_name']
+            assert player_row['last_name'] == test_prospect['last_name']
+
+            # Verify player exists in team_rosters table
+            cursor = conn.execute(
+                "SELECT * FROM team_rosters WHERE player_id = ? AND dynasty_id = ? AND team_id = ?",
+                (new_player_id, initialized_dynasty, team_id)
+            )
+            roster_row = cursor.fetchone()
+            assert roster_row is not None
+            assert roster_row['team_id'] == team_id
+
+
+def test_convert_prospect_no_collision_with_existing_player(
+    draft_api,
+    initialized_dynasty,
+    test_season,
+    mock_generated_prospects
+):
+    """
+    Test conversion succeeds when existing player has overlapping ID with prospect pool.
+
+    Validates:
+    - NEW player_id generated to avoid collision
+    - Both players exist with different IDs
+    - Existing roster player unchanged
+    - New player added successfully
+    """
+    with patch('player_generation.generators.player_generator.PlayerGenerator') as mock_player_gen, \
+         patch('player_generation.generators.draft_class_generator.DraftClassGenerator') as mock_draft_gen:
+
+        mock_draft_gen_instance = Mock()
+        mock_draft_gen_instance.generate_draft_class.return_value = mock_generated_prospects
+        mock_draft_gen.return_value = mock_draft_gen_instance
+
+        # Generate draft class FIRST (will have player_ids 1-224)
+        draft_api.generate_draft_class(
+            dynasty_id=initialized_dynasty,
+            season=test_season
+        )
+
+        # Get a prospect from the middle of the draft class
+        all_prospects = draft_api.get_all_prospects(
+            dynasty_id=initialized_dynasty,
+            season=test_season,
+            available_only=False
+        )
+        test_prospect = all_prospects[100]  # Pick prospect #101
+        prospect_id = test_prospect['player_id']
+
+        # Now create an existing roster player with SAME player_id
+        # This simulates a collision scenario (unlikely but possible)
+        with sqlite3.connect(draft_api.database_path) as conn:
+            conn.execute("PRAGMA foreign_keys = ON")
+
+            # Delete the prospect temporarily to insert a player with same ID
+            conn.execute(
+                "DELETE FROM draft_prospects WHERE player_id = ? AND dynasty_id = ?",
+                (prospect_id, initialized_dynasty)
+            )
+
+            # Insert existing roster player with same ID
+            conn.execute("""
+                INSERT INTO players (
+                    player_id, dynasty_id, source_player_id,
+                    first_name, last_name, number, team_id,
+                    positions, attributes
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                prospect_id, initialized_dynasty, "EXISTING_PLAYER",
+                "Josh", "Allen", 17, 7,
+                '["QB"]', '{"overall": 95}'
+            ))
+
+            # Re-insert the prospect with same ID (collision scenario)
+            conn.execute("""
+                INSERT INTO draft_prospects (
+                    player_id, draft_class_id, dynasty_id,
+                    first_name, last_name, position, age,
+                    draft_round, draft_pick,
+                    projected_pick_min, projected_pick_max,
+                    overall, attributes,
+                    college, archetype_id,
+                    scouting_confidence, development_curve
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                prospect_id, f"DRAFT_{initialized_dynasty}_{test_season}", initialized_dynasty,
+                test_prospect['first_name'], test_prospect['last_name'],
+                test_prospect['position'], test_prospect['age'],
+                test_prospect['draft_round'], test_prospect['draft_pick'],
+                test_prospect['projected_pick_min'], test_prospect['projected_pick_max'],
+                test_prospect['overall'], json.dumps(test_prospect['attributes']),
+                test_prospect['college'], test_prospect['archetype_id'],
+                test_prospect['scouting_confidence'], test_prospect['development_curve']
+            ))
+
+            conn.commit()
+
+        # Mark prospect as drafted
+        draft_api.mark_prospect_drafted(
+            player_id=prospect_id,
+            team_id=22,
+            actual_round=1,
+            actual_pick=1,
+            dynasty_id=initialized_dynasty
+        )
+
+        # Convert prospect (should generate NEW ID to avoid collision)
+        new_player_id = draft_api.convert_prospect_to_player(
+            player_id=prospect_id,
+            team_id=22,
+            dynasty_id=initialized_dynasty
+        )
+
+        # Should get different ID (avoids collision)
+        assert new_player_id != prospect_id
+        assert new_player_id > 224  # Should be after all draft prospects
+
+        # Both players should exist
+        with sqlite3.connect(draft_api.database_path) as conn:
+            conn.row_factory = sqlite3.Row
+
+            # Original player still exists with original ID
+            cursor = conn.execute(
+                "SELECT * FROM players WHERE player_id = ? AND dynasty_id = ?",
+                (prospect_id, initialized_dynasty)
+            )
+            original_player = cursor.fetchone()
+            assert original_player is not None
+            assert original_player['first_name'] == "Josh"
+            assert original_player['team_id'] == 7
+
+            # New player exists with different ID
+            cursor = conn.execute(
+                "SELECT * FROM players WHERE player_id = ? AND dynasty_id = ?",
+                (new_player_id, initialized_dynasty)
+            )
+            new_player = cursor.fetchone()
+            assert new_player is not None
+            assert new_player['first_name'] == test_prospect['first_name']
+            assert new_player['team_id'] == 22
+
+
+def test_convert_prospect_multiple_conversions_different_ids(
+    draft_api,
+    initialized_dynasty,
+    test_season,
+    mock_generated_prospects
+):
+    """
+    Test that multiple prospect conversions each get unique player_ids.
+
+    Validates:
+    - Each conversion generates a NEW unique player_id
+    - No player_id collisions across multiple conversions
+    - All converted players exist in database
+    """
+    with patch('player_generation.generators.player_generator.PlayerGenerator') as mock_player_gen, \
+         patch('player_generation.generators.draft_class_generator.DraftClassGenerator') as mock_draft_gen:
+
+        mock_draft_gen_instance = Mock()
+        mock_draft_gen_instance.generate_draft_class.return_value = mock_generated_prospects
+        mock_draft_gen.return_value = mock_draft_gen_instance
+
+        draft_api.generate_draft_class(
+            dynasty_id=initialized_dynasty,
+            season=test_season
+        )
+
+        # Get first 5 prospects
+        prospects = draft_api.get_all_prospects(
+            dynasty_id=initialized_dynasty,
+            season=test_season,
+            available_only=True
+        )[:5]
+
+        new_player_ids = []
+
+        # Convert all 5 prospects
+        for i, prospect in enumerate(prospects):
+            prospect_id = prospect['player_id']
+            team_id = 7 + i  # Different teams
+
+            # Mark as drafted
+            draft_api.mark_prospect_drafted(
+                player_id=prospect_id,
+                team_id=team_id,
+                actual_round=1,
+                actual_pick=i + 1,
+                dynasty_id=initialized_dynasty
+            )
+
+            # Convert to player
+            new_player_id = draft_api.convert_prospect_to_player(
+                player_id=prospect_id,
+                team_id=team_id,
+                dynasty_id=initialized_dynasty
+            )
+
+            new_player_ids.append(new_player_id)
+
+            # Verify new ID is different from prospect ID
+            assert new_player_id != prospect_id
+
+        # Verify all new player_ids are unique
+        assert len(new_player_ids) == len(set(new_player_ids))
+
+        # Verify all players exist in database
+        with sqlite3.connect(draft_api.database_path) as conn:
+            for new_player_id in new_player_ids:
+                cursor = conn.execute(
+                    "SELECT COUNT(*) FROM players WHERE player_id = ? AND dynasty_id = ?",
+                    (new_player_id, initialized_dynasty)
+                )
+                count = cursor.fetchone()[0]
+                assert count == 1
+
+
+def test_convert_prospect_jersey_number_assignment(
+    draft_api,
+    initialized_dynasty,
+    test_season,
+    mock_generated_prospects
+):
+    """
+    Test that converted players get correct jersey numbers.
+
+    Validates:
+    - Custom jersey number is assigned when provided
+    - Auto-assignment works when jersey_number is None
+    - Jersey numbers follow position-based logic
+    """
+    with patch('player_generation.generators.player_generator.PlayerGenerator') as mock_player_gen, \
+         patch('player_generation.generators.draft_class_generator.DraftClassGenerator') as mock_draft_gen:
+
+        mock_draft_gen_instance = Mock()
+        mock_draft_gen_instance.generate_draft_class.return_value = mock_generated_prospects
+        mock_draft_gen.return_value = mock_draft_gen_instance
+
+        draft_api.generate_draft_class(
+            dynasty_id=initialized_dynasty,
+            season=test_season
+        )
+
+        # Get QB prospect
+        qb_prospects = draft_api.get_prospects_by_position(
+            dynasty_id=initialized_dynasty,
+            season=test_season,
+            position='QB',
+            available_only=True
+        )
+
+        qb_prospect = qb_prospects[0]
+        prospect_id = qb_prospect['player_id']
+
+        # Mark as drafted
+        draft_api.mark_prospect_drafted(
+            player_id=prospect_id,
+            team_id=7,
+            actual_round=1,
+            actual_pick=1,
+            dynasty_id=initialized_dynasty
+        )
+
+        # Test custom jersey number
+        new_player_id = draft_api.convert_prospect_to_player(
+            player_id=prospect_id,
+            team_id=7,
+            dynasty_id=initialized_dynasty,
+            jersey_number=12
+        )
+
+        # Verify custom jersey number
         with sqlite3.connect(draft_api.database_path) as conn:
             cursor = conn.execute(
-                "SELECT player_id FROM players WHERE player_id = ? AND dynasty_id = ?",
-                (player_id, initialized_dynasty)
+                "SELECT number FROM players WHERE player_id = ? AND dynasty_id = ?",
+                (new_player_id, initialized_dynasty)
             )
-            result = cursor.fetchone()
-            assert result is not None
-            assert result[0] == player_id
+            jersey = cursor.fetchone()[0]
+            assert jersey == 12
+
+        # Test auto-assignment for another prospect
+        qb_prospect_2 = qb_prospects[1]
+        prospect_id_2 = qb_prospect_2['player_id']
+
+        draft_api.mark_prospect_drafted(
+            player_id=prospect_id_2,
+            team_id=22,
+            actual_round=1,
+            actual_pick=2,
+            dynasty_id=initialized_dynasty
+        )
+
+        new_player_id_2 = draft_api.convert_prospect_to_player(
+            player_id=prospect_id_2,
+            team_id=22,
+            dynasty_id=initialized_dynasty
+            # No jersey_number provided
+        )
+
+        # Verify auto-assigned jersey (QB should get #10)
+        with sqlite3.connect(draft_api.database_path) as conn:
+            cursor = conn.execute(
+                "SELECT number FROM players WHERE player_id = ? AND dynasty_id = ?",
+                (new_player_id_2, initialized_dynasty)
+            )
+            jersey = cursor.fetchone()[0]
+            assert jersey == 10  # Auto-assigned for QB
 
 
 def test_complete_draft_class_summary(
@@ -1349,12 +1715,13 @@ def test_suite_summary():
     Test Coverage:
     - Generation: 4 tests
     - Retrieval: 6 tests
-    - Draft Execution: 4 tests
+    - Draft Execution: 1 test (mark_prospect_drafted)
+    - Prospect Conversion: 5 tests (NEW - convert_prospect_to_player behavior)
     - Dynasty Isolation: 2 tests
     - Error Handling: 2 tests
-    - Transaction Support: 2 tests (NEW)
+    - Transaction Support: 2 tests
 
-    Total: 20 tests
+    Total: 22 tests
 
     Key Features Tested:
     - 224 prospect generation (7 rounds × 32 picks)
@@ -1365,11 +1732,32 @@ def test_suite_summary():
     - Top prospect queries
     - Draft history tracking
     - Draft execution workflow
-    - Unified player_id system (prospect ID = player ID)
+    - **NEW player_id generation on conversion** (prevents ID collisions)
+    - Multiple prospect conversions with unique IDs
+    - Jersey number assignment (custom and auto)
+    - Player roster integration (players + team_rosters tables)
     - ID collision prevention with existing rosters
     - Cascade deletes
     - Error handling for edge cases
     - Transaction mode (shared connection support)
     - Rollback safety (transaction atomicity)
+
+    NEW Conversion Tests (5):
+    1. test_convert_prospect_generates_new_player_id
+       - Validates NEW player_id != prospect_id
+       - Ensures positive integer ID generation
+    2. test_convert_prospect_adds_to_roster
+       - Validates player exists in players table
+       - Validates player exists in team_rosters table
+       - Validates attributes carried over from prospect
+    3. test_convert_prospect_no_collision_with_existing_player
+       - Validates no collision when player_id=1 already exists
+       - Validates both players exist with different IDs
+    4. test_convert_prospect_multiple_conversions_different_ids
+       - Validates each conversion gets unique player_id
+       - Tests 5 sequential conversions
+    5. test_convert_prospect_jersey_number_assignment
+       - Validates custom jersey number assignment
+       - Validates auto-assignment logic (position-based)
     """
     pass
