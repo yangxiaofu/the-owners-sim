@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Any, Protocol
 from .stage_definitions import Stage, StageType, SeasonPhase
 from .handlers.regular_season import RegularSeasonHandler
 from .handlers.playoffs import PlayoffHandler
+from .handlers.offseason import OffseasonHandler
 
 
 class StageHandler(Protocol):
@@ -123,14 +124,17 @@ class StageController:
         # Import production APIs lazily to avoid circular imports
         from database.unified_api import UnifiedDatabaseAPI
         from database.dynasty_state_api import DynastyStateAPI
+        from database.dynasty_database_api import DynastyDatabaseAPI
 
         # Use UnifiedDatabaseAPI - has all the methods we need
         self._unified_api = UnifiedDatabaseAPI(db_path, dynasty_id)
         self._dynasty_state_api = DynastyStateAPI(db_path)
+        self._dynasty_db_api = DynastyDatabaseAPI(db_path)
 
         # Create handlers (they'll receive context with dynasty_id)
         self._regular_season_handler = RegularSeasonHandler()
         self._playoff_handler = PlayoffHandler()
+        self._offseason_handler = OffseasonHandler(db_path)
 
         self._current_stage: Optional[Stage] = None
         self._initialized = False
@@ -347,6 +351,8 @@ class StageController:
             return self._regular_season_handler.get_week_preview(stage, context)
         elif stage.phase == SeasonPhase.PLAYOFFS:
             return self._playoff_handler.get_round_preview(stage, context)
+        elif stage.phase == SeasonPhase.OFFSEASON:
+            return self._offseason_handler.get_stage_preview(stage, context)
         else:
             return {
                 "stage": stage.display_name,
@@ -408,12 +414,17 @@ class StageController:
 
     def _build_context(self) -> Dict[str, Any]:
         """Build execution context for handlers."""
+        # Get user team ID from dynasty info
+        dynasty_info = self._dynasty_db_api.get_dynasty_by_id(self._dynasty_id)
+        user_team_id = dynasty_info.get('team_id', 1) if dynasty_info else 1
+
         return {
             "dynasty_id": self._dynasty_id,
             "season": self._season,
             "db_path": self._db_path,
             "unified_api": self._unified_api,
             "dynasty_state_api": self._dynasty_state_api,
+            "user_team_id": user_team_id,
         }
 
     def _get_handler(self, phase: SeasonPhase) -> Optional[StageHandler]:
@@ -422,7 +433,9 @@ class StageController:
             return self._regular_season_handler
         elif phase == SeasonPhase.PLAYOFFS:
             return self._playoff_handler
-        # Offseason and Preseason handlers not implemented yet
+        elif phase == SeasonPhase.OFFSEASON:
+            return self._offseason_handler
+        # Preseason handler not implemented yet
         return None
 
     def _load_current_stage(self) -> Optional[Stage]:

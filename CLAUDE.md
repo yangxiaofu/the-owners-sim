@@ -6,12 +6,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **New to this codebase? Start here:**
 1. Run the desktop UI: `python main.py` (requires `pip install -r requirements-ui.txt`)
-2. Run tests: `python -m pytest tests/`
-3. Database: `data/database/nfl_simulation.db` (SQLite with dynasty isolation)
+2. Run the Game Cycle UI: `python main2.py` (stage-based, Madden-style)
+3. Run tests: `python -m pytest tests/`
+4. Database: `data/database/nfl_simulation.db` (SQLite with dynasty isolation)
 
 **Key Test Scripts:**
 - **Draft Dialog**: `python test_draft_dialog_standalone.py` (requires draft data setup)
 - **Validation Scripts**: See scripts/ directory for GM behavior validation
+
+## Current Focus: Game Cycle (Milestone 1)
+
+**IMPORTANT**: From Nov 2024, development is focused on the new Game Cycle system (`src/game_cycle/`).
+
+**Two Entry Points - Two Databases:**
+| Entry Point | Database | Architecture |
+|-------------|----------|--------------|
+| `main.py` | `data/database/nfl_simulation.db` | Calendar-based (day-by-day simulation) |
+| `main2.py` | `data/database/game_cycle/game_cycle.db` | **Stage-based (Madden-style, current focus)** |
+
+**Do NOT mix game_cycle code with the calendar-based season cycle scheduler in `src/season/`.**
+
+See `docs/01_MILESTONE_GAME_CYCLE/PLAN.md` for the full roadmap.
 
 ## Critical Constraints
 
@@ -20,12 +35,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **PYTHONPATH**: Use `PYTHONPATH=src` prefix for commands that need it (pytest handles this automatically)
 - **Enums over Strings**: Default to enums to avoid magic strings
 - **DRY Principles**: Search for existing APIs before creating new ones
-- **Certainty Score** : On a scale of 1-100 provide level or certainty for the fix. 
+- **Certainty Score**: On a scale of 1-100, provide level of certainty for any fix
 - **Database Operations**: MUST raise exceptions on failure - never fail silently
 - **Plan Mode**: Provide file paths (linkable), group by backend/frontend, write pseudo code with architecture adherence
-- **New Cycle**: From 11-24, I'm focusing on the new Game Cycle located in src/game_cycle.  Do not mix this in with the other season cycle scheduler.
-- **Dynasty Id**: For any new methods or classes, always consider how to utilize the SSOT for dynasty_id in order to maintain dynasty isolation.
-- **The @main2.py game will use the game_cycle.db, not any other db.  this needs to be the SSOT database for this particular demo. 
+- **Dynasty Isolation**: For any new methods or classes, always consider how to utilize the SSOT for dynasty_id to maintain dynasty isolation 
 
 ## Project Overview
 
@@ -58,7 +71,8 @@ pip install pytest
 
 ### Running the Application
 ```bash
-python main.py                    # Desktop UI
+python main.py                    # Desktop UI (calendar-based)
+python main2.py                   # Game Cycle UI (stage-based, CURRENT FOCUS)
 python test_ui.py                 # Test UI imports
 ```
 
@@ -154,7 +168,41 @@ python -m pytest tests/ui/ -v
 
 ## Architecture Overview
 
-### Layered Design
+### Two Simulation Architectures
+
+This project has **two distinct simulation systems** (do not mix them):
+
+**1. Calendar-Based (main.py)** - Day-by-day simulation
+```
+src/season/SeasonCycleController → src/calendar/ → src/events/
+Uses: data/database/nfl_simulation.db
+UI: ui/
+```
+
+**2. Stage-Based (main2.py)** - Madden-style week/stage progression (**CURRENT FOCUS**)
+```
+src/game_cycle/StageController → StageType → StageHandler
+Uses: data/database/game_cycle/game_cycle.db
+UI: game_cycle_ui/
+```
+
+### Game Cycle Architecture (main2.py)
+
+**Stage Flow:**
+```
+REGULAR SEASON (18 stages: Week 1-18)
+    → PLAYOFFS (4 stages: Wild Card → Divisional → Conference → Super Bowl)
+    → OFFSEASON (6 stages: Re-signing → Free Agency → Draft → Roster Cuts → Training Camp → Preseason)
+    → NEXT SEASON (Year + 1)
+```
+
+**Key Files:**
+- `src/game_cycle/stage_definitions.py` - `StageType` enum, `Stage` dataclass
+- `src/game_cycle/stage_controller.py` - Main orchestrator (`StageController`)
+- `src/game_cycle/handlers/` - Phase-specific handlers (regular_season, playoffs, offseason)
+- `game_cycle_ui/` - Stage-based UI components
+
+### Layered Design (Calendar-Based)
 
 **Core Layers:**
 1. **Play Engine** (`src/play_engine/`) - Play simulation with match/case routing, unified formations, coaching staff
@@ -303,29 +351,26 @@ sim.persistence = False                # Disable for demos/testing
 
 ## Documentation
 
-**Architecture:**
-- `docs/architecture/play_engine.md` - Core system architecture
-- `docs/architecture/playoff_controller.md` - Playoff orchestration
-- `docs/architecture/event_cap_integration.md` - Event-cap bridge pattern
-- `docs/architecture/ui_layer_separation.md` - MVC with domain models
+**Planning (Active):**
+- `docs/01_MILESTONE_GAME_CYCLE/PLAN.md` - **Game Cycle milestone roadmap (CURRENT FOCUS)**
+
+**Architecture (in docs/archive/):**
+- `docs/archive/architecture/play_engine.md` - Core system architecture
+- `docs/archive/architecture/playoff_controller.md` - Playoff orchestration
+- `docs/archive/architecture/event_cap_integration.md` - Event-cap bridge pattern
+- `docs/archive/architecture/ui_layer_separation.md` - MVC with domain models
 
 **Database:**
-- `docs/schema/database_schema.md` - Complete SQLite schema v2.0.0
+- `docs/archive/schema/database_schema.md` - Complete SQLite schema v2.0.0
 
-**Planning (Active):**
-- `docs/MILESTONE_1/README.md` - Multi-year dynasty roadmap (CRITICAL)
-- `docs/plans/ui_development_plan.md` - Desktop UI roadmap
-- `docs/plans/offseason_ai_manager_plan.md` - AI decision-making (Phase 2 complete)
-- `docs/plans/full_season_simulation_plan.md` - Unified season simulation
+**API Specifications (in docs/archive/):**
+- `docs/archive/api/statistics_api_specification.md` - Complete Statistics API (25+ methods)
+- `docs/archive/api/depth_chart_api_specification.md` - Depth chart API
+- `docs/archive/api/playoff_database_api_specification.md` - Playoff data management
 
-**API Specifications:**
-- `docs/api/statistics_api_specification.md` - Complete Statistics API (25+ methods)
-- `docs/api/depth_chart_api_specification.md` - Depth chart API
-- `docs/api/playoff_database_api_specification.md` - Playoff data management
-
-**How-To Guides:**
-- `docs/how-to/full_game_simulator_usage.md` - FullGameSimulator configuration
-- `docs/how-to/simulation-workflow.md` - Complete simulation workflow
+**How-To Guides (in docs/archive/):**
+- `docs/archive/how-to/full_game_simulator_usage.md` - FullGameSimulator configuration
+- `docs/archive/how-to/simulation-workflow.md` - Complete simulation workflow
 
 ## Recent Major Changes
 

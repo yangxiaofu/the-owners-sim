@@ -226,8 +226,13 @@ class StageView(QWidget):
         self.skip_to_offseason_btn.setEnabled(stage.phase in (SeasonPhase.REGULAR_SEASON, SeasonPhase.PLAYOFFS))
 
     def set_preview(self, preview_data: Dict[str, Any]):
-        """Update the games panel with matchups."""
+        """Update the games panel with matchups or offseason info."""
         self._preview_data = preview_data
+
+        # Check if we're in offseason mode (no matchups, has stage_name)
+        if self._current_stage and self._current_stage.phase == SeasonPhase.OFFSEASON:
+            self._show_offseason_preview(preview_data)
+            return
 
         matchups = preview_data.get("matchups", [])
         self.games_table.setRowCount(len(matchups))
@@ -376,3 +381,21 @@ class StageView(QWidget):
         self.set_advance_enabled(False)
         self.set_status("Simulating to offseason...")
         self.skip_to_offseason_requested.emit()
+
+    def _show_offseason_preview(self, preview_data: Dict[str, Any]):
+        """Show offseason stage preview instead of game matchups."""
+        # Clear games table and show a single row with offseason message
+        stage_name = preview_data.get("stage_name", "Offseason")
+        description = preview_data.get("description", "")
+
+        self.games_table.setRowCount(1)
+        self.games_table.setSpan(0, 0, 1, 5)  # Span all 5 columns
+
+        message = f"{stage_name}\n\n{description}\n\nSee the Offseason tab for more details."
+
+        message_item = QTableWidgetItem(message)
+        message_item.setTextAlignment(Qt.AlignCenter)
+        message_item.setForeground(QColor("#666"))
+
+        self.games_table.setItem(0, 0, message_item)
+        self.games_table.setRowHeight(0, 100)  # Taller row for multi-line message

@@ -5,7 +5,7 @@ Handles re-signing, free agency, draft, roster cuts, training camp, preseason.
 Madden-style simplified offseason flow.
 """
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from ..stage_definitions import Stage, StageType
 
@@ -94,6 +94,140 @@ class OffseasonHandler:
             StageType.OFFSEASON_ROSTER_CUTS,  # User decides who to cut
         }
         return stage.stage_type in interactive_stages
+
+    def get_stage_preview(
+        self,
+        stage: Stage,
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Get preview data for the offseason stage (for UI display).
+
+        Args:
+            stage: The current offseason stage
+            context: Execution context with dynasty_id, user_team_id, etc.
+
+        Returns:
+            Dictionary with stage preview data
+        """
+        stage_type = stage.stage_type
+        user_team_id = context.get("user_team_id", 1)
+
+        if stage_type == StageType.OFFSEASON_RESIGNING:
+            return {
+                "stage_name": "Re-signing Period",
+                "description": "Re-sign your team's expiring contract players before they hit free agency.",
+                "expiring_players": self._get_expiring_contracts(context, user_team_id),
+                "is_interactive": True,
+            }
+        elif stage_type == StageType.OFFSEASON_FREE_AGENCY:
+            return {
+                "stage_name": "Free Agency",
+                "description": "Sign available free agents from other teams.",
+                "free_agents": [],  # Placeholder - future implementation
+                "is_interactive": True,
+            }
+        elif stage_type == StageType.OFFSEASON_DRAFT:
+            return {
+                "stage_name": "NFL Draft",
+                "description": "Select players from the draft class to build your team's future.",
+                "draft_picks": [],  # Placeholder - future implementation
+                "is_interactive": True,
+            }
+        elif stage_type == StageType.OFFSEASON_ROSTER_CUTS:
+            return {
+                "stage_name": "Roster Cuts",
+                "description": "Cut your roster from 90 players down to the 53-man limit.",
+                "roster_size": 0,  # Placeholder
+                "is_interactive": True,
+            }
+        elif stage_type == StageType.OFFSEASON_TRAINING_CAMP:
+            return {
+                "stage_name": "Training Camp",
+                "description": "Finalize your depth charts and prepare for the season.",
+                "is_interactive": False,
+            }
+        elif stage_type == StageType.OFFSEASON_PRESEASON:
+            return {
+                "stage_name": "Preseason",
+                "description": "Complete preseason preparations and move to the regular season.",
+                "is_interactive": False,
+            }
+        else:
+            return {
+                "stage_name": stage.display_name,
+                "description": "Offseason stage",
+                "is_interactive": False,
+            }
+
+    def _get_expiring_contracts(
+        self,
+        context: Dict[str, Any],
+        team_id: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Get list of expiring contracts for a team.
+
+        Args:
+            context: Execution context with database APIs
+            team_id: Team ID to get expiring contracts for
+
+        Returns:
+            List of player dictionaries with contract info
+        """
+        try:
+            from salary_cap.cap_database_api import CapDatabaseAPI
+            from database.player_roster_api import PlayerRosterAPI
+            from team_management.teams.team_loader import TeamDataLoader
+
+            dynasty_id = context.get("dynasty_id")
+            season = context.get("season", 2025)
+            db_path = context.get("db_path", self._database_path)
+
+            cap_api = CapDatabaseAPI(db_path)
+            roster_api = PlayerRosterAPI(db_path)
+            team_loader = TeamDataLoader()
+
+            # Get all active contracts for this team
+            contracts = cap_api.get_team_contracts(
+                team_id=team_id,
+                dynasty_id=dynasty_id,
+                season=season,
+                active_only=True
+            )
+
+            expiring_players = []
+
+            for contract in contracts:
+                player_id = contract.get("player_id")
+                years_remaining = contract.get("years_remaining", 0)
+
+                # Contract expires if years_remaining <= 1
+                if years_remaining <= 1:
+                    # Get player info
+                    player_info = roster_api.get_player_by_id(player_id, dynasty_id)
+
+                    if player_info:
+                        expiring_players.append({
+                            "player_id": player_id,
+                            "name": f"{player_info.get('first_name', '')} {player_info.get('last_name', '')}".strip(),
+                            "position": player_info.get("position", ""),
+                            "age": player_info.get("age", 0),
+                            "overall": player_info.get("overall_rating", 0),
+                            "salary": contract.get("base_salary", 0),
+                            "years_remaining": years_remaining,
+                            "contract_id": contract.get("contract_id"),
+                        })
+
+            # Sort by overall rating (highest first)
+            expiring_players.sort(key=lambda x: x.get("overall", 0), reverse=True)
+
+            return expiring_players
+
+        except Exception as e:
+            print(f"[OffseasonHandler] Error getting expiring contracts: {e}")
+            # Return empty list on error - UI will show "No expiring contracts"
+            return []
 
     def _execute_resigning(
         self,

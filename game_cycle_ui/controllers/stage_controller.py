@@ -267,6 +267,23 @@ class StageUIController(QObject):
 
         return bracket
 
+    def get_offseason_preview(self) -> Dict[str, Any]:
+        """
+        Get preview data for the current offseason stage.
+
+        Returns:
+            Dict with stage preview data from OffseasonHandler.get_stage_preview()
+        """
+        stage = self.current_stage
+        if stage is None or stage.phase != SeasonPhase.OFFSEASON:
+            return {
+                "stage_name": "Offseason",
+                "description": "",
+                "is_interactive": False,
+            }
+
+        return self._backend.get_stage_preview()
+
     def _on_skip_to_playoffs(self):
         """Skip to playoffs by simulating remaining regular season."""
         # Simulate all remaining regular season weeks

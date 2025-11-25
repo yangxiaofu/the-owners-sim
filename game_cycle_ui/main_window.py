@@ -20,6 +20,7 @@ from PySide6.QtGui import QAction, QFont
 
 from game_cycle_ui.views.stage_view import StageView
 from game_cycle_ui.views.playoff_bracket_view import PlayoffBracketView
+from game_cycle_ui.views.offseason_view import OffseasonView
 from game_cycle_ui.controllers.stage_controller import StageUIController
 from src.game_cycle import Stage, StageType, SeasonPhase
 
@@ -105,6 +106,11 @@ class GameCycleMainWindow(QMainWindow):
         self.playoff_view = PlayoffBracketView(parent=self)
         self.tabs.addTab(self.playoff_view, "Playoffs")
 
+        # Offseason View
+        self.offseason_view = OffseasonView(parent=self)
+        self.offseason_view.process_stage_requested.connect(self._on_offseason_process)
+        self.tabs.addTab(self.offseason_view, "Offseason")
+
         self.setCentralWidget(self.tabs)
 
     def _create_toolbar(self):
@@ -161,6 +167,7 @@ class GameCycleMainWindow(QMainWindow):
         # Connect to stage changes
         self.stage_controller.stage_changed.connect(self._update_statusbar)
         self.stage_controller.stage_changed.connect(self._update_playoff_bracket)
+        self.stage_controller.stage_changed.connect(self._update_offseason_view)
 
     def _initialize(self):
         """Initialize the window state."""
@@ -178,6 +185,18 @@ class GameCycleMainWindow(QMainWindow):
         bracket_data = self.stage_controller.get_playoff_bracket()
         self.playoff_view.set_bracket_data(bracket_data)
 
+    def _update_offseason_view(self, stage: Stage):
+        """Update offseason view when stage changes."""
+        if stage.phase == SeasonPhase.OFFSEASON:
+            # Get preview data and update offseason view
+            preview = self.stage_controller.get_offseason_preview()
+            self.offseason_view.set_stage(stage, preview)
+
+            # Optionally switch to offseason tab automatically
+            offseason_tab_index = self.tabs.indexOf(self.offseason_view)
+            if offseason_tab_index >= 0:
+                self.tabs.setCurrentIndex(offseason_tab_index)
+
     def _on_new_season(self):
         """Handle new season action."""
         reply = QMessageBox.question(
@@ -190,3 +209,10 @@ class GameCycleMainWindow(QMainWindow):
 
         if reply == QMessageBox.Yes:
             self.stage_controller.start_new_season(self.season + 1)
+
+    def _on_offseason_process(self):
+        """Handle process button click from offseason view."""
+        # Delegate to the stage controller (same as clicking Simulate on Season tab)
+        self.stage_controller.execute_current_stage()
+        # Re-enable the button after processing
+        self.offseason_view.set_process_enabled(True)
