@@ -38,6 +38,7 @@ class RegularSeasonHandler:
                 - dynasty_id: Dynasty identifier
                 - season: Season year
                 - unified_api: UnifiedDatabaseAPI instance
+                - db_path: Database path (for generation services)
 
         Returns:
             Dictionary with games_played, events_processed, etc.
@@ -46,6 +47,10 @@ class RegularSeasonHandler:
         season = context["season"]
         dynasty_id = context.get("dynasty_id", "unknown")
         week_number = self._get_week_number(stage.stage_type)
+
+        # WEEK 1 HOOK: Generate draft class and free agents at season start
+        if week_number == 1:
+            self._trigger_season_start_generation(context)
 
         # DEBUG: Log query parameters
         print(f"[DEBUG RegularSeasonHandler] execute() called")
@@ -308,3 +313,75 @@ class RegularSeasonHandler:
         if name.startswith("REGULAR_WEEK_"):
             return int(name.replace("REGULAR_WEEK_", ""))
         return 0
+
+    def _trigger_season_start_generation(self, context: Dict[str, Any]) -> None:
+        """
+        Trigger draft class and free agent generation at season start.
+
+        Called at Week 1 of each season. Generates:
+        - Draft class for NEXT year (e.g., 2026 draft class when 2025 season starts)
+        - Free agents for the current offseason pool
+
+        Idempotent - safe to call multiple times (checks if already generated).
+
+        Args:
+            context: Execution context with dynasty_id, season, db_path
+        """
+        dynasty_id = context.get("dynasty_id", "unknown")
+        season = context.get("season", 2025)
+        db_path = context.get("db_path")
+
+        if not db_path:
+            # Try to get from unified_api
+            unified_api = context.get("unified_api")
+            if unified_api:
+                db_path = unified_api.database_path
+
+        if not db_path:
+            print(f"[WARNING RegularSeasonHandler] No db_path in context, skipping generation")
+            return
+
+        next_draft_year = season + 1
+
+        print(f"[INFO RegularSeasonHandler] Week 1 - Triggering season start generation")
+        print(f"[INFO RegularSeasonHandler] Dynasty: {dynasty_id}, Season: {season}")
+
+        # Generate next year's draft class (idempotent)
+        try:
+            from ..services.draft_service import DraftService
+
+            draft_service = DraftService(db_path, dynasty_id, season)
+            draft_result = draft_service.ensure_draft_class_exists(draft_year=next_draft_year)
+
+            if draft_result.get("generated"):
+                print(f"[INFO RegularSeasonHandler] Generated {next_draft_year} draft class: "
+                      f"{draft_result['prospect_count']} prospects")
+            elif draft_result.get("exists"):
+                print(f"[INFO RegularSeasonHandler] {next_draft_year} draft class already exists: "
+                      f"{draft_result['prospect_count']} prospects")
+            elif draft_result.get("error"):
+                print(f"[WARNING RegularSeasonHandler] Draft class generation failed: {draft_result['error']}")
+        except Exception as e:
+            print(f"[ERROR RegularSeasonHandler] Draft class generation error: {e}")
+
+        # Generate free agents for the pool (idempotent - only adds if pool is low)
+        try:
+            from ..services.free_agent_generator import FreeAgentGenerator
+
+            fa_generator = FreeAgentGenerator(db_path, dynasty_id, season)
+
+            # Check existing count
+            existing_count = fa_generator.get_existing_free_agent_count()
+
+            # Only generate if pool is below threshold
+            if existing_count < 50:
+                target = 50 - existing_count
+                fa_result = fa_generator.generate_free_agents(count=target)
+
+                if fa_result.get("success"):
+                    print(f"[INFO RegularSeasonHandler] Generated {fa_result['count']} free agents "
+                          f"(pool was {existing_count}, now {existing_count + fa_result['count']})")
+            else:
+                print(f"[INFO RegularSeasonHandler] Free agent pool already has {existing_count} players")
+        except Exception as e:
+            print(f"[ERROR RegularSeasonHandler] Free agent generation error: {e}")

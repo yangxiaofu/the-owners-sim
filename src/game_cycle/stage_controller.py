@@ -204,9 +204,15 @@ class StageController:
 
         return False
 
-    def execute_current_stage(self) -> StageResult:
+    def execute_current_stage(
+        self,
+        extra_context: Optional[Dict[str, Any]] = None
+    ) -> StageResult:
         """
         Execute all events/games for the current stage.
+
+        Args:
+            extra_context: Optional extra context to merge (e.g., user_decisions for offseason)
 
         Returns:
             StageResult with execution details
@@ -231,6 +237,11 @@ class StageController:
             )
 
         context = self._build_context()
+
+        # Merge extra context (e.g., user decisions for offseason stages)
+        if extra_context:
+            context.update(extra_context)
+
         handler = self._get_handler(stage.phase)
 
         if handler is None:
@@ -415,8 +426,9 @@ class StageController:
     def _build_context(self) -> Dict[str, Any]:
         """Build execution context for handlers."""
         # Get user team ID from dynasty info
+        # Note: Use `or 1` because .get() returns None when key exists but is NULL
         dynasty_info = self._dynasty_db_api.get_dynasty_by_id(self._dynasty_id)
-        user_team_id = dynasty_info.get('team_id', 1) if dynasty_info else 1
+        user_team_id = (dynasty_info.get('team_id') or 1) if dynasty_info else 1
 
         return {
             "dynasty_id": self._dynasty_id,
@@ -474,6 +486,7 @@ class StageController:
                 StageType.OFFSEASON_FREE_AGENCY,
                 StageType.OFFSEASON_DRAFT,
                 StageType.OFFSEASON_ROSTER_CUTS,
+                StageType.OFFSEASON_WAIVER_WIRE,
                 StageType.OFFSEASON_TRAINING_CAMP,
                 StageType.OFFSEASON_PRESEASON
             ]

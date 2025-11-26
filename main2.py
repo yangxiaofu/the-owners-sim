@@ -32,6 +32,7 @@ from PySide6.QtCore import Qt
 
 from game_cycle_ui.main_window import GameCycleMainWindow
 from ui.dialogs.dynasty_selection_dialog import DynastySelectionDialog
+from game_cycle.services.initialization_service import GameCycleInitializer
 
 
 # Use SEPARATE database for game_cycle (different from main.py)
@@ -80,27 +81,31 @@ def main():
 
     db_path, dynasty_id, season = dynasty_selection
 
-    # Verify dynasty has player rosters in database
+    # Get user team_id from dynasty selection dialog
+    # The dialog returns team_id as part of dynasty info when creating new dynasty
+    user_team_id = getattr(dialog, '_selected_team_id', 1)  # Default to team 1 if not set
+
+    # Initialize dynasty with players/contracts from JSON if not already initialized
     try:
-        from database.player_roster_api import PlayerRosterAPI
+        initializer = GameCycleInitializer(
+            db_path=db_path,
+            dynasty_id=dynasty_id,
+            season=season
+        )
 
-        roster_api = PlayerRosterAPI(db_path)
-
-        if not roster_api.dynasty_has_rosters(dynasty_id):
-            QMessageBox.critical(
-                None,
-                "Missing Dynasty Data",
-                f"Dynasty '{dynasty_id}' has no player rosters in database.\n\n"
-                f"This dynasty may be corrupted or incompletely initialized.\n"
-                f"Please create a new dynasty."
-            )
-            return 1
+        # Try to initialize - will skip if dynasty already has data
+        try:
+            initializer.initialize_dynasty(team_id=user_team_id)
+            print(f"[INFO] Dynasty '{dynasty_id}' initialized with player/contract data")
+        except ValueError as e:
+            # Dynasty already initialized - this is fine
+            print(f"[INFO] Dynasty '{dynasty_id}' already initialized: {e}")
 
     except Exception as e:
         QMessageBox.critical(
             None,
-            "Dynasty Validation Error",
-            f"Failed to validate dynasty '{dynasty_id}':\n\n{str(e)}\n\n"
+            "Dynasty Initialization Error",
+            f"Failed to initialize dynasty '{dynasty_id}':\n\n{str(e)}\n\n"
             f"Please check your database and try again."
         )
         return 1

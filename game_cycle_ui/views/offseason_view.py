@@ -18,6 +18,8 @@ from src.game_cycle import Stage, StageType
 from .resigning_view import ResigningView
 from .free_agency_view import FreeAgencyView
 from .draft_view import DraftView
+from .roster_cuts_view import RosterCutsView
+from .waiver_wire_view import WaiverWireView
 
 
 class OffseasonView(QWidget):
@@ -27,8 +29,9 @@ class OffseasonView(QWidget):
     Switches between sub-views based on the current stage:
     - Re-signing: ResigningView with expiring contracts table
     - Free Agency: FreeAgencyView with available free agents
-    - Draft: Placeholder (coming soon)
-    - Roster Cuts: Placeholder (coming soon)
+    - Draft: DraftView with prospect selection
+    - Roster Cuts: RosterCutsView with cut suggestions and dead money tracking
+    - Waiver Wire: WaiverWireView with priority-based claims
     - Training Camp: Placeholder (coming soon)
     - Preseason: Placeholder (coming soon)
     """
@@ -43,6 +46,14 @@ class OffseasonView(QWidget):
     prospect_drafted = Signal(int)  # prospect_id
     simulate_to_pick_requested = Signal()
     auto_draft_all_requested = Signal()
+
+    # Roster cuts signals (forward from RosterCutsView)
+    player_cut = Signal(int)  # player_id
+    get_suggestions_requested = Signal()
+
+    # Waiver wire signals (forward from WaiverWireView)
+    waiver_claim_submitted = Signal(int)  # player_id
+    waiver_claim_cancelled = Signal(int)  # player_id
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -124,15 +135,19 @@ class OffseasonView(QWidget):
         self.draft_view.auto_draft_all_requested.connect(self.auto_draft_all_requested.emit)
         self.stack.addWidget(self.draft_view)
 
-        # Roster Cuts placeholder (index 3)
-        self.cuts_placeholder = self._create_placeholder_view(
-            "Roster Cuts",
-            "The Roster Cuts stage requires you to trim your roster from 90 players to the 53-man limit. "
-            "This feature is coming in a future update."
-        )
-        self.stack.addWidget(self.cuts_placeholder)
+        # Roster Cuts view (index 3)
+        self.roster_cuts_view = RosterCutsView()
+        self.roster_cuts_view.player_cut.connect(self.player_cut.emit)
+        self.roster_cuts_view.get_suggestions_requested.connect(self.get_suggestions_requested.emit)
+        self.stack.addWidget(self.roster_cuts_view)
 
-        # Training Camp placeholder (index 4)
+        # Waiver Wire view (index 4)
+        self.waiver_wire_view = WaiverWireView()
+        self.waiver_wire_view.claim_submitted.connect(self.waiver_claim_submitted.emit)
+        self.waiver_wire_view.claim_cancelled.connect(self.waiver_claim_cancelled.emit)
+        self.stack.addWidget(self.waiver_wire_view)
+
+        # Training Camp placeholder (index 5)
         self.camp_placeholder = self._create_placeholder_view(
             "Training Camp",
             "Training Camp finalizes your depth charts and prepares your team for the season. "
@@ -140,7 +155,7 @@ class OffseasonView(QWidget):
         )
         self.stack.addWidget(self.camp_placeholder)
 
-        # Preseason placeholder (index 5)
+        # Preseason placeholder (index 6)
         self.preseason_placeholder = self._create_placeholder_view(
             "Preseason",
             "The Preseason stage completes offseason preparations. Click 'Simulate' to advance to the regular season. "
@@ -254,12 +269,42 @@ class OffseasonView(QWidget):
 
         elif stage_type == StageType.OFFSEASON_ROSTER_CUTS:
             self.stack.setCurrentIndex(3)
+            # Populate roster cuts data
+            roster_data = preview_data.get("roster_cuts_data", {})
+            if roster_data:
+                self.roster_cuts_view.set_roster_data(roster_data)
+            else:
+                # Show with empty data
+                self.roster_cuts_view.set_roster_data({
+                    "roster": preview_data.get("roster", []),
+                    "current_size": preview_data.get("current_size", 0),
+                    "target_size": preview_data.get("target_size", 53),
+                    "cuts_needed": preview_data.get("cuts_needed", 0),
+                    "ai_suggestions": preview_data.get("ai_suggestions", []),
+                    "protected_players": preview_data.get("protected_players", [])
+                })
+
+        elif stage_type == StageType.OFFSEASON_WAIVER_WIRE:
+            self.stack.setCurrentIndex(4)
+            # Populate waiver wire data
+            waiver_data = preview_data.get("waiver_data", {})
+            if waiver_data:
+                self.waiver_wire_view.set_waiver_data(waiver_data)
+            else:
+                self.waiver_wire_view.set_waiver_data({
+                    "waiver_players": preview_data.get("waiver_players", []),
+                    "user_priority": preview_data.get("user_priority", 16),
+                    "user_claims": preview_data.get("user_claims", [])
+                })
+            # Show no waivers message if empty
+            if not preview_data.get("waiver_players") and not preview_data.get("waiver_data", {}).get("waiver_players"):
+                self.waiver_wire_view.show_no_waivers_message()
 
         elif stage_type == StageType.OFFSEASON_TRAINING_CAMP:
-            self.stack.setCurrentIndex(4)
+            self.stack.setCurrentIndex(5)
 
         elif stage_type == StageType.OFFSEASON_PRESEASON:
-            self.stack.setCurrentIndex(5)
+            self.stack.setCurrentIndex(6)
 
         else:
             # Default to first view
@@ -276,6 +321,14 @@ class OffseasonView(QWidget):
     def get_draft_view(self) -> DraftView:
         """Get the draft view for direct access."""
         return self.draft_view
+
+    def get_roster_cuts_view(self) -> RosterCutsView:
+        """Get the roster cuts view for direct access."""
+        return self.roster_cuts_view
+
+    def get_waiver_wire_view(self) -> WaiverWireView:
+        """Get the waiver wire view for direct access."""
+        return self.waiver_wire_view
 
     def _on_process_clicked(self):
         """Handle process button click."""

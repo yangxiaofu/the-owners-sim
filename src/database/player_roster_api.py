@@ -60,14 +60,13 @@ class PlayerRosterAPI:
             # Initialize counter - check BOTH tables if draft_prospects exists
             # This prevents ID collisions when draft prospects are created before rosters
             if draft_table_exists:
-                # Query BOTH tables for maximum player_id
+                # Query BOTH tables for maximum player_id and take the higher one
                 query = """
-                    SELECT COALESCE(
-                        MAX(COALESCE(
-                            (SELECT MAX(player_id) FROM players WHERE dynasty_id = ?),
-                            (SELECT MAX(player_id) FROM draft_prospects WHERE dynasty_id = ?)
-                        )), 0
-                    ) as max_id
+                    SELECT MAX(max_id) as max_id FROM (
+                        SELECT COALESCE(MAX(player_id), 0) as max_id FROM players WHERE dynasty_id = ?
+                        UNION ALL
+                        SELECT COALESCE(MAX(player_id), 0) as max_id FROM draft_prospects WHERE dynasty_id = ?
+                    )
                 """
                 params = (dynasty_id, dynasty_id)
             else:

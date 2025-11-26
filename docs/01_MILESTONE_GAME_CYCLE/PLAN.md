@@ -89,10 +89,13 @@ NEXT SEASON (Year + 1)
 - [x] Draft History with team, player, position, overall
 - [x] Round filter for history view
 
-### Tollgate 7: Roster Management
-- [ ] Roster cuts reduce to 53
-- [ ] AI auto-cuts work
-- [ ] User can manually cut players
+### Tollgate 7: Roster Management ✅
+- [x] Roster cuts reduce to 53
+- [x] AI auto-cuts work (with suggestions mode for user team)
+- [x] User can manually cut players
+- [x] Dead money tracking on cuts
+- [x] Waiver wire with priority-based claims
+- [x] Unclaimed players clear to free agency
 
 ---
 

@@ -63,9 +63,11 @@ class CapDatabaseAPI:
             with sqlite3.connect(self.database_path) as conn:
                 conn.execute("PRAGMA foreign_keys = ON")
 
-                # Check if tables exist
+                # Check if salary cap tables exist (cap_transactions is the key table from migration 002)
+                # Note: player_contracts may exist from other schema files, but cap_transactions
+                # is only created by migration 002 along with other salary cap tables
                 cursor = conn.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='player_contracts'"
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='cap_transactions'"
                 )
                 if cursor.fetchone() is None:
                     # Run migration

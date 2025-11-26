@@ -59,6 +59,7 @@ class StageType(Enum):
     OFFSEASON_FREE_AGENCY = auto()        # Sign free agents from other teams
     OFFSEASON_DRAFT = auto()              # NFL Draft (7 rounds)
     OFFSEASON_ROSTER_CUTS = auto()        # Cut roster from 90 to 53
+    OFFSEASON_WAIVER_WIRE = auto()        # Process waiver claims for cut players
     OFFSEASON_TRAINING_CAMP = auto()      # Finalize depth charts
     OFFSEASON_PRESEASON = auto()          # Exhibition games (optional)
 
@@ -135,7 +136,8 @@ class Stage:
             # Map offseason stages to sequential numbers
             offseason_order = [
                 "OFFSEASON_RESIGNING", "OFFSEASON_FREE_AGENCY", "OFFSEASON_DRAFT",
-                "OFFSEASON_ROSTER_CUTS", "OFFSEASON_TRAINING_CAMP", "OFFSEASON_PRESEASON"
+                "OFFSEASON_ROSTER_CUTS", "OFFSEASON_WAIVER_WIRE", "OFFSEASON_TRAINING_CAMP",
+                "OFFSEASON_PRESEASON"
             ]
             if name in offseason_order:
                 return offseason_order.index(name) + 1
@@ -206,6 +208,7 @@ OFFSEASON_STAGES = [
     StageType.OFFSEASON_FREE_AGENCY,
     StageType.OFFSEASON_DRAFT,
     StageType.OFFSEASON_ROSTER_CUTS,
+    StageType.OFFSEASON_WAIVER_WIRE,
     StageType.OFFSEASON_TRAINING_CAMP,
     StageType.OFFSEASON_PRESEASON,
 ]

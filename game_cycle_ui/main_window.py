@@ -71,10 +71,18 @@ class GameCycleMainWindow(QMainWindow):
 
     def _create_controllers(self):
         """Create controllers for the window."""
+        # Get user team ID from dynasty info
+        # Note: Use `or 1` because .get() returns None when key exists but is NULL
+        from database.dynasty_database_api import DynastyDatabaseAPI
+        dynasty_db_api = DynastyDatabaseAPI(self.db_path)
+        dynasty_info = dynasty_db_api.get_dynasty_by_id(self.dynasty_id)
+        user_team_id = (dynasty_info.get('team_id') or 1) if dynasty_info else 1
+
         self.stage_controller = StageUIController(
             database_path=self.db_path,
             dynasty_id=self.dynasty_id,
             season=self._season,
+            user_team_id=user_team_id,
             parent=self
         )
 
@@ -108,7 +116,10 @@ class GameCycleMainWindow(QMainWindow):
 
         # Offseason View
         self.offseason_view = OffseasonView(parent=self)
-        self.offseason_view.process_stage_requested.connect(self._on_offseason_process)
+
+        # Connect offseason view to stage controller for re-signing decisions
+        self.stage_controller.set_offseason_view(self.offseason_view)
+
         self.tabs.addTab(self.offseason_view, "Offseason")
 
         self.setCentralWidget(self.tabs)
@@ -209,10 +220,3 @@ class GameCycleMainWindow(QMainWindow):
 
         if reply == QMessageBox.Yes:
             self.stage_controller.start_new_season(self.season + 1)
-
-    def _on_offseason_process(self):
-        """Handle process button click from offseason view."""
-        # Delegate to the stage controller (same as clicking Simulate on Season tab)
-        self.stage_controller.execute_current_stage()
-        # Re-enable the button after processing
-        self.offseason_view.set_process_enabled(True)

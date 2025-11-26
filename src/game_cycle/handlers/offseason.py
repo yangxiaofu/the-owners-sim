@@ -49,6 +49,7 @@ class OffseasonHandler:
             StageType.OFFSEASON_FREE_AGENCY: self._execute_free_agency,
             StageType.OFFSEASON_DRAFT: self._execute_draft,
             StageType.OFFSEASON_ROSTER_CUTS: self._execute_roster_cuts,
+            StageType.OFFSEASON_WAIVER_WIRE: self._execute_waiver_wire,
             StageType.OFFSEASON_TRAINING_CAMP: self._execute_training_camp,
             StageType.OFFSEASON_PRESEASON: self._execute_preseason,
         }
@@ -106,6 +107,7 @@ class OffseasonHandler:
             StageType.OFFSEASON_FREE_AGENCY,  # User can sign free agents
             StageType.OFFSEASON_DRAFT,        # User makes draft picks
             StageType.OFFSEASON_ROSTER_CUTS,  # User decides who to cut
+            StageType.OFFSEASON_WAIVER_WIRE,  # User can submit waiver claims
         }
         return stage.stage_type in interactive_stages
 
@@ -144,12 +146,9 @@ class OffseasonHandler:
         elif stage_type == StageType.OFFSEASON_DRAFT:
             return self._get_draft_preview(context, user_team_id)
         elif stage_type == StageType.OFFSEASON_ROSTER_CUTS:
-            return {
-                "stage_name": "Roster Cuts",
-                "description": "Cut your roster from 90 players down to the 53-man limit.",
-                "roster_size": 0,  # Placeholder
-                "is_interactive": True,
-            }
+            return self._get_roster_cuts_preview(context, user_team_id)
+        elif stage_type == StageType.OFFSEASON_WAIVER_WIRE:
+            return self._get_waiver_wire_preview(context, user_team_id)
         elif stage_type == StageType.OFFSEASON_TRAINING_CAMP:
             return {
                 "stage_name": "Training Camp",
@@ -614,27 +613,270 @@ class OffseasonHandler:
                 "draft_complete": False,
             }
 
+    def _get_roster_cuts_preview(
+        self,
+        context: Dict[str, Any],
+        team_id: int
+    ) -> Dict[str, Any]:
+        """
+        Get roster cuts preview data for UI display.
+
+        Args:
+            context: Execution context
+            team_id: User's team ID
+
+        Returns:
+            Dictionary with roster data and cut suggestions
+        """
+        try:
+            from ..services.roster_cuts_service import RosterCutsService
+
+            dynasty_id = context.get("dynasty_id")
+            season = context.get("season", 2025)
+            db_path = context.get("db_path", self._database_path)
+
+            cuts_service = RosterCutsService(db_path, dynasty_id, season)
+
+            roster = cuts_service.get_team_roster_for_cuts(team_id)
+            roster_count = len(roster)
+            cuts_needed = cuts_service.get_cuts_needed(team_id)
+            suggestions = cuts_service.get_ai_cut_suggestions(team_id, cuts_needed)
+
+            # Get suggestion player IDs for UI highlighting
+            suggested_ids = [p["player_id"] for p in suggestions]
+
+            return {
+                "stage_name": "Roster Cuts",
+                "description": f"Cut your roster from {roster_count} players down to the 53-man limit.",
+                "roster": roster,
+                "roster_count": roster_count,
+                "cuts_needed": cuts_needed,
+                "cut_suggestions": suggested_ids,
+                "is_interactive": True,
+            }
+
+        except Exception as e:
+            import traceback
+            print(f"[OffseasonHandler] Error getting roster cuts preview: {e}")
+            traceback.print_exc()
+            return {
+                "stage_name": "Roster Cuts",
+                "description": "Cut your roster from 90 players down to the 53-man limit.",
+                "roster": [],
+                "roster_count": 0,
+                "cuts_needed": 0,
+                "cut_suggestions": [],
+                "is_interactive": True,
+            }
+
+    def _get_waiver_wire_preview(
+        self,
+        context: Dict[str, Any],
+        team_id: int
+    ) -> Dict[str, Any]:
+        """
+        Get waiver wire preview data for UI display.
+
+        Args:
+            context: Execution context
+            team_id: User's team ID
+
+        Returns:
+            Dictionary with waiver players and user's priority
+        """
+        try:
+            from ..services.waiver_service import WaiverService
+
+            dynasty_id = context.get("dynasty_id")
+            season = context.get("season", 2025)
+            db_path = context.get("db_path", self._database_path)
+
+            waiver_service = WaiverService(db_path, dynasty_id, season)
+
+            waiver_players = waiver_service.get_available_players()
+            user_priority = waiver_service.get_team_priority(team_id)
+            user_claims = waiver_service.get_team_claims(team_id)
+            claim_player_ids = [c["player_id"] for c in user_claims]
+
+            return {
+                "stage_name": "Waiver Wire",
+                "description": f"Submit waiver claims for cut players. Your priority: #{user_priority}",
+                "waiver_players": waiver_players,
+                "user_priority": user_priority,
+                "user_claims": claim_player_ids,
+                "total_on_waivers": len(waiver_players),
+                "is_interactive": True,
+            }
+
+        except Exception as e:
+            import traceback
+            print(f"[OffseasonHandler] Error getting waiver wire preview: {e}")
+            traceback.print_exc()
+            return {
+                "stage_name": "Waiver Wire",
+                "description": "Submit waiver claims for cut players.",
+                "waiver_players": [],
+                "user_priority": 16,
+                "user_claims": [],
+                "total_on_waivers": 0,
+                "is_interactive": True,
+            }
+
     def _execute_roster_cuts(
         self,
         stage: Stage,
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Execute roster cuts (90 to 53)."""
+        """
+        Execute roster cuts (90 to 53) with waiver wire.
+
+        Processes:
+        1. User team cuts (from context["roster_cut_decisions"])
+        2. AI team cuts for all 31 other teams
+        3. Cut players added to waiver wire
+        """
+        from ..services.roster_cuts_service import RosterCutsService
+
+        dynasty_id = context.get("dynasty_id")
+        season = context.get("season", 2025)
+        user_team_id = context.get("user_team_id", 1)
+        user_cuts = context.get("roster_cut_decisions", [])  # List of player IDs to cut
+        db_path = context.get("db_path", self._database_path)
+
         events = []
 
-        # TODO: Implement roster cuts
-        # 1. For each team with > 53 players
-        # 2. AI auto-cuts lowest rated players
-        # 3. User can manually select cuts
-        # 4. Cut players become free agents
+        try:
+            cuts_service = RosterCutsService(db_path, dynasty_id, season)
 
-        events.append("Roster cuts completed (90 → 53)")
+            user_cut_results = []
+            total_dead_money = 0
+            total_cap_savings = 0
 
-        return {
-            "games_played": [],
-            "events_processed": events,
-            "cuts": [],  # TODO: List of cut players
-        }
+            # 1. Process USER team cuts
+            for player_id in user_cuts:
+                if isinstance(player_id, str):
+                    player_id = int(player_id)
+
+                result = cuts_service.cut_player(player_id, user_team_id, add_to_waivers=True)
+                if result["success"]:
+                    user_cut_results.append(result)
+                    total_dead_money += result.get("dead_money", 0)
+                    total_cap_savings += result.get("cap_savings", 0)
+                    events.append(
+                        f"Cut {result['player_name']} (Dead $: ${result['dead_money']:,})"
+                    )
+
+            if user_cut_results:
+                events.append(
+                    f"Your roster cuts complete: {len(user_cut_results)} players, "
+                    f"${total_cap_savings:,} cap savings, ${total_dead_money:,} dead money"
+                )
+
+            # 2. Process AI team cuts
+            ai_result = cuts_service.process_ai_cuts(user_team_id)
+            events.extend(ai_result.get("events", []))
+
+            total_cuts = len(user_cut_results) + ai_result.get("total_cuts", 0)
+            events.append(f"Roster cuts completed: {total_cuts} players waived league-wide")
+
+            return {
+                "games_played": [],
+                "events_processed": events,
+                "user_cuts": user_cut_results,
+                "ai_cuts": ai_result.get("cuts", []),
+                "total_cuts": total_cuts,
+                "waiver_wire_ready": True,
+            }
+
+        except Exception as e:
+            import traceback
+            print(f"[OffseasonHandler] Roster cuts error: {e}")
+            traceback.print_exc()
+            events.append(f"Roster cuts error: {str(e)}")
+            return {
+                "games_played": [],
+                "events_processed": events,
+                "user_cuts": [],
+                "ai_cuts": [],
+                "total_cuts": 0,
+            }
+
+    def _execute_waiver_wire(
+        self,
+        stage: Stage,
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Execute waiver wire claims processing.
+
+        Processes:
+        1. User's waiver claims (from context["waiver_claims"])
+        2. AI teams submit claims
+        3. Process all claims by priority
+        4. Clear unclaimed players to free agency
+        """
+        from ..services.waiver_service import WaiverService
+
+        dynasty_id = context.get("dynasty_id")
+        season = context.get("season", 2025)
+        user_team_id = context.get("user_team_id", 1)
+        user_claims = context.get("waiver_claims", [])  # List of player IDs to claim
+        db_path = context.get("db_path", self._database_path)
+
+        events = []
+
+        try:
+            waiver_service = WaiverService(db_path, dynasty_id, season)
+
+            # 1. Submit user's claims
+            user_claims_submitted = []
+            for player_id in user_claims:
+                if isinstance(player_id, str):
+                    player_id = int(player_id)
+
+                result = waiver_service.submit_claim(user_team_id, player_id)
+                if result["success"]:
+                    user_claims_submitted.append(result)
+                    events.append(f"Submitted waiver claim for player {player_id}")
+
+            # 2. AI teams submit claims
+            ai_claims_result = waiver_service.process_ai_claims(user_team_id)
+            if ai_claims_result["total_claims"] > 0:
+                events.append(f"AI teams submitted {ai_claims_result['total_claims']} waiver claims")
+
+            # 3. Process all claims by priority
+            process_result = waiver_service.process_all_claims()
+            events.extend(process_result.get("events", []))
+
+            # 4. Clear unclaimed to free agency
+            clear_result = waiver_service.clear_unclaimed_to_free_agency()
+            if clear_result["total_cleared"] > 0:
+                events.append(clear_result["event"])
+
+            events.append(
+                f"Waiver wire complete: {process_result['total_awarded']} players claimed, "
+                f"{clear_result['total_cleared']} cleared to free agency"
+            )
+
+            return {
+                "games_played": [],
+                "events_processed": events,
+                "user_claims": user_claims_submitted,
+                "claims_awarded": process_result.get("claims_awarded", []),
+                "cleared_to_fa": clear_result.get("cleared_players", []),
+            }
+
+        except Exception as e:
+            import traceback
+            print(f"[OffseasonHandler] Waiver wire error: {e}")
+            traceback.print_exc()
+            events.append(f"Waiver wire error: {str(e)}")
+            return {
+                "games_played": [],
+                "events_processed": events,
+                "claims_awarded": [],
+                "cleared_to_fa": [],
+            }
 
     def _execute_training_camp(
         self,
