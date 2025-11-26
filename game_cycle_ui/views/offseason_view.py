@@ -20,6 +20,7 @@ from .free_agency_view import FreeAgencyView
 from .draft_view import DraftView
 from .roster_cuts_view import RosterCutsView
 from .waiver_wire_view import WaiverWireView
+from .training_camp_view import TrainingCampView
 
 
 class OffseasonView(QWidget):
@@ -32,7 +33,7 @@ class OffseasonView(QWidget):
     - Draft: DraftView with prospect selection
     - Roster Cuts: RosterCutsView with cut suggestions and dead money tracking
     - Waiver Wire: WaiverWireView with priority-based claims
-    - Training Camp: Placeholder (coming soon)
+    - Training Camp: TrainingCampView with player development results
     - Preseason: Placeholder (coming soon)
     """
 
@@ -147,13 +148,10 @@ class OffseasonView(QWidget):
         self.waiver_wire_view.claim_cancelled.connect(self.waiver_claim_cancelled.emit)
         self.stack.addWidget(self.waiver_wire_view)
 
-        # Training Camp placeholder (index 5)
-        self.camp_placeholder = self._create_placeholder_view(
-            "Training Camp",
-            "Training Camp finalizes your depth charts and prepares your team for the season. "
-            "This feature is coming in a future update."
-        )
-        self.stack.addWidget(self.camp_placeholder)
+        # Training Camp view (index 5)
+        self.training_camp_view = TrainingCampView()
+        self.training_camp_view.continue_clicked.connect(self.process_stage_requested.emit)
+        self.stack.addWidget(self.training_camp_view)
 
         # Preseason placeholder (index 6)
         self.preseason_placeholder = self._create_placeholder_view(
@@ -302,6 +300,17 @@ class OffseasonView(QWidget):
 
         elif stage_type == StageType.OFFSEASON_TRAINING_CAMP:
             self.stack.setCurrentIndex(5)
+            # Hide the process button (training camp view has its own continue button)
+            self.process_button.setVisible(False)
+
+            # Set user team ID for default filter
+            user_team_id = preview_data.get("user_team_id", 1)
+            self.training_camp_view.set_user_team_id(user_team_id)
+
+            # Populate with training camp results
+            training_camp_results = preview_data.get("training_camp_results")
+            if training_camp_results:
+                self.training_camp_view.set_training_camp_data(training_camp_results)
 
         elif stage_type == StageType.OFFSEASON_PRESEASON:
             self.stack.setCurrentIndex(6)
@@ -329,6 +338,10 @@ class OffseasonView(QWidget):
     def get_waiver_wire_view(self) -> WaiverWireView:
         """Get the waiver wire view for direct access."""
         return self.waiver_wire_view
+
+    def get_training_camp_view(self) -> TrainingCampView:
+        """Get the training camp view for direct access."""
+        return self.training_camp_view
 
     def _on_process_clicked(self):
         """Handle process button click."""

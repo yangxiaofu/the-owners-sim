@@ -150,11 +150,8 @@ class OffseasonHandler:
         elif stage_type == StageType.OFFSEASON_WAIVER_WIRE:
             return self._get_waiver_wire_preview(context, user_team_id)
         elif stage_type == StageType.OFFSEASON_TRAINING_CAMP:
-            return {
-                "stage_name": "Training Camp",
-                "description": "Finalize your depth charts and prepare for the season.",
-                "is_interactive": False,
-            }
+            # Training camp auto-executes on entry (non-interactive)
+            return self._execute_and_preview_training_camp(context, user_team_id)
         elif stage_type == StageType.OFFSEASON_PRESEASON:
             return {
                 "stage_name": "Preseason",
@@ -722,6 +719,104 @@ class OffseasonHandler:
                 "is_interactive": True,
             }
 
+    def _get_training_camp_preview(
+        self,
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Get training camp preview data for UI display.
+
+        Args:
+            context: Execution context
+
+        Returns:
+            Dictionary with training camp preview info
+        """
+        dynasty_id = context.get("dynasty_id")
+        db_path = context.get("db_path", self._database_path)
+
+        # Get count of players to process
+        try:
+            import sqlite3
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) FROM players WHERE dynasty_id = ?",
+                (dynasty_id,)
+            )
+            player_count = cursor.fetchone()[0]
+            conn.close()
+        except Exception:
+            player_count = 1700  # Approximate
+
+        return {
+            "stage_name": "Training Camp",
+            "description": (
+                f"Training camp will process {player_count} players with age-weighted development. "
+                f"Young players (under 26) are more likely to improve, while veterans (31+) may see regression. "
+                f"Depth charts will be regenerated for all teams."
+            ),
+            "player_count": player_count,
+            "is_interactive": False,
+        }
+
+    def _execute_and_preview_training_camp(
+        self,
+        context: Dict[str, Any],
+        user_team_id: int
+    ) -> Dict[str, Any]:
+        """
+        Execute training camp and return preview with results.
+
+        Training camp is non-interactive, so we process immediately
+        when entering the stage and show results for review.
+
+        Args:
+            context: Execution context
+            user_team_id: User's team ID for default filter
+
+        Returns:
+            Dictionary with training camp results for UI display
+        """
+        from ..services.training_camp_service import TrainingCampService
+
+        dynasty_id = context.get("dynasty_id")
+        season = context.get("season", 2025)
+        db_path = context.get("db_path", self._database_path)
+
+        try:
+            service = TrainingCampService(db_path, dynasty_id, season)
+            result = service.process_all_players()
+
+            summary = result.get("summary", {})
+            depth_summary = result.get("depth_chart_summary", {})
+
+            return {
+                "stage_name": "Training Camp - Complete",
+                "description": (
+                    f"Training camp processed {summary.get('total_players', 0)} players. "
+                    f"{summary.get('improved_count', 0)} improved, "
+                    f"{summary.get('declined_count', 0)} declined, "
+                    f"{summary.get('unchanged_count', 0)} unchanged. "
+                    f"Depth charts regenerated for {depth_summary.get('teams_updated', 0)}/32 teams."
+                ),
+                "training_camp_results": result,
+                "user_team_id": user_team_id,
+                "is_interactive": False,
+            }
+
+        except Exception as e:
+            import traceback
+            print(f"[OffseasonHandler] Training camp error: {e}")
+            traceback.print_exc()
+            return {
+                "stage_name": "Training Camp",
+                "description": f"Training camp error: {str(e)}",
+                "training_camp_results": None,
+                "user_team_id": user_team_id,
+                "is_interactive": False,
+            }
+
     def _execute_roster_cuts(
         self,
         stage: Stage,
@@ -883,20 +978,21 @@ class OffseasonHandler:
         stage: Stage,
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Execute training camp phase."""
-        events = []
+        """
+        Execute training camp phase.
 
-        # TODO: Implement training camp
-        # 1. Auto-generate depth charts based on ratings
-        # 2. Optional: Small ratings adjustments
-        # 3. Finalize rosters for season
+        Note: Training camp is now auto-executed during get_stage_preview()
+        via _execute_and_preview_training_camp(). This method is a no-op
+        that just returns success since processing was already done.
 
-        events.append("Training Camp completed")
-        events.append("Depth charts finalized")
-
+        The processing happens on stage entry so users can see results
+        before clicking "Continue to Preseason".
+        """
+        # Training camp was already processed during preview
+        # Just return success - no need to re-process
         return {
             "games_played": [],
-            "events_processed": events,
+            "events_processed": ["Training camp results reviewed - proceeding to preseason"],
         }
 
     def _execute_preseason(

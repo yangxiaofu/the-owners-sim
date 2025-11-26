@@ -354,6 +354,10 @@ class StageUIController(QObject):
         draft_view = offseason_view.get_draft_view()
         draft_view.set_user_team_id(self._user_team_id)
 
+        # Set user team ID in training camp view
+        training_camp_view = offseason_view.get_training_camp_view()
+        training_camp_view.set_user_team_id(self._user_team_id)
+
         # Connect draft history round filter
         draft_view.round_filter_changed.connect(self._on_history_round_filter_changed)
 
