@@ -713,6 +713,10 @@ class DraftClassAPI_IMPL:
         # Parse positions (single position from draft becomes list)
         positions = [prospect['position']]
 
+        # Add overall rating to attributes (stored separately in draft_prospects table)
+        attributes = prospect['attributes'].copy()
+        attributes['overall'] = prospect['overall']
+
         # Create player record using PlayerRosterAPI
         # IMPORTANT: We use NEW player_id to prevent ID collisions
         with sqlite3.connect(self.database_path, timeout=30.0) as conn:
@@ -728,7 +732,7 @@ class DraftClassAPI_IMPL:
                 number=jersey_number,
                 team_id=team_id,
                 positions=positions,
-                attributes=prospect['attributes'],
+                attributes=attributes,  # Now includes overall rating
                 birthdate=None  # Calculate from age if needed
             )
 

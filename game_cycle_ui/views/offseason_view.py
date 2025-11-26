@@ -16,6 +16,8 @@ from PySide6.QtGui import QFont
 
 from src.game_cycle import Stage, StageType
 from .resigning_view import ResigningView
+from .free_agency_view import FreeAgencyView
+from .draft_view import DraftView
 
 
 class OffseasonView(QWidget):
@@ -24,7 +26,7 @@ class OffseasonView(QWidget):
 
     Switches between sub-views based on the current stage:
     - Re-signing: ResigningView with expiring contracts table
-    - Free Agency: Placeholder (coming soon)
+    - Free Agency: FreeAgencyView with available free agents
     - Draft: Placeholder (coming soon)
     - Roster Cuts: Placeholder (coming soon)
     - Training Camp: Placeholder (coming soon)
@@ -34,7 +36,13 @@ class OffseasonView(QWidget):
     # Signals
     player_resigned = Signal(int)  # Forward from ResigningView
     player_released = Signal(int)  # Forward from ResigningView
+    player_signed_fa = Signal(int)  # Forward from FreeAgencyView
     process_stage_requested = Signal()  # Emitted when user clicks Process button
+
+    # Draft signals (forward from DraftView)
+    prospect_drafted = Signal(int)  # prospect_id
+    simulate_to_pick_requested = Signal()
+    auto_draft_all_requested = Signal()
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -104,21 +112,17 @@ class OffseasonView(QWidget):
         self.resigning_view.player_released.connect(self.player_released.emit)
         self.stack.addWidget(self.resigning_view)
 
-        # Free Agency placeholder (index 1)
-        self.fa_placeholder = self._create_placeholder_view(
-            "Free Agency",
-            "The Free Agency stage allows you to sign available free agents from other teams. "
-            "This feature is coming in a future update."
-        )
-        self.stack.addWidget(self.fa_placeholder)
+        # Free Agency view (index 1)
+        self.free_agency_view = FreeAgencyView()
+        self.free_agency_view.player_signed.connect(self.player_signed_fa.emit)
+        self.stack.addWidget(self.free_agency_view)
 
-        # Draft placeholder (index 2)
-        self.draft_placeholder = self._create_placeholder_view(
-            "NFL Draft",
-            "The NFL Draft stage allows you to select players from the draft class. "
-            "This feature is coming in a future update."
-        )
-        self.stack.addWidget(self.draft_placeholder)
+        # Draft view (index 2)
+        self.draft_view = DraftView()
+        self.draft_view.prospect_drafted.connect(self.prospect_drafted.emit)
+        self.draft_view.simulate_to_pick_requested.connect(self.simulate_to_pick_requested.emit)
+        self.draft_view.auto_draft_all_requested.connect(self.auto_draft_all_requested.emit)
+        self.stack.addWidget(self.draft_view)
 
         # Roster Cuts placeholder (index 3)
         self.cuts_placeholder = self._create_placeholder_view(
@@ -199,6 +203,9 @@ class OffseasonView(QWidget):
         # Switch to appropriate sub-view
         stage_type = stage.stage_type
 
+        # Show process button by default (hidden for draft which has its own controls)
+        self.process_button.setVisible(True)
+
         if stage_type == StageType.OFFSEASON_RESIGNING:
             self.stack.setCurrentIndex(0)
             expiring_players = preview_data.get("expiring_players", [])
@@ -209,9 +216,41 @@ class OffseasonView(QWidget):
 
         elif stage_type == StageType.OFFSEASON_FREE_AGENCY:
             self.stack.setCurrentIndex(1)
+            free_agents = preview_data.get("free_agents", [])
+            if free_agents:
+                self.free_agency_view.set_free_agents(free_agents)
+            else:
+                self.free_agency_view.show_no_free_agents_message()
+            # Update cap space if available
+            cap_space = preview_data.get("cap_space", 0)
+            self.free_agency_view.set_cap_space(cap_space)
 
         elif stage_type == StageType.OFFSEASON_DRAFT:
             self.stack.setCurrentIndex(2)
+            # Hide the process button for draft (draft has its own controls)
+            self.process_button.setVisible(False)
+            # Populate draft data
+            prospects = preview_data.get("prospects", [])
+            current_pick = preview_data.get("current_pick")
+            draft_progress = preview_data.get("draft_progress", {})
+            draft_history = preview_data.get("draft_history", [])
+
+            if prospects:
+                self.draft_view.set_prospects(prospects)
+            else:
+                self.draft_view.show_no_prospects_message()
+
+            self.draft_view.set_current_pick(current_pick)
+            self.draft_view.set_draft_progress(
+                draft_progress.get("picks_made", 0),
+                draft_progress.get("total_picks", 224)
+            )
+            if draft_history:
+                self.draft_view.set_draft_history(draft_history)
+
+            # Check if draft is complete
+            if preview_data.get("draft_complete", False):
+                self.draft_view.set_draft_complete()
 
         elif stage_type == StageType.OFFSEASON_ROSTER_CUTS:
             self.stack.setCurrentIndex(3)
@@ -229,6 +268,14 @@ class OffseasonView(QWidget):
     def get_resigning_view(self) -> ResigningView:
         """Get the re-signing view for direct access."""
         return self.resigning_view
+
+    def get_free_agency_view(self) -> FreeAgencyView:
+        """Get the free agency view for direct access."""
+        return self.free_agency_view
+
+    def get_draft_view(self) -> DraftView:
+        """Get the draft view for direct access."""
+        return self.draft_view
 
     def _on_process_clicked(self):
         """Handle process button click."""

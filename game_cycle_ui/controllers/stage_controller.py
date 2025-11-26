@@ -41,6 +41,7 @@ class StageUIController(QObject):
         database_path: str,
         dynasty_id: str,
         season: int = 2025,
+        user_team_id: int = 1,
         parent: Optional[QObject] = None
     ):
         super().__init__(parent)
@@ -48,6 +49,7 @@ class StageUIController(QObject):
         self._database_path = database_path
         self._dynasty_id = dynasty_id
         self._season = season
+        self._user_team_id = user_team_id
 
         # Backend controller with dynasty context
         self._backend = BackendStageController(
@@ -58,6 +60,10 @@ class StageUIController(QObject):
 
         # View reference (set by main window)
         self._view = None
+
+        # Track user decisions for interactive stages
+        self._user_decisions: Dict[int, str] = {}  # {player_id: "resign"|"release"} for re-signing
+        self._fa_decisions: Dict[int, str] = {}    # {player_id: "sign"} for free agency
 
     @property
     def dynasty_id(self) -> str:
@@ -315,3 +321,304 @@ class StageUIController(QObject):
                 break
 
         self.refresh()
+
+    # ========================================================================
+    # Offseason Stage Support (Re-signing, Free Agency, etc.)
+    # ========================================================================
+
+    def set_offseason_view(self, offseason_view):
+        """
+        Connect to the offseason view for interactive stages.
+
+        Args:
+            offseason_view: OffseasonView instance
+        """
+        self._offseason_view = offseason_view
+
+        # Connect signals for re-signing decisions
+        offseason_view.player_resigned.connect(self._on_player_resigned)
+        offseason_view.player_released.connect(self._on_player_released)
+
+        # Connect signals for free agency decisions
+        offseason_view.player_signed_fa.connect(self._on_fa_player_signed)
+
+        # Process button
+        offseason_view.process_stage_requested.connect(self._on_process_offseason_stage)
+
+        # Connect draft signals
+        offseason_view.prospect_drafted.connect(self._on_prospect_drafted)
+        offseason_view.simulate_to_pick_requested.connect(self._on_simulate_to_pick)
+        offseason_view.auto_draft_all_requested.connect(self._on_auto_draft_all)
+
+        # Set user team ID in draft view
+        draft_view = offseason_view.get_draft_view()
+        draft_view.set_user_team_id(self._user_team_id)
+
+        # Connect draft history round filter
+        draft_view.round_filter_changed.connect(self._on_history_round_filter_changed)
+
+    def _on_player_resigned(self, player_id: int):
+        """Track user's re-sign decision."""
+        self._user_decisions[player_id] = "resign"
+
+    def _on_player_released(self, player_id: int):
+        """Track user's release decision."""
+        self._user_decisions[player_id] = "release"
+
+    def _on_fa_player_signed(self, player_id: int):
+        """Track user's free agency signing decision."""
+        self._fa_decisions[player_id] = "sign"
+
+    def _on_process_offseason_stage(self):
+        """Process current offseason stage when user clicks Process button."""
+        stage = self.current_stage
+        if stage is None or stage.phase != SeasonPhase.OFFSEASON:
+            self.error_occurred.emit("Not in offseason phase")
+            return
+
+        try:
+            # Build context with user decisions
+            context = {
+                "dynasty_id": self._dynasty_id,
+                "season": self._season,
+                "user_team_id": self._user_team_id,
+                "db_path": self._database_path,
+                "user_decisions": self._user_decisions.copy(),  # Re-signing decisions
+                "fa_decisions": self._fa_decisions.copy(),      # Free agency decisions
+            }
+
+            # Execute via backend with context
+            result = self._backend.execute_current_stage(extra_context=context)
+
+            # Show result summary
+            if self._view:
+                result_dict = {
+                    "stage_name": result.stage.display_name,
+                    "games_played": result.games_played,
+                    "events_processed": result.events_processed,
+                    "errors": result.errors,
+                    "success": result.success,
+                }
+                self._view.show_execution_result(result_dict)
+
+            # Clear decisions for next stage
+            self._user_decisions.clear()
+            self._fa_decisions.clear()
+
+            # Auto-advance if successful
+            if result.can_advance:
+                self._advance_to_next()
+
+            self.execution_complete.emit(result_dict)
+
+        except Exception as e:
+            error_msg = f"Offseason stage execution failed: {e}"
+            self.error_occurred.emit(error_msg)
+            if self._view:
+                self._view.set_status(error_msg, is_error=True)
+
+    def get_user_decisions(self) -> Dict[int, str]:
+        """Get current re-signing decisions (for debugging)."""
+        return self._user_decisions.copy()
+
+    def clear_user_decisions(self):
+        """Clear all re-signing decisions."""
+        self._user_decisions.clear()
+
+    def get_fa_decisions(self) -> Dict[int, str]:
+        """Get current free agency signing decisions (for debugging)."""
+        return self._fa_decisions.copy()
+
+    def clear_fa_decisions(self):
+        """Clear all free agency decisions."""
+        self._fa_decisions.clear()
+
+    # ========================================================================
+    # Draft Stage Support
+    # ========================================================================
+
+    def _on_prospect_drafted(self, prospect_id: int):
+        """
+        Handle user's draft selection.
+
+        Args:
+            prospect_id: The selected prospect's ID
+        """
+        stage = self.current_stage
+        if stage is None or stage.stage_type != StageType.OFFSEASON_DRAFT:
+            self.error_occurred.emit("Not in draft stage")
+            return
+
+        try:
+            # Build context with user's pick
+            context = {
+                "dynasty_id": self._dynasty_id,
+                "season": self._season,
+                "user_team_id": self._user_team_id,
+                "db_path": self._database_path,
+                "draft_decisions": {self._get_current_pick_number(): prospect_id},
+            }
+
+            # Execute draft pick via backend
+            result = self._backend.execute_current_stage(extra_context=context)
+
+            # Refresh the draft view with updated data
+            self._refresh_draft_view()
+
+            # Check if draft is complete
+            if result.can_advance:
+                self._advance_to_next()
+
+        except Exception as e:
+            error_msg = f"Draft pick failed: {e}"
+            self.error_occurred.emit(error_msg)
+            if self._view:
+                self._view.set_status(error_msg, is_error=True)
+
+    def _on_simulate_to_pick(self):
+        """Simulate AI picks until user's next turn."""
+        stage = self.current_stage
+        if stage is None or stage.stage_type != StageType.OFFSEASON_DRAFT:
+            self.error_occurred.emit("Not in draft stage")
+            return
+
+        try:
+            # Build context for sim-to-pick mode
+            context = {
+                "dynasty_id": self._dynasty_id,
+                "season": self._season,
+                "user_team_id": self._user_team_id,
+                "db_path": self._database_path,
+                "sim_to_user_pick": True,  # Signal to sim until user's turn
+            }
+
+            # Execute via backend
+            result = self._backend.execute_current_stage(extra_context=context)
+
+            # Refresh the draft view
+            self._refresh_draft_view()
+
+            # Check if draft is complete
+            if result.can_advance:
+                self._advance_to_next()
+
+        except Exception as e:
+            error_msg = f"Draft simulation failed: {e}"
+            self.error_occurred.emit(error_msg)
+            if self._view:
+                self._view.set_status(error_msg, is_error=True)
+
+    def _on_auto_draft_all(self):
+        """Auto-draft all remaining picks."""
+        stage = self.current_stage
+        if stage is None or stage.stage_type != StageType.OFFSEASON_DRAFT:
+            self.error_occurred.emit("Not in draft stage")
+            return
+
+        try:
+            # Build context for auto-complete mode
+            context = {
+                "dynasty_id": self._dynasty_id,
+                "season": self._season,
+                "user_team_id": self._user_team_id,
+                "db_path": self._database_path,
+                "auto_complete": True,
+            }
+
+            # Execute via backend
+            result = self._backend.execute_current_stage(extra_context=context)
+
+            # Show result summary
+            if self._view:
+                result_dict = {
+                    "stage_name": result.stage.display_name,
+                    "games_played": result.games_played,
+                    "events_processed": result.events_processed,
+                    "errors": result.errors,
+                    "success": result.success,
+                }
+                self._view.show_execution_result(result_dict)
+
+            # Refresh draft view to show complete state
+            self._refresh_draft_view()
+
+            # Auto-advance since draft is complete
+            if result.can_advance:
+                self._advance_to_next()
+
+            self.execution_complete.emit(result_dict)
+
+        except Exception as e:
+            error_msg = f"Auto-draft failed: {e}"
+            self.error_occurred.emit(error_msg)
+            if self._view:
+                self._view.set_status(error_msg, is_error=True)
+
+    def _refresh_draft_view(self):
+        """Refresh the draft view with current draft state."""
+        if not hasattr(self, "_offseason_view"):
+            return
+
+        # Get fresh preview data
+        preview = self._backend.get_stage_preview()
+
+        # Update draft view
+        draft_view = self._offseason_view.get_draft_view()
+
+        prospects = preview.get("prospects", [])
+        if prospects:
+            draft_view.set_prospects(prospects)
+
+        draft_view.set_current_pick(preview.get("current_pick"))
+        draft_progress = preview.get("draft_progress", {})
+        draft_view.set_draft_progress(
+            draft_progress.get("picks_made", 0),
+            draft_progress.get("total_picks", 224)
+        )
+
+        draft_history = preview.get("draft_history", [])
+        if draft_history:
+            draft_view.set_draft_history(draft_history)
+
+        # Check if draft is complete
+        if preview.get("draft_complete", False):
+            draft_view.set_draft_complete()
+
+    def _get_current_pick_number(self) -> int:
+        """Get the current overall pick number."""
+        preview = self._backend.get_stage_preview()
+        current_pick = preview.get("current_pick", {})
+        return current_pick.get("overall_pick", 1)
+
+    def _on_history_round_filter_changed(self, round_filter: Optional[int]):
+        """
+        Handle draft history round filter change.
+
+        Args:
+            round_filter: Round number (1-7) or None for all rounds
+        """
+        if not hasattr(self, "_offseason_view"):
+            return
+
+        try:
+            # Get DraftService to fetch filtered history
+            from src.game_cycle.services.draft_service import DraftService
+
+            draft_service = DraftService(
+                db_path=self._database_path,
+                dynasty_id=self._dynasty_id,
+                season=self._season
+            )
+
+            # Get filtered draft history
+            history = draft_service.get_draft_history(
+                round_filter=round_filter,
+                limit=100
+            )
+
+            # Update draft view with filtered history
+            draft_view = self._offseason_view.get_draft_view()
+            draft_view.set_draft_history(history)
+
+        except Exception as e:
+            self.error_occurred.emit(f"Failed to filter draft history: {e}")
