@@ -51,39 +51,43 @@ NEXT SEASON (Year + 1)
 
 ## Tollgates
 
-### Tollgate 1: Stage Progression Works
-- [ ] Click "Simulate" advances Week 1 → Week 2
-- [ ] Continue through all 18 weeks
-- [ ] UI shows correct week number
-- [ ] Progress bar updates
+### Tollgate 1: Stage Progression Works ✅
+- [x] Click "Simulate" advances Week 1 → Week 2
+- [x] Continue through all 18 weeks
+- [x] UI shows correct week number
+- [x] Progress bar updates
 
-### Tollgate 2: Playoffs Work
-- [ ] After Week 18 → Wild Card
-- [ ] Advance through all 4 playoff rounds
-- [ ] Super Bowl completes → Offseason begins
+### Tollgate 2: Playoffs Work ✅
+- [x] After Week 18 → Wild Card
+- [x] Advance through all 4 playoff rounds
+- [x] Super Bowl completes → Offseason begins
 
-### Tollgate 3: Offseason Stages Work
-- [ ] Free Agency stage shows (placeholder OK)
-- [ ] Draft stage shows (placeholder OK)
-- [ ] Roster Cuts stage shows
-- [ ] Training Camp stage shows
-- [ ] Preseason stage shows (or skip option)
+### Tollgate 3: Offseason Stages Work ✅
+- [x] Free Agency stage shows (placeholder OK)
+- [x] Draft stage shows (placeholder OK)
+- [x] Roster Cuts stage shows
+- [x] Training Camp stage shows
+- [x] Preseason stage shows (or skip option)
 
-### Tollgate 4: Year Increment
-- [ ] After Preseason → Year increments by 1
-- [ ] New season starts at Week 1
-- [ ] Status bar shows new year (e.g., "2026 Season")
+### Tollgate 4: Year Increment ✅
+- [x] After Preseason → Year increments by 1
+- [x] New season starts at Week 1
+- [x] Status bar shows new year (e.g., "2026 Season")
 
-### Tollgate 5: Free Agency (Basic)
-- [ ] Expiring contracts flagged as free agents
-- [ ] AI teams sign free agents (simple logic)
-- [ ] User can view and sign free agents
+### Tollgate 5: Re-signing & Free Agency ✅
+- [x] Re-signing stage for expiring contracts
+- [x] Expiring contracts flagged as free agents
+- [x] AI teams sign free agents (simple logic)
+- [x] User can view and sign free agents
+- [x] Free agent generation for multi-year dynasties
 
-### Tollgate 6: Draft (Basic)
-- [ ] Draft class exists (can be placeholder/generated)
-- [ ] 7 rounds execute
-- [ ] AI teams pick based on needs
-- [ ] User can make picks
+### Tollgate 6: Draft ✅
+- [x] Draft class exists (can be placeholder/generated)
+- [x] 7 rounds execute
+- [x] AI teams pick based on needs
+- [x] User can make picks
+- [x] Draft History with team, player, position, overall
+- [x] Round filter for history view
 
 ### Tollgate 7: Roster Management
 - [ ] Roster cuts reduce to 53
