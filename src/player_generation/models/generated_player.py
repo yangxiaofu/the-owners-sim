@@ -117,6 +117,7 @@ class GeneratedPlayer:
     # Overall ratings
     true_overall: int = 0
     scouted_overall: int = 0
+    potential: int = 0  # Maximum achievable rating (ceiling)
 
     # Metadata
     archetype_id: str = ""

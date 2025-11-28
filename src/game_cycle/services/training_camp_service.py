@@ -14,6 +14,8 @@ import sqlite3
 import json
 import random
 
+from src.constants.position_normalizer import normalize_position
+
 
 class AgeCategory(Enum):
     """Age brackets for development curves."""
@@ -49,7 +51,12 @@ class PlayerDevelopmentResult:
 class DevelopmentAlgorithm(Protocol):
     """Protocol for pluggable development algorithms (future-proofing)."""
 
-    def get_age_category(self, age: int) -> AgeCategory:
+    def get_age_category(
+        self,
+        age: int,
+        position: Optional[str] = None,
+        archetype_id: Optional[str] = None
+    ) -> AgeCategory:
         """Determine age category for a player."""
         ...
 
@@ -57,7 +64,9 @@ class DevelopmentAlgorithm(Protocol):
         self,
         age: int,
         position: str,
-        current_attributes: Dict[str, Any]
+        current_attributes: Dict[str, Any],
+        potential: Optional[int] = None,
+        archetype_id: Optional[str] = None
     ) -> Dict[str, int]:
         """
         Calculate attribute changes for a player.
@@ -66,11 +75,87 @@ class DevelopmentAlgorithm(Protocol):
             age: Player's current age
             position: Player's primary position
             current_attributes: Dict of current attribute values
+            potential: Player's potential ceiling (optional, defaults to 99)
+            archetype_id: Player's archetype ID for development curve lookup (optional)
 
         Returns:
             Dict of attribute_name -> change value (can be positive, negative, or 0)
         """
         ...
+
+
+class PositionPeakAges:
+    """
+    Centralized position-to-peak-age mapping for position-specific development.
+
+    Maps specific positions (e.g., 'left_tackle', 'mike_linebacker') to
+    position groups used in AgeCurveParameters (e.g., 'OFFENSIVE_LINE', 'LINEBACKER').
+    """
+
+    POSITION_TO_GROUP = {
+        # Quarterbacks
+        'quarterback': 'QUARTERBACK', 'qb': 'QUARTERBACK',
+        # Running backs
+        'running_back': 'RUNNING_BACK', 'halfback': 'RUNNING_BACK',
+        'fullback': 'RUNNING_BACK', 'rb': 'RUNNING_BACK', 'fb': 'RUNNING_BACK',
+        # Wide receivers
+        'wide_receiver': 'WIDE_RECEIVER', 'wr': 'WIDE_RECEIVER',
+        # Tight ends
+        'tight_end': 'TIGHT_END', 'te': 'TIGHT_END',
+        # Offensive line
+        'left_tackle': 'OFFENSIVE_LINE', 'right_tackle': 'OFFENSIVE_LINE',
+        'left_guard': 'OFFENSIVE_LINE', 'right_guard': 'OFFENSIVE_LINE',
+        'center': 'OFFENSIVE_LINE', 'offensive_line': 'OFFENSIVE_LINE',
+        'ot': 'OFFENSIVE_LINE', 'og': 'OFFENSIVE_LINE', 'c': 'OFFENSIVE_LINE',
+        # Defensive line
+        'defensive_end': 'DEFENSIVE_LINE', 'defensive_tackle': 'DEFENSIVE_LINE',
+        'nose_tackle': 'DEFENSIVE_LINE', 'edge': 'DEFENSIVE_LINE',
+        'de': 'DEFENSIVE_LINE', 'dt': 'DEFENSIVE_LINE', 'nt': 'DEFENSIVE_LINE',
+        # Linebackers
+        'linebacker': 'LINEBACKER', 'outside_linebacker': 'LINEBACKER',
+        'inside_linebacker': 'LINEBACKER', 'mike_linebacker': 'LINEBACKER',
+        'will_linebacker': 'LINEBACKER', 'sam_linebacker': 'LINEBACKER',
+        'mlb': 'LINEBACKER', 'olb': 'LINEBACKER', 'ilb': 'LINEBACKER', 'lb': 'LINEBACKER',
+        # Defensive backs
+        'cornerback': 'DEFENSIVE_BACK', 'safety': 'DEFENSIVE_BACK',
+        'free_safety': 'DEFENSIVE_BACK', 'strong_safety': 'DEFENSIVE_BACK',
+        'cb': 'DEFENSIVE_BACK', 'fs': 'DEFENSIVE_BACK', 'ss': 'DEFENSIVE_BACK', 's': 'DEFENSIVE_BACK',
+        # Special teams
+        'kicker': 'KICKER', 'punter': 'PUNTER', 'long_snapper': 'OFFENSIVE_LINE',
+        'k': 'KICKER', 'p': 'PUNTER', 'ls': 'OFFENSIVE_LINE',
+    }
+
+    @classmethod
+    def get_position_group(cls, position: str) -> str:
+        """Map a specific position to its AgeCurveParameters group."""
+        key = normalize_position(position)
+        return cls.POSITION_TO_GROUP.get(key, 'DEFAULT')
+
+    @classmethod
+    def get_peak_ages(cls, position: str) -> tuple:
+        """
+        Get (peak_start, peak_end) for a position.
+
+        Returns:
+            Tuple of (peak_start, peak_end) ages
+        """
+        from src.transactions.transaction_constants import AgeCurveParameters
+        group = cls.get_position_group(position)
+        params = getattr(AgeCurveParameters, group, AgeCurveParameters.DEFAULT)
+        return params['peak_start'], params['peak_end']
+
+    @classmethod
+    def get_growth_rates(cls, position: str) -> tuple:
+        """
+        Get (growth_rate, regression_rate) for a position.
+
+        Returns:
+            Tuple of (growth_rate, regression_rate) - base points/year for development
+        """
+        from src.transactions.transaction_constants import AgeCurveParameters
+        group = cls.get_position_group(position)
+        params = getattr(AgeCurveParameters, group, AgeCurveParameters.DEFAULT)
+        return params.get('growth_rate', 2.0), params.get('regression_rate', 2.0)
 
 
 class AgeWeightedDevelopment:
@@ -135,37 +220,171 @@ class AgeWeightedDevelopment:
     RATING_CEILING = 99
     DIMINISHING_RETURNS_THRESHOLD = 90
 
-    def get_age_category(self, age: int) -> AgeCategory:
-        """Determine age category for a player."""
-        if age <= self.YOUNG_MAX_AGE:
+    def get_age_category(
+        self,
+        age: int,
+        position: Optional[str] = None,
+        archetype_id: Optional[str] = None
+    ) -> AgeCategory:
+        """
+        Determine age category for a player using position-specific peak ages.
+
+        Uses hierarchy:
+        1. Archetype-specific peak ages (if archetype_id provided)
+        2. Position-group peak ages (if position provided)
+        3. Generic thresholds (fallback)
+
+        Args:
+            age: Player's current age
+            position: Player's primary position (optional)
+            archetype_id: Player's archetype ID for lookup (optional)
+
+        Returns:
+            AgeCategory enum value (YOUNG, PRIME, or VETERAN)
+        """
+        peak_start, peak_end = self._get_peak_ages(position, archetype_id)
+
+        if age < peak_start:
             return AgeCategory.YOUNG
-        elif age <= self.PRIME_MAX_AGE:
+        elif age <= peak_end:
             return AgeCategory.PRIME
         else:
             return AgeCategory.VETERAN
+
+    def _get_peak_ages(
+        self,
+        position: Optional[str],
+        archetype_id: Optional[str]
+    ) -> tuple:
+        """
+        Get peak age range using hierarchy: archetype > position > generic.
+
+        Returns:
+            Tuple of (peak_start, peak_end) ages
+        """
+        # Level 1: Try archetype-specific lookup
+        if archetype_id:
+            peak_ages = self._get_archetype_peak_ages(archetype_id)
+            if peak_ages:
+                return peak_ages
+
+        # Level 2: Try position-group lookup
+        if position:
+            return PositionPeakAges.get_peak_ages(position)
+
+        # Level 3: Fallback to generic thresholds (existing behavior)
+        return (self.YOUNG_MAX_AGE + 1, self.PRIME_MAX_AGE)
+
+    def _get_archetype_peak_ages(self, archetype_id: str) -> Optional[tuple]:
+        """
+        Look up peak ages from archetype registry.
+
+        Returns None if archetype not found or registry not available.
+        """
+        try:
+            from src.player_generation.archetypes.archetype_registry import ArchetypeRegistry
+            registry = ArchetypeRegistry()
+            archetype = registry.get_archetype(archetype_id)
+            if archetype and hasattr(archetype, 'peak_age_range') and archetype.peak_age_range:
+                return archetype.peak_age_range
+        except Exception:
+            # Gracefully handle missing registry or lookup failures
+            pass
+        return None
+
+    def _get_archetype_development_curve(self, archetype_id: Optional[str]) -> str:
+        """
+        Look up development curve from archetype registry.
+
+        Args:
+            archetype_id: Player's archetype identifier
+
+        Returns:
+            Development curve type: "early", "normal", or "late".
+            Defaults to "normal" if archetype not found.
+        """
+        if not archetype_id:
+            return "normal"
+
+        try:
+            from src.player_generation.archetypes.archetype_registry import ArchetypeRegistry
+            registry = ArchetypeRegistry()
+            archetype = registry.get_archetype(archetype_id)
+            if archetype and hasattr(archetype, 'development_curve') and archetype.development_curve:
+                return archetype.development_curve
+        except Exception:
+            # Gracefully handle missing registry or lookup failures
+            pass
+        return "normal"
 
     def calculate_changes(
         self,
         age: int,
         position: str,
-        current_attributes: Dict[str, Any]
+        current_attributes: Dict[str, Any],
+        potential: Optional[int] = None,
+        archetype_id: Optional[str] = None
     ) -> Dict[str, int]:
         """
-        Calculate attribute changes for a player.
+        Calculate attribute changes for a player using position-specific growth rates.
+
+        Uses:
+        - Position-specific growth/regression rates from AgeCurveParameters
+        - Development curve modifiers from archetype (early/normal/late) - Tollgate 4
+        - Distance-to-peak multiplier (younger players further from peak grow faster)
+        - Age-weighted probabilities for change direction
+        - Individual potential ceiling to cap improvements (Tollgate 3)
 
         Args:
             age: Player's current age
             position: Player's primary position
             current_attributes: Dict of current attribute values
+            potential: Player's potential ceiling (optional, defaults to RATING_CEILING)
+            archetype_id: Player's archetype ID for development curve lookup (optional)
 
         Returns:
             Dict of attribute_name -> change value (can be positive, negative, or 0)
         """
-        age_category = self.get_age_category(age)
+        age_category = self.get_age_category(age, position, archetype_id)
         improve_chance, stable_chance, decline_chance = self.AGE_WEIGHTS[age_category]
 
+        # Get position-specific parameters
+        peak_start, peak_end = PositionPeakAges.get_peak_ages(position)
+        growth_rate, regression_rate = PositionPeakAges.get_growth_rates(position)
+
+        # Get development curve modifiers (Tollgate 4: Development Curve Integration)
+        from src.transactions.transaction_constants import DevelopmentCurveModifiers
+        development_curve = self._get_archetype_development_curve(archetype_id)
+        curve_modifiers = DevelopmentCurveModifiers.get_modifiers(development_curve)
+
+        # Calculate effective rates based on distance from peak
+        if age_category == AgeCategory.YOUNG:
+            years_to_peak = peak_start - age
+            # +10% per year away from peak, capped at +50%
+            distance_multiplier = 1.0 + min(0.5, 0.1 * years_to_peak)
+            # Apply curve modifier to base growth rate before distance multiplier
+            modified_growth = growth_rate * curve_modifiers["growth"]
+            effective_rate = modified_growth * distance_multiplier
+            improve_range = self._rate_to_range(effective_rate, positive=True)
+            decline_range = (-2, -1)  # Minimal decline for young players
+
+        elif age_category == AgeCategory.PRIME:
+            # Stable with slight random variance
+            improve_range = (0, 1)
+            decline_range = (-1, 0)
+
+        else:  # VETERAN
+            years_past_peak = age - peak_end
+            # +10% per year past peak, capped at +50%
+            distance_multiplier = 1.0 + min(0.5, 0.1 * years_past_peak)
+            # Apply curve modifier to base regression rate before distance multiplier
+            modified_regression = regression_rate * curve_modifiers["decline"]
+            effective_rate = modified_regression * distance_multiplier
+            improve_range = (0, 1)  # Minimal improve chance for veterans
+            decline_range = self._rate_to_range(effective_rate, positive=False)
+
         # Get position-relevant attributes
-        position_key = position.lower().replace(' ', '_')
+        position_key = normalize_position(position)
         relevant_attrs = self.POSITION_ATTRIBUTES.get(position_key, ['awareness'])
 
         changes = {}
@@ -185,18 +404,19 @@ class AgeWeightedDevelopment:
 
             if roll < improve_chance:
                 # Improvement
-                change = random.randint(*self.IMPROVE_RANGE)
+                change = random.randint(*improve_range)
                 # Diminishing returns near max
                 if current_value >= self.DIMINISHING_RETURNS_THRESHOLD:
                     change = max(1, change // 2)
-                # Cap at ceiling
-                change = min(change, self.RATING_CEILING - current_value)
+                # Cap at individual potential (Tollgate 3) or global ceiling
+                ceiling = potential if potential is not None else self.RATING_CEILING
+                change = min(change, ceiling - current_value)
                 if change > 0:
                     changes[attr] = change
 
             elif roll < improve_chance + decline_chance:
                 # Decline
-                change = random.randint(*self.DECLINE_RANGE)
+                change = random.randint(*decline_range)
                 # Floor protection
                 change = max(change, self.RATING_FLOOR - current_value)
                 if change < 0:
@@ -204,6 +424,27 @@ class AgeWeightedDevelopment:
             # else: stable (no change)
 
         return changes
+
+    def _rate_to_range(self, rate: float, positive: bool) -> tuple:
+        """
+        Convert a float rate to integer range for random selection.
+
+        Args:
+            rate: Base rate (e.g., 2.5 points/year)
+            positive: True for improvement, False for decline
+
+        Returns:
+            Tuple (min, max) for random.randint()
+        """
+        base = int(rate)
+        # Add variance: base-1 to base+1, with minimum of 1
+        min_val = max(1, base - 1)
+        max_val = base + 1
+
+        if positive:
+            return (min_val, max_val)
+        else:
+            return (-max_val, -min_val)
 
 
 class TrainingCampService:
@@ -331,11 +572,24 @@ class TrainingCampService:
         # Calculate age
         age = self._calculate_age(player.get("birthdate"))
 
-        # Get age category
-        age_category = self._algorithm.get_age_category(age)
+        # Get archetype_id if available (for position-specific peak ages)
+        archetype_id = attributes.get('archetype_id') or player.get('archetype_id')
 
-        # Calculate attribute changes
-        changes_dict = self._algorithm.calculate_changes(age, position, attributes)
+        # Get age category (position-specific)
+        age_category = self._algorithm.get_age_category(age, position, archetype_id)
+
+        # Extract potential from attributes (Tollgate 3: Individual Player Potential)
+        player_potential = attributes.get('potential')
+        if player_potential is None:
+            # Default: overall + 5 if not set (for existing players without potential)
+            player_potential = min(99, int(attributes.get('overall', 70)) + 5)
+
+        # Calculate attribute changes with potential ceiling and development curve
+        changes_dict = self._algorithm.calculate_changes(
+            age, position, attributes,
+            potential=player_potential,
+            archetype_id=archetype_id
+        )
 
         # Build attribute change records
         attribute_changes = []
@@ -397,7 +651,7 @@ class TrainingCampService:
                     new_attrs[attr_name] = max(40, min(99, int(old_val) + change))
 
         # Get position-relevant attributes for overall calculation
-        position_key = position.lower().replace(' ', '_')
+        position_key = normalize_position(position)
         relevant = AgeWeightedDevelopment.POSITION_ATTRIBUTES.get(
             position_key, ['awareness']
         )

@@ -78,6 +78,12 @@ class PlayerGenerator:
         # Determine age
         age = config.age or self._get_default_age(config.context)
 
+        # Calculate potential (Tollgate 3: Individual Player Potential)
+        potential = self._calculate_potential(true_overall, archetype, age)
+
+        # Store potential in true_ratings for database persistence
+        true_ratings['potential'] = potential
+
         # Create player
         player = GeneratedPlayer(
             player_id=player_id,
@@ -86,6 +92,7 @@ class PlayerGenerator:
             age=age,
             true_ratings=true_ratings,
             true_overall=true_overall,
+            potential=potential,
             archetype_id=archetype.archetype_id,
             generation_context=config.context.value,
             draft_round=config.draft_round,
@@ -127,3 +134,55 @@ class PlayerGenerator:
             return random.randint(22, 24)
         else:
             return random.randint(23, 26)
+
+    def _calculate_potential(
+        self,
+        true_overall: int,
+        archetype: PlayerArchetype,
+        age: int
+    ) -> int:
+        """
+        Calculate player potential based on archetype and age.
+
+        Potential represents the maximum achievable overall rating.
+        - Minimum: current overall (can't have lower potential than current)
+        - Maximum: 99
+        - Young players get more headroom than veterans
+
+        Args:
+            true_overall: Player's current true overall rating
+            archetype: Player's archetype (for ceiling reference)
+            age: Player's age
+
+        Returns:
+            Potential rating (60-99)
+        """
+        # Get archetype ceiling for reference
+        archetype_max = 95
+        if archetype.overall_range:
+            archetype_max = archetype.overall_range.max
+
+        # Age factor: younger players have more growth room
+        peak_start = 27  # Default peak start
+        if archetype.peak_age_range:
+            peak_start = archetype.peak_age_range[0]
+
+        if age >= peak_start:
+            # At/past peak - potential is close to current
+            random_bonus = random.randint(0, 3)
+        else:
+            # Pre-peak - more growth potential
+            years_to_peak = peak_start - age
+            max_bonus = 8 + min(years_to_peak, 5)
+            random_bonus = random.randint(3, max_bonus)
+
+        potential = min(99, true_overall + random_bonus)
+
+        # Ensure potential is at least archetype_max - 10 for viable prospects
+        min_potential = min(99, archetype_max - 10)
+        potential = max(potential, min_potential)
+
+        # Never below current overall
+        potential = max(potential, true_overall)
+
+        return potential

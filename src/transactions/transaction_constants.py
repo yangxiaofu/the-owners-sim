@@ -222,27 +222,95 @@ class PositionValueTiers:
 
 class AgeCurveParameters:
     """
-    Age curve parameters for player value depreciation by position group.
+    Age curve parameters for player development by position group.
 
-    Format: (peak_start, peak_end, decline_rate)
+    Fields:
     - peak_start: Age when peak begins
     - peak_end: Age when peak ends
-    - decline_rate: Annual value decline rate after peak (0.0-1.0)
+    - decline_rate: Annual value decline rate after peak (0.0-1.0) [for trade value]
+    - growth_rate: Base attribute points gained per year pre-peak [for player progression]
+    - regression_rate: Base attribute points lost per year post-peak [for player progression]
 
     Calibrated v1.1 based on NFL career length and performance data.
     """
 
-    QUARTERBACK = {'peak_start': 27, 'peak_end': 32, 'decline_rate': 0.08}
-    RUNNING_BACK = {'peak_start': 23, 'peak_end': 27, 'decline_rate': 0.15}
-    WIDE_RECEIVER = {'peak_start': 25, 'peak_end': 29, 'decline_rate': 0.12}
-    TIGHT_END = {'peak_start': 26, 'peak_end': 30, 'decline_rate': 0.10}
-    OFFENSIVE_LINE = {'peak_start': 26, 'peak_end': 31, 'decline_rate': 0.08}
-    DEFENSIVE_LINE = {'peak_start': 25, 'peak_end': 29, 'decline_rate': 0.12}
-    LINEBACKER = {'peak_start': 25, 'peak_end': 29, 'decline_rate': 0.12}
-    DEFENSIVE_BACK = {'peak_start': 25, 'peak_end': 29, 'decline_rate': 0.13}
+    QUARTERBACK = {
+        'peak_start': 27, 'peak_end': 32, 'decline_rate': 0.08,
+        'growth_rate': 1.5, 'regression_rate': 1.5
+    }
+    RUNNING_BACK = {
+        'peak_start': 23, 'peak_end': 27, 'decline_rate': 0.15,
+        'growth_rate': 2.5, 'regression_rate': 3.0
+    }
+    WIDE_RECEIVER = {
+        'peak_start': 25, 'peak_end': 29, 'decline_rate': 0.12,
+        'growth_rate': 2.0, 'regression_rate': 2.0
+    }
+    TIGHT_END = {
+        'peak_start': 26, 'peak_end': 30, 'decline_rate': 0.10,
+        'growth_rate': 1.5, 'regression_rate': 1.5
+    }
+    OFFENSIVE_LINE = {
+        'peak_start': 26, 'peak_end': 31, 'decline_rate': 0.08,
+        'growth_rate': 1.5, 'regression_rate': 1.5
+    }
+    DEFENSIVE_LINE = {
+        'peak_start': 25, 'peak_end': 29, 'decline_rate': 0.12,
+        'growth_rate': 2.0, 'regression_rate': 2.0
+    }
+    LINEBACKER = {
+        'peak_start': 25, 'peak_end': 29, 'decline_rate': 0.12,
+        'growth_rate': 2.0, 'regression_rate': 2.0
+    }
+    DEFENSIVE_BACK = {
+        'peak_start': 25, 'peak_end': 29, 'decline_rate': 0.13,
+        'growth_rate': 2.0, 'regression_rate': 2.5
+    }
+
+    # Special teams (extended careers)
+    KICKER = {
+        'peak_start': 28, 'peak_end': 36, 'decline_rate': 0.05,
+        'growth_rate': 1.0, 'regression_rate': 0.5
+    }
+    PUNTER = {
+        'peak_start': 28, 'peak_end': 36, 'decline_rate': 0.05,
+        'growth_rate': 1.0, 'regression_rate': 0.5
+    }
 
     # Default for unknown position groups
-    DEFAULT = {'peak_start': 25, 'peak_end': 29, 'decline_rate': 0.12}
+    DEFAULT = {
+        'peak_start': 25, 'peak_end': 29, 'decline_rate': 0.12,
+        'growth_rate': 2.0, 'regression_rate': 2.0
+    }
+
+
+class DevelopmentCurveModifiers:
+    """
+    Modifiers for player development based on archetype's development_curve.
+
+    Applied to base growth/regression rates before distance multiplier.
+    - "early": Fast bloom, normal fade (physical specimens, young impact)
+    - "normal": Standard trajectory (baseline for most archetypes)
+    - "late": Slow bloom, extended career (technique/mental-focused players)
+    """
+
+    EARLY = {"growth": 1.25, "decline": 1.0}   # +25% growth, normal decline
+    NORMAL = {"growth": 1.0, "decline": 1.0}   # Baseline
+    LATE = {"growth": 0.75, "decline": 0.80}   # -25% growth, -20% decline
+
+    @classmethod
+    def get_modifiers(cls, curve_type: str) -> dict:
+        """Get modifiers for a development curve type.
+
+        Args:
+            curve_type: One of "early", "normal", "late"
+
+        Returns:
+            Dict with "growth" and "decline" multipliers.
+            Defaults to NORMAL for unknown curve types.
+        """
+        curve_map = {"early": cls.EARLY, "normal": cls.NORMAL, "late": cls.LATE}
+        return curve_map.get(curve_type.lower() if curve_type else "normal", cls.NORMAL)
 
 
 class TradeValueScaling:
