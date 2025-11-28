@@ -1,7 +1,7 @@
 {
   "team_id": 23,
   "team_name": "Green Bay Packers",
-  "total_players": 53,
+  "total_players": 51,
   "players": {
     "2300": {
       "player_id": 2300,
@@ -1334,41 +1334,6 @@
         "cap_hit_2025": 1055165
       }
     },
-    "2339": {
-      "player_id": 2339,
-      "first_name": "Nate",
-      "last_name": "Hobbs",
-      "number": 21,
-      "birthdate": "2000-04-17",
-      "positions": [
-        "cornerback"
-      ],
-      "team_id": 23,
-      "attributes": {
-        "overall": 78,
-        "speed": 80,
-        "strength": 72,
-        "agility": 82,
-        "awareness": 78,
-        "discipline": 80,
-        "composure": 78,
-        "experience": 75,
-        "penalty_technique": 80,
-        "man_coverage": 80,
-        "zone_coverage": 78,
-        "ball_skills": 78,
-        "tackling": 78,
-        "slot_coverage": 85
-      },
-      "contract": {
-        "contract_years": 4,
-        "annual_salary": 12000000,
-        "signing_bonus": 12000000,
-        "guaranteed_money": 16000000,
-        "contract_type": "free_agent",
-        "cap_hit_2025": 5988235
-      }
-    },
     "2340": {
       "player_id": 2340,
       "first_name": "Kamal",
@@ -1402,42 +1367,6 @@
         "guaranteed_money": 0,
         "contract_type": "reserve",
         "cap_hit_2025": 1030000
-      }
-    },
-    "2341": {
-      "player_id": 2341,
-      "first_name": "Xavier",
-      "last_name": "McKinney",
-      "number": 29,
-      "birthdate": "1994-08-16",
-      "positions": [
-        "safety"
-      ],
-      "team_id": 23,
-      "attributes": {
-        "overall": 86,
-        "speed": 85,
-        "strength": 75,
-        "agility": 85,
-        "awareness": 88,
-        "discipline": 88,
-        "composure": 85,
-        "experience": 85,
-        "penalty_technique": 88,
-        "man_coverage": 80,
-        "zone_coverage": 88,
-        "ball_skills": 90,
-        "tackling": 85,
-        "range": 88,
-        "instincts": 88
-      },
-      "contract": {
-        "contract_years": 4,
-        "annual_salary": 17000000,
-        "signing_bonus": 23000000,
-        "guaranteed_money": 23000000,
-        "contract_type": "free_agent",
-        "cap_hit_2025": 7800000
       }
     },
     "2342": {

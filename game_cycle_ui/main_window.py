@@ -23,6 +23,7 @@ from game_cycle_ui.views.playoff_bracket_view import PlayoffBracketView
 from game_cycle_ui.views.offseason_view import OffseasonView
 from game_cycle_ui.controllers.stage_controller import StageUIController
 from src.game_cycle import Stage, StageType, SeasonPhase
+from ui.widgets.transaction_history_widget import TransactionHistoryWidget
 
 
 class GameCycleMainWindow(QMainWindow):
@@ -116,11 +117,20 @@ class GameCycleMainWindow(QMainWindow):
 
         # Offseason View
         self.offseason_view = OffseasonView(parent=self)
+        self.offseason_view.set_db_path(self.db_path)  # For contract detail lookups
 
         # Connect offseason view to stage controller for re-signing decisions
         self.stage_controller.set_offseason_view(self.offseason_view)
 
         self.tabs.addTab(self.offseason_view, "Offseason")
+
+        # Transactions View - reuse existing widget from calendar UI
+        self.transactions_view = TransactionHistoryWidget(
+            parent=self,
+            db_path=self.db_path,
+            dynasty_id=self.dynasty_id
+        )
+        self.tabs.addTab(self.transactions_view, "Transactions")
 
         self.setCentralWidget(self.tabs)
 
@@ -147,7 +157,7 @@ class GameCycleMainWindow(QMainWindow):
 
         jump_offseason_action = QAction("Jump to Offseason", self)
         jump_offseason_action.triggered.connect(
-            lambda: self.stage_controller.jump_to_stage(StageType.OFFSEASON_RESIGNING)
+            lambda: self.stage_controller.jump_to_stage(StageType.OFFSEASON_FRANCHISE_TAG)
         )
         toolbar.addAction(jump_offseason_action)
 
@@ -179,6 +189,7 @@ class GameCycleMainWindow(QMainWindow):
         self.stage_controller.stage_changed.connect(self._update_statusbar)
         self.stage_controller.stage_changed.connect(self._update_playoff_bracket)
         self.stage_controller.stage_changed.connect(self._update_offseason_view)
+        self.stage_controller.season_started.connect(self._on_season_started)
 
     def _initialize(self):
         """Initialize the window state."""
@@ -189,6 +200,10 @@ class GameCycleMainWindow(QMainWindow):
         self.stage_status.setText(stage.display_name)
         self.season_status.setText(f"{stage.season_year} Season")
         self.phase_status.setText(stage.phase.name.replace("_", " ").title())
+
+        # Refresh transactions to show any new signings/cuts/trades
+        if hasattr(self, 'transactions_view'):
+            self.transactions_view.refresh()
 
     def _update_playoff_bracket(self, stage: Stage):
         """Update playoff bracket view when stage changes."""
@@ -207,6 +222,18 @@ class GameCycleMainWindow(QMainWindow):
             offseason_tab_index = self.tabs.indexOf(self.offseason_view)
             if offseason_tab_index >= 0:
                 self.tabs.setCurrentIndex(offseason_tab_index)
+
+    def _on_season_started(self):
+        """Handle transition from offseason to new season."""
+        # Switch to Season tab (index 0)
+        season_tab_index = self.tabs.indexOf(self.stage_view)
+        if season_tab_index >= 0:
+            self.tabs.setCurrentIndex(season_tab_index)
+
+        # Update window title with new season year
+        stage = self.stage_controller.current_stage
+        if stage:
+            self.setWindowTitle(f"The Owner's Sim - {self.dynasty_id} ({stage.season_year} Season)")
 
     def _on_new_season(self):
         """Handle new season action."""

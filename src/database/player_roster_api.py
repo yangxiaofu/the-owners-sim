@@ -431,6 +431,8 @@ class PlayerRosterAPI:
         """
         Move player to different team (trades, signings).
 
+        Also updates team_rosters table to maintain roster integrity.
+
         Args:
             dynasty_id: Dynasty context
             player_id: Player to move (auto-generated integer)
@@ -457,21 +459,51 @@ class PlayerRosterAPI:
             """
             self.db_connection.execute_update(delete_roster_query, (dynasty_id, player_id))
         else:
-            # Update roster entry (or create if doesn't exist)
-            # First, try to update existing
-            update_roster_query = """
-                UPDATE team_rosters
-                SET team_id = ?
-                WHERE dynasty_id = ? AND player_id = ?
-            """
-            rows_affected = self.db_connection.execute_update(
-                update_roster_query,
-                (new_team_id, dynasty_id, player_id)
-            )
+            # Check if roster entry exists
+            check_query = "SELECT 1 FROM team_rosters WHERE dynasty_id = ? AND player_id = ?"
+            exists = self.db_connection.execute_query(check_query, (dynasty_id, player_id))
 
-            # If no rows updated, insert new roster entry
-            if rows_affected == 0:
-                self._add_to_roster(dynasty_id, new_team_id, player_id)
+            if exists:
+                # Update existing roster entry
+                update_roster_query = """
+                    UPDATE team_rosters
+                    SET team_id = ?, roster_status = 'active'
+                    WHERE dynasty_id = ? AND player_id = ?
+                """
+                self.db_connection.execute_update(
+                    update_roster_query,
+                    (new_team_id, dynasty_id, player_id)
+                )
+            else:
+                # Insert new roster entry with active status
+                insert_roster_query = """
+                    INSERT INTO team_rosters (dynasty_id, team_id, player_id, roster_status, depth_chart_order)
+                    VALUES (?, ?, ?, 'active', 99)
+                """
+                self.db_connection.execute_update(
+                    insert_roster_query,
+                    (dynasty_id, new_team_id, player_id)
+                )
+
+    def update_player_contract_id(self, dynasty_id: str, player_id: int, contract_id: int) -> None:
+        """
+        Update player's contract_id reference (after signing new contract).
+
+        Args:
+            dynasty_id: Dynasty context
+            player_id: Player to update (auto-generated integer)
+            contract_id: New contract ID from player_contracts table
+        """
+        update_query = """
+            UPDATE players
+            SET contract_id = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE dynasty_id = ? AND player_id = ?
+        """
+
+        self.db_connection.execute_update(
+            update_query,
+            (contract_id, dynasty_id, player_id)
+        )
 
     def add_generated_player(self, dynasty_id: str, player_data: Dict[str, Any],
                            team_id: int) -> int:

@@ -35,6 +35,7 @@ class StageUIController(QObject):
     stage_changed = Signal(object)  # Stage
     execution_complete = Signal(dict)  # Result dict
     error_occurred = Signal(str)  # Error message
+    season_started = Signal()  # Emitted when offseason ends and new season begins
 
     def __init__(
         self,
@@ -64,6 +65,8 @@ class StageUIController(QObject):
         # Track user decisions for interactive stages
         self._user_decisions: Dict[int, str] = {}  # {player_id: "resign"|"release"} for re-signing
         self._fa_decisions: Dict[int, str] = {}    # {player_id: "sign"} for free agency
+        self._tag_decision: Optional[Dict] = None  # {"player_id": X, "tag_type": "franchise"|"transition"}
+        self._cut_decisions: Dict[int, bool] = {}  # {player_id: use_june_1} for roster cuts
 
     @property
     def dynasty_id(self) -> str:
@@ -72,8 +75,11 @@ class StageUIController(QObject):
 
     @property
     def season(self) -> int:
-        """Get current season."""
-        return self._season
+        """Get current season from stage (single source of truth)."""
+        stage = self.current_stage
+        if stage:
+            return stage.season_year
+        return self._season  # Fallback only if no stage
 
     def set_view(self, view):
         """Connect to the view."""
@@ -210,8 +216,12 @@ class StageUIController(QObject):
         # Use the backend's unified API
         unified_api = UnifiedDatabaseAPI(self._database_path, self._dynasty_id)
 
+        # Use current stage's season year (single source of truth)
+        stage = self.current_stage
+        current_season = stage.season_year if stage else self._season
+
         bracket = {
-            "season": self._season,
+            "season": current_season,
             "wild_card": [],
             "divisional": [],
             "conference": [],
@@ -229,7 +239,7 @@ class StageUIController(QObject):
         for round_name, week in round_configs:
             # Get games from the games table (results) for this playoff week
             games = unified_api.games_get_by_week(
-                season=self._season,
+                season=current_season,
                 week=week,
                 season_type="playoffs"
             )
@@ -339,8 +349,15 @@ class StageUIController(QObject):
         offseason_view.player_resigned.connect(self._on_player_resigned)
         offseason_view.player_released.connect(self._on_player_released)
 
-        # Connect signals for free agency decisions
+        # Connect signals for free agency decisions (sign and unsign)
         offseason_view.player_signed_fa.connect(self._on_fa_player_signed)
+        offseason_view.player_unsigned_fa.connect(self._on_fa_player_unsigned)
+
+        # Connect franchise tag signal
+        offseason_view.tag_applied.connect(self._on_tag_applied)
+
+        # Connect roster cuts signal
+        offseason_view.player_cut.connect(self._on_player_cut)
 
         # Process button
         offseason_view.process_stage_requested.connect(self._on_process_offseason_stage)
@@ -362,16 +379,266 @@ class StageUIController(QObject):
         draft_view.round_filter_changed.connect(self._on_history_round_filter_changed)
 
     def _on_player_resigned(self, player_id: int):
-        """Track user's re-sign decision."""
+        """Track user's re-sign decision and refresh cap display."""
         self._user_decisions[player_id] = "resign"
+        self._refresh_cap_display_with_pending()
 
     def _on_player_released(self, player_id: int):
-        """Track user's release decision."""
+        """Track user's release decision and refresh cap display."""
         self._user_decisions[player_id] = "release"
+        self._refresh_cap_display_with_pending()
+
+    def _refresh_cap_display_with_pending(self):
+        """Refresh cap display accounting for pending re-sign decisions."""
+        if not hasattr(self, "_offseason_view") or not self._offseason_view:
+            return
+
+        stage = self.current_stage
+        if not stage or stage.stage_type != StageType.OFFSEASON_RESIGNING:
+            return
+
+        try:
+            # Get base cap data from handler
+            preview = self._backend.get_stage_preview()
+            cap_data = preview.get("cap_data", {})
+
+            # Calculate pending cap impact from user decisions
+            pending_cap_hit = self._calculate_pending_cap_hit(preview)
+
+            # Add pending info to cap_data
+            cap_data["pending_spending"] = pending_cap_hit
+            available = cap_data.get("available_space", 0)
+            projected = available - pending_cap_hit
+            cap_data["projected_available"] = projected
+
+            # Add over-cap validation flags
+            cap_data["is_over_cap"] = projected < 0
+            cap_data["over_cap_amount"] = abs(projected) if projected < 0 else 0
+
+            # Update the view
+            resigning_view = self._offseason_view.get_resigning_view()
+            resigning_view.set_cap_data(cap_data)
+
+        except Exception as e:
+            print(f"[StageUIController] Error refreshing cap display: {e}")
+
+    def _calculate_pending_cap_hit(self, preview: Dict[str, Any]) -> int:
+        """
+        Calculate total cap hit from pending re-sign decisions.
+
+        Uses the pre-calculated estimated_year1_cap_hit from preview data,
+        which accurately reflects the Year 1 cap impact of new contracts.
+        Falls back to estimated_aav for backwards compatibility.
+        """
+        total = 0
+        expiring_players = preview.get("expiring_players", [])
+
+        # Build lookup by player_id
+        player_lookup = {p.get("player_id"): p for p in expiring_players}
+
+        for player_id, decision in self._user_decisions.items():
+            if decision == "resign":
+                player = player_lookup.get(player_id)
+                if player:
+                    # Use Year 1 cap hit for accurate projection
+                    # Falls back to AAV if year1 cap hit not available
+                    total += player.get("estimated_year1_cap_hit", player.get("estimated_aav", 0))
+
+        return total
+
+    def _on_player_cut(self, player_id: int, use_june_1: bool):
+        """Track user's roster cut decision."""
+        self._cut_decisions[player_id] = use_june_1
 
     def _on_fa_player_signed(self, player_id: int):
-        """Track user's free agency signing decision."""
+        """Track user's free agency signing decision and refresh cap display."""
         self._fa_decisions[player_id] = "sign"
+        self._refresh_fa_cap_display_with_pending()
+
+    def _on_fa_player_unsigned(self, player_id: int):
+        """Remove player from pending free agency signings and refresh cap display."""
+        self._fa_decisions.pop(player_id, None)
+        self._refresh_fa_cap_display_with_pending()
+
+    def _refresh_fa_cap_display_with_pending(self):
+        """Refresh Free Agency cap display with pending signing impact."""
+        if not hasattr(self, "_offseason_view") or not self._offseason_view:
+            return
+
+        stage = self.current_stage
+        if not stage or stage.stage_type != StageType.OFFSEASON_FREE_AGENCY:
+            return
+
+        try:
+            # Get base cap data and free agents list from preview
+            preview = self._backend.get_stage_preview()
+            cap_data = preview.get("cap_data", {})
+            available = cap_data.get("available_space", 0)
+
+            # Calculate pending cap hit from signed free agents
+            pending_cap_hit = self._calculate_fa_pending_cap_hit(preview)
+            projected = available - pending_cap_hit
+
+            # Update the view with projected cap
+            fa_view = self._offseason_view.get_free_agency_view()
+            fa_view.set_projected_cap(projected)
+
+        except Exception as e:
+            print(f"[StageUIController] Error refreshing FA cap display: {e}")
+
+    def _calculate_fa_pending_cap_hit(self, preview: Dict[str, Any]) -> int:
+        """
+        Calculate total cap hit from pending free agent signings.
+
+        Uses estimated_aav from free agent data.
+        """
+        total = 0
+        free_agents = preview.get("free_agents", [])
+
+        # Build lookup by player_id
+        fa_lookup = {fa.get("player_id"): fa for fa in free_agents}
+
+        for player_id in self._fa_decisions.keys():
+            fa = fa_lookup.get(player_id)
+            if fa:
+                estimated_aav = fa.get("estimated_aav", 0)
+                total += estimated_aav
+
+        return total
+
+    # ========================================================================
+    # Franchise Tag Support
+    # ========================================================================
+
+    def _on_tag_applied(self, player_id: int, tag_type: str):
+        """
+        Handle franchise/transition tag application with cap validation.
+
+        Args:
+            player_id: ID of player to tag
+            tag_type: "franchise" or "transition"
+        """
+        from src.game_cycle.services.cap_helper import CapHelper
+
+        stage = self.current_stage
+        if stage is None or stage.stage_type != StageType.OFFSEASON_FRANCHISE_TAG:
+            self._show_tag_error("Not in franchise tag stage")
+            return
+
+        # Get tag cost from the taggable players data
+        preview = self._backend.get_stage_preview()
+        taggable = preview.get("taggable_players", [])
+        player_data = next((p for p in taggable if p.get("player_id") == player_id), None)
+
+        if not player_data:
+            self._show_tag_error("Player not found in taggable list")
+            self._reset_tag_ui_state()
+            return
+
+        # Get tag cost based on type
+        if tag_type == "franchise":
+            tag_cost = player_data.get("franchise_tag_cost", 0)
+        else:
+            tag_cost = player_data.get("transition_tag_cost", 0)
+
+        # Validate against NEXT season's cap (tags count against new league year)
+        next_season = stage.season_year + 1
+        cap_helper = CapHelper(self._database_path, self._dynasty_id, next_season)
+
+        is_valid, error_msg = cap_helper.validate_franchise_tag(
+            team_id=self._user_team_id,
+            tag_cost=tag_cost
+        )
+
+        if not is_valid:
+            self._show_tag_error(error_msg)
+            self._reset_tag_ui_state()
+            return
+
+        # Store decision and execute
+        self._tag_decision = {"player_id": player_id, "tag_type": tag_type}
+        self._execute_tag_decision()
+
+    def _show_tag_error(self, message: str):
+        """Show error message dialog for tag operations."""
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.warning(None, "Cannot Apply Tag", message)
+
+    def _reset_tag_ui_state(self):
+        """Reset franchise tag UI state after a failed attempt."""
+        if hasattr(self, "_offseason_view") and self._offseason_view:
+            franchise_tag_view = self._offseason_view.get_franchise_tag_view()
+            franchise_tag_view.set_tag_used(False)
+
+    def _execute_tag_decision(self):
+        """Execute the tag decision via backend."""
+        if not self._tag_decision:
+            return
+
+        stage = self.current_stage
+        if stage is None:
+            return
+
+        try:
+            # Build context with tag decision
+            context = {
+                "dynasty_id": self._dynasty_id,
+                "season": stage.season_year,
+                "user_team_id": self._user_team_id,
+                "db_path": self._database_path,
+                "tag_decision": self._tag_decision,
+            }
+
+            # Execute via backend
+            result = self._backend.execute_current_stage(extra_context=context)
+
+            # Show result
+            if self._view:
+                result_dict = {
+                    "stage_name": result.stage.display_name,
+                    "events_processed": result.events_processed,
+                    "success": result.success,
+                }
+                self._view.show_execution_result(result_dict)
+
+            # Clear decision
+            self._tag_decision = None
+
+            # Refresh view to show updated state
+            self._refresh_franchise_tag_view()
+
+        except Exception as e:
+            error_msg = f"Tag application failed: {e}"
+            self.error_occurred.emit(error_msg)
+            self._reset_tag_ui_state()
+
+    def _refresh_franchise_tag_view(self):
+        """Refresh the franchise tag view after a tag is applied."""
+        if not hasattr(self, "_offseason_view"):
+            return
+
+        # Get fresh preview data
+        preview = self._backend.get_stage_preview()
+
+        # Update franchise tag view
+        franchise_tag_view = self._offseason_view.get_franchise_tag_view()
+
+        taggable_players = preview.get("taggable_players", [])
+        if taggable_players:
+            franchise_tag_view.set_taggable_players(taggable_players)
+        else:
+            franchise_tag_view.show_no_taggable_message()
+
+        franchise_tag_view.set_tag_used(preview.get("tag_used", False))
+
+        # Update cap data
+        cap_data = preview.get("cap_data")
+        if cap_data:
+            franchise_tag_view.set_cap_data(cap_data)
+
+        projected_cap_data = preview.get("projected_cap_data")
+        if projected_cap_data:
+            franchise_tag_view.set_projected_cap_data(projected_cap_data)
 
     def _on_process_offseason_stage(self):
         """Process current offseason stage when user clicks Process button."""
@@ -382,13 +649,19 @@ class StageUIController(QObject):
 
         try:
             # Build context with user decisions
+            # Use stage.season_year as single source of truth
             context = {
                 "dynasty_id": self._dynasty_id,
-                "season": self._season,
+                "season": stage.season_year,
                 "user_team_id": self._user_team_id,
                 "db_path": self._database_path,
                 "user_decisions": self._user_decisions.copy(),  # Re-signing decisions
                 "fa_decisions": self._fa_decisions.copy(),      # Free agency decisions
+                # Roster cut decisions: list of dicts with player_id and use_june_1
+                "roster_cut_decisions": [
+                    {"player_id": pid, "use_june_1": use_june_1}
+                    for pid, use_june_1 in self._cut_decisions.items()
+                ],
             }
 
             # Execute via backend with context
@@ -408,10 +681,17 @@ class StageUIController(QObject):
             # Clear decisions for next stage
             self._user_decisions.clear()
             self._fa_decisions.clear()
+            self._cut_decisions.clear()
 
             # Auto-advance if successful
             if result.can_advance:
                 self._advance_to_next()
+
+                # Check if we transitioned out of offseason (preseason → new season)
+                new_stage = self.current_stage
+                if new_stage and new_stage.phase != SeasonPhase.OFFSEASON:
+                    # Emit signal to switch to Season tab
+                    self.season_started.emit()
 
             self.execution_complete.emit(result_dict)
 

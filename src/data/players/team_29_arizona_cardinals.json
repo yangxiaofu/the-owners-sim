@@ -660,37 +660,6 @@
         "cap_hit_2025": 2925000
       }
     },
-    "2920": {
-      "player_id": 2920,
-      "first_name": "Elijah",
-      "last_name": "Wilkinson",
-      "number": 71,
-      "birthdate": "1998-02-09",
-      "positions": [
-        "offensive_guard"
-      ],
-      "team_id": 29,
-      "attributes": {
-        "overall": 76,
-        "speed": 70,
-        "strength": 81,
-        "pass_blocking": 78,
-        "run_blocking": 77,
-        "awareness": 78,
-        "discipline": 80,
-        "composure": 78,
-        "experience": 83,
-        "penalty_technique": 81
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 1800000,
-        "signing_bonus": 150000,
-        "guaranteed_money": 500000,
-        "contract_type": "free_agent",
-        "cap_hit_2025": 1875000
-      }
-    },
     "2921": {
       "player_id": 2921,
       "first_name": "Kelvin",

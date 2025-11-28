@@ -502,39 +502,6 @@
         "cap_hit_2025": 6500000
       }
     },
-    "2615": {
-      "player_id": 2615,
-      "first_name": "Feleipe",
-      "last_name": "Franks",
-      "number": 88,
-      "birthdate": "2001-10-02",
-      "positions": [
-        "tight_end"
-      ],
-      "team_id": 26,
-      "attributes": {
-        "overall": 72,
-        "speed": 71,
-        "hands": 73,
-        "route_running": 70,
-        "release": 71,
-        "catching": 74,
-        "blocking": 78,
-        "awareness": 73,
-        "discipline": 76,
-        "composure": 74,
-        "experience": 75,
-        "penalty_technique": 77
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 1000000,
-        "signing_bonus": 0,
-        "guaranteed_money": 0,
-        "contract_type": "minimum",
-        "cap_hit_2025": 1000000
-      }
-    },
     "2616": {
       "player_id": 2616,
       "first_name": "Ikem",
@@ -1041,38 +1008,6 @@
         "cap_hit_2025": 1000000
       }
     },
-    "2632": {
-      "player_id": 2632,
-      "first_name": "Shy",
-      "last_name": "Tuttle",
-      "number": 93,
-      "birthdate": "1999-02-08",
-      "positions": [
-        "defensive_tackle"
-      ],
-      "team_id": 26,
-      "attributes": {
-        "overall": 75,
-        "speed": 73,
-        "strength": 83,
-        "pass_rush": 76,
-        "run_defense": 78,
-        "power_moves": 77,
-        "awareness": 78,
-        "discipline": 81,
-        "composure": 79,
-        "experience": 81,
-        "penalty_technique": 82
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 1350000,
-        "signing_bonus": 100000,
-        "guaranteed_money": 300000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 1450000
-      }
-    },
     "2633": {
       "player_id": 2633,
       "first_name": "Shaq",
@@ -1135,38 +1070,6 @@
         "guaranteed_money": 2800000,
         "contract_type": "rookie",
         "cap_hit_2025": 1100000
-      }
-    },
-    "2635": {
-      "player_id": 2635,
-      "first_name": "Kamu",
-      "last_name": "Grugier-Hill",
-      "number": 54,
-      "birthdate": "1996-12-11",
-      "positions": [
-        "linebacker"
-      ],
-      "team_id": 26,
-      "attributes": {
-        "overall": 77,
-        "speed": 81,
-        "tackling": 81,
-        "coverage": 78,
-        "pass_rush": 74,
-        "run_defense": 79,
-        "awareness": 81,
-        "discipline": 83,
-        "composure": 81,
-        "experience": 85,
-        "penalty_technique": 84
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 1800000,
-        "signing_bonus": 200000,
-        "guaranteed_money": 500000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 2000000
       }
     },
     "2636": {
@@ -1391,38 +1294,6 @@
         "guaranteed_money": 200000,
         "contract_type": "veteran",
         "cap_hit_2025": 1400000
-      }
-    },
-    "2643": {
-      "player_id": 2643,
-      "first_name": "Tre'von",
-      "last_name": "Moehrig",
-      "number": 7,
-      "birthdate": "2001-11-12",
-      "positions": [
-        "safety"
-      ],
-      "team_id": 26,
-      "attributes": {
-        "overall": 81,
-        "speed": 84,
-        "man_coverage": 80,
-        "zone_coverage": 84,
-        "ball_skills": 83,
-        "tackling": 80,
-        "awareness": 84,
-        "discipline": 83,
-        "composure": 82,
-        "experience": 78,
-        "penalty_technique": 84
-      },
-      "contract": {
-        "contract_years": 3,
-        "annual_salary": 17000000,
-        "signing_bonus": 18000000,
-        "guaranteed_money": 34500000,
-        "contract_type": "free_agent",
-        "cap_hit_2025": 20000000
       }
     },
     "2644": {

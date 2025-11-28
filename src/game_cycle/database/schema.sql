@@ -218,6 +218,7 @@ CREATE TABLE IF NOT EXISTS draft_prospects (
     draft_class_id TEXT NOT NULL,
     dynasty_id TEXT NOT NULL,
     player_id INTEGER,  -- NULL until drafted, then links to players table
+    roster_player_id INTEGER,  -- Links to roster player after conversion (for tracking)
     first_name TEXT NOT NULL,
     last_name TEXT NOT NULL,
     position TEXT NOT NULL,
@@ -247,6 +248,7 @@ CREATE INDEX IF NOT EXISTS idx_prospects_position ON draft_prospects(dynasty_id,
 CREATE INDEX IF NOT EXISTS idx_prospects_available ON draft_prospects(dynasty_id, is_drafted);
 CREATE INDEX IF NOT EXISTS idx_prospects_overall ON draft_prospects(draft_class_id, overall DESC);
 CREATE INDEX IF NOT EXISTS idx_prospects_player_id ON draft_prospects(player_id);
+CREATE INDEX IF NOT EXISTS idx_prospects_roster_player_id ON draft_prospects(roster_player_id);
 
 -- Draft Order (picks for each round)
 CREATE TABLE IF NOT EXISTS draft_order (
@@ -321,3 +323,35 @@ CREATE INDEX IF NOT EXISTS idx_waiver_claims_dynasty ON waiver_claims(dynasty_id
 CREATE INDEX IF NOT EXISTS idx_waiver_claims_player ON waiver_claims(dynasty_id, player_id);
 CREATE INDEX IF NOT EXISTS idx_waiver_claims_team ON waiver_claims(dynasty_id, claiming_team_id);
 CREATE INDEX IF NOT EXISTS idx_waiver_claims_pending ON waiver_claims(dynasty_id, season, claim_status);
+
+-- ============================================
+-- Player Transactions (Audit Trail)
+-- ============================================
+
+-- Player transactions table - logs all roster moves
+CREATE TABLE IF NOT EXISTS player_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dynasty_id TEXT NOT NULL,
+    season INTEGER NOT NULL,
+    transaction_type TEXT NOT NULL,
+    player_id INTEGER NOT NULL,
+    first_name TEXT,
+    last_name TEXT,
+    position TEXT,
+    from_team_id INTEGER,
+    to_team_id INTEGER,
+    transaction_date TEXT,
+    details TEXT,
+    contract_id INTEGER,
+    event_id TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_player_transactions_dynasty ON player_transactions(dynasty_id);
+CREATE INDEX IF NOT EXISTS idx_player_transactions_player ON player_transactions(player_id);
+CREATE INDEX IF NOT EXISTS idx_player_transactions_type ON player_transactions(transaction_type);
+CREATE INDEX IF NOT EXISTS idx_player_transactions_season ON player_transactions(dynasty_id, season);
+CREATE INDEX IF NOT EXISTS idx_player_transactions_lastname ON player_transactions(last_name);
+CREATE INDEX IF NOT EXISTS idx_player_transactions_from_team ON player_transactions(from_team_id);
+CREATE INDEX IF NOT EXISTS idx_player_transactions_to_team ON player_transactions(to_team_id);

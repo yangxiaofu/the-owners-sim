@@ -1,7 +1,7 @@
 {
   "team_id": 21,
   "team_name": "Chicago Bears",
-  "total_players": 53,
+  "total_players": 52,
   "players": {
     "2100": {
       "player_id": 2100,
@@ -611,39 +611,6 @@
         "guaranteed_money": 299552,
         "contract_type": "rookie",
         "cap_hit_2025": 3640000
-      }
-    },
-    "2118": {
-      "player_id": 2118,
-      "first_name": "Joe",
-      "last_name": "Thuney",
-      "number": 62,
-      "birthdate": "1994-04-01",
-      "positions": [
-        "left_guard"
-      ],
-      "team_id": 21,
-      "attributes": {
-        "overall": 85,
-        "speed": 72,
-        "strength": 88,
-        "agility": 75,
-        "awareness": 88,
-        "discipline": 90,
-        "composure": 85,
-        "experience": 88,
-        "penalty_technique": 90,
-        "pass_blocking": 88,
-        "run_blocking": 85,
-        "consistency": 90
-      },
-      "contract": {
-        "contract_years": 2,
-        "annual_salary": 17500000,
-        "signing_bonus": 15000000,
-        "guaranteed_money": 33500000,
-        "contract_type": "extension",
-        "cap_hit_2025": 8000000
       }
     },
     "2119": {

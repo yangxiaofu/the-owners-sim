@@ -1,7 +1,7 @@
 {
   "team_id": 1,
   "team_name": "Buffalo Bills",
-  "total_players": 53,
+  "total_players": 51,
   "players": {
     "3001": {
       "player_id": 3001,
@@ -230,40 +230,6 @@
         "cap_hit_2025": 7200000
       }
     },
-    "3008": {
-      "player_id": 3008,
-      "first_name": "Von",
-      "last_name": "Miller",
-      "number": 40,
-      "birthdate": "1989-12-23",
-      "positions": [
-        "outside_linebacker"
-      ],
-      "team_id": 1,
-      "attributes": {
-        "overall": 88,
-        "speed": 85,
-        "strength": 85,
-        "pass_rush": 92,
-        "run_defense": 82,
-        "coverage": 75,
-        "agility": 88,
-        "awareness": 92,
-        "discipline": 88,
-        "composure": 90,
-        "experience": 95,
-        "penalty_technique": 85,
-        "finesse_moves": 95
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 0,
-        "signing_bonus": 0,
-        "guaranteed_money": 0,
-        "contract_type": "released",
-        "cap_hit_2025": 0
-      }
-    },
     "3009": {
       "player_id": 3009,
       "first_name": "Matt",
@@ -329,40 +295,6 @@
         "guaranteed_money": 3000000,
         "contract_type": "free_agent",
         "cap_hit_2025": 3000000
-      }
-    },
-    "3011": {
-      "player_id": 3011,
-      "first_name": "Micah",
-      "last_name": "Hyde",
-      "number": 23,
-      "birthdate": "1991-01-14",
-      "positions": [
-        "free_safety"
-      ],
-      "team_id": 1,
-      "attributes": {
-        "overall": 88,
-        "speed": 85,
-        "strength": 78,
-        "coverage": 90,
-        "run_defense": 82,
-        "agility": 88,
-        "awareness": 95,
-        "discipline": 92,
-        "composure": 90,
-        "experience": 90,
-        "penalty_technique": 92,
-        "tackling": 85,
-        "range": 92
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 0,
-        "signing_bonus": 0,
-        "guaranteed_money": 0,
-        "contract_type": "retired",
-        "cap_hit_2025": 0
       }
     },
     "3012": {

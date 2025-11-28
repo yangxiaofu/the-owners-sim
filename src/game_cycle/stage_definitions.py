@@ -55,6 +55,7 @@ class StageType(Enum):
     SUPER_BOWL = auto()
 
     # Offseason phases (Madden-style)
+    OFFSEASON_FRANCHISE_TAG = auto()      # Apply franchise/transition tags (before re-signing)
     OFFSEASON_RESIGNING = auto()          # Re-sign your own expiring players
     OFFSEASON_FREE_AGENCY = auto()        # Sign free agents from other teams
     OFFSEASON_DRAFT = auto()              # NFL Draft (7 rounds)
@@ -135,9 +136,9 @@ class Stage:
         elif name.startswith("OFFSEASON_"):
             # Map offseason stages to sequential numbers
             offseason_order = [
-                "OFFSEASON_RESIGNING", "OFFSEASON_FREE_AGENCY", "OFFSEASON_DRAFT",
-                "OFFSEASON_ROSTER_CUTS", "OFFSEASON_WAIVER_WIRE", "OFFSEASON_TRAINING_CAMP",
-                "OFFSEASON_PRESEASON"
+                "OFFSEASON_FRANCHISE_TAG", "OFFSEASON_RESIGNING", "OFFSEASON_FREE_AGENCY",
+                "OFFSEASON_DRAFT", "OFFSEASON_ROSTER_CUTS", "OFFSEASON_WAIVER_WIRE",
+                "OFFSEASON_TRAINING_CAMP", "OFFSEASON_PRESEASON"
             ]
             if name in offseason_order:
                 return offseason_order.index(name) + 1
@@ -204,6 +205,7 @@ GAME_STAGES = (
 
 # Offseason stages in order
 OFFSEASON_STAGES = [
+    StageType.OFFSEASON_FRANCHISE_TAG,
     StageType.OFFSEASON_RESIGNING,
     StageType.OFFSEASON_FREE_AGENCY,
     StageType.OFFSEASON_DRAFT,

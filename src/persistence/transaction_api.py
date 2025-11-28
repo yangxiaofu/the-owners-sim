@@ -103,12 +103,12 @@ class TransactionAPI:
         """
         query = '''
             SELECT
-                pt.transaction_id,
+                pt.id AS transaction_id,
                 pt.dynasty_id,
                 pt.season,
                 pt.transaction_type,
                 pt.player_id,
-                pt.player_name,
+                COALESCE(pt.first_name || ' ' || pt.last_name, '') AS player_name,
                 pt.position,
                 pt.from_team_id,
                 pt.to_team_id,
@@ -158,12 +158,12 @@ class TransactionAPI:
         if season is not None:
             query = '''
                 SELECT
-                    pt.transaction_id,
+                    pt.id AS transaction_id,
                     pt.dynasty_id,
                     pt.season,
                     pt.transaction_type,
                     pt.player_id,
-                    pt.player_name,
+                    COALESCE(pt.first_name || ' ' || pt.last_name, '') AS player_name,
                     pt.position,
                     pt.from_team_id,
                     pt.to_team_id,
@@ -182,12 +182,12 @@ class TransactionAPI:
         else:
             query = '''
                 SELECT
-                    pt.transaction_id,
+                    pt.id AS transaction_id,
                     pt.dynasty_id,
                     pt.season,
                     pt.transaction_type,
                     pt.player_id,
-                    pt.player_name,
+                    COALESCE(pt.first_name || ' ' || pt.last_name, '') AS player_name,
                     pt.position,
                     pt.from_team_id,
                     pt.to_team_id,
@@ -233,12 +233,12 @@ class TransactionAPI:
         """
         query = '''
             SELECT
-                pt.transaction_id,
+                pt.id AS transaction_id,
                 pt.dynasty_id,
                 pt.season,
                 pt.transaction_type,
                 pt.player_id,
-                pt.player_name,
+                COALESCE(pt.first_name || ' ' || pt.last_name, '') AS player_name,
                 pt.position,
                 pt.from_team_id,
                 pt.to_team_id,
@@ -260,7 +260,8 @@ class TransactionAPI:
         self,
         transaction_type: str,
         dynasty_id: str,
-        season: Optional[int] = None
+        season: Optional[int] = None,
+        limit: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
         Get all transactions of a specific type.
@@ -269,6 +270,7 @@ class TransactionAPI:
             transaction_type: Transaction type (DRAFT, UFA_SIGNING, RELEASE, etc.)
             dynasty_id: Dynasty identifier
             season: Optional season filter
+            limit: Optional maximum number of transactions to return
 
         Returns:
             List of transaction dicts sorted by date (newest first)
@@ -285,12 +287,12 @@ class TransactionAPI:
         if season is not None:
             query = '''
                 SELECT
-                    pt.transaction_id,
+                    pt.id AS transaction_id,
                     pt.dynasty_id,
                     pt.season,
                     pt.transaction_type,
                     pt.player_id,
-                    pt.player_name,
+                    COALESCE(pt.first_name || ' ' || pt.last_name, '') AS player_name,
                     pt.position,
                     pt.from_team_id,
                     pt.to_team_id,
@@ -305,16 +307,16 @@ class TransactionAPI:
                     AND pt.season = ?
                 ORDER BY pt.transaction_date DESC, pt.created_at DESC
             '''
-            params = (transaction_type, dynasty_id, season)
+            params = [transaction_type, dynasty_id, season]
         else:
             query = '''
                 SELECT
-                    pt.transaction_id,
+                    pt.id AS transaction_id,
                     pt.dynasty_id,
                     pt.season,
                     pt.transaction_type,
                     pt.player_id,
-                    pt.player_name,
+                    COALESCE(pt.first_name || ' ' || pt.last_name, '') AS player_name,
                     pt.position,
                     pt.from_team_id,
                     pt.to_team_id,
@@ -328,9 +330,14 @@ class TransactionAPI:
                     AND pt.dynasty_id = ?
                 ORDER BY pt.transaction_date DESC, pt.created_at DESC
             '''
-            params = (transaction_type, dynasty_id)
+            params = [transaction_type, dynasty_id]
 
-        results = self.db_connection.execute_query(query, params)
+        # Add limit clause if specified
+        if limit is not None:
+            query += ' LIMIT ?'
+            params.append(limit)
+
+        results = self.db_connection.execute_query(query, tuple(params))
         return [self._parse_transaction_row(row) for row in results]
 
     def get_transactions_by_date_range(
@@ -365,12 +372,12 @@ class TransactionAPI:
         """
         query = '''
             SELECT
-                pt.transaction_id,
+                pt.id AS transaction_id,
                 pt.dynasty_id,
                 pt.season,
                 pt.transaction_type,
                 pt.player_id,
-                pt.player_name,
+                COALESCE(pt.first_name || ' ' || pt.last_name, '') AS player_name,
                 pt.position,
                 pt.from_team_id,
                 pt.to_team_id,

@@ -700,37 +700,6 @@
         "cap_hit_2025": 980000
       }
     },
-    "3222": {
-      "player_id": 3222,
-      "first_name": "Leonard",
-      "last_name": "Williams",
-      "number": 99,
-      "birthdate": "1990-01-14",
-      "positions": [
-        "defensive_tackle"
-      ],
-      "team_id": 32,
-      "attributes": {
-        "overall": 88,
-        "speed": 76,
-        "acceleration": 77,
-        "pass_rush": 87,
-        "run_defense": 90,
-        "discipline": 88,
-        "composure": 87,
-        "experience": 92,
-        "penalty_technique": 89,
-        "awareness": 89
-      },
-      "contract": {
-        "contract_years": 3,
-        "annual_salary": 21500000,
-        "signing_bonus": 24900000,
-        "guaranteed_money": 43850000,
-        "contract_type": "trade_extension",
-        "cap_hit_2025": 15044715
-      }
-    },
     "3223": {
       "player_id": 3223,
       "first_name": "Jarran",
@@ -1200,37 +1169,6 @@
         "guaranteed_money": 6260000,
         "contract_type": "free_agent",
         "cap_hit_2025": 7900000
-      }
-    },
-    "3238": {
-      "player_id": 3238,
-      "first_name": "K'Von",
-      "last_name": "Wallace",
-      "number": 36,
-      "birthdate": "2002-03-07",
-      "positions": [
-        "safety"
-      ],
-      "team_id": 32,
-      "attributes": {
-        "overall": 76,
-        "speed": 83,
-        "acceleration": 84,
-        "coverage": 77,
-        "tackling": 78,
-        "discipline": 81,
-        "composure": 79,
-        "experience": 78,
-        "penalty_technique": 80,
-        "awareness": 80
-      },
-      "contract": {
-        "contract_years": 2,
-        "annual_salary": 1150000,
-        "signing_bonus": 150000,
-        "guaranteed_money": 350000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 1150000
       }
     },
     "3239": {

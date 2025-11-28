@@ -19,6 +19,7 @@ Architecture:
 
 import sqlite3
 import json
+import random
 from typing import Dict, List, Any, Optional
 from datetime import date, datetime
 from pathlib import Path
@@ -109,6 +110,9 @@ class DraftClassAPI_IMPL:
                         conn.commit()  # Only commit if we own the connection
 
                     self.logger.info("Draft class schema initialized successfully")
+
+                # Always check for roster_player_id column (migration for existing DBs)
+                self._ensure_roster_player_id_column(conn, should_close)
             finally:
                 if should_close:
                     conn.close()
@@ -116,6 +120,34 @@ class DraftClassAPI_IMPL:
         except Exception as e:
             self.logger.error(f"Error ensuring schema exists: {e}")
             raise
+
+    def _ensure_roster_player_id_column(self, conn: sqlite3.Connection, should_commit: bool) -> None:
+        """
+        Ensure roster_player_id column exists in draft_prospects table.
+
+        This is a migration for existing databases that were created before
+        the roster_player_id column was added.
+
+        Args:
+            conn: Database connection
+            should_commit: If True, commit changes (only when owning the connection)
+        """
+        try:
+            cursor = conn.execute("PRAGMA table_info(draft_prospects)")
+            columns = [row[1] for row in cursor.fetchall()]
+
+            if 'roster_player_id' not in columns:
+                conn.execute("ALTER TABLE draft_prospects ADD COLUMN roster_player_id INTEGER")
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_prospects_roster_player_id "
+                    "ON draft_prospects(roster_player_id)"
+                )
+                if should_commit:
+                    conn.commit()
+                self.logger.info("Added roster_player_id column to draft_prospects table")
+        except sqlite3.OperationalError as e:
+            # Table doesn't exist yet or other error - not critical
+            self.logger.debug(f"Could not add roster_player_id column: {e}")
 
     # ========================================================================
     # GENERATION METHODS
@@ -717,6 +749,41 @@ class DraftClassAPI_IMPL:
         attributes = prospect['attributes'].copy()
         attributes['overall'] = prospect['overall']
 
+        # Calculate birthdate from prospect age
+        # draft_class_id format: "DRAFT_{dynasty_id}_{season}"
+        prospect_age = prospect.get('age')
+        if prospect_age is None:
+            raise ValueError(
+                f"Prospect {player_id} has no age set. Cannot calculate birthdate."
+            )
+
+        draft_class_id = prospect.get('draft_class_id')
+        if not draft_class_id:
+            raise ValueError(
+                f"Prospect {player_id} has no draft_class_id. Cannot determine draft year."
+            )
+
+        try:
+            draft_year = int(draft_class_id.split('_')[-1])
+        except (ValueError, IndexError) as e:
+            raise ValueError(
+                f"Cannot parse draft year from draft_class_id '{draft_class_id}': {e}"
+            )
+
+        # Birth year = draft year - age
+        # Example: 22-year-old drafted in 2025 was born in 2003
+        birth_year = draft_year - prospect_age
+
+        # Randomize month/day for realism
+        birth_month = random.randint(1, 12)
+        birth_day = random.randint(1, 28)  # Use 28 to avoid invalid dates
+        birthdate = f"{birth_year}-{birth_month:02d}-{birth_day:02d}"
+
+        self.logger.debug(
+            f"Calculated birthdate for {prospect['first_name']} {prospect['last_name']}: "
+            f"age {prospect_age} in {draft_year} → born {birthdate}"
+        )
+
         # Create player record using PlayerRosterAPI
         # IMPORTANT: We use NEW player_id to prevent ID collisions
         with sqlite3.connect(self.database_path, timeout=30.0) as conn:
@@ -733,7 +800,7 @@ class DraftClassAPI_IMPL:
                 team_id=team_id,
                 positions=positions,
                 attributes=attributes,  # Now includes overall rating
-                birthdate=None  # Calculate from age if needed
+                birthdate=birthdate  # Calculated from prospect age
             )
 
             # Add to roster

@@ -5,10 +5,13 @@ Handles roster cut operations during the offseason roster cuts stage.
 Implements AI auto-cut suggestions and dead money calculations.
 """
 
+from datetime import date
 from typing import Dict, List, Any, Optional, Set
 import logging
 import sqlite3
 import json
+
+from persistence.transaction_logger import TransactionLogger
 
 
 class RosterCutsService:
@@ -87,6 +90,86 @@ class RosterCutsService:
         self._season = season
         self._logger = logging.getLogger(__name__)
 
+        # Lazy-loaded cap helper
+        self._cap_helper = None
+
+        # Transaction logger for audit trail
+        self._transaction_logger = TransactionLogger(db_path)
+
+        # Ensure waiver tables exist (migration for existing databases)
+        self._ensure_tables()
+
+    def _get_cap_helper(self):
+        """Get or create cap helper instance.
+
+        Uses season + 1 because during offseason roster cuts,
+        cap calculations are for the NEXT league year.
+        """
+        if self._cap_helper is None:
+            from .cap_helper import CapHelper
+            # Offseason cap calculations are for NEXT season
+            self._cap_helper = CapHelper(self._db_path, self._dynasty_id, self._season + 1)
+        return self._cap_helper
+
+    def _ensure_tables(self):
+        """Create waiver tables if they don't exist (handles schema migration)."""
+        conn = sqlite3.connect(self._db_path)
+        try:
+            conn.executescript('''
+                CREATE TABLE IF NOT EXISTS waiver_wire (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    dynasty_id TEXT NOT NULL,
+                    player_id INTEGER NOT NULL,
+                    former_team_id INTEGER NOT NULL,
+                    waiver_status TEXT DEFAULT 'on_waivers',
+                    waiver_order INTEGER,
+                    claiming_team_id INTEGER,
+                    dead_money INTEGER DEFAULT 0,
+                    cap_savings INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    cleared_at TIMESTAMP,
+                    season INTEGER NOT NULL,
+                    UNIQUE(dynasty_id, player_id, season)
+                );
+
+                CREATE TABLE IF NOT EXISTS waiver_claims (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    dynasty_id TEXT NOT NULL,
+                    season INTEGER NOT NULL,
+                    waiver_id INTEGER NOT NULL,
+                    player_id INTEGER NOT NULL,
+                    claiming_team_id INTEGER NOT NULL,
+                    claim_priority INTEGER NOT NULL,
+                    claim_status TEXT DEFAULT 'pending',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    processed_at TIMESTAMP,
+                    UNIQUE(dynasty_id, season, player_id, claiming_team_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_waiver_wire_dynasty ON waiver_wire(dynasty_id);
+                CREATE INDEX IF NOT EXISTS idx_waiver_wire_status ON waiver_wire(dynasty_id, waiver_status);
+                CREATE INDEX IF NOT EXISTS idx_waiver_wire_season ON waiver_wire(dynasty_id, season);
+                CREATE INDEX IF NOT EXISTS idx_waiver_claims_dynasty ON waiver_claims(dynasty_id);
+                CREATE INDEX IF NOT EXISTS idx_waiver_claims_player ON waiver_claims(dynasty_id, player_id);
+                CREATE INDEX IF NOT EXISTS idx_waiver_claims_pending ON waiver_claims(dynasty_id, season, claim_status);
+            ''')
+            conn.commit()
+        finally:
+            conn.close()
+
+    def get_cap_summary(self, team_id: int) -> dict:
+        """
+        Get salary cap summary for a team.
+
+        Args:
+            team_id: Team ID
+
+        Returns:
+            Dict with salary_cap_limit, total_spending, available_space,
+            dead_money, is_compliant
+        """
+        return self._get_cap_helper().get_cap_summary(team_id)
+
     def get_team_roster_for_cuts(self, team_id: int) -> List[Dict[str, Any]]:
         """
         Get full roster for a team with all data needed for cut decisions.
@@ -132,11 +215,11 @@ class RosterCutsService:
                 except (ValueError, IndexError):
                     pass
 
-            # Get contract info
+            # Get contract info (use season + 1 for offseason: contracts are for NEXT league year)
             contract = cap_api.get_player_contract(
                 player_id=player_id,
                 team_id=team_id,
-                season=self._season,
+                season=self._season + 1,
                 dynasty_id=self._dynasty_id
             )
 
@@ -153,8 +236,8 @@ class RosterCutsService:
                 years_remaining = max(0, contract.get("end_year", self._season) - self._season + 1)
                 cap_hit = salary + (signing_bonus // max(contract_years, 1))
 
-            # Calculate dead money and cap savings if cut
-            dead_money, cap_savings = self._calculate_cut_cap_impact(
+            # Calculate dead money and cap savings if cut (immediate, no June 1)
+            dead_money, cap_savings, _ = self._calculate_cut_cap_impact(
                 signing_bonus=signing_bonus,
                 contract_years=contract_years,
                 years_remaining=years_remaining,
@@ -254,7 +337,8 @@ class RosterCutsService:
         self,
         player_id: int,
         team_id: int,
-        add_to_waivers: bool = True
+        add_to_waivers: bool = True,
+        use_june_1: bool = False
     ) -> Dict[str, Any]:
         """
         Cut a player from the roster with dead money calculation.
@@ -263,13 +347,16 @@ class RosterCutsService:
             player_id: Player ID to cut
             team_id: Team ID
             add_to_waivers: Whether to add player to waiver wire (default True)
+            use_june_1: If True, use Post-June 1 designation to spread dead money over 2 years
 
         Returns:
             Dict with:
                 - success: bool
                 - player_name: str
-                - dead_money: int
+                - dead_money: int (current year dead money)
+                - dead_money_next_year: int (next year dead money, if June 1)
                 - cap_savings: int
+                - use_june_1: bool
                 - error_message: str (if failed)
         """
         from database.player_roster_api import PlayerRosterAPI
@@ -290,16 +377,17 @@ class RosterCutsService:
 
             player_name = f"{player_info.get('first_name', '')} {player_info.get('last_name', '')}".strip()
 
-            # Get contract info
+            # Get contract info (use season + 1 for offseason: contracts are for NEXT league year)
             contract = cap_api.get_player_contract(
                 player_id=player_id,
                 team_id=team_id,
-                season=self._season,
+                season=self._season + 1,
                 dynasty_id=self._dynasty_id
             )
 
             dead_money = 0
             cap_savings = 0
+            dead_money_next_year = 0
 
             if contract:
                 contract_years = contract.get("contract_years", 1)
@@ -307,11 +395,12 @@ class RosterCutsService:
                 signing_bonus = contract.get("signing_bonus", 0)
                 annual_salary = contract.get("total_value", 0) // max(contract_years, 1)
 
-                dead_money, cap_savings = self._calculate_cut_cap_impact(
+                dead_money, cap_savings, dead_money_next_year = self._calculate_cut_cap_impact(
                     signing_bonus=signing_bonus,
                     contract_years=contract_years,
                     years_remaining=years_remaining,
-                    annual_salary=annual_salary
+                    annual_salary=annual_salary,
+                    use_june_1=use_june_1
                 )
 
                 # Void the contract
@@ -334,8 +423,29 @@ class RosterCutsService:
                 new_team_id=0  # Will be on waiver wire
             )
 
+            june_1_str = " (June 1)" if use_june_1 else ""
+            next_yr_str = f", Next year: ${dead_money_next_year:,}" if dead_money_next_year else ""
             self._logger.info(
-                f"Cut {player_name} from team {team_id}. Dead money: ${dead_money:,}, Savings: ${cap_savings:,}"
+                f"Cut {player_name} from team {team_id}{june_1_str}. Dead money: ${dead_money:,}{next_yr_str}, Savings: ${cap_savings:,}"
+            )
+
+            # Log transaction for audit trail
+            self._transaction_logger.log_transaction(
+                dynasty_id=self._dynasty_id,
+                season=self._season + 1,  # Cut is during next season's preseason
+                transaction_type="ROSTER_CUT",
+                player_id=player_id,
+                player_name=player_name,
+                from_team_id=team_id,
+                to_team_id=None,  # To waivers/free agency
+                transaction_date=date(self._season + 1, 8, 27),  # Roster cut deadline (next year)
+                details={
+                    "dead_money": dead_money,
+                    "dead_money_next_year": dead_money_next_year,
+                    "cap_savings": cap_savings,
+                    "use_june_1": use_june_1,
+                    "reason": "roster_limit",
+                }
             )
 
             return {
@@ -343,7 +453,9 @@ class RosterCutsService:
                 "player_name": player_name,
                 "player_id": player_id,
                 "dead_money": dead_money,
+                "dead_money_next_year": dead_money_next_year,
                 "cap_savings": cap_savings,
+                "use_june_1": use_june_1,
             }
 
         except Exception as e:
@@ -435,7 +547,8 @@ class RosterCutsService:
         signing_bonus: int,
         contract_years: int,
         years_remaining: int,
-        annual_salary: int
+        annual_salary: int,
+        use_june_1: bool = False
     ) -> tuple:
         """
         Calculate dead money and cap savings when cutting a player.
@@ -444,29 +557,44 @@ class RosterCutsService:
         - Dead money = remaining signing bonus proration
         - Cap savings = annual salary - dead money accelerated
 
+        Post-June 1 designation:
+        - Current year dead money = 1 year of proration only
+        - Next year dead money = remaining prorated bonus
+        - More immediate cap relief, but dead money spreads to next year
+
         Args:
             signing_bonus: Total signing bonus
             contract_years: Total years on contract
             years_remaining: Years left on contract
             annual_salary: Annual base salary
+            use_june_1: If True, use Post-June 1 designation (spread dead money)
 
         Returns:
-            Tuple of (dead_money, cap_savings)
+            Tuple of (dead_money, cap_savings, dead_money_next_year)
+            dead_money_next_year is 0 for immediate cuts
         """
         if contract_years <= 0:
-            return 0, annual_salary
+            return 0, annual_salary, 0
 
         # Proration per year
         proration = signing_bonus // contract_years
 
-        # Dead money = remaining prorated bonus accelerated
-        dead_money = proration * years_remaining
+        if use_june_1 and years_remaining > 1:
+            # Post-June 1: Split dead money over 2 years
+            # Current year: 1 year of proration
+            dead_money = proration
+            # Next year: remaining prorated bonus
+            dead_money_next_year = proration * (years_remaining - 1)
+        else:
+            # Immediate cut: All dead money accelerates to current year
+            dead_money = proration * years_remaining
+            dead_money_next_year = 0
 
         # Cap savings = this year's salary (contract is voided)
         # If dead_money > salary, team actually loses cap space
         cap_savings = max(0, annual_salary - dead_money)
 
-        return dead_money, cap_savings
+        return dead_money, cap_savings, dead_money_next_year
 
     def _calculate_player_value(
         self,

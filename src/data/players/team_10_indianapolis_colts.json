@@ -1,7 +1,7 @@
 {
   "team_id": 10,
   "team_name": "Indianapolis Colts",
-  "total_players": 53,
+  "total_players": 51,
   "players": {
     "10001": {
       "player_id": 10001,
@@ -1453,40 +1453,6 @@
         "cap_hit_2025": 12250000
       }
     },
-    "10043": {
-      "player_id": 10043,
-      "first_name": "Charvarius",
-      "last_name": "Ward",
-      "number": 39,
-      "birthdate": "1994-03-10",
-      "positions": [
-        "cornerback"
-      ],
-      "team_id": 10,
-      "attributes": {
-        "overall": 82,
-        "speed": 85,
-        "strength": 82,
-        "agility": 85,
-        "awareness": 82,
-        "discipline": 85,
-        "composure": 82,
-        "experience": 85,
-        "penalty_technique": 85,
-        "coverage": 85,
-        "man_coverage": 88,
-        "physicality": 88,
-        "press_coverage": 85
-      },
-      "contract": {
-        "contract_years": 3,
-        "annual_salary": 18000000,
-        "signing_bonus": 20000000,
-        "guaranteed_money": 35000000,
-        "contract_type": "free_agent",
-        "cap_hit_2025": 24666668
-      }
-    },
     "10044": {
       "player_id": 10044,
       "first_name": "Mekhi",
@@ -1519,39 +1485,6 @@
         "guaranteed_money": 250000,
         "contract_type": "rookie",
         "cap_hit_2025": 1047500
-      }
-    },
-    "10045": {
-      "player_id": 10045,
-      "first_name": "Jaylon",
-      "last_name": "Jones",
-      "number": 40,
-      "birthdate": "1999-07-16",
-      "positions": [
-        "cornerback"
-      ],
-      "team_id": 10,
-      "attributes": {
-        "overall": 73,
-        "speed": 82,
-        "strength": 72,
-        "agility": 80,
-        "awareness": 72,
-        "discipline": 75,
-        "composure": 72,
-        "experience": 80,
-        "penalty_technique": 75,
-        "coverage": 78,
-        "ball_skills": 78,
-        "special_teams": 85
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 1100000,
-        "signing_bonus": 50000,
-        "guaranteed_money": 150000,
-        "contract_type": "free_agent",
-        "cap_hit_2025": 1112500
       }
     },
     "10046": {

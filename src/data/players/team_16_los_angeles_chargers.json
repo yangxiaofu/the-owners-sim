@@ -1,7 +1,7 @@
 {
   "team_id": 16,
   "team_name": "Los Angeles Chargers",
-  "total_players": 53,
+  "total_players": 48,
   "players": {
     "16001": {
       "player_id": 16001,
@@ -101,41 +101,6 @@
         "guaranteed_money": 0,
         "contract_type": "minimum",
         "cap_hit_2025": 985000
-      }
-    },
-    "16004": {
-      "player_id": 16004,
-      "first_name": "Najee",
-      "last_name": "Harris",
-      "number": 22,
-      "birthdate": "1997-04-18",
-      "positions": [
-        "running_back"
-      ],
-      "team_id": 16,
-      "attributes": {
-        "overall": 84,
-        "speed": 82,
-        "strength": 88,
-        "agility": 80,
-        "hands": 80,
-        "awareness": 82,
-        "discipline": 85,
-        "composure": 82,
-        "experience": 82,
-        "penalty_technique": 85,
-        "power": 85,
-        "vision": 82,
-        "elusiveness": 78,
-        "receiving": 80
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 5250000,
-        "signing_bonus": 3750000,
-        "guaranteed_money": 5250000,
-        "contract_type": "free_agent",
-        "cap_hit_2025": 5258190
       }
     },
     "16005": {
@@ -451,41 +416,6 @@
         "guaranteed_money": 0,
         "contract_type": "minimum",
         "cap_hit_2025": 915000
-      }
-    },
-    "16014": {
-      "player_id": 16014,
-      "first_name": "Tyler",
-      "last_name": "Conklin",
-      "number": 83,
-      "birthdate": "1994-03-04",
-      "positions": [
-        "tight_end"
-      ],
-      "team_id": 16,
-      "attributes": {
-        "overall": 78,
-        "speed": 75,
-        "strength": 82,
-        "agility": 75,
-        "hands": 82,
-        "awareness": 78,
-        "discipline": 80,
-        "composure": 80,
-        "experience": 85,
-        "penalty_technique": 80,
-        "route_running": 80,
-        "blocking": 75,
-        "catching": 80,
-        "reliability": 85
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 3000000,
-        "signing_bonus": 1575000,
-        "guaranteed_money": 2830000,
-        "contract_type": "free_agent",
-        "cap_hit_2025": 3197560
       }
     },
     "16015": {
@@ -1041,40 +971,6 @@
         "cap_hit_2025": 1900000
       }
     },
-    "16031": {
-      "player_id": 16031,
-      "first_name": "Naquan",
-      "last_name": "Jones",
-      "number": 96,
-      "birthdate": "1996-09-05",
-      "positions": [
-        "defensive_tackle"
-      ],
-      "team_id": 16,
-      "attributes": {
-        "overall": 76,
-        "speed": 68,
-        "strength": 85,
-        "agility": 68,
-        "awareness": 75,
-        "discipline": 78,
-        "composure": 75,
-        "experience": 80,
-        "penalty_technique": 78,
-        "pass_rush": 68,
-        "run_defense": 82,
-        "power_moves": 78,
-        "anchor": 82
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 1800000,
-        "signing_bonus": 350000,
-        "guaranteed_money": 1000000,
-        "contract_type": "reserve",
-        "cap_hit_2025": 2150000
-      }
-    },
     "16032": {
       "player_id": 16032,
       "first_name": "Otito",
@@ -1563,76 +1459,6 @@
         "cap_hit_2025": 1186964
       }
     },
-    "16046": {
-      "player_id": 16046,
-      "first_name": "Elijah",
-      "last_name": "Molden",
-      "number": 2,
-      "birthdate": "2001-11-02",
-      "positions": [
-        "cornerback"
-      ],
-      "team_id": 16,
-      "attributes": {
-        "overall": 76,
-        "speed": 82,
-        "strength": 72,
-        "agility": 85,
-        "awareness": 78,
-        "discipline": 80,
-        "composure": 78,
-        "experience": 78,
-        "penalty_technique": 80,
-        "man_coverage": 78,
-        "zone_coverage": 80,
-        "ball_skills": 75,
-        "tackling": 78,
-        "slot_coverage": 85
-      },
-      "contract": {
-        "contract_years": 3,
-        "annual_salary": 6250000,
-        "signing_bonus": 5750000,
-        "guaranteed_money": 13500000,
-        "contract_type": "free_agent",
-        "cap_hit_2025": 8666667
-      }
-    },
-    "16047": {
-      "player_id": 16047,
-      "first_name": "Benjamin",
-      "last_name": "St-Juste",
-      "number": 24,
-      "birthdate": "2001-01-24",
-      "positions": [
-        "cornerback"
-      ],
-      "team_id": 16,
-      "attributes": {
-        "overall": 74,
-        "speed": 82,
-        "strength": 78,
-        "agility": 78,
-        "awareness": 72,
-        "discipline": 75,
-        "composure": 72,
-        "experience": 78,
-        "penalty_technique": 75,
-        "man_coverage": 76,
-        "zone_coverage": 72,
-        "ball_skills": 70,
-        "tackling": 76,
-        "size": 82
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 1500000,
-        "signing_bonus": 250000,
-        "guaranteed_money": 800000,
-        "contract_type": "reserve",
-        "cap_hit_2025": 1750000
-      }
-    },
     "16048": {
       "player_id": 16048,
       "first_name": "Alohi",
@@ -1666,41 +1492,6 @@
         "guaranteed_money": 5625000,
         "contract_type": "extension",
         "cap_hit_2025": 6755985
-      }
-    },
-    "16049": {
-      "player_id": 16049,
-      "first_name": "Tony",
-      "last_name": "Jefferson",
-      "number": 23,
-      "birthdate": "1990-10-23",
-      "positions": [
-        "safety"
-      ],
-      "team_id": 16,
-      "attributes": {
-        "overall": 75,
-        "speed": 78,
-        "strength": 82,
-        "agility": 75,
-        "awareness": 85,
-        "discipline": 88,
-        "composure": 85,
-        "experience": 92,
-        "penalty_technique": 88,
-        "man_coverage": 68,
-        "zone_coverage": 80,
-        "ball_skills": 78,
-        "tackling": 80,
-        "leadership": 88
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 1400000,
-        "signing_bonus": 250000,
-        "guaranteed_money": 750000,
-        "contract_type": "reserve",
-        "cap_hit_2025": 1650000
       }
     },
     "16050": {

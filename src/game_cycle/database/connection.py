@@ -54,6 +54,24 @@ class GameCycleDatabase:
         conn.executescript(schema_sql)
         conn.commit()
 
+        # Run migrations for existing databases
+        self._run_migrations()
+
+    def _run_migrations(self) -> None:
+        """Run database migrations for existing databases."""
+        conn = self.get_connection()
+
+        # Migration 1: Add roster_player_id to draft_prospects if missing
+        try:
+            cursor = conn.execute("PRAGMA table_info(draft_prospects)")
+            columns = [row[1] for row in cursor.fetchall()]
+            if 'roster_player_id' not in columns:
+                conn.execute("ALTER TABLE draft_prospects ADD COLUMN roster_player_id INTEGER")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_prospects_roster_player_id ON draft_prospects(roster_player_id)")
+                conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Table doesn't exist yet (new database)
+
     def get_connection(self) -> sqlite3.Connection:
         """
         Get database connection (creates if needed).

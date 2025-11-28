@@ -36,6 +36,32 @@ class TagManager:
     FRANCHISE_TAG_TOP_N = 5  # Top 5 average for franchise tag
     TRANSITION_TAG_TOP_N = 10  # Top 10 average for transition tag
 
+    # NFL Franchise Tag Position Categories
+    # Maps tag category to all position variants that belong to it
+    # The NFL calculates franchise tags by position GROUP, not individual variants
+    TAG_POSITION_GROUPS = {
+        'QB': ['quarterback'],
+        'RB': ['running_back', 'fullback'],
+        'WR': ['wide_receiver'],
+        'TE': ['tight_end'],
+        'OL': [
+            'left_tackle', 'right_tackle', 'tackle', 'offensive_tackle',
+            'left_guard', 'right_guard', 'guard', 'offensive_guard',
+            'center'
+        ],
+        'DE': ['defensive_end'],
+        'DT': ['defensive_tackle', 'nose_tackle'],
+        'LB': [
+            'linebacker', 'mike_linebacker', 'will_linebacker', 'sam_linebacker',
+            'inside_linebacker', 'outside_linebacker', 'middle_linebacker'
+        ],
+        'CB': ['cornerback'],
+        'S': ['safety', 'free_safety', 'strong_safety'],
+        'K': ['kicker'],
+        'P': ['punter'],
+        'LS': ['long_snapper'],
+    }
+
     # Consecutive tag escalators
     SECOND_TAG_MULTIPLIER = 1.20  # 120% of previous tag
     THIRD_TAG_MULTIPLIER = 1.44  # 144% of original tag
@@ -162,7 +188,8 @@ class TagManager:
         dynasty_id: str,
         position: str,
         tag_type: str = "NON_EXCLUSIVE",
-        tag_date: Optional[date] = None
+        tag_date: Optional[date] = None,
+        player_name: Optional[str] = None
     ) -> int:
         """
         Apply franchise tag to player.
@@ -260,11 +287,11 @@ class TagManager:
                 season=season,
                 transaction_type="FRANCHISE_TAG",
                 player_id=player_id,
-                player_name=f"Player {player_id}",  # Would get from player data in real implementation
+                player_name=player_name or f"Player {player_id}",
                 transaction_date=tag_date,
                 position=position,
-                from_team_id=None,
-                to_team_id=team_id,
+                from_team_id=team_id,  # Player is already on this team
+                to_team_id=team_id,    # Player stays on same team
                 details={
                     "tag_type": tag_type,
                     "tag_salary": tag_salary,
@@ -285,7 +312,8 @@ class TagManager:
         season: int,
         dynasty_id: str,
         position: str,
-        tag_date: Optional[date] = None
+        tag_date: Optional[date] = None,
+        player_name: Optional[str] = None
     ) -> int:
         """
         Apply transition tag to player.
@@ -360,11 +388,11 @@ class TagManager:
                 season=season,
                 transaction_type="TRANSITION_TAG",
                 player_id=player_id,
-                player_name=f"Player {player_id}",  # Would get from player data in real implementation
+                player_name=player_name or f"Player {player_id}",
                 transaction_date=tag_date,
                 position=position,
-                from_team_id=None,
-                to_team_id=team_id,
+                from_team_id=team_id,  # Player is already on this team
+                to_team_id=team_id,    # Player stays on same team
                 details={
                     "tag_salary": tag_salary,
                     "cap_impact": tag_salary
@@ -502,6 +530,67 @@ class TagManager:
     # HELPER METHODS
     # ========================================================================
 
+    def _get_tag_category(self, position: str) -> str:
+        """
+        Map any position input to its NFL franchise tag category.
+
+        The NFL groups positions for franchise tag calculations. For example,
+        all linebacker variants (mike, will, sam, inside, outside) are grouped
+        together when calculating the "LB" franchise tag.
+
+        Handles:
+        - Abbreviations: "QB", "LB", "MIKE"
+        - Full names: "quarterback", "mike_linebacker"
+        - Mixed case: "Mike_Linebacker", "Quarterback"
+
+        Args:
+            position: Position in any format
+
+        Returns:
+            Tag category string (QB, LB, DT, etc.)
+        """
+        position_lower = position.lower().replace(' ', '_')
+
+        # Check if it's already a tag category
+        if position.upper() in self.TAG_POSITION_GROUPS:
+            return position.upper()
+
+        # Find which category contains this position
+        for category, positions in self.TAG_POSITION_GROUPS.items():
+            if position_lower in positions:
+                return category
+
+        # Handle abbreviation inputs that need translation
+        abbrev_to_full = {
+            # Offense
+            'qb': 'quarterback', 'rb': 'running_back', 'fb': 'fullback',
+            'wr': 'wide_receiver', 'te': 'tight_end',
+            # Offensive line
+            'lt': 'left_tackle', 'rt': 'right_tackle', 'lg': 'left_guard',
+            'rg': 'right_guard', 'c': 'center', 'ol': 'left_tackle',  # OL maps to any OL position
+            # Defensive line
+            'de': 'defensive_end', 'dt': 'defensive_tackle', 'nt': 'nose_tackle',
+            'dl': 'defensive_tackle',  # Generic DL maps to DT category
+            # Linebackers
+            'lb': 'linebacker', 'ilb': 'inside_linebacker', 'olb': 'outside_linebacker',
+            'mlb': 'middle_linebacker', 'mike': 'mike_linebacker',
+            'will': 'will_linebacker', 'sam': 'sam_linebacker',
+            # Secondary
+            'cb': 'cornerback', 's': 'safety', 'fs': 'free_safety', 'ss': 'strong_safety',
+            'db': 'cornerback',  # Generic DB maps to CB category
+            # Special teams
+            'k': 'kicker', 'p': 'punter', 'ls': 'long_snapper',
+        }
+
+        if position_lower in abbrev_to_full:
+            full_position = abbrev_to_full[position_lower]
+            for category, positions in self.TAG_POSITION_GROUPS.items():
+                if full_position in positions:
+                    return category
+
+        self.logger.warning(f"Unknown position '{position}', defaulting to position as-is")
+        return position.upper()
+
     def _get_top_position_salaries(
         self,
         position: str,
@@ -510,10 +599,13 @@ class TagManager:
         top_n: int
     ) -> List[int]:
         """
-        Get top N salaries for position in given season.
+        Get top N salaries for position GROUP in given season.
+
+        Groups all position variants (e.g., all linebacker types) together
+        as the NFL does for franchise tag calculations.
 
         Args:
-            position: Player position
+            position: Player position (any format: "QB", "quarterback", "mike_linebacker")
             season: Season year
             dynasty_id: Dynasty identifier
             top_n: Number of top salaries to retrieve
@@ -521,20 +613,54 @@ class TagManager:
         Returns:
             List of top N cap hits (sorted descending)
         """
-        # This would query contract_year_details for all players at position
-        # For now, return empty list (would be implemented with player position data)
+        import sqlite3
 
-        # TODO: Implement once player position tracking is added
-        # Query: SELECT total_cap_hit FROM contract_year_details
-        #        JOIN player_contracts ON ...
-        #        WHERE position = ? AND season_year = ? AND dynasty_id = ?
-        #        ORDER BY total_cap_hit DESC LIMIT ?
+        # Get the tag category and all positions in that group
+        tag_category = self._get_tag_category(position)
+        position_variants = self.TAG_POSITION_GROUPS.get(tag_category, [position.lower()])
 
-        self.logger.warning(
-            f"Position salary lookup not yet implemented for {position}. "
-            f"Using empty list."
-        )
-        return []
+        # Build LIKE conditions for all position variants in the group
+        # e.g., "p.positions LIKE '%linebacker%' OR p.positions LIKE '%mike_linebacker%'"
+        like_conditions = " OR ".join([f"p.positions LIKE ?" for _ in position_variants])
+        like_params = [f'%{pos}%' for pos in position_variants]
+
+        query = f'''
+            SELECT cyd.total_cap_hit
+            FROM contract_year_details cyd
+            JOIN player_contracts pc ON cyd.contract_id = pc.contract_id
+            JOIN players p ON pc.player_id = p.player_id AND pc.dynasty_id = p.dynasty_id
+            WHERE pc.dynasty_id = ?
+              AND cyd.season_year = ?
+              AND pc.is_active = TRUE
+              AND ({like_conditions})
+            ORDER BY cyd.total_cap_hit DESC
+            LIMIT ?
+        '''
+
+        try:
+            with sqlite3.connect(self.db_api.database_path) as conn:
+                cursor = conn.cursor()
+                params = [dynasty_id, season] + like_params + [top_n]
+                cursor.execute(query, params)
+                results = cursor.fetchall()
+
+                if results:
+                    cap_hits = [row[0] for row in results]
+                    self.logger.debug(
+                        f"Found {len(cap_hits)} {tag_category} salaries for season {season}: "
+                        f"top=${max(cap_hits):,}, avg=${sum(cap_hits)//len(cap_hits):,}"
+                    )
+                    return cap_hits
+                else:
+                    self.logger.warning(
+                        f"No salary data found for {tag_category} in season {season}. "
+                        f"Returning empty list."
+                    )
+                    return []
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Database error querying position salaries: {e}")
+            return []
 
     def _get_player_tag_history(
         self,

@@ -1354,40 +1354,6 @@
         "cap_hit_2025": 1800000
       }
     },
-    "1940": {
-      "player_id": 1940,
-      "first_name": "Azeez",
-      "last_name": "Ojulari",
-      "number": 13,
-      "birthdate": "1999-07-24",
-      "positions": [
-        "linebacker"
-      ],
-      "team_id": 19,
-      "attributes": {
-        "overall": 75,
-        "speed": 82,
-        "strength": 78,
-        "pass_rush": 82,
-        "run_defense": 70,
-        "coverage": 62,
-        "agility": 82,
-        "awareness": 75,
-        "discipline": 75,
-        "composure": 72,
-        "experience": 75,
-        "penalty_technique": 75,
-        "technique": 78
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 1650000,
-        "signing_bonus": 150000,
-        "guaranteed_money": 800000,
-        "contract_type": "free_agent",
-        "cap_hit_2025": 1650000
-      }
-    },
     "1941": {
       "player_id": 1941,
       "first_name": "Smael",
@@ -1490,41 +1456,6 @@
         "guaranteed_money": 9283622,
         "contract_type": "rookie",
         "cap_hit_2025": 2118734
-      }
-    },
-    "1944": {
-      "player_id": 1944,
-      "first_name": "Adoree'",
-      "last_name": "Jackson",
-      "number": 8,
-      "birthdate": "1994-08-01",
-      "positions": [
-        "cornerback"
-      ],
-      "team_id": 19,
-      "attributes": {
-        "overall": 79,
-        "speed": 88,
-        "strength": 72,
-        "coverage": 82,
-        "agility": 88,
-        "awareness": 82,
-        "discipline": 82,
-        "composure": 80,
-        "experience": 85,
-        "penalty_technique": 82,
-        "man_coverage": 82,
-        "zone_coverage": 80,
-        "ball_skills": 78,
-        "return_specialist": 82
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 2500000,
-        "signing_bonus": 500000,
-        "guaranteed_money": 2000000,
-        "contract_type": "free_agent",
-        "cap_hit_2025": 2500000
       }
     },
     "1945": {

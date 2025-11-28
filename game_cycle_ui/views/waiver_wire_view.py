@@ -483,3 +483,15 @@ class WaiverWireView(QWidget):
         else:
             self.priority_label.setStyleSheet("color: #C62828;")
             self.priority_info_label.setText("You have low priority")
+
+    def set_cap_data(self, cap_data: Dict):
+        """
+        Update the view with full cap data from CapHelper.
+
+        Args:
+            cap_data: Dict with available_space, salary_cap_limit, total_spending,
+                      dead_money, is_compliant
+        """
+        # Waiver wire view currently doesn't show cap space
+        # Claims are for minimum salary players, so cap impact is minimal
+        pass

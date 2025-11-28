@@ -696,6 +696,39 @@ class CapDatabaseAPI:
             row = cursor.fetchone()
             return dict(row) if row else None
 
+    def update_team_carryover(
+        self,
+        team_id: int,
+        season: int,
+        dynasty_id: str,
+        carryover_amount: int
+    ) -> None:
+        """
+        Update carryover_from_previous for a team's season cap record.
+
+        Used during season transition to apply cap rollover from
+        the completed season to the new season.
+
+        Args:
+            team_id: Team ID
+            season: Season year (the NEW season receiving the carryover)
+            dynasty_id: Dynasty identifier
+            carryover_amount: Amount of cap space rolling over
+        """
+        with sqlite3.connect(self.database_path) as conn:
+            conn.execute('''
+                UPDATE team_salary_cap
+                SET carryover_from_previous = ?,
+                    last_updated = CURRENT_TIMESTAMP
+                WHERE team_id = ? AND season = ? AND dynasty_id = ?
+            ''', (carryover_amount, team_id, season, dynasty_id))
+            conn.commit()
+
+            self.logger.info(
+                f"Updated carryover for team {team_id}, season {season}: "
+                f"${carryover_amount:,}"
+            )
+
     # ========================================================================
     # FRANCHISE TAG & TENDER OPERATIONS
     # ========================================================================

@@ -11,7 +11,10 @@
       "first_name": "Ryan",
       "last_name": "Tannehill",
       "number": null,
-      "positions": ["quarterback"],
+      "birthdate": "1988-07-27",
+      "positions": [
+        "quarterback"
+      ],
       "team_id": null,
       "attributes": {
         "overall": 76,
@@ -43,87 +46,15 @@
         }
       }
     },
-    "9001": {
-      "player_id": 9001,
-      "first_name": "Andy",
-      "last_name": "Dalton",
-      "number": null,
-      "positions": ["quarterback"],
-      "team_id": null,
-      "attributes": {
-        "overall": 72,
-        "speed": 68,
-        "accuracy": 75,
-        "arm_strength": 78,
-        "awareness": 88,
-        "discipline": 90,
-        "composure": 85,
-        "experience": 95,
-        "penalty_technique": 88,
-        "leadership": 85,
-        "pocket_presence": 82
-      },
-      "contract": null,
-      "free_agent_details": {
-        "fa_type": "UFA",
-        "former_team_id": 26,
-        "former_team_name": "Carolina Panthers",
-        "years_experience": 13,
-        "age": 37,
-        "previous_contract": {
-          "contract_years": 2,
-          "annual_salary": 3000000,
-          "signing_bonus": 2000000,
-          "guaranteed_money": 5000000,
-          "contract_type": "veteran",
-          "cap_hit_2024": 4000000
-        }
-      }
-    },
-    "9002": {
-      "player_id": 9002,
-      "first_name": "Saquon",
-      "last_name": "Barkley",
-      "number": null,
-      "positions": ["running_back"],
-      "team_id": null,
-      "attributes": {
-        "overall": 88,
-        "speed": 92,
-        "strength": 80,
-        "agility": 94,
-        "awareness": 85,
-        "discipline": 85,
-        "composure": 88,
-        "experience": 82,
-        "penalty_technique": 90,
-        "carrying": 88,
-        "vision": 90,
-        "elusiveness": 93
-      },
-      "contract": null,
-      "free_agent_details": {
-        "fa_type": "UFA",
-        "former_team_id": 18,
-        "former_team_name": "New York Giants",
-        "years_experience": 6,
-        "age": 27,
-        "previous_contract": {
-          "contract_years": 4,
-          "annual_salary": 7866000,
-          "signing_bonus": 31500000,
-          "guaranteed_money": 31500000,
-          "contract_type": "rookie",
-          "cap_hit_2024": 11131000
-        }
-      }
-    },
     "9003": {
       "player_id": 9003,
       "first_name": "Dalvin",
       "last_name": "Cook",
       "number": null,
-      "positions": ["running_back"],
+      "birthdate": "1995-08-10",
+      "positions": [
+        "running_back"
+      ],
       "team_id": null,
       "attributes": {
         "overall": 84,
@@ -161,7 +92,10 @@
       "first_name": "Leonard",
       "last_name": "Fournette",
       "number": null,
-      "positions": ["running_back"],
+      "birthdate": "1995-01-18",
+      "positions": [
+        "running_back"
+      ],
       "team_id": null,
       "attributes": {
         "overall": 80,
@@ -194,49 +128,15 @@
         }
       }
     },
-    "9005": {
-      "player_id": 9005,
-      "first_name": "Calvin",
-      "last_name": "Ridley",
-      "number": null,
-      "positions": ["wide_receiver"],
-      "team_id": null,
-      "attributes": {
-        "overall": 84,
-        "speed": 90,
-        "agility": 88,
-        "awareness": 82,
-        "discipline": 75,
-        "composure": 78,
-        "experience": 80,
-        "penalty_technique": 82,
-        "catching": 86,
-        "route_running": 88,
-        "release": 85
-      },
-      "contract": null,
-      "free_agent_details": {
-        "fa_type": "UFA",
-        "former_team_id": 11,
-        "former_team_name": "Jacksonville Jaguars",
-        "years_experience": 6,
-        "age": 29,
-        "previous_contract": {
-          "contract_years": 4,
-          "annual_salary": 11000000,
-          "signing_bonus": 8500000,
-          "guaranteed_money": 28000000,
-          "contract_type": "veteran",
-          "cap_hit_2024": 13125000
-        }
-      }
-    },
     "9006": {
       "player_id": 9006,
       "first_name": "Tyler",
       "last_name": "Boyd",
       "number": null,
-      "positions": ["wide_receiver"],
+      "birthdate": "1994-11-15",
+      "positions": [
+        "wide_receiver"
+      ],
       "team_id": null,
       "attributes": {
         "overall": 80,
@@ -273,7 +173,10 @@
       "first_name": "DJ",
       "last_name": "Chark",
       "number": null,
-      "positions": ["wide_receiver"],
+      "birthdate": "1996-09-23",
+      "positions": [
+        "wide_receiver"
+      ],
       "team_id": null,
       "attributes": {
         "overall": 78,
@@ -305,126 +208,15 @@
         }
       }
     },
-    "9008": {
-      "player_id": 9008,
-      "first_name": "Hunter",
-      "last_name": "Henry",
-      "number": null,
-      "positions": ["tight_end"],
-      "team_id": null,
-      "attributes": {
-        "overall": 82,
-        "speed": 80,
-        "strength": 82,
-        "agility": 78,
-        "awareness": 85,
-        "discipline": 88,
-        "composure": 86,
-        "experience": 88,
-        "penalty_technique": 86,
-        "catching": 84,
-        "blocking": 76,
-        "route_running": 82
-      },
-      "contract": null,
-      "free_agent_details": {
-        "fa_type": "UFA",
-        "former_team_id": 3,
-        "former_team_name": "New England Patriots",
-        "years_experience": 8,
-        "age": 30,
-        "previous_contract": {
-          "contract_years": 3,
-          "annual_salary": 12500000,
-          "signing_bonus": 9000000,
-          "guaranteed_money": 25000000,
-          "contract_type": "veteran",
-          "cap_hit_2024": 15500000
-        }
-      }
-    },
-    "9009": {
-      "player_id": 9009,
-      "first_name": "Mike",
-      "last_name": "Gesicki",
-      "number": null,
-      "positions": ["tight_end"],
-      "team_id": null,
-      "attributes": {
-        "overall": 79,
-        "speed": 82,
-        "strength": 75,
-        "agility": 80,
-        "awareness": 78,
-        "discipline": 82,
-        "composure": 80,
-        "experience": 82,
-        "penalty_technique": 84,
-        "catching": 82,
-        "blocking": 68,
-        "route_running": 80
-      },
-      "contract": null,
-      "free_agent_details": {
-        "fa_type": "UFA",
-        "former_team_id": 3,
-        "former_team_name": "New England Patriots",
-        "years_experience": 6,
-        "age": 29,
-        "previous_contract": {
-          "contract_years": 1,
-          "annual_salary": 7000000,
-          "signing_bonus": 1500000,
-          "guaranteed_money": 4000000,
-          "contract_type": "veteran",
-          "cap_hit_2024": 8500000
-        }
-      }
-    },
-    "9010": {
-      "player_id": 9010,
-      "first_name": "Connor",
-      "last_name": "Williams",
-      "number": null,
-      "positions": ["left_guard"],
-      "team_id": null,
-      "attributes": {
-        "overall": 80,
-        "speed": 70,
-        "strength": 84,
-        "agility": 76,
-        "awareness": 82,
-        "discipline": 75,
-        "composure": 78,
-        "experience": 82,
-        "penalty_technique": 76,
-        "pass_blocking": 82,
-        "run_blocking": 80,
-        "technique": 78
-      },
-      "contract": null,
-      "free_agent_details": {
-        "fa_type": "UFA",
-        "former_team_id": 2,
-        "former_team_name": "Miami Dolphins",
-        "years_experience": 6,
-        "age": 27,
-        "previous_contract": {
-          "contract_years": 2,
-          "annual_salary": 7000000,
-          "signing_bonus": 4000000,
-          "guaranteed_money": 11000000,
-          "contract_type": "veteran",
-          "cap_hit_2024": 9000000
-        }
-      }
-    },
     "9011": {
       "player_id": 9011,
       "first_name": "Billy",
       "last_name": "Price",
       "number": null,
-      "positions": ["center"],
+      "birthdate": "1994-10-11",
+      "positions": [
+        "center"
+      ],
       "team_id": null,
       "attributes": {
         "overall": 74,
@@ -457,88 +249,15 @@
         }
       }
     },
-    "9012": {
-      "player_id": 9012,
-      "first_name": "DJ",
-      "last_name": "Reader",
-      "number": null,
-      "positions": ["defensive_tackle"],
-      "team_id": null,
-      "attributes": {
-        "overall": 84,
-        "speed": 62,
-        "strength": 92,
-        "agility": 68,
-        "awareness": 86,
-        "discipline": 88,
-        "composure": 90,
-        "experience": 90,
-        "penalty_technique": 85,
-        "pass_rush": 72,
-        "run_defense": 90,
-        "technique": 86
-      },
-      "contract": null,
-      "free_agent_details": {
-        "fa_type": "UFA",
-        "former_team_id": 6,
-        "former_team_name": "Cincinnati Bengals",
-        "years_experience": 9,
-        "age": 30,
-        "previous_contract": {
-          "contract_years": 4,
-          "annual_salary": 13250000,
-          "signing_bonus": 15000000,
-          "guaranteed_money": 40500000,
-          "contract_type": "veteran",
-          "cap_hit_2024": 16000000
-        }
-      }
-    },
-    "9013": {
-      "player_id": 9013,
-      "first_name": "Leonard",
-      "last_name": "Williams",
-      "number": null,
-      "positions": ["defensive_end"],
-      "team_id": null,
-      "attributes": {
-        "overall": 82,
-        "speed": 76,
-        "strength": 88,
-        "agility": 74,
-        "awareness": 84,
-        "discipline": 85,
-        "composure": 86,
-        "experience": 92,
-        "penalty_technique": 84,
-        "pass_rush": 84,
-        "run_defense": 82,
-        "technique": 82
-      },
-      "contract": null,
-      "free_agent_details": {
-        "fa_type": "UFA",
-        "former_team_id": 32,
-        "former_team_name": "Seattle Seahawks",
-        "years_experience": 9,
-        "age": 30,
-        "previous_contract": {
-          "contract_years": 3,
-          "annual_salary": 22500000,
-          "signing_bonus": 15000000,
-          "guaranteed_money": 45000000,
-          "contract_type": "veteran",
-          "cap_hit_2024": 27500000
-        }
-      }
-    },
     "9014": {
       "player_id": 9014,
       "first_name": "Yannick",
       "last_name": "Ngakoue",
       "number": null,
-      "positions": ["defensive_end"],
+      "birthdate": "1995-03-31",
+      "positions": [
+        "defensive_end"
+      ],
       "team_id": null,
       "attributes": {
         "overall": 80,
@@ -576,7 +295,10 @@
       "first_name": "Blake",
       "last_name": "Martinez",
       "number": null,
-      "positions": ["mike_linebacker"],
+      "birthdate": "1994-01-09",
+      "positions": [
+        "mike_linebacker"
+      ],
       "team_id": null,
       "attributes": {
         "overall": 78,
@@ -614,7 +336,10 @@
       "first_name": "Kwon",
       "last_name": "Alexander",
       "number": null,
-      "positions": ["will_linebacker"],
+      "birthdate": "1994-08-03",
+      "positions": [
+        "will_linebacker"
+      ],
       "team_id": null,
       "attributes": {
         "overall": 76,
@@ -652,7 +377,10 @@
       "first_name": "Marcus",
       "last_name": "Williams",
       "number": null,
-      "positions": ["free_safety"],
+      "birthdate": "1996-09-08",
+      "positions": [
+        "free_safety"
+      ],
       "team_id": null,
       "attributes": {
         "overall": 82,
@@ -691,7 +419,10 @@
       "first_name": "Tre",
       "last_name": "Flowers",
       "number": null,
-      "positions": ["cornerback"],
+      "birthdate": "1995-06-02",
+      "positions": [
+        "cornerback"
+      ],
       "team_id": null,
       "attributes": {
         "overall": 74,
@@ -704,7 +435,6 @@
         "experience": 82,
         "penalty_technique": 76,
         "coverage": 76,
-        "speed": 86,
         "press": 74
       },
       "contract": null,
@@ -724,202 +454,15 @@
         }
       }
     },
-    "9019": {
-      "player_id": 9019,
-      "first_name": "Stephon",
-      "last_name": "Gilmore",
-      "number": null,
-      "positions": ["cornerback"],
-      "team_id": null,
-      "attributes": {
-        "overall": 84,
-        "speed": 88,
-        "strength": 80,
-        "agility": 86,
-        "awareness": 92,
-        "discipline": 92,
-        "composure": 94,
-        "experience": 96,
-        "penalty_technique": 90,
-        "coverage": 90,
-        "speed": 88,
-        "press": 88
-      },
-      "contract": null,
-      "free_agent_details": {
-        "fa_type": "UFA",
-        "former_team_id": 17,
-        "former_team_name": "Dallas Cowboys",
-        "years_experience": 12,
-        "age": 34,
-        "previous_contract": {
-          "contract_years": 2,
-          "annual_salary": 9500000,
-          "signing_bonus": 4500000,
-          "guaranteed_money": 14000000,
-          "contract_type": "veteran",
-          "cap_hit_2024": 11750000
-        }
-      }
-    },
-    "9020": {
-      "player_id": 9020,
-      "first_name": "Justin",
-      "last_name": "Tucker",
-      "number": null,
-      "positions": ["kicker"],
-      "team_id": null,
-      "attributes": {
-        "overall": 95,
-        "speed": 60,
-        "strength": 68,
-        "agility": 65,
-        "awareness": 95,
-        "discipline": 98,
-        "composure": 98,
-        "experience": 98,
-        "penalty_technique": 95,
-        "kick_power": 94,
-        "kick_accuracy": 98,
-        "pressure": 96
-      },
-      "contract": null,
-      "free_agent_details": {
-        "fa_type": "UFA",
-        "former_team_id": 5,
-        "former_team_name": "Baltimore Ravens",
-        "years_experience": 12,
-        "age": 35,
-        "previous_contract": {
-          "contract_years": 4,
-          "annual_salary": 5000000,
-          "signing_bonus": 6000000,
-          "guaranteed_money": 17500000,
-          "contract_type": "veteran",
-          "cap_hit_2024": 6500000
-        }
-      }
-    },
-    "9021": {
-      "player_id": 9021,
-      "first_name": "Chase",
-      "last_name": "McLaughlin",
-      "number": null,
-      "positions": ["kicker"],
-      "team_id": null,
-      "attributes": {
-        "overall": 78,
-        "speed": 58,
-        "strength": 65,
-        "agility": 62,
-        "awareness": 80,
-        "discipline": 82,
-        "composure": 78,
-        "experience": 75,
-        "penalty_technique": 80,
-        "kick_power": 80,
-        "kick_accuracy": 82,
-        "pressure": 76
-      },
-      "contract": null,
-      "free_agent_details": {
-        "fa_type": "UFA",
-        "former_team_id": 10,
-        "former_team_name": "Indianapolis Colts",
-        "years_experience": 5,
-        "age": 28,
-        "previous_contract": {
-          "contract_years": 3,
-          "annual_salary": 2000000,
-          "signing_bonus": 1500000,
-          "guaranteed_money": 3500000,
-          "contract_type": "veteran",
-          "cap_hit_2024": 2500000
-        }
-      }
-    },
-    "9022": {
-      "player_id": 9022,
-      "first_name": "Bradley",
-      "last_name": "Pinion",
-      "number": null,
-      "positions": ["punter"],
-      "team_id": null,
-      "attributes": {
-        "overall": 76,
-        "speed": 62,
-        "strength": 68,
-        "agility": 64,
-        "awareness": 78,
-        "discipline": 85,
-        "composure": 82,
-        "experience": 88,
-        "penalty_technique": 84,
-        "punt_power": 82,
-        "punt_accuracy": 78,
-        "hang_time": 80
-      },
-      "contract": null,
-      "free_agent_details": {
-        "fa_type": "UFA",
-        "former_team_id": 25,
-        "former_team_name": "Atlanta Falcons",
-        "years_experience": 9,
-        "age": 30,
-        "previous_contract": {
-          "contract_years": 3,
-          "annual_salary": 2500000,
-          "signing_bonus": 1800000,
-          "guaranteed_money": 4500000,
-          "contract_type": "veteran",
-          "cap_hit_2024": 3100000
-        }
-      }
-    },
-    "9023": {
-      "player_id": 9023,
-      "first_name": "Tre'Davious",
-      "last_name": "White",
-      "number": null,
-      "positions": ["cornerback"],
-      "team_id": null,
-      "attributes": {
-        "overall": 86,
-        "speed": 90,
-        "strength": 78,
-        "agility": 88,
-        "awareness": 88,
-        "discipline": 86,
-        "composure": 88,
-        "experience": 88,
-        "penalty_technique": 86,
-        "coverage": 90,
-        "speed": 90,
-        "press": 86
-      },
-      "contract": null,
-      "free_agent_details": {
-        "fa_type": "UFA",
-        "former_team_id": 1,
-        "former_team_name": "Buffalo Bills",
-        "years_experience": 7,
-        "age": 29,
-        "previous_contract": {
-          "contract_years": 4,
-          "annual_salary": 17250000,
-          "signing_bonus": 12500000,
-          "guaranteed_money": 55000000,
-          "contract_type": "veteran",
-          "cap_hit_2024": 20375000
-        }
-      }
-    },
     "9024": {
       "player_id": 9024,
       "first_name": "Odell",
       "last_name": "Beckham Jr.",
       "number": null,
-      "positions": ["wide_receiver"],
+      "birthdate": "1992-11-05",
+      "positions": [
+        "wide_receiver"
+      ],
       "team_id": null,
       "attributes": {
         "overall": 82,
@@ -952,88 +495,15 @@
         }
       }
     },
-    "9025": {
-      "player_id": 9025,
-      "first_name": "Trey",
-      "last_name": "Hendrickson",
-      "number": null,
-      "positions": ["defensive_end"],
-      "team_id": null,
-      "attributes": {
-        "overall": 86,
-        "speed": 82,
-        "strength": 85,
-        "agility": 80,
-        "awareness": 86,
-        "discipline": 88,
-        "composure": 86,
-        "experience": 88,
-        "penalty_technique": 86,
-        "pass_rush": 92,
-        "run_defense": 80,
-        "technique": 86
-      },
-      "contract": null,
-      "free_agent_details": {
-        "fa_type": "UFA",
-        "former_team_id": 6,
-        "former_team_name": "Cincinnati Bengals",
-        "years_experience": 8,
-        "age": 30,
-        "previous_contract": {
-          "contract_years": 4,
-          "annual_salary": 15000000,
-          "signing_bonus": 12000000,
-          "guaranteed_money": 40000000,
-          "contract_type": "veteran",
-          "cap_hit_2024": 18000000
-        }
-      }
-    },
-    "9026": {
-      "player_id": 9026,
-      "first_name": "David",
-      "last_name": "Bakhtiari",
-      "number": null,
-      "positions": ["left_tackle"],
-      "team_id": null,
-      "attributes": {
-        "overall": 88,
-        "speed": 72,
-        "strength": 88,
-        "agility": 80,
-        "awareness": 92,
-        "discipline": 90,
-        "composure": 92,
-        "experience": 94,
-        "penalty_technique": 88,
-        "pass_blocking": 92,
-        "run_blocking": 86,
-        "technique": 90
-      },
-      "contract": null,
-      "free_agent_details": {
-        "fa_type": "UFA",
-        "former_team_id": 23,
-        "former_team_name": "Green Bay Packers",
-        "years_experience": 11,
-        "age": 33,
-        "previous_contract": {
-          "contract_years": 4,
-          "annual_salary": 23000000,
-          "signing_bonus": 30000000,
-          "guaranteed_money": 62000000,
-          "contract_type": "veteran",
-          "cap_hit_2024": 30500000
-        }
-      }
-    },
     "9027": {
       "player_id": 9027,
       "first_name": "Ezekiel",
       "last_name": "Elliott",
       "number": null,
-      "positions": ["running_back"],
+      "birthdate": "1995-07-22",
+      "positions": [
+        "running_back"
+      ],
       "team_id": null,
       "attributes": {
         "overall": 80,
@@ -1063,82 +533,6 @@
           "guaranteed_money": 2500000,
           "contract_type": "veteran",
           "cap_hit_2024": 3500000
-        }
-      }
-    },
-    "9028": {
-      "player_id": 9028,
-      "first_name": "Za'Darius",
-      "last_name": "Smith",
-      "number": null,
-      "positions": ["outside_linebacker"],
-      "team_id": null,
-      "attributes": {
-        "overall": 84,
-        "speed": 80,
-        "strength": 88,
-        "agility": 78,
-        "awareness": 86,
-        "discipline": 84,
-        "composure": 86,
-        "experience": 90,
-        "penalty_technique": 82,
-        "coverage": 70,
-        "pass_rush": 90,
-        "run_defense": 82
-      },
-      "contract": null,
-      "free_agent_details": {
-        "fa_type": "UFA",
-        "former_team_id": 7,
-        "former_team_name": "Cleveland Browns",
-        "years_experience": 9,
-        "age": 32,
-        "previous_contract": {
-          "contract_years": 2,
-          "annual_salary": 12000000,
-          "signing_bonus": 3500000,
-          "guaranteed_money": 15500000,
-          "contract_type": "veteran",
-          "cap_hit_2024": 13750000
-        }
-      }
-    },
-    "9029": {
-      "player_id": 9029,
-      "first_name": "DeAndre",
-      "last_name": "Hopkins",
-      "number": null,
-      "positions": ["wide_receiver"],
-      "team_id": null,
-      "attributes": {
-        "overall": 88,
-        "speed": 88,
-        "strength": 82,
-        "agility": 90,
-        "awareness": 92,
-        "discipline": 90,
-        "composure": 92,
-        "experience": 95,
-        "penalty_technique": 88,
-        "catching": 94,
-        "route_running": 92,
-        "release": 90
-      },
-      "contract": null,
-      "free_agent_details": {
-        "fa_type": "UFA",
-        "former_team_id": 12,
-        "former_team_name": "Tennessee Titans",
-        "years_experience": 11,
-        "age": 32,
-        "previous_contract": {
-          "contract_years": 2,
-          "annual_salary": 13000000,
-          "signing_bonus": 5000000,
-          "guaranteed_money": 18000000,
-          "contract_type": "veteran",
-          "cap_hit_2024": 15500000
         }
       }
     }

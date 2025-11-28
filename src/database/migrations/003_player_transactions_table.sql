@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS player_transactions (
 
     -- Player Information
     player_id INTEGER NOT NULL,
-    player_name TEXT NOT NULL,
+    first_name TEXT,
+    last_name TEXT,
     position TEXT,
 
     -- Team Movement

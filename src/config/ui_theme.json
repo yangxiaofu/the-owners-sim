@@ -1,0 +1,86 @@
+{
+  "name": "default",
+  "version": "1.0.0",
+  "description": "Default UI theme for The Owners Sim",
+
+  "colors": {
+    "status": {
+      "success": "#2E7D32",
+      "success_hover": "#1B5E20",
+      "warning": "#F57C00",
+      "warning_hover": "#E65100",
+      "error": "#C62828",
+      "error_hover": "#B71C1C",
+      "info": "#1976D2",
+      "info_hover": "#1565C0",
+      "neutral": "#666666",
+      "disabled": "#CCCCCC"
+    },
+
+    "cap_space": {
+      "healthy": "#2E7D32",
+      "projected": "#1976D2",
+      "tight": "#F57C00",
+      "over_cap": "#C62828"
+    },
+
+    "player_ratings": {
+      "elite": "#2E7D32",
+      "solid": "#1976D2",
+      "average": "#666666",
+      "below_average": "#F57C00",
+      "poor": "#C62828"
+    },
+
+    "player_age": {
+      "young": "#2E7D32",
+      "prime": "#1976D2",
+      "veteran": "#F57C00",
+      "old": "#C62828"
+    },
+
+    "buttons": {
+      "primary": "#2E7D32",
+      "primary_hover": "#1B5E20",
+      "secondary": "#1976D2",
+      "secondary_hover": "#1565C0",
+      "danger": "#C62828",
+      "danger_hover": "#B71C1C",
+      "warning": "#F57C00",
+      "warning_hover": "#E65100"
+    },
+
+    "text": {
+      "primary": "#212121",
+      "secondary": "#666666",
+      "muted": "#999999",
+      "inverse": "#FFFFFF",
+      "link": "#1976D2"
+    },
+
+    "background": {
+      "primary": "#FFFFFF",
+      "secondary": "#F5F5F5",
+      "tertiary": "#EEEEEE",
+      "highlight": "#E3F2FD"
+    }
+  },
+
+  "thresholds": {
+    "cap_space": {
+      "tight_percentage": 0.10,
+      "comment": "When available cap is less than 10% of cap limit, show warning color"
+    },
+    "player_age": {
+      "veteran": 30,
+      "old": 33,
+      "comment": "Age thresholds for color coding"
+    },
+    "player_rating": {
+      "elite": 85,
+      "solid": 75,
+      "average": 65,
+      "comment": "Overall rating thresholds"
+    }
+  }
+}

@@ -15,6 +15,7 @@ from PySide6.QtGui import QFont
 
 import sys
 import os
+import uuid
 
 # Add src to path for controller imports
 ui_path = os.path.dirname(os.path.dirname(__file__))
@@ -148,6 +149,8 @@ class DynastySelectionDialog(QDialog):
 
         self.dynasty_name_input = QLineEdit()
         self.dynasty_name_input.setPlaceholderText("Enter dynasty name (e.g., 'Eagles Dynasty')")
+        # TODO: Remove default - for faster testing
+        self.dynasty_name_input.setText(f"Test{uuid.uuid4().hex[:8]}")
         self.dynasty_name_input.textChanged.connect(self._on_name_changed)
         form_layout.addRow("Dynasty Name:", self.dynasty_name_input)
 
@@ -161,6 +164,10 @@ class DynastySelectionDialog(QDialog):
         # Add all 32 NFL teams
         for team in self.team_loader.get_all_teams():
             self.team_combo.addItem(f"{team.city} {team.nickname}", team.team_id)
+        # TODO: Remove default - for faster testing (Cleveland Browns = team_id 7)
+        cleveland_index = self.team_combo.findData(7)
+        if cleveland_index >= 0:
+            self.team_combo.setCurrentIndex(cleveland_index)
         form_layout.addRow("Your Team:", self.team_combo)
 
         self.season_input = QLineEdit()

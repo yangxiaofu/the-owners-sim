@@ -198,63 +198,51 @@ class ContractManager:
         team_id: int,
         dynasty_id: str,
         draft_pick: int,
+        salary_cap: int,
         season: int = 2025
     ) -> int:
         """
-        Create 4-year rookie contract based on draft slot.
+        Create 4-year rookie contract based on draft slot and salary cap.
 
-        Simplified rookie wage scale. In reality, values are negotiated
-        within slotted ranges.
+        Uses formula-based calculation that scales with salary cap growth,
+        mirroring actual NFL CBA mechanics. Contract values are calculated
+        as percentages of the cap, so they auto-scale year over year.
 
         Args:
             player_id: Player ID
             team_id: Team ID
             dynasty_id: Dynasty identifier
-            draft_pick: Overall draft pick number (1-262)
+            draft_pick: Overall draft pick number (1-224)
+            salary_cap: Current year's salary cap for scaling
             season: Draft season
 
         Returns:
             contract_id of created contract
-        """
-        # Simplified rookie scale (in reality, this is complex)
-        # Higher picks get more money
-        if draft_pick == 1:
-            total_value = 40_000_000
-            signing_bonus = 25_000_000
-            base_salaries = [840_000, 10_000_000, 12_000_000, 13_000_000]
-        elif draft_pick <= 10:
-            total_value = 20_000_000 - (draft_pick * 1_000_000)
-            signing_bonus = total_value // 2
-            base_salaries = [840_000] * 4
-            base_salaries[1] = total_value // 4
-            base_salaries[2] = total_value // 4
-            base_salaries[3] = total_value // 4
-        elif draft_pick <= 32:
-            total_value = 15_000_000 - ((draft_pick - 10) * 400_000)
-            signing_bonus = total_value // 3
-            base_salaries = [840_000, total_value // 4, total_value // 4, total_value // 4]
-        elif draft_pick <= 100:
-            total_value = 5_000_000
-            signing_bonus = 1_000_000
-            base_salaries = [840_000, 1_200_000, 1_400_000, 1_560_000]
-        else:
-            # Late rounds
-            total_value = 4_000_000
-            signing_bonus = 200_000
-            base_salaries = [840_000, 960_000, 1_100_000, 1_100_000]
 
-        # All rookie contracts are 4 years and fully guaranteed
-        guaranteed_amounts = base_salaries.copy()
+        Raises:
+            ValueError: If draft_pick or salary_cap is invalid
+        """
+        from .rookie_scale import RookieScaleCalculator
+
+        # Calculate contract values using formula-based scale
+        calculator = RookieScaleCalculator(salary_cap)
+        values = calculator.calculate_contract(draft_pick)
+
+        self.logger.info(
+            f"Creating rookie contract for pick #{draft_pick}: "
+            f"total=${values.total_value:,}, bonus=${values.signing_bonus:,}, "
+            f"5th-year option={values.has_fifth_year_option}"
+        )
 
         return self.create_contract(
             player_id=player_id,
             team_id=team_id,
             dynasty_id=dynasty_id,
             contract_years=4,
-            total_value=total_value,
-            signing_bonus=signing_bonus,
-            base_salaries=base_salaries,
-            guaranteed_amounts=guaranteed_amounts,
+            total_value=values.total_value,
+            signing_bonus=values.signing_bonus,
+            base_salaries=values.base_salaries,
+            guaranteed_amounts=values.guaranteed_amounts,
             contract_type="ROOKIE",
             season=season
         )

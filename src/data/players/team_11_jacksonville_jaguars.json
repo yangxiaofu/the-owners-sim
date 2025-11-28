@@ -1,7 +1,7 @@
 {
   "team_id": 11,
   "team_name": "Jacksonville Jaguars",
-  "total_players": 53,
+  "total_players": 50,
   "players": {
     "12001": {
       "player_id": 12001,
@@ -101,41 +101,6 @@
         "guaranteed_money": 6143000,
         "contract_type": "fifth_year_option",
         "cap_hit_2025": 6152765
-      }
-    },
-    "12004": {
-      "player_id": 12004,
-      "first_name": "Tank",
-      "last_name": "Bigsby",
-      "number": 4,
-      "birthdate": "1999-06-09",
-      "positions": [
-        "running_back"
-      ],
-      "team_id": 11,
-      "attributes": {
-        "overall": 76,
-        "speed": 85,
-        "strength": 85,
-        "agility": 80,
-        "hands": 78,
-        "awareness": 75,
-        "discipline": 80,
-        "composure": 78,
-        "experience": 72,
-        "penalty_technique": 80,
-        "power": 88,
-        "contact_balance": 85,
-        "development": 82
-      },
-      "contract": {
-        "contract_years": 2,
-        "annual_salary": 1312500,
-        "signing_bonus": 750000,
-        "guaranteed_money": 2625000,
-        "contract_type": "rookie",
-        "cap_hit_2025": 1190000,
-        "note": "Traded to Eagles Sept 2025"
       }
     },
     "12005": {

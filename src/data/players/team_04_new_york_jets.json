@@ -1,7 +1,7 @@
 {
   "team_id": 4,
   "team_name": "New York Jets",
-  "total_players": 66,
+  "total_players": 56,
   "players": {
     "5001": {
       "player_id": 5001,
@@ -457,73 +457,6 @@
         "cap_hit_2025": 8010080
       }
     },
-    "35064": {
-      "player_id": 35064,
-      "first_name": "Tyrod",
-      "last_name": "Taylor",
-      "number": 2,
-      "birthdate": "1988-11-05",
-      "positions": [
-        "quarterback"
-      ],
-      "team_id": 4,
-      "attributes": {
-        "overall": 76,
-        "speed": 75,
-        "accuracy": 80,
-        "arm_strength": 78,
-        "awareness": 90,
-        "discipline": 92,
-        "composure": 88,
-        "experience": 95,
-        "penalty_technique": 92,
-        "leadership": 92,
-        "pocket_presence": 82,
-        "mobility": 85
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 2000000,
-        "signing_bonus": 0,
-        "guaranteed_money": 1000000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 0
-      }
-    },
-    "35065": {
-      "player_id": 35065,
-      "first_name": "Breece",
-      "last_name": "Hall",
-      "number": 20,
-      "birthdate": "2002-07-19",
-      "positions": [
-        "running_back"
-      ],
-      "team_id": 4,
-      "attributes": {
-        "overall": 88,
-        "speed": 90,
-        "strength": 80,
-        "agility": 92,
-        "hands": 88,
-        "awareness": 85,
-        "discipline": 85,
-        "composure": 85,
-        "experience": 78,
-        "penalty_technique": 85,
-        "power": 82,
-        "elusiveness": 92,
-        "vision": 88
-      },
-      "contract": {
-        "contract_years": 4,
-        "annual_salary": 2253694,
-        "signing_bonus": 3736200,
-        "guaranteed_money": 7080487,
-        "contract_type": "rookie",
-        "cap_hit_2025": 3400000
-      }
-    },
     "35066": {
       "player_id": 35066,
       "first_name": "Braelon",
@@ -663,40 +596,6 @@
         "guaranteed_money": 750000,
         "contract_type": "veteran",
         "cap_hit_2025": 1500000
-      }
-    },
-    "35070": {
-      "player_id": 35070,
-      "first_name": "Garrett",
-      "last_name": "Wilson",
-      "number": 5,
-      "birthdate": "2001-05-03",
-      "positions": [
-        "wide_receiver"
-      ],
-      "team_id": 4,
-      "attributes": {
-        "overall": 86,
-        "speed": 88,
-        "hands": 88,
-        "route_running": 90,
-        "agility": 90,
-        "awareness": 85,
-        "discipline": 88,
-        "composure": 85,
-        "experience": 78,
-        "penalty_technique": 88,
-        "release": 88,
-        "catching": 88,
-        "separation": 90
-      },
-      "contract": {
-        "contract_years": 4,
-        "annual_salary": 32500000,
-        "signing_bonus": 13750000,
-        "guaranteed_money": 90000000,
-        "contract_type": "extension",
-        "cap_hit_2025": 7040912
       }
     },
     "35071": {
@@ -1044,39 +943,6 @@
         "cap_hit_2025": 15322450
       }
     },
-    "35081": {
-      "player_id": 35081,
-      "first_name": "Joe",
-      "last_name": "Tippmann",
-      "number": 66,
-      "birthdate": "2000-05-07",
-      "positions": [
-        "center"
-      ],
-      "team_id": 4,
-      "attributes": {
-        "overall": 79,
-        "speed": 72,
-        "strength": 82,
-        "awareness": 85,
-        "discipline": 88,
-        "composure": 85,
-        "experience": 75,
-        "penalty_technique": 88,
-        "pass_blocking": 80,
-        "run_blocking": 78,
-        "snap_accuracy": 88,
-        "intelligence": 85
-      },
-      "contract": {
-        "contract_years": 4,
-        "annual_salary": 2089901,
-        "signing_bonus": 3079712,
-        "guaranteed_money": 6167665,
-        "contract_type": "rookie",
-        "cap_hit_2025": 2459879
-      }
-    },
     "35082": {
       "player_id": 35082,
       "first_name": "John",
@@ -1107,40 +973,6 @@
         "guaranteed_money": 750000,
         "contract_type": "veteran",
         "cap_hit_2025": 1500000
-      }
-    },
-    "35083": {
-      "player_id": 35083,
-      "first_name": "Josh",
-      "last_name": "Myers",
-      "number": 71,
-      "birthdate": "2000-11-22",
-      "positions": [
-        "guard",
-        "center"
-      ],
-      "team_id": 4,
-      "attributes": {
-        "overall": 75,
-        "speed": 72,
-        "strength": 82,
-        "awareness": 82,
-        "discipline": 85,
-        "composure": 80,
-        "experience": 78,
-        "penalty_technique": 85,
-        "pass_blocking": 78,
-        "run_blocking": 75,
-        "versatility": 85,
-        "intelligence": 82
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 1300000,
-        "signing_bonus": 0,
-        "guaranteed_money": 500000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 1300000
       }
     },
     "35084": {
@@ -1308,39 +1140,6 @@
         "cap_hit_2025": 915000
       }
     },
-    "35089": {
-      "player_id": 35089,
-      "first_name": "Quinnen",
-      "last_name": "Williams",
-      "number": 95,
-      "birthdate": "1993-06-13",
-      "positions": [
-        "defensive_tackle"
-      ],
-      "team_id": 4,
-      "attributes": {
-        "overall": 92,
-        "speed": 82,
-        "strength": 92,
-        "awareness": 90,
-        "discipline": 90,
-        "composure": 90,
-        "experience": 85,
-        "penalty_technique": 90,
-        "pass_rush": 95,
-        "run_defense": 90,
-        "power_moves": 95,
-        "technique": 92
-      },
-      "contract": {
-        "contract_years": 4,
-        "annual_salary": 24000000,
-        "signing_bonus": 20000000,
-        "guaranteed_money": 66000000,
-        "contract_type": "extension",
-        "cap_hit_2025": 20400000
-      }
-    },
     "35090": {
       "player_id": 35090,
       "first_name": "Jermaine",
@@ -1405,39 +1204,6 @@
         "guaranteed_money": 16321674,
         "contract_type": "rookie",
         "cap_hit_2025": 6297885
-      }
-    },
-    "35092": {
-      "player_id": 35092,
-      "first_name": "Harrison",
-      "last_name": "Phillips",
-      "number": 97,
-      "birthdate": "1994-11-08",
-      "positions": [
-        "defensive_tackle"
-      ],
-      "team_id": 4,
-      "attributes": {
-        "overall": 78,
-        "speed": 72,
-        "strength": 90,
-        "awareness": 85,
-        "discipline": 88,
-        "composure": 85,
-        "experience": 88,
-        "penalty_technique": 88,
-        "pass_rush": 75,
-        "run_defense": 88,
-        "power_moves": 85,
-        "technique": 85
-      },
-      "contract": {
-        "contract_years": 2,
-        "annual_salary": 7500000,
-        "signing_bonus": 0,
-        "guaranteed_money": 3700000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 3700000
       }
     },
     "35093": {
@@ -1803,39 +1569,6 @@
         "cap_hit_2025": 1000000
       }
     },
-    "35104": {
-      "player_id": 35104,
-      "first_name": "Sauce",
-      "last_name": "Gardner",
-      "number": 1,
-      "birthdate": "1999-06-09",
-      "positions": [
-        "cornerback"
-      ],
-      "team_id": 4,
-      "attributes": {
-        "overall": 90,
-        "speed": 88,
-        "agility": 92,
-        "awareness": 88,
-        "discipline": 88,
-        "composure": 88,
-        "experience": 78,
-        "penalty_technique": 88,
-        "man_coverage": 95,
-        "zone_coverage": 90,
-        "press_coverage": 92,
-        "ball_skills": 88
-      },
-      "contract": {
-        "contract_years": 4,
-        "annual_salary": 30100000,
-        "signing_bonus": 13750000,
-        "guaranteed_money": 85403473,
-        "contract_type": "extension",
-        "cap_hit_2025": 16500000
-      }
-    },
     "35105": {
       "player_id": 35105,
       "first_name": "Brandon",
@@ -1968,39 +1701,6 @@
         "cap_hit_2025": 925000
       }
     },
-    "35109": {
-      "player_id": 35109,
-      "first_name": "Andre",
-      "last_name": "Cisco",
-      "number": 27,
-      "birthdate": "2001-06-25",
-      "positions": [
-        "free_safety"
-      ],
-      "team_id": 4,
-      "attributes": {
-        "overall": 80,
-        "speed": 85,
-        "agility": 85,
-        "awareness": 85,
-        "discipline": 85,
-        "composure": 82,
-        "experience": 78,
-        "penalty_technique": 85,
-        "ball_skills": 90,
-        "zone_coverage": 85,
-        "deep_coverage": 88,
-        "range": 85
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 8500000,
-        "signing_bonus": 5000000,
-        "guaranteed_money": 7500000,
-        "contract_type": "free_agent",
-        "cap_hit_2025": 4510080
-      }
-    },
     "35110": {
       "player_id": 35110,
       "first_name": "Tony",
@@ -2098,39 +1798,6 @@
         "guaranteed_money": 1800000,
         "contract_type": "rookie",
         "cap_hit_2025": 937500
-      }
-    },
-    "35113": {
-      "player_id": 35113,
-      "first_name": "Nick",
-      "last_name": "Folk",
-      "number": 6,
-      "birthdate": "1987-07-22",
-      "positions": [
-        "kicker"
-      ],
-      "team_id": 4,
-      "attributes": {
-        "overall": 82,
-        "leg_strength": 85,
-        "accuracy": 88,
-        "awareness": 85,
-        "discipline": 92,
-        "composure": 90,
-        "experience": 95,
-        "penalty_technique": 92,
-        "kick_power": 85,
-        "field_goal_accuracy": 88,
-        "extra_point_accuracy": 95,
-        "clutch": 90
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 2875000,
-        "signing_bonus": 620000,
-        "guaranteed_money": 755000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 2875000
       }
     },
     "35114": {

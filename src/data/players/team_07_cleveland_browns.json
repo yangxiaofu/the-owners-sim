@@ -1,7 +1,7 @@
 {
   "team_id": 7,
   "team_name": "Cleveland Browns",
-  "total_players": 53,
+  "total_players": 51,
   "players": {
     "7001": {
       "player_id": 7001,
@@ -710,72 +710,6 @@
         "cap_hit_2025": 1250000
       }
     },
-    "7022": {
-      "player_id": 7022,
-      "first_name": "KT",
-      "last_name": "Leveston",
-      "number": 62,
-      "birthdate": "2004-08-09",
-      "positions": [
-        "guard"
-      ],
-      "team_id": 7,
-      "attributes": {
-        "overall": 68,
-        "speed": 68,
-        "strength": 78,
-        "agility": 68,
-        "awareness": 68,
-        "discipline": 70,
-        "composure": 68,
-        "experience": 65,
-        "penalty_technique": 70,
-        "pass_block": 65,
-        "run_block": 75,
-        "anchor": 72
-      },
-      "contract": {
-        "contract_years": 4,
-        "annual_salary": 900000,
-        "signing_bonus": 200000,
-        "guaranteed_money": 900000,
-        "contract_type": "rookie",
-        "cap_hit_2025": 950000
-      }
-    },
-    "7023": {
-      "player_id": 7023,
-      "first_name": "Cornelius",
-      "last_name": "Lucas",
-      "number": 71,
-      "birthdate": "1994-01-01",
-      "positions": [
-        "tackle"
-      ],
-      "team_id": 7,
-      "attributes": {
-        "overall": 72,
-        "speed": 68,
-        "strength": 82,
-        "agility": 68,
-        "awareness": 78,
-        "discipline": 82,
-        "composure": 78,
-        "experience": 85,
-        "penalty_technique": 82,
-        "pass_block": 70,
-        "run_block": 68,
-        "versatility": 80
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 1300000,
-        "signing_bonus": 150000,
-        "guaranteed_money": 500000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 1300000
-      }
-    },
     "7024": {
       "player_id": 7024,
       "first_name": "Ethan",
@@ -943,39 +877,6 @@
         "guaranteed_money": 123596125,
         "contract_type": "extension",
         "cap_hit_2025": 22922120
-      }
-    },
-    "7029": {
-      "player_id": 7029,
-      "first_name": "Maliek",
-      "last_name": "Collins",
-      "number": 96,
-      "birthdate": "1994-12-03",
-      "positions": [
-        "defensive_tackle"
-      ],
-      "team_id": 7,
-      "attributes": {
-        "overall": 78,
-        "speed": 72,
-        "strength": 85,
-        "agility": 72,
-        "awareness": 78,
-        "discipline": 80,
-        "composure": 78,
-        "experience": 85,
-        "penalty_technique": 80,
-        "pass_rush": 82,
-        "run_defense": 80,
-        "motor": 82
-      },
-      "contract": {
-        "contract_years": 2,
-        "annual_salary": 4000000,
-        "signing_bonus": 1500000,
-        "guaranteed_money": 5000000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 4750000
       }
     },
     "7030": {
@@ -1243,40 +1144,6 @@
         "guaranteed_money": 850000,
         "contract_type": "rookie",
         "cap_hit_2025": 950000
-      }
-    },
-    "7038": {
-      "player_id": 7038,
-      "first_name": "Jerome",
-      "last_name": "Baker",
-      "number": 17,
-      "birthdate": "1995-07-17",
-      "positions": [
-        "linebacker"
-      ],
-      "team_id": 7,
-      "attributes": {
-        "overall": 80,
-        "speed": 85,
-        "strength": 78,
-        "agility": 85,
-        "awareness": 82,
-        "discipline": 82,
-        "composure": 80,
-        "experience": 85,
-        "penalty_technique": 82,
-        "coverage": 78,
-        "run_defense": 82,
-        "tackling": 88,
-        "pass_rush": 72
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 1422500,
-        "signing_bonus": 167500,
-        "guaranteed_money": 717500,
-        "contract_type": "veteran",
-        "cap_hit_2025": 1197500
       }
     },
     "7039": {
@@ -1692,40 +1559,6 @@
         "guaranteed_money": 1100000,
         "contract_type": "rookie",
         "cap_hit_2025": 1025000
-      }
-    },
-    "7051": {
-      "player_id": 7051,
-      "first_name": "Rayshawn",
-      "last_name": "Jenkins",
-      "number": 24,
-      "birthdate": "1993-06-08",
-      "positions": [
-        "safety"
-      ],
-      "team_id": 7,
-      "attributes": {
-        "overall": 77,
-        "speed": 82,
-        "strength": 80,
-        "agility": 80,
-        "awareness": 85,
-        "discipline": 85,
-        "composure": 82,
-        "experience": 90,
-        "penalty_technique": 85,
-        "coverage": 78,
-        "run_defense": 82,
-        "tackling": 85,
-        "leadership": 85
-      },
-      "contract": {
-        "contract_years": 2,
-        "annual_salary": 3000000,
-        "signing_bonus": 1000000,
-        "guaranteed_money": 3000000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 3500000
       }
     },
     "7052": {

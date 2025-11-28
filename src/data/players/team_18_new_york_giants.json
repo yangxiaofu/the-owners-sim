@@ -1,7 +1,7 @@
 {
   "team_id": 18,
   "team_name": "New York Giants",
-  "total_players": 54,
+  "total_players": 53,
   "players": {
     "1800": {
       "player_id": 1800,
@@ -1109,40 +1109,6 @@
         "guaranteed_money": 0,
         "contract_type": "futures",
         "cap_hit_2025": 985000
-      }
-    },
-    "1833": {
-      "player_id": 1833,
-      "first_name": "Jihad",
-      "last_name": "Ward",
-      "number": 55,
-      "birthdate": "1994-06-12",
-      "positions": [
-        "defensive_end",
-        "defensive_tackle"
-      ],
-      "team_id": 18,
-      "attributes": {
-        "overall": 72,
-        "speed": 75,
-        "strength": 82,
-        "agility": 75,
-        "awareness": 85,
-        "discipline": 85,
-        "composure": 82,
-        "experience": 85,
-        "penalty_technique": 85,
-        "pass_rush": 75,
-        "run_defense": 78,
-        "versatility": 88
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 1500000,
-        "signing_bonus": 100000,
-        "guaranteed_money": 500000,
-        "contract_type": "veteran_deal",
-        "cap_hit_2025": 1600000
       }
     },
     "1834": {

@@ -5,10 +5,13 @@ Handles draft operations during the offseason draft stage.
 Wraps existing DraftManager and DraftClassAPI for game cycle integration.
 """
 
+from datetime import date
 from typing import Dict, List, Any, Optional
 import json
 import logging
 import sqlite3
+
+from persistence.transaction_logger import TransactionLogger
 
 
 class DraftService:
@@ -51,6 +54,47 @@ class DraftService:
         self._draft_class_api = None
         self._draft_order_api = None
         self._needs_analyzer = None
+        self._cap_helper = None
+
+        # Transaction logger for audit trail
+        self._transaction_logger = TransactionLogger(db_path)
+
+    def _get_cap_helper(self):
+        """Get or create cap helper instance.
+
+        Uses season + 1 because during the draft (offseason),
+        rookie contracts and cap calculations are for the NEXT league year.
+        """
+        if self._cap_helper is None:
+            from .cap_helper import CapHelper
+            # Draft picks/contracts are for NEXT season
+            self._cap_helper = CapHelper(self._db_path, self._dynasty_id, self._season + 1)
+        return self._cap_helper
+
+    def get_cap_summary(self, team_id: int) -> dict:
+        """
+        Get salary cap summary for a team.
+
+        Args:
+            team_id: Team ID
+
+        Returns:
+            Dict with salary_cap_limit, total_spending, available_space,
+            dead_money, is_compliant
+        """
+        return self._get_cap_helper().get_cap_summary(team_id)
+
+    def estimate_rookie_cap_hit(self, overall_pick: int) -> int:
+        """
+        Estimate year-1 cap hit for a rookie based on draft position.
+
+        Args:
+            overall_pick: Overall draft pick number (1-224)
+
+        Returns:
+            Estimated year-1 cap hit in dollars
+        """
+        return self._get_cap_helper().estimate_rookie_cap_hit(overall_pick)
 
     # ========================================================================
     # DRAFT CLASS MANAGEMENT
@@ -502,6 +546,33 @@ class DraftService:
                 dynasty_id=self._dynasty_id
             )
 
+            # Create rookie contract for drafted player
+            try:
+                from salary_cap.contract_manager import ContractManager
+                contract_manager = ContractManager(self._db_path)
+
+                # Get salary cap for rookie contract scaling
+                cap_helper = self._get_cap_helper()
+                salary_cap = cap_helper.DEFAULT_CAP_LIMIT
+
+                contract_id = contract_manager.create_rookie_contract(
+                    player_id=new_player_id,
+                    team_id=team_id,
+                    dynasty_id=self._dynasty_id,
+                    draft_pick=pick_info["overall_pick"],
+                    salary_cap=salary_cap,
+                    season=self._season + 1  # Rookie contracts start next season
+                )
+                self._logger.info(
+                    f"Created rookie contract {contract_id} for player {new_player_id} "
+                    f"(pick #{pick_info['overall_pick']})"
+                )
+            except Exception as contract_err:
+                # Log but don't fail the draft pick if contract creation fails
+                self._logger.error(
+                    f"Failed to create rookie contract for player {new_player_id}: {contract_err}"
+                )
+
             # Mark pick as executed in draft order
             order_api.mark_pick_executed(
                 pick_id=pick_info["pick_id"],
@@ -513,6 +584,26 @@ class DraftService:
             self._logger.info(
                 f"Pick {pick_info['overall_pick']}: Team {team_id} selects "
                 f"{player_name} ({prospect['position']}, {prospect['overall']} OVR)"
+            )
+
+            # Log transaction for audit trail
+            self._transaction_logger.log_transaction(
+                dynasty_id=self._dynasty_id,
+                season=self._season + 1,  # Draft is for next season
+                transaction_type="DRAFT",
+                player_id=new_player_id,
+                player_name=player_name,
+                from_team_id=None,  # From draft pool
+                to_team_id=team_id,
+                transaction_date=date(self._season + 1, 4, 24),  # Draft date (next year)
+                details={
+                    "round": pick_info["round_number"],
+                    "pick": pick_info["pick_in_round"],
+                    "overall_pick": pick_info["overall_pick"],
+                    "position": prospect["position"],
+                    "overall": prospect["overall"],
+                    "college": prospect.get("college", ""),
+                }
             )
 
             return {

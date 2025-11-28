@@ -379,18 +379,22 @@ class TrainingCampView(QWidget):
         """Populate a single row."""
         change = result.get("overall_change", 0)
 
-        # Determine row highlight color based on change
+        # Determine row highlight color and text color based on change
         if change > 0:
-            row_color = QColor("#E8F5E9")  # Light green
+            row_color = QColor("#E8F5E9")  # Light green background
+            text_color = QColor("#1B5E20")  # Dark green text
         elif change < 0:
-            row_color = QColor("#FFEBEE")  # Light red
+            row_color = QColor("#FFEBEE")  # Light red background
+            text_color = QColor("#B71C1C")  # Dark red text
         else:
             row_color = None
+            text_color = None
 
         # Player name
         name_item = QTableWidgetItem(result.get("player_name", "Unknown"))
         if row_color:
             name_item.setBackground(QBrush(row_color))
+            name_item.setForeground(text_color)
         table.setItem(row, 0, name_item)
 
         # Position
@@ -398,6 +402,7 @@ class TrainingCampView(QWidget):
         pos_item.setTextAlignment(Qt.AlignCenter)
         if row_color:
             pos_item.setBackground(QBrush(row_color))
+            pos_item.setForeground(text_color)
         table.setItem(row, 1, pos_item)
 
         # Team
@@ -407,6 +412,7 @@ class TrainingCampView(QWidget):
         team_item.setTextAlignment(Qt.AlignCenter)
         if row_color:
             team_item.setBackground(QBrush(row_color))
+            team_item.setForeground(text_color)
         table.setItem(row, 2, team_item)
 
         # Age
@@ -414,6 +420,7 @@ class TrainingCampView(QWidget):
         age_item.setTextAlignment(Qt.AlignCenter)
         if row_color:
             age_item.setBackground(QBrush(row_color))
+            age_item.setForeground(text_color)
         table.setItem(row, 3, age_item)
 
         # Age category
@@ -424,6 +431,7 @@ class TrainingCampView(QWidget):
         cat_item.setTextAlignment(Qt.AlignCenter)
         if row_color:
             cat_item.setBackground(QBrush(row_color))
+            cat_item.setForeground(text_color)
         table.setItem(row, 4, cat_item)
 
         # Old overall
@@ -431,6 +439,7 @@ class TrainingCampView(QWidget):
         old_ovr_item.setTextAlignment(Qt.AlignCenter)
         if row_color:
             old_ovr_item.setBackground(QBrush(row_color))
+            old_ovr_item.setForeground(text_color)
         table.setItem(row, 5, old_ovr_item)
 
         # New overall
@@ -438,6 +447,7 @@ class TrainingCampView(QWidget):
         new_ovr_item.setTextAlignment(Qt.AlignCenter)
         if row_color:
             new_ovr_item.setBackground(QBrush(row_color))
+            new_ovr_item.setForeground(text_color)
         table.setItem(row, 6, new_ovr_item)
 
         # Change with color coding

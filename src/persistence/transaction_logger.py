@@ -76,7 +76,7 @@ class TransactionLogger:
             season: Season year
             transaction_type: Type of transaction (DRAFT, UFA_SIGNING, etc.)
             player_id: Player ID
-            player_name: Player's name
+            player_name: Player's full name (will be split into first/last)
             transaction_date: Date of transaction
             position: Player's position (optional)
             from_team_id: Originating team (NULL for draft/UDFA)
@@ -118,6 +118,11 @@ class TransactionLogger:
         if not transaction_date:
             raise ValueError("transaction_date is required")
 
+        # Split player_name into first_name and last_name
+        name_parts = player_name.split(' ', 1)
+        first_name = name_parts[0]
+        last_name = name_parts[1] if len(name_parts) > 1 else ''
+
         # Validate transaction type
         valid_types = [
             'DRAFT', 'UDFA_SIGNING', 'UFA_SIGNING', 'RFA_SIGNING',
@@ -138,7 +143,8 @@ class TransactionLogger:
             season=season,
             transaction_type=transaction_type,
             player_id=player_id,
-            player_name=player_name,
+            first_name=first_name,
+            last_name=last_name,
             position=position,
             from_team_id=from_team_id,
             to_team_id=to_team_id,
@@ -399,7 +405,8 @@ class TransactionLogger:
         season: int,
         transaction_type: str,
         player_id: int,
-        player_name: str,
+        first_name: str,
+        last_name: str,
         transaction_date: date,
         position: Optional[str] = None,
         from_team_id: Optional[int] = None,
@@ -419,7 +426,8 @@ class TransactionLogger:
             season: Season year
             transaction_type: Type of transaction
             player_id: Player ID
-            player_name: Player's name
+            first_name: Player's first name
+            last_name: Player's last name
             transaction_date: Date of transaction
             position: Player's position (optional)
             from_team_id: Originating team (optional)
@@ -440,14 +448,14 @@ class TransactionLogger:
             cursor = conn.execute('''
                 INSERT INTO player_transactions (
                     dynasty_id, season, transaction_type,
-                    player_id, player_name, position,
+                    player_id, first_name, last_name, position,
                     from_team_id, to_team_id,
                     transaction_date, details,
                     contract_id, event_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 dynasty_id, season, transaction_type,
-                player_id, player_name, position,
+                player_id, first_name, last_name, position,
                 from_team_id, to_team_id,
                 transaction_date, details_json,
                 contract_id, event_id
@@ -456,6 +464,7 @@ class TransactionLogger:
             conn.commit()
             transaction_id = cursor.lastrowid
 
+            player_name = f"{first_name} {last_name}".strip()
             self.logger.info(
                 f"Logged {transaction_type} transaction for player {player_name} "
                 f"(ID: {player_id}) in dynasty {dynasty_id}, season {season} "
@@ -466,6 +475,7 @@ class TransactionLogger:
 
         except Exception as e:
             conn.rollback()
+            player_name = f"{first_name} {last_name}".strip()
             self.logger.error(
                 f"Error inserting transaction: {e} "
                 f"[dynasty: {dynasty_id}, season: {season}, type: {transaction_type}, "

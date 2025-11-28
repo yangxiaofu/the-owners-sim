@@ -6,7 +6,7 @@ Integrated with TransactionAPI for real database data.
 """
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget,
-    QTableWidgetItem, QHeaderView, QPushButton
+    QTableWidgetItem, QHeaderView, QPushButton, QComboBox
 )
 from PySide6.QtCore import Qt
 from datetime import datetime
@@ -28,6 +28,17 @@ class TransactionHistoryWidget(QWidget):
     Integrated with TransactionAPI for real database data.
     """
 
+    # Filter name to transaction type mapping
+    FILTER_MAP = {
+        "All Transactions": None,
+        "Draft Picks": "DRAFT",
+        "Free Agent Signings": "UFA_SIGNING",
+        "Franchise Tags": "FRANCHISE_TAG",
+        "Releases": "RELEASE",
+        "Roster Cuts": "ROSTER_CUT",
+        "Waiver Claims": "WAIVER_CLAIM",
+    }
+
     def __init__(
         self,
         parent=None,
@@ -40,6 +51,9 @@ class TransactionHistoryWidget(QWidget):
         self.db_path = db_path
         self.dynasty_id = dynasty_id
         # Note: season property now proxied from parent
+
+        # Flag to block signals during initialization
+        self._initializing = True
 
         # Initialize TransactionAPI (follows StatsLeadersWidget pattern)
         import sys
@@ -69,6 +83,9 @@ class TransactionHistoryWidget(QWidget):
         self.status_label.setStyleSheet("color: #888; font-size: 11px;")
         layout.addWidget(self.status_label)
 
+        # Done initializing
+        self._initializing = False
+
         # Load initial data
         self.load_transactions()
 
@@ -80,7 +97,7 @@ class TransactionHistoryWidget(QWidget):
         return 2025  # Fallback for testing/standalone usage
 
     def _create_header(self) -> QHBoxLayout:
-        """Create header with title and refresh button."""
+        """Create header with title, filter dropdowns, and refresh button."""
         header = QHBoxLayout()
 
         # Title
@@ -90,6 +107,51 @@ class TransactionHistoryWidget(QWidget):
 
         header.addStretch()
 
+        # Season filter dropdown
+        season_label = QLabel("Season:")
+        season_label.setStyleSheet("font-size: 12px;")
+        header.addWidget(season_label)
+
+        self.season_combo = QComboBox()
+        self.season_combo.addItem("All Seasons", None)
+        # Add seasons dynamically (next year for offseason transactions, back to first year)
+        current_season = self.season
+        # Include next season since offseason transactions are logged for the upcoming season
+        for year in range(current_season + 1, 2024, -1):  # Next season back to first season
+            self.season_combo.addItem(str(year), year)
+        self.season_combo.setMinimumWidth(100)
+        self.season_combo.currentIndexChanged.connect(self._on_filter_changed)
+        header.addWidget(self.season_combo)
+
+        # Default to next season (where offseason transactions are logged)
+        default_season = current_season + 1
+        index = self.season_combo.findData(default_season)
+        if index >= 0:
+            self.season_combo.setCurrentIndex(index)
+
+        # Team filter dropdown
+        team_label = QLabel("Team:")
+        team_label.setStyleSheet("font-size: 12px;")
+        header.addWidget(team_label)
+
+        self.team_combo = QComboBox()
+        self.team_combo.addItem("All Teams", None)
+        self._populate_team_dropdown()
+        self.team_combo.setMinimumWidth(150)
+        self.team_combo.currentIndexChanged.connect(self._on_filter_changed)
+        header.addWidget(self.team_combo)
+
+        # Type filter dropdown
+        filter_label = QLabel("Type:")
+        filter_label.setStyleSheet("font-size: 12px;")
+        header.addWidget(filter_label)
+
+        self.filter_combo = QComboBox()
+        self.filter_combo.addItems(list(self.FILTER_MAP.keys()))
+        self.filter_combo.setMinimumWidth(150)
+        self.filter_combo.currentTextChanged.connect(self._on_filter_changed)
+        header.addWidget(self.filter_combo)
+
         # Refresh button
         refresh_btn = QPushButton("Refresh")
         refresh_btn.setMaximumWidth(100)
@@ -97,6 +159,27 @@ class TransactionHistoryWidget(QWidget):
         header.addWidget(refresh_btn)
 
         return header
+
+    def _populate_team_dropdown(self):
+        """Populate team dropdown with all 32 teams."""
+        try:
+            from team_management.teams.team_loader import TeamDataLoader
+            team_loader = TeamDataLoader()
+            all_teams = team_loader.get_all_teams()
+            for team in sorted(all_teams, key=lambda t: t.full_name):
+                self.team_combo.addItem(team.full_name, team.team_id)
+        except Exception as e:
+            print(f"Error loading teams for filter: {e}")
+            # Fallback: add generic team entries
+            for i in range(1, 33):
+                self.team_combo.addItem(f"Team {i}", i)
+
+    def _on_filter_changed(self, *args):
+        """Handle filter dropdown change."""
+        # Skip during initialization (table/status_label don't exist yet)
+        if self._initializing:
+            return
+        self.load_transactions()
 
     def _create_transaction_table(self) -> QTableWidget:
         """Create transaction table with 6 columns."""
@@ -124,30 +207,79 @@ class TransactionHistoryWidget(QWidget):
         return table
 
     def load_transactions(self):
-        """Load 500 most recent transactions from database."""
+        """Load transactions from database with combined filters."""
         try:
-            # Get transactions from API (sorted by date DESC)
-            transactions = self.transaction_api.get_recent_transactions(
-                dynasty_id=self.dynasty_id,
-                limit=500
-            )
+            # Get current filter values
+            filter_text = self.filter_combo.currentText() if hasattr(self, 'filter_combo') else "All Transactions"
+            filter_type = self.FILTER_MAP.get(filter_text, None)
+            season = self.season_combo.currentData() if hasattr(self, 'season_combo') else None
+            team_id = self.team_combo.currentData() if hasattr(self, 'team_combo') else None
+
+            # Build query based on filters
+            if team_id:
+                # Team filter - use get_team_transactions (includes season support)
+                transactions = self.transaction_api.get_team_transactions(
+                    team_id=team_id,
+                    dynasty_id=self.dynasty_id,
+                    season=season
+                )
+                # Apply type filter in memory if needed
+                if filter_type:
+                    transactions = [t for t in transactions if t['transaction_type'] == filter_type]
+            elif filter_type:
+                # Type filter with optional season
+                transactions = self.transaction_api.get_transactions_by_type(
+                    dynasty_id=self.dynasty_id,
+                    transaction_type=filter_type,
+                    season=season,
+                    limit=500
+                )
+            elif season:
+                # Season only - get all and filter in memory
+                transactions = self.transaction_api.get_recent_transactions(
+                    dynasty_id=self.dynasty_id,
+                    limit=500
+                )
+                transactions = [t for t in transactions if t.get('season') == season]
+            else:
+                # No filters
+                transactions = self.transaction_api.get_recent_transactions(
+                    dynasty_id=self.dynasty_id,
+                    limit=500
+                )
 
             # Populate table
             self._populate_table(transactions)
 
-            # Update status
-            if len(transactions) > 0:
-                self.status_label.setText(
-                    f"Showing {len(transactions)} most recent transactions"
-                )
-            else:
-                self.status_label.setText("No transactions found")
+            # Update status with active filters
+            self._update_status_label(len(transactions), season, team_id, filter_type)
 
         except Exception as e:
             print(f"Error loading transactions: {e}")
             import traceback
             traceback.print_exc()
             self.status_label.setText(f"Error loading transactions: {str(e)}")
+
+    def _update_status_label(self, count: int, season: Optional[int], team_id: Optional[int], filter_type: Optional[str]):
+        """Update status label to show active filters."""
+        # Build filter description
+        filter_parts = []
+        if season:
+            filter_parts.append(str(season))
+        if team_id:
+            team_name = self._get_team_name(team_id)
+            filter_parts.append(team_name)
+        if filter_type:
+            # Get friendly name from FILTER_MAP
+            friendly_name = next((k for k, v in self.FILTER_MAP.items() if v == filter_type), filter_type)
+            filter_parts.append(friendly_name)
+
+        filter_label = f" ({', '.join(filter_parts)})" if filter_parts else ""
+
+        if count > 0:
+            self.status_label.setText(f"Showing {count} transactions{filter_label}")
+        else:
+            self.status_label.setText(f"No transactions found{filter_label}")
 
     def _populate_table(self, transactions: List[Dict[str, Any]]):
         """
@@ -179,8 +311,10 @@ class TransactionHistoryWidget(QWidget):
             )
             self.table.setItem(row, 2, self._create_item(player_str))
 
-            # Column 3: From Team (full team name)
-            from_team_str = self._get_team_name(txn.get('from_team_id'))
+            # Column 3: From Team (full team name, context-aware for drafts)
+            from_team_str = self._get_from_team_name(
+                txn.get('from_team_id'), txn['transaction_type']
+            )
             self.table.setItem(row, 3, self._create_item(from_team_str))
 
             # Column 4: To Team (full team name)
@@ -298,6 +432,41 @@ class TransactionHistoryWidget(QWidget):
             print(f"Error getting team name for ID {team_id}: {e}")
             return f"Team {team_id}"
 
+    def _get_from_team_name(
+        self,
+        team_id: Optional[int],
+        transaction_type: str
+    ) -> str:
+        """
+        Convert team ID to display name, context-aware for "from" column.
+
+        For null team_id, returns context-appropriate source:
+        - DRAFT: "Draft" (not "Free Agent")
+        - UDFA_SIGNING: "Undrafted"
+        - WAIVER_CLAIM: "Waivers"
+        - Others: "Free Agent"
+
+        Args:
+            team_id: Team ID (1-32) or None
+            transaction_type: Transaction type code
+
+        Returns:
+            Full team name or context-aware source label
+        """
+        if team_id is None:
+            # Context-aware display for null from_team_id
+            if transaction_type == 'DRAFT':
+                return "Draft"
+            elif transaction_type == 'UDFA_SIGNING':
+                return "Undrafted"
+            elif transaction_type == 'WAIVER_CLAIM':
+                return "Waivers"
+            else:
+                return "Free Agent"
+
+        # For non-null team_id, use standard lookup
+        return self._get_team_name(team_id)
+
     def _format_details(
         self,
         details: Any,
@@ -370,6 +539,24 @@ class TransactionHistoryWidget(QWidget):
             salary = details.get('tag_salary', details.get('salary', 0))
             salary_str = self._format_currency(salary)
             return f"Tag salary: {salary_str}"
+
+        elif transaction_type == 'ROSTER_CUT':
+            # Example: "$5M dead money, $3M savings" or "$2M dead (+ $3M next yr), $8M savings (June 1)"
+            dead = details.get('dead_money', 0)
+            dead_next_yr = details.get('dead_money_next_year', 0)
+            savings = details.get('cap_savings', 0)
+            use_june_1 = details.get('use_june_1', False)
+
+            dead_str = self._format_currency(dead)
+            savings_str = self._format_currency(savings)
+
+            if use_june_1 and dead_next_yr > 0:
+                # June 1 cut with split dead money
+                next_yr_str = self._format_currency(dead_next_yr)
+                return f"{dead_str} dead (+ {next_yr_str} next yr), {savings_str} savings (June 1)"
+            else:
+                # Regular cut
+                return f"{dead_str} dead money, {savings_str} savings"
 
         # Default: Show all key-value pairs
         return ", ".join(f"{k}={v}" for k, v in details.items())

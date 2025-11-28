@@ -678,6 +678,28 @@ class DatabaseConnection:
             )
         ''')
 
+        # Player transactions table - logs all roster moves
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS player_transactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dynasty_id TEXT NOT NULL,
+                season INTEGER NOT NULL,
+                transaction_type TEXT NOT NULL,
+                player_id INTEGER NOT NULL,
+                first_name TEXT,
+                last_name TEXT,
+                position TEXT,
+                from_team_id INTEGER,
+                to_team_id INTEGER,
+                transaction_date TEXT,
+                details TEXT,
+                contract_id INTEGER,
+                event_id TEXT,
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE
+            )
+        ''')
+
         # Create indexes for performance
         conn.execute("CREATE INDEX IF NOT EXISTS idx_games_dynasty_season ON games(dynasty_id, season, week)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_games_teams ON games(home_team_id, away_team_id)")
@@ -741,6 +763,12 @@ class DatabaseConnection:
         conn.execute("CREATE INDEX IF NOT EXISTS idx_draft_order_overall ON draft_order(overall_pick)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_draft_order_team ON draft_order(current_team_id)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_draft_order_round ON draft_order(round_number, pick_in_round)")
+
+        # Player transactions indexes
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_player_transactions_dynasty ON player_transactions(dynasty_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_player_transactions_player ON player_transactions(player_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_player_transactions_type ON player_transactions(transaction_type)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_player_transactions_season ON player_transactions(dynasty_id, season)")
 
         # Initialize standings for dynasties with games but missing standings
         self._initialize_standings_if_empty(conn)

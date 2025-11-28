@@ -1,7 +1,7 @@
 {
   "team_id": 30,
   "team_name": "Los Angeles Rams",
-  "total_players": 53,
+  "total_players": 51,
   "players": {
     "3000": {
       "player_id": 3000,
@@ -757,37 +757,6 @@
         "cap_hit_2025": 3269155
       }
     },
-    "3024": {
-      "player_id": 3024,
-      "first_name": "Byron",
-      "last_name": "Young",
-      "number": 0,
-      "birthdate": "2002-02-06",
-      "positions": [
-        "defensive_end"
-      ],
-      "team_id": 30,
-      "attributes": {
-        "overall": 83,
-        "speed": 81,
-        "acceleration": 82,
-        "pass_rush": 84,
-        "run_defense": 82,
-        "discipline": 83,
-        "composure": 81,
-        "experience": 77,
-        "penalty_technique": 82,
-        "awareness": 82
-      },
-      "contract": {
-        "contract_years": 4,
-        "annual_salary": 1389167,
-        "signing_bonus": 1041212,
-        "guaranteed_money": 1041212,
-        "contract_type": "rookie",
-        "cap_hit_2025": 1524885
-      }
-    },
     "3025": {
       "player_id": 3025,
       "first_name": "Jared",
@@ -1463,37 +1432,6 @@
         "guaranteed_money": 0,
         "contract_type": "reserve",
         "cap_hit_2025": 915000
-      }
-    },
-    "3047": {
-      "player_id": 3047,
-      "first_name": "Cody",
-      "last_name": "Schrader",
-      "number": 45,
-      "birthdate": "2000-02-26",
-      "positions": [
-        "linebacker"
-      ],
-      "team_id": 30,
-      "attributes": {
-        "overall": 72,
-        "speed": 76,
-        "acceleration": 78,
-        "tackle": 73,
-        "coverage": 70,
-        "discipline": 76,
-        "composure": 74,
-        "experience": 70,
-        "penalty_technique": 75,
-        "awareness": 73
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 890000,
-        "signing_bonus": 0,
-        "guaranteed_money": 0,
-        "contract_type": "reserve",
-        "cap_hit_2025": 890000
       }
     },
     "3048": {

@@ -1,7 +1,7 @@
 {
   "team_id": 3,
   "team_name": "New England Patriots",
-  "total_players": 65,
+  "total_players": 52,
   "players": {
     "4001": {
       "player_id": 4001,
@@ -33,38 +33,6 @@
         "guaranteed_money": 36639764,
         "contract_type": "rookie",
         "cap_hit_2025": 8330000
-      }
-    },
-    "4002": {
-      "player_id": 4002,
-      "first_name": "Jacoby",
-      "last_name": "Brissett",
-      "number": 14,
-      "birthdate": "1996-11-04",
-      "positions": [
-        "quarterback"
-      ],
-      "team_id": 3,
-      "attributes": {
-        "overall": 75,
-        "speed": 78,
-        "accuracy": 75,
-        "arm_strength": 80,
-        "awareness": 85,
-        "discipline": 88,
-        "composure": 85,
-        "experience": 88,
-        "penalty_technique": 88,
-        "leadership": 82,
-        "pocket_presence": 82
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 8000000,
-        "signing_bonus": 5000000,
-        "guaranteed_money": 6500000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 8000000
       }
     },
     "4003": {
@@ -392,39 +360,6 @@
         "cap_hit_2025": 1500000
       }
     },
-    "35116": {
-      "player_id": 35116,
-      "first_name": "Drake",
-      "last_name": "Maye",
-      "number": 10,
-      "birthdate": "2002-12-07",
-      "positions": [
-        "quarterback"
-      ],
-      "team_id": 3,
-      "attributes": {
-        "overall": 85,
-        "speed": 85,
-        "accuracy": 88,
-        "arm_strength": 90,
-        "awareness": 85,
-        "discipline": 88,
-        "composure": 82,
-        "experience": 75,
-        "penalty_technique": 85,
-        "leadership": 85,
-        "pocket_presence": 88,
-        "mobility": 85
-      },
-      "contract": {
-        "contract_years": 4,
-        "annual_salary": 9159941,
-        "signing_bonus": 23467100,
-        "guaranteed_money": 36639764,
-        "contract_type": "rookie",
-        "cap_hit_2025": 8330000
-      }
-    },
     "35117": {
       "player_id": 35117,
       "first_name": "Joshua",
@@ -491,40 +426,6 @@
         "guaranteed_money": 0,
         "contract_type": "veteran_minimum",
         "cap_hit_2025": 985000
-      }
-    },
-    "35119": {
-      "player_id": 35119,
-      "first_name": "Rhamondre",
-      "last_name": "Stevenson",
-      "number": 38,
-      "birthdate": "1998-07-12",
-      "positions": [
-        "running_back"
-      ],
-      "team_id": 3,
-      "attributes": {
-        "overall": 82,
-        "speed": 80,
-        "strength": 88,
-        "agility": 82,
-        "power": 88,
-        "elusiveness": 80,
-        "hands": 80,
-        "vision": 85,
-        "awareness": 82,
-        "discipline": 85,
-        "composure": 82,
-        "experience": 82,
-        "penalty_technique": 82
-      },
-      "contract": {
-        "contract_years": 4,
-        "annual_salary": 9000000,
-        "signing_bonus": 8000000,
-        "guaranteed_money": 17000000,
-        "contract_type": "extension",
-        "cap_hit_2025": 11000000
       }
     },
     "35120": {
@@ -665,40 +566,6 @@
         "cap_hit_2025": 18500000
       }
     },
-    "35124": {
-      "player_id": 35124,
-      "first_name": "DeMario",
-      "last_name": "Douglas",
-      "number": 3,
-      "birthdate": "2001-10-14",
-      "positions": [
-        "wide_receiver"
-      ],
-      "team_id": 3,
-      "attributes": {
-        "overall": 78,
-        "speed": 85,
-        "hands": 88,
-        "route_running": 85,
-        "release": 82,
-        "catching": 82,
-        "awareness": 82,
-        "discipline": 82,
-        "composure": 80,
-        "experience": 78,
-        "penalty_technique": 80,
-        "agility": 90,
-        "slot_coverage": 88
-      },
-      "contract": {
-        "contract_years": 4,
-        "annual_salary": 985000,
-        "signing_bonus": 145000,
-        "guaranteed_money": 145000,
-        "contract_type": "rookie",
-        "cap_hit_2025": 1130000
-      }
-    },
     "35125": {
       "player_id": 35125,
       "first_name": "Kayshon",
@@ -833,39 +700,6 @@
         "cap_hit_2025": 915000
       }
     },
-    "35129": {
-      "player_id": 35129,
-      "first_name": "Hunter",
-      "last_name": "Henry",
-      "number": 85,
-      "birthdate": "1993-06-12",
-      "positions": [
-        "tight_end"
-      ],
-      "team_id": 3,
-      "attributes": {
-        "overall": 81,
-        "speed": 75,
-        "hands": 88,
-        "route_running": 85,
-        "blocking": 82,
-        "catching": 88,
-        "awareness": 88,
-        "discipline": 88,
-        "composure": 85,
-        "experience": 90,
-        "penalty_technique": 85,
-        "red_zone": 90
-      },
-      "contract": {
-        "contract_years": 3,
-        "annual_salary": 9000000,
-        "signing_bonus": 7500000,
-        "guaranteed_money": 15800000,
-        "contract_type": "extension",
-        "cap_hit_2025": 9500000
-      }
-    },
     "35130": {
       "player_id": 35130,
       "first_name": "Austin",
@@ -995,71 +829,6 @@
         "guaranteed_money": 0,
         "contract_type": "veteran_minimum",
         "cap_hit_2025": 985000
-      }
-    },
-    "35134": {
-      "player_id": 35134,
-      "first_name": "Garrett",
-      "last_name": "Bradbury",
-      "number": 50,
-      "birthdate": "1996-12-18",
-      "positions": [
-        "center"
-      ],
-      "team_id": 3,
-      "attributes": {
-        "overall": 80,
-        "speed": 75,
-        "strength": 82,
-        "pass_blocking": 82,
-        "run_blocking": 78,
-        "awareness": 88,
-        "discipline": 85,
-        "composure": 82,
-        "experience": 85,
-        "penalty_technique": 82,
-        "intelligence": 88,
-        "snap": 92
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 3000000,
-        "signing_bonus": 500000,
-        "guaranteed_money": 1500000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 3500000
-      }
-    },
-    "35135": {
-      "player_id": 35135,
-      "first_name": "Mike",
-      "last_name": "Onwenu",
-      "number": 71,
-      "birthdate": "1997-10-03",
-      "positions": [
-        "guard"
-      ],
-      "team_id": 3,
-      "attributes": {
-        "overall": 85,
-        "speed": 72,
-        "strength": 90,
-        "pass_blocking": 88,
-        "run_blocking": 85,
-        "awareness": 85,
-        "discipline": 88,
-        "composure": 85,
-        "experience": 82,
-        "penalty_technique": 85,
-        "versatility": 88
-      },
-      "contract": {
-        "contract_years": 3,
-        "annual_salary": 19000000,
-        "signing_bonus": 22500000,
-        "guaranteed_money": 36500000,
-        "contract_type": "extension",
-        "cap_hit_2025": 18000000
       }
     },
     "35136": {
@@ -1353,38 +1122,6 @@
         "cap_hit_2025": 915000
       }
     },
-    "35145": {
-      "player_id": 35145,
-      "first_name": "Khyiris",
-      "last_name": "Tonga",
-      "number": 93,
-      "birthdate": "2001-02-04",
-      "positions": [
-        "nose_tackle"
-      ],
-      "team_id": 3,
-      "attributes": {
-        "overall": 74,
-        "speed": 68,
-        "strength": 90,
-        "pass_rush": 70,
-        "run_defense": 88,
-        "awareness": 78,
-        "discipline": 80,
-        "composure": 78,
-        "experience": 78,
-        "penalty_technique": 78,
-        "size": 92
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 1200000,
-        "signing_bonus": 100000,
-        "guaranteed_money": 300000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 1300000
-      }
-    },
     "35146": {
       "player_id": 35146,
       "first_name": "Jeremiah",
@@ -1589,41 +1326,6 @@
         "cap_hit_2025": 915000
       }
     },
-    "35152": {
-      "player_id": 35152,
-      "first_name": "Robert",
-      "last_name": "Spillane",
-      "number": 55,
-      "birthdate": "1994-09-15",
-      "positions": [
-        "middle_linebacker"
-      ],
-      "team_id": 3,
-      "attributes": {
-        "overall": 80,
-        "speed": 82,
-        "strength": 82,
-        "pass_rush": 72,
-        "run_defense": 85,
-        "coverage": 82,
-        "tackling": 88,
-        "awareness": 88,
-        "discipline": 92,
-        "composure": 88,
-        "experience": 85,
-        "penalty_technique": 88,
-        "leadership": 92,
-        "intelligence": 88
-      },
-      "contract": {
-        "contract_years": 3,
-        "annual_salary": 11000000,
-        "signing_bonus": 9000000,
-        "guaranteed_money": 20600000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 14500000
-      }
-    },
     "35153": {
       "player_id": 35153,
       "first_name": "Christian",
@@ -1725,73 +1427,6 @@
         "guaranteed_money": 350000,
         "contract_type": "rookie",
         "cap_hit_2025": 1057500
-      }
-    },
-    "35156": {
-      "player_id": 35156,
-      "first_name": "Christian",
-      "last_name": "Gonzalez",
-      "number": 7,
-      "birthdate": "2002-06-19",
-      "positions": [
-        "cornerback"
-      ],
-      "team_id": 3,
-      "attributes": {
-        "overall": 85,
-        "speed": 88,
-        "strength": 78,
-        "man_coverage": 90,
-        "zone_coverage": 88,
-        "ball_skills": 85,
-        "tackling": 80,
-        "awareness": 85,
-        "discipline": 82,
-        "composure": 82,
-        "experience": 75,
-        "penalty_technique": 80
-      },
-      "contract": {
-        "contract_years": 4,
-        "annual_salary": 3775717,
-        "signing_bonus": 7983904,
-        "guaranteed_money": 15102868,
-        "contract_type": "rookie",
-        "cap_hit_2025": 5771693
-      }
-    },
-    "35157": {
-      "player_id": 35157,
-      "first_name": "Carlton",
-      "last_name": "Davis III",
-      "number": 25,
-      "birthdate": "1993-01-23",
-      "positions": [
-        "cornerback"
-      ],
-      "team_id": 3,
-      "attributes": {
-        "overall": 81,
-        "speed": 85,
-        "strength": 85,
-        "man_coverage": 85,
-        "zone_coverage": 82,
-        "ball_skills": 82,
-        "tackling": 85,
-        "awareness": 88,
-        "discipline": 88,
-        "composure": 85,
-        "experience": 88,
-        "penalty_technique": 85,
-        "physicality": 88
-      },
-      "contract": {
-        "contract_years": 3,
-        "annual_salary": 18000000,
-        "signing_bonus": 16500000,
-        "guaranteed_money": 34500000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 23000000
       }
     },
     "35158": {
@@ -1934,41 +1569,6 @@
         "cap_hit_2025": 10000000
       }
     },
-    "35162": {
-      "player_id": 35162,
-      "first_name": "Kyle",
-      "last_name": "Dugger",
-      "number": 23,
-      "birthdate": "1998-05-28",
-      "positions": [
-        "safety"
-      ],
-      "team_id": 3,
-      "attributes": {
-        "overall": 80,
-        "speed": 85,
-        "strength": 88,
-        "man_coverage": 75,
-        "zone_coverage": 80,
-        "ball_skills": 80,
-        "tackling": 90,
-        "awareness": 85,
-        "discipline": 85,
-        "composure": 85,
-        "experience": 82,
-        "penalty_technique": 82,
-        "run_support": 92,
-        "physicality": 88
-      },
-      "contract": {
-        "contract_years": 4,
-        "annual_salary": 14500000,
-        "signing_bonus": 18000000,
-        "guaranteed_money": 32500000,
-        "contract_type": "extension",
-        "cap_hit_2025": 16000000
-      }
-    },
     "35163": {
       "player_id": 35163,
       "first_name": "Craig",
@@ -2001,40 +1601,6 @@
         "guaranteed_money": 50000,
         "contract_type": "rookie",
         "cap_hit_2025": 965000
-      }
-    },
-    "35164": {
-      "player_id": 35164,
-      "first_name": "Jaylinn",
-      "last_name": "Hawkins",
-      "number": 30,
-      "birthdate": "1996-07-03",
-      "positions": [
-        "safety"
-      ],
-      "team_id": 3,
-      "attributes": {
-        "overall": 72,
-        "speed": 80,
-        "strength": 78,
-        "man_coverage": 72,
-        "zone_coverage": 78,
-        "ball_skills": 78,
-        "tackling": 80,
-        "awareness": 80,
-        "discipline": 82,
-        "composure": 78,
-        "experience": 82,
-        "penalty_technique": 80,
-        "special_teams": 85
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 1100000,
-        "signing_bonus": 100000,
-        "guaranteed_money": 250000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 1200000
       }
     },
     "35165": {

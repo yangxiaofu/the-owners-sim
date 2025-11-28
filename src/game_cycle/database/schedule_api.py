@@ -5,9 +5,9 @@ Handles all schedule-related database operations.
 """
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
-from .database.connection import GameCycleDatabase
+from .connection import GameCycleDatabase
 
 
 @dataclass
@@ -49,6 +49,7 @@ class ScheduleAPI:
     - Querying games by week/round
     - Recording game results
     - Adding playoff games
+    - Generating regular season schedules
     """
 
     def __init__(self, db: GameCycleDatabase):
@@ -59,6 +60,43 @@ class ScheduleAPI:
             db: GameCycleDatabase instance
         """
         self.db = db
+
+    # -------------------- Regular Season Schedule Generation --------------------
+
+    def clear_regular_season_games(self) -> int:
+        """
+        Remove all regular season games (to regenerate schedule).
+
+        Keeps playoff games (round_name IS NOT NULL).
+
+        Returns:
+            Number of games deleted
+        """
+        result = self.db.execute("DELETE FROM schedule WHERE week IS NOT NULL")
+        return result.rowcount
+
+    def insert_regular_season_games(
+        self,
+        games: List[Tuple[int, int, int, int, int]]
+    ) -> int:
+        """
+        Bulk insert regular season games.
+
+        Args:
+            games: List of (week, home_team_id, away_team_id, is_divisional, is_conference)
+
+        Returns:
+            Number of games inserted
+        """
+        self.db.executemany(
+            """INSERT INTO schedule
+               (week, home_team_id, away_team_id, is_divisional, is_conference)
+               VALUES (?, ?, ?, ?, ?)""",
+            games
+        )
+        return len(games)
+
+    # -------------------- Query Methods --------------------
 
     def get_games_for_week(self, week: int) -> List[ScheduledGame]:
         """
@@ -107,6 +145,49 @@ class ScheduleAPI:
             (round_name,)
         )
         return [self._row_to_game(row) for row in rows]
+
+    def get_game_by_id(self, game_id: int) -> Optional[ScheduledGame]:
+        """Get a specific game by ID."""
+        row = self.db.query_one("SELECT * FROM schedule WHERE id = ?", (game_id,))
+        return self._row_to_game(row) if row else None
+
+    def get_week_count(self, week: int) -> int:
+        """Get count of games in a week."""
+        result = self.db.query_one(
+            "SELECT COUNT(*) as count FROM schedule WHERE week = ?",
+            (week,)
+        )
+        return result['count'] if result else 0
+
+    def get_played_count(self, week: int) -> int:
+        """Get count of played games in a week."""
+        result = self.db.query_one(
+            "SELECT COUNT(*) as count FROM schedule WHERE week = ? AND is_played = 1",
+            (week,)
+        )
+        return result['count'] if result else 0
+
+    def is_week_complete(self, week: int) -> bool:
+        """Check if all games in a week have been played."""
+        total = self.get_week_count(week)
+        played = self.get_played_count(week)
+        return total > 0 and total == played
+
+    def is_round_complete(self, round_name: str) -> bool:
+        """Check if all games in a playoff round have been played."""
+        result = self.db.query_one(
+            """SELECT
+                   COUNT(*) as total,
+                   SUM(CASE WHEN is_played = 1 THEN 1 ELSE 0 END) as played
+               FROM schedule
+               WHERE round_name = ?""",
+            (round_name,)
+        )
+        if not result or result['total'] == 0:
+            return False
+        return result['total'] == result['played']
+
+    # -------------------- Update Methods --------------------
 
     def record_result(
         self,
@@ -157,46 +238,7 @@ class ScheduleAPI:
         """Remove all playoff games (to regenerate bracket)."""
         self.db.execute("DELETE FROM schedule WHERE round_name IS NOT NULL")
 
-    def get_game_by_id(self, game_id: int) -> Optional[ScheduledGame]:
-        """Get a specific game by ID."""
-        row = self.db.query_one("SELECT * FROM schedule WHERE id = ?", (game_id,))
-        return self._row_to_game(row) if row else None
-
-    def get_week_count(self, week: int) -> int:
-        """Get count of games in a week."""
-        result = self.db.query_one(
-            "SELECT COUNT(*) as count FROM schedule WHERE week = ?",
-            (week,)
-        )
-        return result['count'] if result else 0
-
-    def get_played_count(self, week: int) -> int:
-        """Get count of played games in a week."""
-        result = self.db.query_one(
-            "SELECT COUNT(*) as count FROM schedule WHERE week = ? AND is_played = 1",
-            (week,)
-        )
-        return result['count'] if result else 0
-
-    def is_week_complete(self, week: int) -> bool:
-        """Check if all games in a week have been played."""
-        total = self.get_week_count(week)
-        played = self.get_played_count(week)
-        return total > 0 and total == played
-
-    def is_round_complete(self, round_name: str) -> bool:
-        """Check if all games in a playoff round have been played."""
-        result = self.db.query_one(
-            """SELECT
-                   COUNT(*) as total,
-                   SUM(CASE WHEN is_played = 1 THEN 1 ELSE 0 END) as played
-               FROM schedule
-               WHERE round_name = ?""",
-            (round_name,)
-        )
-        if not result or result['total'] == 0:
-            return False
-        return result['total'] == result['played']
+    # -------------------- Private Methods --------------------
 
     def _row_to_game(self, row) -> ScheduledGame:
         """Convert database row to ScheduledGame."""

@@ -5,9 +5,12 @@ Handles free agent signing operations during the offseason free agency stage.
 Uses MarketValueCalculator to generate realistic contract offers.
 """
 
+from datetime import date
 from typing import Dict, List, Any, Optional
 import logging
 import json
+
+from persistence.transaction_logger import TransactionLogger
 
 
 class FreeAgencyService:
@@ -38,6 +41,37 @@ class FreeAgencyService:
         self._dynasty_id = dynasty_id
         self._season = season
         self._logger = logging.getLogger(__name__)
+
+        # Lazy-loaded cap helper
+        self._cap_helper = None
+
+        # Transaction logger for audit trail
+        self._transaction_logger = TransactionLogger(db_path)
+
+    def _get_cap_helper(self):
+        """Get or create cap helper instance.
+
+        Uses season + 1 because during offseason free agency,
+        contracts and cap calculations are for the NEXT league year.
+        """
+        if self._cap_helper is None:
+            from .cap_helper import CapHelper
+            # Offseason contracts/cap are for NEXT season
+            self._cap_helper = CapHelper(self._db_path, self._dynasty_id, self._season + 1)
+        return self._cap_helper
+
+    def get_cap_summary(self, team_id: int) -> Dict[str, Any]:
+        """
+        Get salary cap summary for a team.
+
+        Args:
+            team_id: Team ID
+
+        Returns:
+            Dict with salary_cap_limit, total_spending, available_space,
+            dead_money, is_compliant
+        """
+        return self._get_cap_helper().get_cap_summary(team_id)
 
     def get_available_free_agents(
         self,
@@ -221,10 +255,10 @@ class FreeAgencyService:
             guaranteed = int(market_value["guaranteed"] * 1_000_000)
             years = market_value["years"]
 
-            # Check cap space
+            # Check cap space for NEXT season (offseason signings)
             cap_space = cap_calculator.calculate_team_cap_space(
                 team_id=team_id,
-                season=self._season,
+                season=self._season + 1,  # Cap space for next league year
                 dynasty_id=self._dynasty_id
             )
 
@@ -253,7 +287,7 @@ class FreeAgencyService:
                 else:
                     guaranteed_amounts.append(0)
 
-            # Create new contract
+            # Create new contract (starts NEXT season during offseason)
             new_contract_id = contract_manager.create_contract(
                 player_id=player_id,
                 team_id=team_id,
@@ -264,7 +298,7 @@ class FreeAgencyService:
                 base_salaries=base_salaries,
                 guaranteed_amounts=guaranteed_amounts,
                 contract_type="VETERAN",
-                season=self._season
+                season=self._season + 1  # Contract starts NEXT league year
             )
 
             # Update player's team_id
@@ -274,8 +308,33 @@ class FreeAgencyService:
                 new_team_id=team_id
             )
 
+            # Update player's contract_id to reference the new contract
+            roster_api.update_player_contract_id(
+                dynasty_id=self._dynasty_id,
+                player_id=player_id,
+                contract_id=new_contract_id
+            )
+
             self._logger.info(
                 f"Signed FA {player_name} ({position}) to team {team_id}: {years} years, ${total_value:,}"
+            )
+
+            # Log transaction for audit trail
+            self._transaction_logger.log_transaction(
+                dynasty_id=self._dynasty_id,
+                season=self._season + 1,  # Contract is for next season
+                transaction_type="UFA_SIGNING",
+                player_id=player_id,
+                player_name=player_name,
+                from_team_id=None,  # From free agency
+                to_team_id=team_id,
+                transaction_date=date(self._season + 1, 3, 15),  # FA period date (next year)
+                details={
+                    "contract_years": years,
+                    "contract_value": total_value,
+                    "guaranteed": guaranteed,
+                    "position": position,
+                }
             )
 
             return {
@@ -342,10 +401,10 @@ class FreeAgencyService:
             if team_id == user_team_id:
                 continue
 
-            # Get team's cap space
+            # Get team's cap space for NEXT season (offseason signings)
             cap_space = cap_calculator.calculate_team_cap_space(
                 team_id=team_id,
-                season=self._season,
+                season=self._season + 1,  # Cap space for next league year
                 dynasty_id=self._dynasty_id
             )
 
@@ -453,7 +512,10 @@ class FreeAgencyService:
 
     def get_team_cap_space(self, team_id: int) -> int:
         """
-        Get available cap space for a team.
+        Get available cap space for a team for NEXT season.
+
+        During offseason, cap space is calculated for the upcoming
+        league year, not the just-completed season.
 
         Args:
             team_id: Team ID
@@ -466,6 +528,6 @@ class FreeAgencyService:
         calculator = CapCalculator(self._db_path)
         return calculator.calculate_team_cap_space(
             team_id=team_id,
-            season=self._season,
+            season=self._season + 1,  # Next season during offseason
             dynasty_id=self._dynasty_id
         )

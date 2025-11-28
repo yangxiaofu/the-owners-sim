@@ -5,8 +5,11 @@ Handles player re-signing decisions during the offseason re-signing stage.
 Uses MarketValueCalculator to generate realistic contract offers.
 """
 
+from datetime import date
 from typing import Dict, List, Any, Optional
 import logging
+
+from persistence.transaction_logger import TransactionLogger
 
 
 class ResigningService:
@@ -38,6 +41,37 @@ class ResigningService:
         self._dynasty_id = dynasty_id
         self._season = season
         self._logger = logging.getLogger(__name__)
+
+        # Lazy-loaded cap helper
+        self._cap_helper = None
+
+        # Transaction logger for audit trail
+        self._transaction_logger = TransactionLogger(db_path)
+
+    def _get_cap_helper(self):
+        """Get or create cap helper instance.
+
+        Uses season + 1 because during offseason re-signing,
+        contracts and cap calculations are for the NEXT league year.
+        """
+        if self._cap_helper is None:
+            from .cap_helper import CapHelper
+            # Offseason contracts/cap are for NEXT season
+            self._cap_helper = CapHelper(self._db_path, self._dynasty_id, self._season + 1)
+        return self._cap_helper
+
+    def get_cap_summary(self, team_id: int) -> dict:
+        """
+        Get salary cap summary for a team.
+
+        Args:
+            team_id: Team ID
+
+        Returns:
+            Dict with salary_cap_limit, total_spending, available_space,
+            dead_money, is_compliant
+        """
+        return self._get_cap_helper().get_cap_summary(team_id)
 
     def get_expiring_contracts(self, team_id: int) -> List[Dict[str, Any]]:
         """
@@ -166,10 +200,33 @@ class ResigningService:
                     "error_message": f"Player {player_id} not found",
                 }
 
-            player_name = f"{player_info.get('first_name', '')} {player_info.get('last_name', '')}".strip()
-            position = player_info.get("position", "")
-            overall = player_info.get("overall_rating", 70)
-            age = player_info.get("age", 25)
+            import json
+
+            # Handle both "name" key (from get_expiring_contracts) and first_name/last_name keys (from roster API)
+            player_name = player_info.get("name") or f"{player_info.get('first_name', '')} {player_info.get('last_name', '')}".strip()
+
+            # Extract position from JSON positions array
+            positions = player_info.get("positions", [])
+            if isinstance(positions, str):
+                positions = json.loads(positions)
+            position = positions[0] if positions else ""
+
+            # Extract overall from JSON attributes object
+            attributes = player_info.get("attributes", {})
+            if isinstance(attributes, str):
+                attributes = json.loads(attributes)
+            overall = attributes.get("overall", 70)
+
+            # Calculate age from birthdate
+            age = 25  # Default
+            birthdate = player_info.get("birthdate")
+            if birthdate:
+                try:
+                    birth_year = int(birthdate.split("-")[0])
+                    age = self._season - birth_year
+                except (ValueError, IndexError):
+                    pass
+
             years_pro = player_info.get("years_pro", 3)
 
             # Calculate market value for the new contract
@@ -186,6 +243,21 @@ class ResigningService:
             signing_bonus = int(market_value["signing_bonus"] * 1_000_000)
             guaranteed = int(market_value["guaranteed"] * 1_000_000)
             years = market_value["years"]
+
+            # Check cap space for NEXT season (offseason re-signings)
+            from salary_cap.cap_calculator import CapCalculator
+            cap_calculator = CapCalculator(self._db_path)
+            cap_space = cap_calculator.calculate_team_cap_space(
+                team_id=team_id,
+                season=self._season + 1,  # Next league year
+                dynasty_id=self._dynasty_id
+            )
+
+            if aav > cap_space:
+                return {
+                    "success": False,
+                    "error_message": f"Insufficient cap space. Need ${aav:,}, have ${cap_space:,}",
+                }
 
             # Generate year-by-year base salaries (roughly even distribution)
             # Slightly increasing each year for realism
@@ -218,7 +290,7 @@ class ResigningService:
             if old_contract:
                 cap_api.void_contract(old_contract["contract_id"])
 
-            # Create new contract
+            # Create new contract (starts NEXT season during offseason)
             new_contract_id = contract_manager.create_contract(
                 player_id=player_id,
                 team_id=team_id,
@@ -229,11 +301,30 @@ class ResigningService:
                 base_salaries=base_salaries,
                 guaranteed_amounts=guaranteed_amounts,
                 contract_type="VETERAN",
-                season=self._season
+                season=self._season + 1  # Contract starts NEXT league year
             )
 
             self._logger.info(
                 f"Re-signed {player_name} ({position}): {years} years, ${total_value:,}"
+            )
+
+            # Log transaction for audit trail
+            self._transaction_logger.log_transaction(
+                dynasty_id=self._dynasty_id,
+                season=self._season + 1,  # Contract is for next season
+                transaction_type="UFA_SIGNING",
+                player_id=player_id,
+                player_name=player_name,
+                from_team_id=team_id,  # Re-signing = same team
+                to_team_id=team_id,
+                transaction_date=date(self._season + 1, 2, 15),  # Re-signing period (next year)
+                details={
+                    "contract_years": years,
+                    "contract_value": total_value,
+                    "guaranteed": guaranteed,
+                    "position": position,
+                    "is_resigning": True,
+                }
             )
 
             return {
@@ -295,7 +386,8 @@ class ResigningService:
                     "error_message": f"Player {player_id} not found",
                 }
 
-            player_name = f"{player_info.get('first_name', '')} {player_info.get('last_name', '')}".strip()
+            # Handle both "name" key (from get_expiring_contracts) and first_name/last_name keys (from roster API)
+            player_name = player_info.get("name") or f"{player_info.get('first_name', '')} {player_info.get('last_name', '')}".strip()
 
             # Get current team_id from player_info
             current_team_id = player_info.get("team_id", team_id)
@@ -318,6 +410,21 @@ class ResigningService:
             )
 
             self._logger.info(f"Released {player_name} to free agency")
+
+            # Log transaction for audit trail
+            self._transaction_logger.log_transaction(
+                dynasty_id=self._dynasty_id,
+                season=self._season + 1,  # Release is during next season's offseason
+                transaction_type="RELEASE",
+                player_id=player_id,
+                player_name=player_name,
+                from_team_id=current_team_id,
+                to_team_id=None,  # To free agency
+                transaction_date=date(self._season + 1, 2, 15),  # Re-signing period (next year)
+                details={
+                    "reason": "contract_not_renewed",
+                }
+            )
 
             return {
                 "success": True,
@@ -456,7 +563,10 @@ class ResigningService:
 
     def get_team_cap_space(self, team_id: int) -> int:
         """
-        Get available cap space for a team.
+        Get available cap space for a team for NEXT season.
+
+        During offseason, cap space is calculated for the upcoming
+        league year, not the just-completed season.
 
         Args:
             team_id: Team ID
@@ -469,6 +579,6 @@ class ResigningService:
         calculator = CapCalculator(self._db_path)
         return calculator.calculate_team_cap_space(
             team_id=team_id,
-            season=self._season,
+            season=self._season + 1,  # Next season during offseason
             dynasty_id=self._dynasty_id
         )

@@ -9,7 +9,9 @@ from typing import Dict, List, Any, Optional
 import logging
 import sqlite3
 import json
-from datetime import datetime
+from datetime import datetime, date
+
+from persistence.transaction_logger import TransactionLogger
 
 
 class WaiverService:
@@ -42,6 +44,86 @@ class WaiverService:
         self._dynasty_id = dynasty_id
         self._season = season
         self._logger = logging.getLogger(__name__)
+
+        # Lazy-loaded cap helper
+        self._cap_helper = None
+
+        # Transaction logger for audit trail
+        self._transaction_logger = TransactionLogger(db_path)
+
+        # Ensure waiver tables exist (migration for existing databases)
+        self._ensure_tables()
+
+    def _ensure_tables(self):
+        """Create waiver tables if they don't exist (handles schema migration)."""
+        conn = sqlite3.connect(self._db_path)
+        try:
+            conn.executescript('''
+                CREATE TABLE IF NOT EXISTS waiver_wire (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    dynasty_id TEXT NOT NULL,
+                    player_id INTEGER NOT NULL,
+                    former_team_id INTEGER NOT NULL,
+                    waiver_status TEXT DEFAULT 'on_waivers',
+                    waiver_order INTEGER,
+                    claiming_team_id INTEGER,
+                    dead_money INTEGER DEFAULT 0,
+                    cap_savings INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    cleared_at TIMESTAMP,
+                    season INTEGER NOT NULL,
+                    UNIQUE(dynasty_id, player_id, season)
+                );
+
+                CREATE TABLE IF NOT EXISTS waiver_claims (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    dynasty_id TEXT NOT NULL,
+                    season INTEGER NOT NULL,
+                    waiver_id INTEGER NOT NULL,
+                    player_id INTEGER NOT NULL,
+                    claiming_team_id INTEGER NOT NULL,
+                    claim_priority INTEGER NOT NULL,
+                    claim_status TEXT DEFAULT 'pending',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    processed_at TIMESTAMP,
+                    UNIQUE(dynasty_id, season, player_id, claiming_team_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_waiver_wire_dynasty ON waiver_wire(dynasty_id);
+                CREATE INDEX IF NOT EXISTS idx_waiver_wire_status ON waiver_wire(dynasty_id, waiver_status);
+                CREATE INDEX IF NOT EXISTS idx_waiver_wire_season ON waiver_wire(dynasty_id, season);
+                CREATE INDEX IF NOT EXISTS idx_waiver_claims_dynasty ON waiver_claims(dynasty_id);
+                CREATE INDEX IF NOT EXISTS idx_waiver_claims_player ON waiver_claims(dynasty_id, player_id);
+                CREATE INDEX IF NOT EXISTS idx_waiver_claims_pending ON waiver_claims(dynasty_id, season, claim_status);
+            ''')
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _get_cap_helper(self):
+        """Get or create cap helper instance.
+
+        Uses season + 1 because during offseason waiver wire,
+        cap calculations are for the NEXT league year.
+        """
+        if self._cap_helper is None:
+            from .cap_helper import CapHelper
+            # Offseason cap calculations are for NEXT season
+            self._cap_helper = CapHelper(self._db_path, self._dynasty_id, self._season + 1)
+        return self._cap_helper
+
+    def get_cap_summary(self, team_id: int) -> dict:
+        """
+        Get salary cap summary for a team.
+
+        Args:
+            team_id: Team ID
+
+        Returns:
+            Dict with salary_cap_limit, total_spending, available_space,
+            dead_money, is_compliant
+        """
+        return self._get_cap_helper().get_cap_summary(team_id)
 
     def get_waiver_priority(self) -> List[Dict[str, Any]]:
         """
@@ -538,6 +620,21 @@ class WaiverService:
                 })
 
                 events.append(f"{team_abbr} claimed {player_name} off waivers (priority #{winner['priority']})")
+
+                # Log transaction for audit trail
+                self._transaction_logger.log_transaction(
+                    dynasty_id=self._dynasty_id,
+                    season=self._season + 1,  # Waiver is during next season's preseason
+                    transaction_type="WAIVER_CLAIM",
+                    player_id=player_id,
+                    player_name=player_name,
+                    from_team_id=None,  # From waivers
+                    to_team_id=winning_team_id,
+                    transaction_date=date(self._season + 1, 8, 28),  # Day after cuts (next year)
+                    details={
+                        "waiver_priority": winner["priority"],
+                    }
+                )
 
             conn.commit()
 

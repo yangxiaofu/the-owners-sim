@@ -1,7 +1,7 @@
 {
   "team_id": 27,
   "team_name": "New Orleans Saints",
-  "total_players": 53,
+  "total_players": 52,
   "players": {
     "2700": {
       "player_id": 2700,
@@ -1440,42 +1440,6 @@
         "guaranteed_money": 0,
         "contract_type": "practice_squad",
         "cap_hit_2025": 985000
-      }
-    },
-    "2742": {
-      "player_id": 2742,
-      "first_name": "Justin",
-      "last_name": "Reid",
-      "number": 21,
-      "birthdate": "1995-04-20",
-      "positions": [
-        "safety"
-      ],
-      "team_id": 27,
-      "attributes": {
-        "overall": 84,
-        "speed": 85,
-        "strength": 78,
-        "agility": 82,
-        "awareness": 88,
-        "discipline": 88,
-        "composure": 85,
-        "experience": 85,
-        "penalty_technique": 88,
-        "man_coverage": 78,
-        "zone_coverage": 88,
-        "ball_skills": 88,
-        "tackling": 85,
-        "range": 88,
-        "leadership": 85
-      },
-      "contract": {
-        "contract_years": 3,
-        "annual_salary": 10500000,
-        "signing_bonus": 11500000,
-        "guaranteed_money": 22250000,
-        "contract_type": "free_agent",
-        "cap_hit_2025": 3800000
       }
     },
     "2743": {

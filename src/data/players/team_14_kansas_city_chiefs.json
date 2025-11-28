@@ -1171,39 +1171,6 @@
         "cap_hit_2025": 1100000
       }
     },
-    "1436": {
-      "player_id": 1436,
-      "first_name": "Curtis",
-      "last_name": "Jacobs",
-      "number": 48,
-      "birthdate": "2004-10-25",
-      "positions": [
-        "linebacker"
-      ],
-      "team_id": 14,
-      "attributes": {
-        "overall": 68,
-        "speed": 78,
-        "strength": 72,
-        "tackling": 72,
-        "coverage": 65,
-        "run_defense": 70,
-        "pass_rush": 65,
-        "awareness": 65,
-        "discipline": 70,
-        "composure": 65,
-        "experience": 60,
-        "penalty_technique": 68
-      },
-      "contract": {
-        "contract_years": 4,
-        "annual_salary": 900000,
-        "signing_bonus": 50000,
-        "guaranteed_money": 50000,
-        "contract_type": "rookie",
-        "cap_hit_2025": 912500
-      }
-    },
     "1437": {
       "player_id": 1437,
       "first_name": "Jaylen",
@@ -1301,38 +1268,6 @@
         "guaranteed_money": 13992484,
         "contract_type": "rookie",
         "cap_hit_2025": 2610000
-      }
-    },
-    "1440": {
-      "player_id": 1440,
-      "first_name": "L'Jarius",
-      "last_name": "Sneed",
-      "number": 38,
-      "birthdate": "1998-12-25",
-      "positions": [
-        "cornerback"
-      ],
-      "team_id": 14,
-      "attributes": {
-        "overall": 90,
-        "speed": 90,
-        "man_coverage": 95,
-        "zone_coverage": 90,
-        "ball_skills": 88,
-        "tackling": 85,
-        "awareness": 90,
-        "discipline": 88,
-        "composure": 88,
-        "experience": 82,
-        "penalty_technique": 85
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 19000000,
-        "signing_bonus": 0,
-        "guaranteed_money": 19000000,
-        "contract_type": "franchise_tag",
-        "cap_hit_2025": 19000000
       }
     },
     "1441": {
@@ -1675,35 +1610,6 @@
         "guaranteed_money": 0,
         "contract_type": "veteran",
         "cap_hit_2025": 1100000
-      }
-    },
-    "1452": {
-      "player_id": 1452,
-      "first_name": "Tommy",
-      "last_name": "Townsend",
-      "number": 2,
-      "birthdate": "2001-12-25",
-      "positions": [
-        "punter"
-      ],
-      "team_id": 14,
-      "attributes": {
-        "overall": 76,
-        "leg_strength": 82,
-        "accuracy": 80,
-        "awareness": 75,
-        "discipline": 78,
-        "composure": 75,
-        "experience": 78,
-        "penalty_technique": 78
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 1200000,
-        "signing_bonus": 0,
-        "guaranteed_money": 500000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 1200000
       }
     }
   },

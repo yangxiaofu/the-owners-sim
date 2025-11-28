@@ -1185,6 +1185,39 @@ class UnifiedDatabaseAPI:
             self.logger.error(f"Error deleting playoff events: {e}", exc_info=True)
             raise
 
+    def events_delete_regular_season_by_dynasty(self, season: int) -> int:
+        """
+        Delete all regular season game events for the current dynasty and season.
+
+        Useful for regenerating the schedule for a new season.
+
+        Args:
+            season: Season year
+
+        Returns:
+            Number of events deleted
+        """
+        try:
+            # Delete all regular season games for this dynasty/season
+            # game_id format: "regular_{season}_{week}_{game_num}"
+            query = """
+                DELETE FROM events
+                WHERE dynasty_id = ?
+                AND game_id LIKE ?
+            """
+
+            deleted_count = self._execute_update(query, (self.dynasty_id, f'regular_{season}_%'))
+
+            self.logger.info(
+                f"Deleted {deleted_count} regular season events for dynasty: {self.dynasty_id}, season: {season}"
+            )
+
+            return deleted_count
+
+        except Exception as e:
+            self.logger.error(f"Error deleting regular season events: {e}", exc_info=True)
+            raise
+
     def events_update(self, event: Any) -> bool:
         """
         Update an existing event in the database.

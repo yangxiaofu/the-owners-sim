@@ -45,6 +45,7 @@ class OffseasonHandler:
         """
         # Dispatch to stage-specific handler
         handlers = {
+            StageType.OFFSEASON_FRANCHISE_TAG: self._execute_franchise_tag,
             StageType.OFFSEASON_RESIGNING: self._execute_resigning,
             StageType.OFFSEASON_FREE_AGENCY: self._execute_free_agency,
             StageType.OFFSEASON_DRAFT: self._execute_draft,
@@ -103,6 +104,7 @@ class OffseasonHandler:
             True if user interaction needed
         """
         interactive_stages = {
+            StageType.OFFSEASON_FRANCHISE_TAG,  # User can apply franchise tag
             StageType.OFFSEASON_RESIGNING,    # User decides who to re-sign
             StageType.OFFSEASON_FREE_AGENCY,  # User can sign free agents
             StageType.OFFSEASON_DRAFT,        # User makes draft picks
@@ -129,20 +131,28 @@ class OffseasonHandler:
         stage_type = stage.stage_type
         user_team_id = context.get("user_team_id", 1)
 
-        if stage_type == StageType.OFFSEASON_RESIGNING:
-            return {
+        if stage_type == StageType.OFFSEASON_FRANCHISE_TAG:
+            return self._get_franchise_tag_preview(context, user_team_id)
+        elif stage_type == StageType.OFFSEASON_RESIGNING:
+            preview = {
                 "stage_name": "Re-signing Period",
                 "description": "Re-sign your team's expiring contract players before they hit free agency.",
                 "expiring_players": self._get_expiring_contracts(context, user_team_id),
                 "is_interactive": True,
             }
+            # Add cap data for UI display
+            preview["cap_data"] = self._get_cap_data(context, user_team_id)
+            return preview
         elif stage_type == StageType.OFFSEASON_FREE_AGENCY:
-            return {
+            preview = {
                 "stage_name": "Free Agency",
                 "description": "Sign available free agents to fill roster needs.",
                 "free_agents": self._get_free_agents(context),
                 "is_interactive": True,
             }
+            # Add cap data for UI display
+            preview["cap_data"] = self._get_cap_data(context, user_team_id)
+            return preview
         elif stage_type == StageType.OFFSEASON_DRAFT:
             return self._get_draft_preview(context, user_team_id)
         elif stage_type == StageType.OFFSEASON_ROSTER_CUTS:
@@ -163,6 +173,48 @@ class OffseasonHandler:
                 "stage_name": stage.display_name,
                 "description": "Offseason stage",
                 "is_interactive": False,
+            }
+
+    def _get_cap_data(
+        self,
+        context: Dict[str, Any],
+        team_id: int
+    ) -> Dict[str, Any]:
+        """
+        Get salary cap summary for UI display.
+
+        Args:
+            context: Execution context with database APIs
+            team_id: Team ID to get cap data for
+
+        Returns:
+            Dict with salary_cap_limit, total_spending, available_space,
+            dead_money, is_compliant, carryover
+        """
+        try:
+            from ..services.cap_helper import CapHelper
+
+            dynasty_id = context.get("dynasty_id")
+            season = context.get("season", 2025)
+            db_path = context.get("db_path", self._database_path)
+
+            # During offseason, cap calculations are for NEXT league year
+            # (contracts signed during offseason start the following season)
+            cap_helper = CapHelper(db_path, dynasty_id, season + 1)
+            return cap_helper.get_cap_summary(team_id)
+
+        except Exception as e:
+            import traceback
+            print(f"[OffseasonHandler] Error getting cap data: {e}")
+            traceback.print_exc()
+            # Return safe defaults on error
+            return {
+                "salary_cap_limit": 255_400_000,
+                "total_spending": 0,
+                "available_space": 255_400_000,
+                "dead_money": 0,
+                "is_compliant": True,
+                "carryover": 0
             }
 
     def _get_expiring_contracts(
@@ -214,32 +266,72 @@ class OffseasonHandler:
                     player_info = roster_api.get_player_by_id(dynasty_id, player_id)
 
                     if player_info:
-                        # Extract position from JSON array
-                        positions = player_info.get("positions", [])
-                        if isinstance(positions, str):
-                            positions = json.loads(positions)
-                        position = positions[0] if positions else ""
+                        # Extract position - try direct key first (matches ResigningService)
+                        # then fallback to positions array for compatibility
+                        position = player_info.get("position", "")
+                        if not position:
+                            positions = player_info.get("positions", [])
+                            if isinstance(positions, str):
+                                positions = json.loads(positions)
+                            position = positions[0] if positions else ""
 
-                        # Extract overall from JSON attributes
-                        attributes = player_info.get("attributes", {})
-                        if isinstance(attributes, str):
-                            attributes = json.loads(attributes)
-                        overall = attributes.get("overall", 0)
+                        # Extract overall - use same key as ResigningService
+                        # Try "overall_rating" first (ResigningService), then "overall" in attributes
+                        overall = player_info.get("overall_rating", 0)
+                        if not overall:
+                            attributes = player_info.get("attributes", {})
+                            if isinstance(attributes, str):
+                                attributes = json.loads(attributes)
+                            overall = attributes.get("overall", 70)
 
-                        # Calculate age from birthdate if available
-                        age = 0
-                        birthdate = player_info.get("birthdate")
-                        if birthdate:
-                            try:
-                                birth_year = int(birthdate.split("-")[0])
-                                age = season - birth_year
-                            except (ValueError, IndexError):
-                                pass
+                        # Get age - use direct "age" key (matches ResigningService)
+                        # Fallback to birthdate calculation if not present
+                        age = player_info.get("age", 0)
+                        if not age:
+                            birthdate = player_info.get("birthdate")
+                            if birthdate:
+                                try:
+                                    birth_year = int(birthdate.split("-")[0])
+                                    age = season - birth_year
+                                except (ValueError, IndexError):
+                                    age = 25  # Default fallback
 
                         # Calculate AAV from contract total_value
                         total_value = contract.get("total_value", 0)
                         contract_years = contract.get("contract_years", 1)
                         aav = total_value // contract_years if contract_years > 0 else 0
+
+                        years_pro = player_info.get("years_pro", 3)
+
+                        # Calculate estimated market AAV for new contract
+                        # Uses same logic as ResigningService.resign_player()
+                        from offseason.market_value_calculator import MarketValueCalculator
+                        market_calc = MarketValueCalculator()
+                        market = market_calc.calculate_player_value(
+                            position=position,
+                            overall=overall,
+                            age=age,
+                            years_pro=years_pro
+                        )
+                        estimated_aav = int(market["aav"] * 1_000_000)
+
+                        # Calculate Year 1 cap hit (matches ResigningService contract structure)
+                        # This is more accurate than AAV for cap projections because
+                        # contracts use escalating salaries (Year 1 is lowest)
+                        years = market["years"]
+                        total_value_new = int(market["total_value"] * 1_000_000)
+                        signing_bonus_new = int(market["signing_bonus"] * 1_000_000)
+
+                        # Escalating salary structure (5% increase per year)
+                        remaining = total_value_new - signing_bonus_new
+                        total_weight = sum(1.0 + (j * 0.05) for j in range(years))
+                        year1_base = int((remaining * 1.0) / total_weight) if total_weight > 0 else 0
+
+                        # Signing bonus proration (max 5 years per NFL rules)
+                        proration_years = min(years, 5)
+                        bonus_proration = signing_bonus_new // proration_years if proration_years > 0 else 0
+
+                        estimated_year1_cap_hit = year1_base + bonus_proration
 
                         expiring_players.append({
                             "player_id": player_id,
@@ -248,8 +340,11 @@ class OffseasonHandler:
                             "age": age,
                             "overall": overall,
                             "salary": aav,
+                            "estimated_aav": estimated_aav,  # Market value for new contract
+                            "estimated_year1_cap_hit": estimated_year1_cap_hit,  # Actual Year 1 cap impact
                             "years_remaining": years_remaining,
                             "contract_id": contract.get("contract_id"),
+                            "years_pro": years_pro,
                         })
 
             # Sort by overall rating (highest first)
@@ -335,7 +430,7 @@ class OffseasonHandler:
             # Get draft history
             draft_history = draft_service.get_draft_history()
 
-            return {
+            preview = {
                 "stage_name": "NFL Draft",
                 "description": "Select players from the draft class to build your team's future.",
                 "prospects": prospects,
@@ -345,6 +440,9 @@ class OffseasonHandler:
                 "draft_complete": progress.get("is_complete", False),
                 "is_interactive": True,
             }
+            # Add cap data for UI display
+            preview["cap_data"] = self._get_cap_data(context, user_team_id)
+            return preview
 
         except Exception as e:
             import traceback
@@ -642,7 +740,7 @@ class OffseasonHandler:
             # Get suggestion player IDs for UI highlighting
             suggested_ids = [p["player_id"] for p in suggestions]
 
-            return {
+            preview = {
                 "stage_name": "Roster Cuts",
                 "description": f"Cut your roster from {roster_count} players down to the 53-man limit.",
                 "roster": roster,
@@ -651,6 +749,9 @@ class OffseasonHandler:
                 "cut_suggestions": suggested_ids,
                 "is_interactive": True,
             }
+            # Add cap data for UI display
+            preview["cap_data"] = self._get_cap_data(context, team_id)
+            return preview
 
         except Exception as e:
             import traceback
@@ -695,7 +796,7 @@ class OffseasonHandler:
             user_claims = waiver_service.get_team_claims(team_id)
             claim_player_ids = [c["player_id"] for c in user_claims]
 
-            return {
+            preview = {
                 "stage_name": "Waiver Wire",
                 "description": f"Submit waiver claims for cut players. Your priority: #{user_priority}",
                 "waiver_players": waiver_players,
@@ -704,6 +805,9 @@ class OffseasonHandler:
                 "total_on_waivers": len(waiver_players),
                 "is_interactive": True,
             }
+            # Add cap data for UI display
+            preview["cap_data"] = self._get_cap_data(context, team_id)
+            return preview
 
         except Exception as e:
             import traceback
@@ -835,7 +939,7 @@ class OffseasonHandler:
         dynasty_id = context.get("dynasty_id")
         season = context.get("season", 2025)
         user_team_id = context.get("user_team_id", 1)
-        user_cuts = context.get("roster_cut_decisions", [])  # List of player IDs to cut
+        user_cuts = context.get("roster_cut_decisions", [])  # List of player IDs or dicts with cut type
         db_path = context.get("db_path", self._database_path)
 
         events = []
@@ -848,17 +952,34 @@ class OffseasonHandler:
             total_cap_savings = 0
 
             # 1. Process USER team cuts
-            for player_id in user_cuts:
+            # Support both formats: list of IDs (legacy) or list of dicts with use_june_1
+            for cut_item in user_cuts:
+                # Handle both formats: int/str player_id or dict with player_id and use_june_1
+                if isinstance(cut_item, dict):
+                    player_id = cut_item.get("player_id")
+                    use_june_1 = cut_item.get("use_june_1", False)
+                else:
+                    player_id = cut_item
+                    use_june_1 = False
+
                 if isinstance(player_id, str):
                     player_id = int(player_id)
 
-                result = cuts_service.cut_player(player_id, user_team_id, add_to_waivers=True)
+                result = cuts_service.cut_player(
+                    player_id, user_team_id, add_to_waivers=True, use_june_1=use_june_1
+                )
                 if result["success"]:
                     user_cut_results.append(result)
                     total_dead_money += result.get("dead_money", 0)
                     total_cap_savings += result.get("cap_savings", 0)
+
+                    # Show cut type in event message
+                    cut_type_str = " (June 1)" if use_june_1 else ""
+                    next_yr_str = ""
+                    if result.get("dead_money_next_year", 0) > 0:
+                        next_yr_str = f", Next yr: ${result['dead_money_next_year']:,}"
                     events.append(
-                        f"Cut {result['player_name']} (Dead $: ${result['dead_money']:,})"
+                        f"Cut {result['player_name']}{cut_type_str} (Dead $: ${result['dead_money']:,}{next_yr_str})"
                     )
 
             if user_cut_results:
@@ -995,22 +1116,192 @@ class OffseasonHandler:
             "events_processed": ["Training camp results reviewed - proceeding to preseason"],
         }
 
+    def _get_franchise_tag_preview(
+        self,
+        context: Dict[str, Any],
+        team_id: int
+    ) -> Dict[str, Any]:
+        """
+        Get franchise tag preview data for UI display.
+
+        Args:
+            context: Execution context
+            team_id: User's team ID
+
+        Returns:
+            Dictionary with taggable players and tag status
+        """
+        try:
+            from ..services.franchise_tag_service import FranchiseTagService
+
+            dynasty_id = context.get("dynasty_id")
+            season = context.get("season", 2025)
+            db_path = context.get("db_path", self._database_path)
+
+            tag_service = FranchiseTagService(db_path, dynasty_id, season)
+
+            # Get taggable players (expiring contracts)
+            taggable_players = tag_service.get_taggable_players(team_id)
+
+            # Check if team has already used tag
+            tag_used = tag_service.has_team_used_tag(team_id)
+
+            preview = {
+                "stage_name": "Franchise Tag Window",
+                "description": (
+                    "Apply a franchise or transition tag to one expiring contract player. "
+                    "Tagged players cannot hit free agency. Each team may use ONE tag per season. "
+                    "Note: Tag salary counts against NEXT year's salary cap."
+                ),
+                "taggable_players": taggable_players,
+                "tag_used": tag_used,
+                "total_taggable": len(taggable_players),
+                "is_interactive": True,
+                "current_season": season,
+                "next_season": season + 1,
+            }
+            # Add current season cap data for UI display
+            preview["cap_data"] = self._get_cap_data(context, team_id)
+
+            # Add PROJECTED next-year cap (where tag salary will count)
+            from ..services.cap_helper import CapHelper
+            next_cap_helper = CapHelper(db_path, dynasty_id, season + 1)
+            preview["projected_cap_data"] = next_cap_helper.get_cap_summary(team_id)
+
+            return preview
+
+        except Exception as e:
+            import traceback
+            print(f"[OffseasonHandler] Error getting franchise tag preview: {e}")
+            traceback.print_exc()
+            return {
+                "stage_name": "Franchise Tag Window",
+                "description": "Apply a franchise or transition tag to one expiring contract player.",
+                "taggable_players": [],
+                "tag_used": False,
+                "total_taggable": 0,
+                "is_interactive": True,
+            }
+
+    def _execute_franchise_tag(
+        self,
+        stage: Stage,
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Execute franchise tag phase for all teams.
+
+        Processes:
+        1. User team tag decision (from context["tag_decision"])
+        2. AI team tag decisions for all 31 other teams
+
+        Context keys:
+            - tag_decision: {"player_id": int, "tag_type": "franchise"|"transition"} or None
+        """
+        from ..services.franchise_tag_service import FranchiseTagService
+
+        dynasty_id = context.get("dynasty_id")
+        season = context.get("season", 2025)
+        user_team_id = context.get("user_team_id", 1)
+        tag_decision = context.get("tag_decision")  # {"player_id": X, "tag_type": "franchise"|"transition"}
+        db_path = context.get("db_path", self._database_path)
+
+        events = []
+        tags_applied = []
+
+        try:
+            tag_service = FranchiseTagService(db_path, dynasty_id, season)
+
+            # 1. Process USER team tag decision
+            if tag_decision and tag_decision.get("player_id"):
+                player_id = tag_decision["player_id"]
+                tag_type = tag_decision.get("tag_type", "franchise")
+
+                if tag_type == "franchise":
+                    result = tag_service.apply_franchise_tag(player_id, user_team_id)
+                else:
+                    result = tag_service.apply_transition_tag(player_id, user_team_id)
+
+                if result["success"]:
+                    tags_applied.append(result)
+                    events.append(
+                        f"Applied {result['tag_type']} tag to {result['player_name']} "
+                        f"({result['position']}) - ${result['tag_salary']:,}"
+                    )
+                else:
+                    events.append(f"Failed to apply tag: {result.get('error', 'Unknown error')}")
+
+            # 2. Process AI team tag decisions
+            ai_result = tag_service.process_ai_tags(user_team_id)
+            tags_applied.extend(ai_result.get("tags_applied", []))
+            events.extend(ai_result.get("events", []))
+
+            total_tags = len(tags_applied)
+            events.append(f"Franchise tag window closed: {total_tags} tags applied league-wide")
+
+            return {
+                "games_played": [],
+                "events_processed": events,
+                "tags_applied": tags_applied,
+                "total_tags": total_tags,
+            }
+
+        except Exception as e:
+            import traceback
+            print(f"[OffseasonHandler] Franchise tag error: {e}")
+            traceback.print_exc()
+            events.append(f"Franchise tag error: {str(e)}")
+            return {
+                "games_played": [],
+                "events_processed": events,
+                "tags_applied": [],
+                "total_tags": 0,
+            }
+
     def _execute_preseason(
         self,
         stage: Stage,
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Execute preseason (optional exhibition games)."""
+        """
+        Execute preseason - triggers season initialization pipeline.
+
+        This runs the SeasonInitializationService which executes a series
+        of steps to prepare for the new season (reset records, generate
+        schedule, etc.). The pipeline is extendable for future features.
+        """
+        from ..services.season_init_service import SeasonInitializationService
+
+        dynasty_id = context.get("dynasty_id")
+        db_path = context.get("db_path", self._database_path)
+        current_season = stage.season_year
+        next_season = current_season + 1
+
         events = []
+        events.append(f"Initializing Season {next_season}...")
 
-        # TODO: Implement preseason
-        # 1. Optional: Simulate 3 exhibition games
-        # 2. Or skip entirely and advance to regular season
-        # 3. No impact on standings
+        # Run initialization pipeline
+        service = SeasonInitializationService(
+            db_path=db_path,
+            dynasty_id=dynasty_id,
+            from_season=current_season,
+            to_season=next_season
+        )
 
-        events.append("Preseason completed")
+        results = service.run_all()
+
+        # Collect results for UI display
+        for result in results:
+            status_icon = "✓" if result.status.value == "completed" else "✗"
+            events.append(f"{status_icon} {result.step_name}: {result.message}")
+
+        events.append(f"Season {next_season} initialization complete!")
 
         return {
-            "games_played": [],  # TODO: Preseason game results
+            "games_played": [],
             "events_processed": events,
+            "initialization_results": [
+                {"step": r.step_name, "status": r.status.value, "message": r.message}
+                for r in results
+            ],
         }

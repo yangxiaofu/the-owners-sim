@@ -375,9 +375,13 @@ class StageController:
         """Get current standings for UI display as a flat list."""
         from team_management.teams.team_loader import TeamDataLoader
 
+        # Use current stage's season year (single source of truth)
+        stage = self.current_stage
+        current_season = stage.season_year if stage else self._season
+
         # Use UnifiedDatabaseAPI to get standings
         standings_data = self._unified_api.standings_get(
-            season=self._season,
+            season=current_season,
             season_type="regular_season"
         )
 
@@ -425,6 +429,10 @@ class StageController:
 
     def _build_context(self) -> Dict[str, Any]:
         """Build execution context for handlers."""
+        # Use current stage's season year (single source of truth)
+        stage = self.current_stage
+        current_season = stage.season_year if stage else self._season
+
         # Get user team ID from dynasty info
         # Note: Use `or 1` because .get() returns None when key exists but is NULL
         dynasty_info = self._dynasty_db_api.get_dynasty_by_id(self._dynasty_id)
@@ -432,7 +440,7 @@ class StageController:
 
         return {
             "dynasty_id": self._dynasty_id,
-            "season": self._season,
+            "season": current_season,
             "db_path": self._db_path,
             "unified_api": self._unified_api,
             "dynasty_state_api": self._dynasty_state_api,

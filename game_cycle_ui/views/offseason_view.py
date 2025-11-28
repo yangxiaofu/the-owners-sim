@@ -21,6 +21,7 @@ from .draft_view import DraftView
 from .roster_cuts_view import RosterCutsView
 from .waiver_wire_view import WaiverWireView
 from .training_camp_view import TrainingCampView
+from .franchise_tag_view import FranchiseTagView
 
 
 class OffseasonView(QWidget):
@@ -41,6 +42,7 @@ class OffseasonView(QWidget):
     player_resigned = Signal(int)  # Forward from ResigningView
     player_released = Signal(int)  # Forward from ResigningView
     player_signed_fa = Signal(int)  # Forward from FreeAgencyView
+    player_unsigned_fa = Signal(int)  # Forward from FreeAgencyView (unsign toggle)
     process_stage_requested = Signal()  # Emitted when user clicks Process button
 
     # Draft signals (forward from DraftView)
@@ -49,12 +51,15 @@ class OffseasonView(QWidget):
     auto_draft_all_requested = Signal()
 
     # Roster cuts signals (forward from RosterCutsView)
-    player_cut = Signal(int)  # player_id
+    player_cut = Signal(int, bool)  # player_id, use_june_1
     get_suggestions_requested = Signal()
 
     # Waiver wire signals (forward from WaiverWireView)
     waiver_claim_submitted = Signal(int)  # player_id
     waiver_claim_cancelled = Signal(int)  # player_id
+
+    # Franchise tag signals (forward from FranchiseTagView)
+    tag_applied = Signal(int, str)  # player_id, tag_type ("franchise" or "transition")
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -118,42 +123,50 @@ class OffseasonView(QWidget):
         """Create the stacked widget with sub-views for each stage."""
         self.stack = QStackedWidget()
 
-        # Re-signing view (index 0)
+        # Franchise Tag view (index 0) - FIRST offseason stage
+        self.franchise_tag_view = FranchiseTagView()
+        self.franchise_tag_view.tag_applied.connect(self.tag_applied.emit)
+        self.stack.addWidget(self.franchise_tag_view)
+
+        # Re-signing view (index 1)
         self.resigning_view = ResigningView()
         self.resigning_view.player_resigned.connect(self.player_resigned.emit)
         self.resigning_view.player_released.connect(self.player_released.emit)
+        self.resigning_view.cap_validation_changed.connect(self._on_cap_validation_changed)
         self.stack.addWidget(self.resigning_view)
 
-        # Free Agency view (index 1)
+        # Free Agency view (index 2)
         self.free_agency_view = FreeAgencyView()
         self.free_agency_view.player_signed.connect(self.player_signed_fa.emit)
+        self.free_agency_view.player_unsigned.connect(self.player_unsigned_fa.emit)
+        self.free_agency_view.cap_validation_changed.connect(self._on_fa_cap_validation_changed)
         self.stack.addWidget(self.free_agency_view)
 
-        # Draft view (index 2)
+        # Draft view (index 3)
         self.draft_view = DraftView()
         self.draft_view.prospect_drafted.connect(self.prospect_drafted.emit)
         self.draft_view.simulate_to_pick_requested.connect(self.simulate_to_pick_requested.emit)
         self.draft_view.auto_draft_all_requested.connect(self.auto_draft_all_requested.emit)
         self.stack.addWidget(self.draft_view)
 
-        # Roster Cuts view (index 3)
+        # Roster Cuts view (index 4)
         self.roster_cuts_view = RosterCutsView()
         self.roster_cuts_view.player_cut.connect(self.player_cut.emit)
         self.roster_cuts_view.get_suggestions_requested.connect(self.get_suggestions_requested.emit)
         self.stack.addWidget(self.roster_cuts_view)
 
-        # Waiver Wire view (index 4)
+        # Waiver Wire view (index 5)
         self.waiver_wire_view = WaiverWireView()
         self.waiver_wire_view.claim_submitted.connect(self.waiver_claim_submitted.emit)
         self.waiver_wire_view.claim_cancelled.connect(self.waiver_claim_cancelled.emit)
         self.stack.addWidget(self.waiver_wire_view)
 
-        # Training Camp view (index 5)
+        # Training Camp view (index 6)
         self.training_camp_view = TrainingCampView()
         self.training_camp_view.continue_clicked.connect(self.process_stage_requested.emit)
         self.stack.addWidget(self.training_camp_view)
 
-        # Preseason placeholder (index 6)
+        # Preseason placeholder (index 7)
         self.preseason_placeholder = self._create_placeholder_view(
             "Preseason",
             "The Preseason stage completes offseason preparations. Click 'Simulate' to advance to the regular season. "
@@ -219,27 +232,59 @@ class OffseasonView(QWidget):
         # Show process button by default (hidden for draft which has its own controls)
         self.process_button.setVisible(True)
 
-        if stage_type == StageType.OFFSEASON_RESIGNING:
+        if stage_type == StageType.OFFSEASON_FRANCHISE_TAG:
             self.stack.setCurrentIndex(0)
+            taggable_players = preview_data.get("taggable_players", [])
+            tag_used = preview_data.get("tag_used", False)
+
+            if taggable_players:
+                self.franchise_tag_view.set_taggable_players(taggable_players)
+            else:
+                self.franchise_tag_view.show_no_taggable_message()
+
+            self.franchise_tag_view.set_tag_used(tag_used)
+
+            # Update season info for cap labels
+            current_season = preview_data.get("current_season", 2025)
+            next_season = preview_data.get("next_season", 2026)
+            self.franchise_tag_view.set_season_info(current_season, next_season)
+
+            # Update cap data if available (current season - reference)
+            cap_data = preview_data.get("cap_data")
+            if cap_data:
+                self.franchise_tag_view.set_cap_data(cap_data)
+
+            # Update projected next-year cap (where tag actually counts)
+            projected_cap_data = preview_data.get("projected_cap_data")
+            if projected_cap_data:
+                self.franchise_tag_view.set_projected_cap_data(projected_cap_data)
+
+        elif stage_type == StageType.OFFSEASON_RESIGNING:
+            self.stack.setCurrentIndex(1)
             expiring_players = preview_data.get("expiring_players", [])
             if expiring_players:
                 self.resigning_view.set_expiring_players(expiring_players)
             else:
                 self.resigning_view.show_no_expiring_message()
+            # Update cap data if available
+            cap_data = preview_data.get("cap_data")
+            if cap_data:
+                self.resigning_view.set_cap_data(cap_data)
 
         elif stage_type == StageType.OFFSEASON_FREE_AGENCY:
-            self.stack.setCurrentIndex(1)
+            self.stack.setCurrentIndex(2)
             free_agents = preview_data.get("free_agents", [])
             if free_agents:
                 self.free_agency_view.set_free_agents(free_agents)
             else:
                 self.free_agency_view.show_no_free_agents_message()
-            # Update cap space if available
-            cap_space = preview_data.get("cap_space", 0)
-            self.free_agency_view.set_cap_space(cap_space)
+            # Update cap data if available
+            cap_data = preview_data.get("cap_data")
+            if cap_data:
+                self.free_agency_view.set_cap_data(cap_data)
 
         elif stage_type == StageType.OFFSEASON_DRAFT:
-            self.stack.setCurrentIndex(2)
+            self.stack.setCurrentIndex(3)
             # Hide the process button for draft (draft has its own controls)
             self.process_button.setVisible(False)
             # Populate draft data
@@ -264,26 +309,34 @@ class OffseasonView(QWidget):
             # Check if draft is complete
             if preview_data.get("draft_complete", False):
                 self.draft_view.set_draft_complete()
+            # Update cap data if available
+            cap_data = preview_data.get("cap_data")
+            if cap_data:
+                self.draft_view.set_cap_data(cap_data)
 
         elif stage_type == StageType.OFFSEASON_ROSTER_CUTS:
-            self.stack.setCurrentIndex(3)
+            self.stack.setCurrentIndex(4)
             # Populate roster cuts data
             roster_data = preview_data.get("roster_cuts_data", {})
             if roster_data:
                 self.roster_cuts_view.set_roster_data(roster_data)
             else:
-                # Show with empty data
+                # Show with data from preview (handler returns roster_count, not current_size)
                 self.roster_cuts_view.set_roster_data({
                     "roster": preview_data.get("roster", []),
-                    "current_size": preview_data.get("current_size", 0),
+                    "current_size": preview_data.get("roster_count", preview_data.get("current_size", 0)),
                     "target_size": preview_data.get("target_size", 53),
                     "cuts_needed": preview_data.get("cuts_needed", 0),
-                    "ai_suggestions": preview_data.get("ai_suggestions", []),
+                    "ai_suggestions": preview_data.get("cut_suggestions", preview_data.get("ai_suggestions", [])),
                     "protected_players": preview_data.get("protected_players", [])
                 })
+            # Update cap data if available
+            cap_data = preview_data.get("cap_data")
+            if cap_data:
+                self.roster_cuts_view.set_cap_data(cap_data)
 
         elif stage_type == StageType.OFFSEASON_WAIVER_WIRE:
-            self.stack.setCurrentIndex(4)
+            self.stack.setCurrentIndex(5)
             # Populate waiver wire data
             waiver_data = preview_data.get("waiver_data", {})
             if waiver_data:
@@ -297,9 +350,13 @@ class OffseasonView(QWidget):
             # Show no waivers message if empty
             if not preview_data.get("waiver_players") and not preview_data.get("waiver_data", {}).get("waiver_players"):
                 self.waiver_wire_view.show_no_waivers_message()
+            # Update cap data if available
+            cap_data = preview_data.get("cap_data")
+            if cap_data:
+                self.waiver_wire_view.set_cap_data(cap_data)
 
         elif stage_type == StageType.OFFSEASON_TRAINING_CAMP:
-            self.stack.setCurrentIndex(5)
+            self.stack.setCurrentIndex(6)
             # Hide the process button (training camp view has its own continue button)
             self.process_button.setVisible(False)
 
@@ -313,7 +370,7 @@ class OffseasonView(QWidget):
                 self.training_camp_view.set_training_camp_data(training_camp_results)
 
         elif stage_type == StageType.OFFSEASON_PRESEASON:
-            self.stack.setCurrentIndex(6)
+            self.stack.setCurrentIndex(7)
 
         else:
             # Default to first view
@@ -335,6 +392,12 @@ class OffseasonView(QWidget):
         """Get the roster cuts view for direct access."""
         return self.roster_cuts_view
 
+    def set_db_path(self, db_path: str):
+        """Set database path for contract lookups (forwarded to child views)."""
+        self.roster_cuts_view.set_db_path(db_path)
+        self.resigning_view.set_db_path(db_path)
+        self.franchise_tag_view.set_db_path(db_path)
+
     def get_waiver_wire_view(self) -> WaiverWireView:
         """Get the waiver wire view for direct access."""
         return self.waiver_wire_view
@@ -342,6 +405,10 @@ class OffseasonView(QWidget):
     def get_training_camp_view(self) -> TrainingCampView:
         """Get the training camp view for direct access."""
         return self.training_camp_view
+
+    def get_franchise_tag_view(self) -> FranchiseTagView:
+        """Get the franchise tag view for direct access."""
+        return self.franchise_tag_view
 
     def _on_process_clicked(self):
         """Handle process button click."""
@@ -354,3 +421,35 @@ class OffseasonView(QWidget):
         self.process_button.setEnabled(enabled)
         if enabled and self._current_stage:
             self.process_button.setText(f"Process {self._current_stage.display_name}")
+
+    def _on_cap_validation_changed(self, is_valid: bool, over_cap_amount: int):
+        """
+        Enable/disable Process button based on cap compliance.
+
+        Called when re-signing selections change and cap projection updates.
+        """
+        # Only affect the Process button if we're in the re-signing stage
+        if self._current_stage and self._current_stage.stage_type == StageType.OFFSEASON_RESIGNING:
+            self.process_button.setEnabled(is_valid)
+            if not is_valid:
+                self.process_button.setToolTip(
+                    f"Over cap by ${over_cap_amount:,}. Deselect some re-signings to continue."
+                )
+            else:
+                self.process_button.setToolTip("")
+
+    def _on_fa_cap_validation_changed(self, is_valid: bool, over_cap_amount: int):
+        """
+        Enable/disable Process button based on Free Agency cap compliance.
+
+        Called when free agent signings change and cap projection updates.
+        """
+        # Only affect the Process button if we're in the free agency stage
+        if self._current_stage and self._current_stage.stage_type == StageType.OFFSEASON_FREE_AGENCY:
+            self.process_button.setEnabled(is_valid)
+            if not is_valid:
+                self.process_button.setToolTip(
+                    f"Over cap by ${over_cap_amount:,}. Unsign some players to continue."
+                )
+            else:
+                self.process_button.setToolTip("")

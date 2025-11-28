@@ -641,3 +641,15 @@ class DraftView(QWidget):
         message_item.setFont(QFont("Arial", 12, QFont.Normal, True))  # Italic
 
         self.prospects_table.setItem(0, 0, message_item)
+
+    def set_cap_data(self, cap_data: Dict):
+        """
+        Update the view with full cap data from CapHelper.
+
+        Args:
+            cap_data: Dict with available_space, salary_cap_limit, total_spending,
+                      dead_money, is_compliant
+        """
+        # Draft view uses rookie contracts (slot-based)
+        # Cap impact is minimal and fixed by pick position
+        pass

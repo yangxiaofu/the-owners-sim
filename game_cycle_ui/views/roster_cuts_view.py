@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor, QBrush
 
+from game_cycle_ui.dialogs import ContractDetailsDialog
+
 
 class RosterCutsView(QWidget):
     """
@@ -26,18 +28,24 @@ class RosterCutsView(QWidget):
     """
 
     # Signals
-    player_cut = Signal(int)  # player_id
+    player_cut = Signal(int, bool)  # player_id, use_june_1
     get_suggestions_requested = Signal()
     process_cuts_requested = Signal()
+    view_contract_requested = Signal(int, str)  # contract_id, player_name
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self._roster_players: List[Dict] = []
         self._filtered_players: List[Dict] = []
-        self._cut_players: Set[int] = set()
+        self._cut_players: Dict[int, bool] = {}  # player_id -> use_june_1
         self._suggested_cuts: Set[int] = set()
         self._protected_players: Set[int] = set()
+        self._db_path: str = ""
         self._setup_ui()
+
+    def set_db_path(self, db_path: str):
+        """Set the database path for contract lookups."""
+        self._db_path = db_path
 
     def _setup_ui(self):
         """Build the UI layout."""
@@ -215,7 +223,7 @@ class RosterCutsView(QWidget):
         header.setSectionResizeMode(7, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(8, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(9, QHeaderView.Fixed)
-        header.resizeSection(9, 100)  # Action column width
+        header.resizeSection(9, 200)  # Action column width (wider for View + Cut + June 1)
 
         self.players_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.players_table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -253,7 +261,7 @@ class RosterCutsView(QWidget):
         self._roster_players = data.get("roster", [])
         self._suggested_cuts = set(data.get("ai_suggestions", []))
         self._protected_players = set(data.get("protected_players", []))
-        self._cut_players.clear()
+        self._cut_players = {}  # Reset cut tracking dict
 
         current_size = data.get("current_size", len(self._roster_players))
         target_size = data.get("target_size", 53)
@@ -287,8 +295,8 @@ class RosterCutsView(QWidget):
         for player in self._roster_players:
             player_id = player.get("player_id", 0)
 
-            # Skip already cut players
-            if player_id in self._cut_players:
+            # Skip already cut players (check dict keys)
+            if player_id in self._cut_players.keys():
                 continue
 
             # Position filter
@@ -418,11 +426,25 @@ class RosterCutsView(QWidget):
             status_item.setBackground(QBrush(row_color))
         self.players_table.setItem(row, 8, status_item)
 
-        # Action button
+        # Action buttons
         action_widget = QWidget()
         action_layout = QHBoxLayout(action_widget)
         action_layout.setContentsMargins(4, 2, 4, 2)
         action_layout.setSpacing(4)
+
+        # View contract button (always enabled if contract exists)
+        contract_id = player.get("contract_id")
+        player_name = player.get("name", "Unknown")
+        if contract_id:
+            view_btn = QPushButton("View")
+            view_btn.setStyleSheet(
+                "QPushButton { background-color: #1976D2; color: white; border-radius: 3px; padding: 4px 8px; }"
+                "QPushButton:hover { background-color: #1565C0; }"
+            )
+            view_btn.clicked.connect(
+                lambda checked, cid=contract_id, pname=player_name: self._on_view_contract(cid, pname)
+            )
+            action_layout.addWidget(view_btn)
 
         if is_protected:
             # Show disabled button for protected players
@@ -431,46 +453,81 @@ class RosterCutsView(QWidget):
             btn.setStyleSheet(
                 "QPushButton { background-color: #ccc; color: #666; border-radius: 3px; padding: 4px 8px; }"
             )
+            action_layout.addWidget(btn)
         else:
-            btn = QPushButton("Cut")
-            btn.setStyleSheet(
+            # Immediate Cut button
+            cut_btn = QPushButton("Cut")
+            cut_btn.setStyleSheet(
                 "QPushButton { background-color: #C62828; color: white; border-radius: 3px; padding: 4px 8px; }"
                 "QPushButton:hover { background-color: #B71C1C; }"
             )
-            btn.clicked.connect(lambda checked, pid=player_id, r=row: self._on_cut_clicked(pid, r))
+            cut_btn.clicked.connect(lambda checked, pid=player_id, r=row: self._on_cut_clicked(pid, r, False))
+            action_layout.addWidget(cut_btn)
 
-        action_layout.addWidget(btn)
+            # June 1 Cut button (spread dead money over 2 years)
+            june1_btn = QPushButton("June 1")
+            june1_btn.setToolTip(
+                "Post-June 1 designation:\n"
+                "Dead money spread over 2 years\n"
+                "(more immediate cap relief)"
+            )
+            june1_btn.setStyleSheet(
+                "QPushButton { background-color: #FF6F00; color: white; border-radius: 3px; padding: 4px 8px; }"
+                "QPushButton:hover { background-color: #E65100; }"
+            )
+            june1_btn.clicked.connect(lambda checked, pid=player_id, r=row: self._on_cut_clicked(pid, r, True))
+            action_layout.addWidget(june1_btn)
+
         self.players_table.setCellWidget(row, 9, action_widget)
 
-    def _on_cut_clicked(self, player_id: int, row: int):
-        """Handle cut button click."""
+    def _on_cut_clicked(self, player_id: int, row: int, use_june_1: bool = False):
+        """Handle cut button click.
+
+        Args:
+            player_id: ID of the player to cut
+            row: Row index in the table
+            use_june_1: If True, use Post-June 1 designation (spread dead money)
+        """
         # Find player data for cap calculations
         player = next((p for p in self._roster_players if p.get("player_id") == player_id), None)
         if not player:
             return
 
-        # Update status cell
+        # Update status cell with cut type
         status_item = self.players_table.item(row, 8)
         if status_item:
-            status_item.setText("Cutting")
-            status_item.setForeground(QColor("#C62828"))
+            status_text = "June 1 Cut" if use_june_1 else "Cutting"
+            status_item.setText(status_text)
+            status_item.setForeground(QColor("#FF6F00" if use_june_1 else "#C62828"))
 
-        # Disable the button
+        # Disable all cut buttons
         action_widget = self.players_table.cellWidget(row, 9)
         if action_widget:
             for child in action_widget.children():
-                if isinstance(child, QPushButton):
+                if isinstance(child, QPushButton) and child.text() in ("Cut", "June 1"):
                     child.setEnabled(False)
-                    child.setText("Cut")
 
-        # Track cut player
-        self._cut_players.add(player_id)
+        # Track cut player with cut type
+        self._cut_players[player_id] = use_june_1
 
         # Update counts and totals
         self._update_totals()
 
-        # Emit signal
-        self.player_cut.emit(player_id)
+        # Emit signal with cut type
+        self.player_cut.emit(player_id, use_june_1)
+
+    def _on_view_contract(self, contract_id: int, player_name: str):
+        """Handle view contract button click - opens contract details dialog."""
+        if not self._db_path:
+            return
+
+        dialog = ContractDetailsDialog(
+            player_name=player_name,
+            contract_id=contract_id,
+            db_path=self._db_path,
+            parent=self
+        )
+        dialog.exec()
 
     def _update_totals(self):
         """Update the summary totals based on marked cuts."""
@@ -478,7 +535,10 @@ class RosterCutsView(QWidget):
         total_savings = 0
 
         for player in self._roster_players:
-            if player.get("player_id") in self._cut_players:
+            player_id = player.get("player_id")
+            if player_id in self._cut_players:
+                # Note: dead_money shown is the base dead money
+                # For June 1 cuts, actual dead money would be split but we show total
                 total_dead += player.get("dead_money", 0)
                 total_savings += player.get("cap_savings", 0)
 
@@ -515,7 +575,18 @@ class RosterCutsView(QWidget):
 
     def get_cut_player_ids(self) -> List[int]:
         """Get list of player IDs marked for cutting."""
-        return list(self._cut_players)
+        return list(self._cut_players.keys())
+
+    def get_cut_decisions(self) -> List[Dict]:
+        """Get list of cut decisions with cut type.
+
+        Returns:
+            List of dicts with player_id and use_june_1 keys
+        """
+        return [
+            {"player_id": pid, "use_june_1": use_june_1}
+            for pid, use_june_1 in self._cut_players.items()
+        ]
 
     def show_no_cuts_needed_message(self):
         """Show message when roster is already at or under limit."""
@@ -531,6 +602,18 @@ class RosterCutsView(QWidget):
 
     def clear_cuts(self):
         """Reset cut players (call after processing)."""
-        self._cut_players.clear()
+        self._cut_players = {}
         self._update_totals()
         self._apply_filters()
+
+    def set_cap_data(self, cap_data: Dict):
+        """
+        Update the view with full cap data from CapHelper.
+
+        Args:
+            cap_data: Dict with available_space, salary_cap_limit, total_spending,
+                      dead_money, is_compliant
+        """
+        # Roster cuts view already tracks dead money/cap savings per cut
+        # This method updates the summary if needed
+        pass  # Current implementation tracks totals dynamically

@@ -658,37 +658,6 @@
         "cap_hit_2025": 7500000
       }
     },
-    "2220": {
-      "player_id": 2220,
-      "first_name": "Kevin",
-      "last_name": "Zeitler",
-      "number": 70,
-      "birthdate": "1988-02-11",
-      "positions": [
-        "guard"
-      ],
-      "team_id": 22,
-      "attributes": {
-        "overall": 80,
-        "speed": 68,
-        "strength": 88,
-        "pass_blocking": 82,
-        "run_blocking": 85,
-        "awareness": 88,
-        "discipline": 90,
-        "composure": 88,
-        "experience": 95,
-        "penalty_technique": 90
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 6000000,
-        "signing_bonus": 4280000,
-        "guaranteed_money": 5490000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 5940000
-      }
-    },
     "2221": {
       "player_id": 2221,
       "first_name": "Christian",
@@ -1300,38 +1269,6 @@
         "cap_hit_2025": 2600000
       }
     },
-    "2240": {
-      "player_id": 2240,
-      "first_name": "Amik",
-      "last_name": "Robertson",
-      "number": 21,
-      "birthdate": "1999-02-17",
-      "positions": [
-        "cornerback"
-      ],
-      "team_id": 22,
-      "attributes": {
-        "overall": 75,
-        "speed": 82,
-        "man_coverage": 78,
-        "zone_coverage": 78,
-        "ball_skills": 72,
-        "tackling": 80,
-        "awareness": 78,
-        "discipline": 78,
-        "composure": 75,
-        "experience": 78,
-        "penalty_technique": 78
-      },
-      "contract": {
-        "contract_years": 2,
-        "annual_salary": 3500000,
-        "signing_bonus": 2000000,
-        "guaranteed_money": 4000000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 4000000
-      }
-    },
     "2241": {
       "player_id": 2241,
       "first_name": "Emmanuel",
@@ -1676,38 +1613,6 @@
         "guaranteed_money": 25000,
         "contract_type": "undrafted",
         "cap_hit_2025": 912500
-      }
-    },
-    "2252": {
-      "player_id": 2252,
-      "first_name": "Za'Darius",
-      "last_name": "Smith",
-      "number": 90,
-      "birthdate": "1985-01-12",
-      "positions": [
-        "defensive_end"
-      ],
-      "team_id": 22,
-      "attributes": {
-        "overall": 83,
-        "speed": 82,
-        "strength": 85,
-        "pass_rush": 88,
-        "run_defense": 78,
-        "power_moves": 85,
-        "awareness": 85,
-        "discipline": 82,
-        "composure": 82,
-        "experience": 95,
-        "penalty_technique": 82
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 6000000,
-        "signing_bonus": 2000000,
-        "guaranteed_money": 3000000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 6500000
       }
     }
   },

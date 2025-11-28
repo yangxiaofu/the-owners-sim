@@ -533,39 +533,6 @@
         "cap_hit_2025": 915000
       }
     },
-    "2516": {
-      "player_id": 2516,
-      "first_name": "Teagan",
-      "last_name": "Quitoriano",
-      "number": 85,
-      "birthdate": "2000-12-17",
-      "positions": [
-        "tight_end"
-      ],
-      "team_id": 25,
-      "attributes": {
-        "overall": 68,
-        "speed": 70,
-        "awareness": 72,
-        "discipline": 75,
-        "composure": 68,
-        "experience": 78,
-        "penalty_technique": 75,
-        "hands": 70,
-        "route_running": 65,
-        "release": 68,
-        "catching": 70,
-        "blocking": 78
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 915000,
-        "signing_bonus": 0,
-        "guaranteed_money": 0,
-        "contract_type": "practice_squad",
-        "cap_hit_2025": 915000
-      }
-    },
     "2517": {
       "player_id": 2517,
       "first_name": "Jake",

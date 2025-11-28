@@ -1,7 +1,7 @@
 {
   "team_id": 17,
   "team_name": "Dallas Cowboys",
-  "total_players": 55,
+  "total_players": 54,
   "players": {
     "1700": {
       "player_id": 1700,
@@ -751,40 +751,6 @@
         "guaranteed_money": 50000000,
         "contract_type": "extension",
         "cap_hit_2025": 18135080
-      }
-    },
-    "1723": {
-      "player_id": 1723,
-      "first_name": "Tyler",
-      "last_name": "Smith",
-      "number": 70,
-      "birthdate": "1999-03-28",
-      "positions": [
-        "left_guard"
-      ],
-      "team_id": 17,
-      "attributes": {
-        "overall": 82,
-        "speed": 72,
-        "strength": 85,
-        "agility": 75,
-        "awareness": 82,
-        "discipline": 85,
-        "composure": 82,
-        "experience": 78,
-        "penalty_technique": 85,
-        "pass_blocking": 82,
-        "run_blocking": 85,
-        "athleticism": 80,
-        "technique": 82
-      },
-      "contract": {
-        "contract_years": 4,
-        "annual_salary": 24000000,
-        "signing_bonus": 16400000,
-        "guaranteed_money": 78871000,
-        "contract_type": "extension",
-        "cap_hit_2025": 6198954
       }
     },
     "1724": {
