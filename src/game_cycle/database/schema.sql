@@ -1369,6 +1369,18 @@ CREATE TABLE IF NOT EXISTS owner_directives (
     max_contract_years INTEGER DEFAULT 5 CHECK(max_contract_years BETWEEN 1 AND 5),
     max_guaranteed_percent REAL DEFAULT 0.75 CHECK(max_guaranteed_percent BETWEEN 0 AND 1),
 
+    -- Offseason Directives (Tollgate 1)
+    team_philosophy TEXT DEFAULT 'maintain' CHECK(team_philosophy IN (
+        'win_now', 'maintain', 'rebuild'
+    )),
+    budget_stance TEXT DEFAULT 'moderate' CHECK(budget_stance IN (
+        'aggressive', 'moderate', 'conservative'
+    )),
+    protected_player_ids TEXT DEFAULT '[]',  -- JSON array of player IDs (max 5)
+    expendable_player_ids TEXT DEFAULT '[]', -- JSON array of player IDs (max 10)
+    owner_notes TEXT DEFAULT '',             -- Free-form notes to GM
+    trust_gm INTEGER DEFAULT 0,              -- 1 = skip approval gates
+
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 

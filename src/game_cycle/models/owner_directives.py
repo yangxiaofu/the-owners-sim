@@ -33,6 +33,12 @@ class OwnerDirectives:
         fa_philosophy: One of 'aggressive', 'balanced', 'conservative'
         max_contract_years: Max contract length allowed (1-5)
         max_guaranteed_percent: Max guaranteed money percent (0.0-1.0)
+        team_philosophy: One of 'win_now', 'maintain', 'rebuild'
+        budget_stance: One of 'aggressive', 'moderate', 'conservative'
+        protected_player_ids: List of player IDs to protect (max 5)
+        expendable_player_ids: List of player IDs available for trade (max 10)
+        owner_notes: Free-form notes to GM
+        trust_gm: If True, GM makes decisions without approval gates
     """
 
     dynasty_id: str
@@ -46,6 +52,13 @@ class OwnerDirectives:
     fa_philosophy: str = "balanced"
     max_contract_years: int = 5
     max_guaranteed_percent: float = 0.75
+    # Offseason directive fields (Tollgate 1)
+    team_philosophy: str = "maintain"
+    budget_stance: str = "moderate"
+    protected_player_ids: List[int] = field(default_factory=list)
+    expendable_player_ids: List[int] = field(default_factory=list)
+    owner_notes: str = ""
+    trust_gm: bool = False
 
     def __post_init__(self):
         """Validate directive values."""
@@ -54,6 +67,9 @@ class OwnerDirectives:
         self._validate_priority_positions()
         self._validate_strategies()
         self._validate_contract_params()
+        self._validate_team_philosophy()
+        self._validate_budget_stance()
+        self._validate_player_lists()
 
     def _validate_team_id(self):
         """Ensure team_id is valid (1-32)."""
@@ -101,6 +117,41 @@ class OwnerDirectives:
                 f"max_guaranteed_percent must be 0.0-1.0, got {self.max_guaranteed_percent}"
             )
 
+    def _validate_team_philosophy(self):
+        """Ensure team_philosophy is valid."""
+        valid = {"win_now", "maintain", "rebuild"}
+        if self.team_philosophy not in valid:
+            raise ValueError(
+                f"team_philosophy must be one of {valid}, got {self.team_philosophy}"
+            )
+
+    def _validate_budget_stance(self):
+        """Ensure budget_stance is valid."""
+        valid = {"aggressive", "moderate", "conservative"}
+        if self.budget_stance not in valid:
+            raise ValueError(
+                f"budget_stance must be one of {valid}, got {self.budget_stance}"
+            )
+
+    def _validate_player_lists(self):
+        """Ensure protected/expendable player lists are valid."""
+        if len(self.protected_player_ids) > 5:
+            raise ValueError(
+                f"protected_player_ids max 5 players, got {len(self.protected_player_ids)}"
+            )
+
+        if len(self.expendable_player_ids) > 10:
+            raise ValueError(
+                f"expendable_player_ids max 10 players, got {len(self.expendable_player_ids)}"
+            )
+
+        # Check no overlap
+        overlap = set(self.protected_player_ids) & set(self.expendable_player_ids)
+        if overlap:
+            raise ValueError(
+                f"Players cannot be both protected and expendable: {overlap}"
+            )
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for database storage."""
         return {
@@ -115,6 +166,12 @@ class OwnerDirectives:
             "fa_philosophy": self.fa_philosophy,
             "max_contract_years": self.max_contract_years,
             "max_guaranteed_percent": self.max_guaranteed_percent,
+            "team_philosophy": self.team_philosophy,
+            "budget_stance": self.budget_stance,
+            "protected_player_ids": self.protected_player_ids.copy(),
+            "expendable_player_ids": self.expendable_player_ids.copy(),
+            "owner_notes": self.owner_notes,
+            "trust_gm": self.trust_gm,
         }
 
     @classmethod
@@ -132,6 +189,12 @@ class OwnerDirectives:
             fa_philosophy=data.get("fa_philosophy", "balanced"),
             max_contract_years=data.get("max_contract_years", 5),
             max_guaranteed_percent=data.get("max_guaranteed_percent", 0.75),
+            team_philosophy=data.get("team_philosophy", "maintain"),
+            budget_stance=data.get("budget_stance", "moderate"),
+            protected_player_ids=data.get("protected_player_ids", []),
+            expendable_player_ids=data.get("expendable_player_ids", []),
+            owner_notes=data.get("owner_notes", ""),
+            trust_gm=data.get("trust_gm", False),
         )
 
     @classmethod
@@ -158,6 +221,12 @@ class OwnerDirectives:
             fa_philosophy="balanced",
             max_contract_years=5,
             max_guaranteed_percent=0.75,
+            team_philosophy="maintain",
+            budget_stance="moderate",
+            protected_player_ids=[],
+            expendable_player_ids=[],
+            owner_notes="",
+            trust_gm=False,
         )
 
     def to_draft_direction(self) -> "DraftDirection":
@@ -200,6 +269,7 @@ class OwnerDirectives:
         return FAGuidance(
             philosophy=philosophy_map.get(self.fa_philosophy, FAPhilosophy.BALANCED),
             priority_positions=self.priority_positions[:3],  # FA allows max 3
+            wishlist_names=self.fa_wishlist.copy(),  # Pass FA targets for +20 bonus
             max_contract_years=self.max_contract_years,
             max_guaranteed_percent=self.max_guaranteed_percent,
         )
@@ -215,4 +285,10 @@ class OwnerDirectives:
             and self.fa_philosophy == "balanced"
             and self.max_contract_years == 5
             and self.max_guaranteed_percent == 0.75
+            and self.team_philosophy == "maintain"
+            and self.budget_stance == "moderate"
+            and len(self.protected_player_ids) == 0
+            and len(self.expendable_player_ids) == 0
+            and self.owner_notes == ""
+            and self.trust_gm is False
         )

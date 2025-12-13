@@ -6,6 +6,7 @@ Reusable dialog components for the game cycle UI.
 
 from .contract_details_dialog import ContractDetailsDialog
 from .player_progression_dialog import PlayerProgressionDialog
+from .player_detail_dialog import PlayerDetailDialog
 from .box_score_dialog import BoxScoreDialog
 from .wave_results_dialog import WaveResultsDialog
 from .draft_direction_dialog import DraftDirectionDialog
@@ -15,10 +16,12 @@ from .rivalry_info_dialog import RivalryInfoDialog
 from .dynasty_selection_dialog import GameCycleDynastySelectionDialog
 from .article_detail_dialog import ArticleDetailDialog
 from .super_bowl_results_dialog import SuperBowlResultsDialog
+from .offseason_directive_dialog import OffseasonDirectiveDialog
 
 __all__ = [
     "ContractDetailsDialog",
     "PlayerProgressionDialog",
+    "PlayerDetailDialog",
     "BoxScoreDialog",
     "WaveResultsDialog",
     "DraftDirectionDialog",
@@ -28,4 +31,5 @@ __all__ = [
     "GameCycleDynastySelectionDialog",
     "ArticleDetailDialog",
     "SuperBowlResultsDialog",
+    "OffseasonDirectiveDialog",
 ]

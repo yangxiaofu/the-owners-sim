@@ -24,11 +24,12 @@ tests_path = project_root / "tests"
 def pytest_configure(config):
     """Configure pytest - runs very early in startup.
 
-    IMPORTANT: Project root MUST come before tests/ to prevent shadowing
-    of packages like game_cycle_ui by tests/game_cycle_ui.
+    IMPORTANT: src/ MUST come before project root to prevent tests/game_cycle
+    from shadowing src/game_cycle.
     """
-    # Clear any cached game_cycle_ui modules that may have been imported from tests/
-    to_remove = [key for key in sys.modules.keys() if key.startswith('game_cycle_ui')]
+    # Clear any cached game_cycle and game_cycle_ui modules that may have been imported from tests/
+    to_remove = [key for key in sys.modules.keys()
+                 if key.startswith('game_cycle_ui') or key.startswith('game_cycle')]
     for key in to_remove:
         del sys.modules[key]
 
@@ -40,14 +41,15 @@ def pytest_configure(config):
             seen.add(p)
             new_path.append(p)
 
-    # Ensure project root and src are at the front
+    # Remove src and project_root from wherever they are
     for path in [str(src_path), str(project_root)]:
         if path in new_path:
             new_path.remove(path)
 
-    # Insert at front: project_root, then src
-    new_path.insert(0, str(src_path))
+    # Insert at front: src FIRST (position 0), then project_root (position 1)
+    # This ensures src/game_cycle is found before tests/game_cycle
     new_path.insert(0, str(project_root))
+    new_path.insert(0, str(src_path))
 
     sys.path[:] = new_path
 
