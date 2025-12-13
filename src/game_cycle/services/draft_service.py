@@ -11,7 +11,8 @@ import json
 import logging
 import sqlite3
 
-from persistence.transaction_logger import TransactionLogger
+from src.persistence.transaction_logger import TransactionLogger
+from src.game_cycle.models import DraftStrategy, DraftDirection, DraftDirectionResult
 
 
 class DraftService:
@@ -355,10 +356,11 @@ class DraftService:
 
     def _generate_fallback_draft_order(self) -> Dict[str, Any]:
         """
-        Generate simple draft order when standings unavailable.
+        Generate draft order from standings when playoff data is incomplete.
 
-        Uses team_id = pick_in_round as a simple fallback.
-        This is used for edge cases like first year when skipping to draft.
+        Uses inverse standings order (worst record first) to determine
+        draft order. This ensures teams with worse records pick earlier
+        even when full playoff results aren't available.
 
         Returns:
             Dict with generation result.
@@ -368,12 +370,28 @@ class DraftService:
         try:
             from database.draft_order_database_api import DraftPick
 
+            # Get standings sorted by record (worst first for draft)
+            standings_data = self._get_standings_from_db()
+
+            if standings_data and len(standings_data) == 32:
+                # Sort by wins ASC (worst record first), then ties ASC
+                standings_data.sort(key=lambda s: (s["wins"], s["ties"]))
+                team_order = [s["team_id"] for s in standings_data]
+                self._logger.info("Using standings-based draft order (worst record first)")
+            else:
+                # Ultimate fallback: reverse team order (team 32 picks 1st, etc.)
+                # Still better than sequential team_id = pick_in_round
+                team_order = list(range(32, 0, -1))
+                self._logger.warning(
+                    f"No valid standings ({len(standings_data) if standings_data else 0} teams) - "
+                    "using reversed team ID order"
+                )
+
             picks = []
             for round_num in range(1, 8):
                 for pick_in_round in range(1, 33):
                     overall_pick = (round_num - 1) * 32 + pick_in_round
-                    # Simple ordering: team_id = pick_in_round
-                    team_id = pick_in_round
+                    team_id = team_order[pick_in_round - 1]  # Use standings order
 
                     pick = DraftPick(
                         pick_id=None,
@@ -389,7 +407,7 @@ class DraftService:
 
             api.save_draft_order(picks)
 
-            self._logger.info(f"Generated fallback draft order: {len(picks)} picks")
+            self._logger.info(f"Generated standings-based draft order: {len(picks)} picks")
             return {
                 "exists": False,
                 "generated": True,
@@ -397,7 +415,7 @@ class DraftService:
             }
 
         except Exception as e:
-            self._logger.error(f"Fallback draft order generation failed: {e}")
+            self._logger.error(f"Draft order generation failed: {e}")
             return {
                 "exists": False,
                 "generated": False,
@@ -561,11 +579,20 @@ class DraftService:
                     dynasty_id=self._dynasty_id,
                     draft_pick=pick_info["overall_pick"],
                     salary_cap=salary_cap,
-                    season=self._season + 1  # Rookie contracts start next season
+                    season=self._season  # Rookie contracts start this season (active immediately)
                 )
                 self._logger.info(
                     f"Created rookie contract {contract_id} for player {new_player_id} "
                     f"(pick #{pick_info['overall_pick']})"
+                )
+
+                # Update player's contract_id FK
+                from database.player_roster_api import PlayerRosterAPI
+                roster_api = PlayerRosterAPI(self._db_path)
+                roster_api.update_player_contract_id(
+                    dynasty_id=self._dynasty_id,
+                    player_id=new_player_id,
+                    contract_id=contract_id
                 )
             except Exception as contract_err:
                 # Log but don't fail the draft pick if contract creation fails
@@ -593,6 +620,7 @@ class DraftService:
                 transaction_type="DRAFT",
                 player_id=new_player_id,
                 player_name=player_name,
+                position=prospect["position"],
                 from_team_id=None,  # From draft pool
                 to_team_id=team_id,
                 transaction_date=date(self._season + 1, 4, 24),  # Draft date (next year)
@@ -600,7 +628,6 @@ class DraftService:
                     "round": pick_info["round_number"],
                     "pick": pick_info["pick_in_round"],
                     "overall_pick": pick_info["overall_pick"],
-                    "position": prospect["position"],
                     "overall": prospect["overall"],
                     "college": prospect.get("college", ""),
                 }
@@ -626,18 +653,21 @@ class DraftService:
     def process_ai_pick(
         self,
         team_id: int,
-        pick_info: Dict[str, Any]
+        pick_info: Dict[str, Any],
+        draft_direction: Optional[DraftDirection] = None
     ) -> Dict[str, Any]:
         """
         Process an AI team's draft pick using needs-based selection.
 
-        Uses simple needs-based evaluation:
-        - Base value = prospect overall rating
-        - Need boost = +15 (CRITICAL), +8 (HIGH), +3 (MEDIUM)
+        Now supports draft direction for owner-controlled teams:
+        - BPA: Ignores needs, picks highest overall
+        - Balanced: Default behavior (need boost + reach penalty)
+        - Needs-Based: Aggressive need bonuses, willing to reach
 
         Args:
             team_id: Team making the pick
             pick_info: Pick info dict
+            draft_direction: Owner's draft direction (only applies to user's team)
 
         Returns:
             Dict with success status and pick details
@@ -655,22 +685,29 @@ class DraftService:
         if not prospects:
             return {"success": False, "error": "No prospects available"}
 
-        # Evaluate each prospect
+        # Evaluate each prospect using direction-aware evaluation
         best_prospect = None
-        best_score = -1
+        best_score = -999
+        best_result = None
 
         for prospect in prospects:
-            score = self._evaluate_prospect(
+            result = self._evaluate_prospect_with_direction(
                 prospect=prospect,
                 team_needs=team_needs,
-                pick_position=pick_info["overall_pick"]
+                pick_position=pick_info["overall_pick"],
+                direction=draft_direction
             )
-            if score > best_score:
-                best_score = score
+            if result.adjusted_score > best_score:
+                best_score = result.adjusted_score
                 best_prospect = prospect
+                best_result = result
 
         if best_prospect is None:
             return {"success": False, "error": "Could not evaluate prospects"}
+
+        # Log evaluation reason for debugging
+        if best_result:
+            self._logger.info(f"Pick #{pick_info['overall_pick']}: {best_result.reason}")
 
         # Make the pick
         return self.make_draft_pick(
@@ -724,15 +761,292 @@ class DraftService:
         return base_value
 
     # ========================================================================
+    # DRAFT DIRECTION EVALUATION METHODS (Phase 1)
+    # ========================================================================
+
+    def _evaluate_prospect_with_direction(
+        self,
+        prospect: Dict[str, Any],
+        team_needs: List[Dict[str, Any]],
+        pick_position: int,
+        direction: Optional[DraftDirection] = None
+    ) -> DraftDirectionResult:
+        """
+        Main dispatcher - routes to strategy-specific evaluators.
+
+        Args:
+            prospect: Prospect data dict
+            team_needs: List of needs with urgency scores
+            pick_position: Overall pick number (1-224)
+            direction: Owner's draft direction (None = default Balanced)
+
+        Returns:
+            DraftDirectionResult with scores and explanation
+        """
+        if direction is None:
+            direction = DraftDirection(strategy=DraftStrategy.BALANCED)
+
+        base_score = prospect["overall"]
+
+        # Route to strategy-specific evaluator
+        if direction.strategy == DraftStrategy.BEST_PLAYER_AVAILABLE:
+            result = self._evaluate_bpa(prospect, base_score)
+        elif direction.strategy == DraftStrategy.BALANCED:
+            result = self._evaluate_balanced(prospect, team_needs, pick_position, base_score)
+        elif direction.strategy == DraftStrategy.NEEDS_BASED:
+            result = self._evaluate_needs_based(prospect, team_needs, base_score)
+        elif direction.strategy == DraftStrategy.POSITION_FOCUS:
+            result = self._evaluate_position_focus(
+                prospect, team_needs, direction.priority_positions, base_score
+            )
+        else:
+            # Fallback to balanced
+            result = self._evaluate_balanced(prospect, team_needs, pick_position, base_score)
+
+        # Phase 3: Apply watchlist bonus (not implemented yet)
+        if prospect["player_id"] in direction.watchlist_prospect_ids:
+            result.watchlist_bonus = 10
+            result.adjusted_score += 10
+            result.reason += " | Watchlist target (+10)"
+
+        return result
+
+    def _evaluate_bpa(
+        self,
+        prospect: Dict[str, Any],
+        base_score: float
+    ) -> DraftDirectionResult:
+        """
+        Best Player Available - ignore needs entirely.
+
+        Philosophy: Always draft the highest-rated prospect regardless of need.
+
+        Args:
+            prospect: Prospect data dict
+            base_score: Prospect's base overall rating
+
+        Returns:
+            DraftDirectionResult with BPA evaluation
+        """
+        return DraftDirectionResult(
+            prospect_id=prospect["player_id"],
+            prospect_name=prospect["name"],
+            original_score=base_score,
+            adjusted_score=base_score,
+            strategy_bonus=0,
+            position_bonus=0,
+            watchlist_bonus=0,
+            reach_penalty=0,
+            reason="BPA: Highest overall rating"
+        )
+
+    def _evaluate_balanced(
+        self,
+        prospect: Dict[str, Any],
+        team_needs: List[Dict[str, Any]],
+        pick_position: int,
+        base_score: float
+    ) -> DraftDirectionResult:
+        """
+        Balanced - current system (needs + reach penalty).
+
+        Philosophy: Balance talent and need - smart drafting that considers both value and fit.
+
+        Args:
+            prospect: Prospect data dict
+            team_needs: List of team needs with urgency scores
+            pick_position: Overall pick number (1-224)
+            base_score: Prospect's base overall rating
+
+        Returns:
+            DraftDirectionResult with balanced evaluation
+        """
+        # Find need urgency
+        position_urgency = 0
+        for need in team_needs:
+            if need["position"] == prospect["position"]:
+                position_urgency = need.get("urgency_score", 0)
+                break
+
+        # Apply need boost
+        need_boost = 0
+        urgency_label = "LOW"
+        if position_urgency >= 5:  # CRITICAL
+            need_boost = 15
+            urgency_label = "CRITICAL"
+        elif position_urgency >= 4:  # HIGH
+            need_boost = 8
+            urgency_label = "HIGH"
+        elif position_urgency >= 3:  # MEDIUM
+            need_boost = 3
+            urgency_label = "MEDIUM"
+
+        # Reach penalty
+        projected_min = prospect.get("projected_pick_min", pick_position)
+        reach_penalty = -5 if pick_position < projected_min - 20 else 0
+
+        adjusted_score = base_score + need_boost + reach_penalty
+
+        return DraftDirectionResult(
+            prospect_id=prospect["player_id"],
+            prospect_name=prospect["name"],
+            original_score=base_score,
+            adjusted_score=adjusted_score,
+            strategy_bonus=need_boost,
+            position_bonus=0,
+            watchlist_bonus=0,
+            reach_penalty=reach_penalty,
+            reason=f"Balanced: {urgency_label} need (+{need_boost})"
+        )
+
+    def _evaluate_needs_based(
+        self,
+        prospect: Dict[str, Any],
+        team_needs: List[Dict[str, Any]],
+        base_score: float
+    ) -> DraftDirectionResult:
+        """
+        Needs-Based - aggressive need bonuses, no reach penalty.
+
+        Philosophy: Aggressively fill roster holes, willing to reach for positional needs.
+
+        Args:
+            prospect: Prospect data dict
+            team_needs: List of team needs with urgency scores
+            base_score: Prospect's base overall rating
+
+        Returns:
+            DraftDirectionResult with needs-based evaluation
+        """
+        # Find need urgency
+        position_urgency = 0
+        for need in team_needs:
+            if need["position"] == prospect["position"]:
+                position_urgency = need.get("urgency_score", 0)
+                break
+
+        # Double the need boosts (more aggressive)
+        need_boost = 0
+        urgency_label = "NONE"
+        if position_urgency >= 5:  # CRITICAL
+            need_boost = 30  # 2x normal
+            urgency_label = "CRITICAL"
+        elif position_urgency >= 4:  # HIGH
+            need_boost = 18
+            urgency_label = "HIGH"
+        elif position_urgency >= 3:  # MEDIUM
+            need_boost = 10
+            urgency_label = "MEDIUM"
+        elif position_urgency >= 2:  # LOW
+            need_boost = 5
+            urgency_label = "LOW"
+
+        # NO reach penalty - willing to reach for needs
+        adjusted_score = base_score + need_boost
+
+        return DraftDirectionResult(
+            prospect_id=prospect["player_id"],
+            prospect_name=prospect["name"],
+            original_score=base_score,
+            adjusted_score=adjusted_score,
+            strategy_bonus=need_boost,
+            position_bonus=0,
+            watchlist_bonus=0,
+            reach_penalty=0,
+            reason=f"Needs-Based: {urgency_label} need (+{need_boost}), willing to reach"
+        )
+
+    def _evaluate_position_focus(
+        self,
+        prospect: Dict[str, Any],
+        team_needs: List[Dict[str, Any]],
+        priority_positions: List[str],
+        base_score: float
+    ) -> DraftDirectionResult:
+        """
+        Position Focus - only consider priority positions.
+
+        Philosophy: Only consider specific positions, exclude everything else.
+        Higher priority = larger bonuses (1st: +25, 2nd: +20, ..., 5th: +5)
+
+        Args:
+            prospect: Prospect data dict
+            team_needs: List of team needs with urgency scores
+            priority_positions: List of 1-5 positions in priority order
+            base_score: Prospect's base overall rating
+
+        Returns:
+            DraftDirectionResult with position focus evaluation
+        """
+        prospect_position = prospect["position"]
+
+        # Exclude non-priority positions
+        if prospect_position not in priority_positions:
+            return DraftDirectionResult(
+                prospect_id=prospect["player_id"],
+                prospect_name=prospect["name"],
+                original_score=base_score,
+                adjusted_score=-100,  # Excluded
+                strategy_bonus=0,
+                position_bonus=0,
+                watchlist_bonus=0,
+                reach_penalty=0,
+                reason=f"Position Focus: {prospect_position} not in priorities (excluded)"
+            )
+
+        # Calculate priority rank bonus (1st = +25, 2nd = +20, ..., 5th = +5)
+        priority_rank = priority_positions.index(prospect_position) + 1
+        position_bonus = (6 - priority_rank) * 5
+
+        # Find need urgency
+        position_urgency = 0
+        for need in team_needs:
+            if need["position"] == prospect_position:
+                position_urgency = need.get("urgency_score", 0)
+                break
+
+        # Apply need boost (smaller than Needs-Based, but still significant)
+        need_boost = 0
+        urgency_label = "LOW"
+        if position_urgency >= 5:  # CRITICAL
+            need_boost = 20
+            urgency_label = "CRITICAL"
+        elif position_urgency >= 4:  # HIGH
+            need_boost = 12
+            urgency_label = "HIGH"
+        elif position_urgency >= 3:  # MEDIUM
+            need_boost = 6
+            urgency_label = "MEDIUM"
+
+        adjusted_score = base_score + position_bonus + need_boost
+
+        return DraftDirectionResult(
+            prospect_id=prospect["player_id"],
+            prospect_name=prospect["name"],
+            original_score=base_score,
+            adjusted_score=adjusted_score,
+            strategy_bonus=need_boost,
+            position_bonus=position_bonus,
+            watchlist_bonus=0,
+            reach_penalty=0,
+            reason=f"Position Focus: #{priority_rank} priority (+{position_bonus}), {urgency_label} need (+{need_boost})"
+        )
+
+    # ========================================================================
     # SIMULATION METHODS
     # ========================================================================
 
-    def sim_to_user_pick(self, user_team_id: int) -> List[Dict[str, Any]]:
+    def sim_to_user_pick(
+        self,
+        user_team_id: int,
+        draft_direction: Optional[DraftDirection] = None
+    ) -> List[Dict[str, Any]]:
         """
         Simulate AI picks until it's the user's turn.
 
         Args:
             user_team_id: User's team ID
+            draft_direction: Strategy for user's team (AI teams use default)
 
         Returns:
             List of picks made
@@ -748,10 +1062,13 @@ class DraftService:
             if current_pick["current_team_id"] == user_team_id:
                 break
 
-            # AI pick
+            # AI pick - only use direction if it's the user's team (shouldn't happen here but safety check)
+            direction = draft_direction if current_pick["current_team_id"] == user_team_id else None
+
             result = self.process_ai_pick(
                 team_id=current_pick["current_team_id"],
-                pick_info=current_pick
+                pick_info=current_pick,
+                draft_direction=direction
             )
 
             if result["success"]:

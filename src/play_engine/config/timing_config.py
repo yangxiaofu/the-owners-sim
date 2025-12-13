@@ -31,7 +31,13 @@ class NFLTimingConfig:
     # Kickoff plays - includes setup, kick, coverage, return, touchback
     KICKOFF_MIN_SECONDS = 5   # Current values look good based on user feedback
     KICKOFF_MAX_SECONDS = 8
-    
+
+    # Extra point attempts - includes setup, snap, hold, kick
+    EXTRA_POINT_MIN_SECONDS = 3
+    EXTRA_POINT_MAX_SECONDS = 5
+    TWO_POINT_CONVERSION_MIN_SECONDS = 15  # Similar to normal play
+    TWO_POINT_CONVERSION_MAX_SECONDS = 25
+
     @classmethod
     def get_run_play_timing(cls):
         """Get run play timing range"""
@@ -60,3 +66,10 @@ class NFLTimingConfig:
     def get_kickoff_timing(cls):
         """Get kickoff timing range"""
         return cls.KICKOFF_MIN_SECONDS, cls.KICKOFF_MAX_SECONDS
+
+    @classmethod
+    def get_extra_point_timing(cls, is_two_point=False):
+        """Get extra point timing range"""
+        if is_two_point:
+            return cls.TWO_POINT_CONVERSION_MIN_SECONDS, cls.TWO_POINT_CONVERSION_MAX_SECONDS
+        return cls.EXTRA_POINT_MIN_SECONDS, cls.EXTRA_POINT_MAX_SECONDS

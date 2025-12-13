@@ -278,14 +278,25 @@ class PlayerStatisticsExtractor(BaseExtractor):
 
     def _extract_defensive_stats(self, player_stats: Any, player_stat: PlayerStatistic) -> None:
         """Extract defensive statistics."""
-        # Handle both 'tackles' and 'tackles_total' field names
-        tackles = self.get_safe_attribute(player_stats, 'tackles', 0)
-        if tackles == 0:
-            tackles = self.get_safe_attribute(player_stats, 'tackles_total', 0)
-        player_stat.tackles_total = tackles
+        # PlayerStats uses 'tackles' for solo and 'assisted_tackles' for assisted
+        # Database uses 'tackles_solo', 'tackles_assist', and 'tackles_total'
 
-        player_stat.tackles_solo = self.get_safe_attribute(player_stats, 'tackles_solo', 0)
-        player_stat.tackles_assist = self.get_safe_attribute(player_stats, 'tackles_assist', 0)
+        # Get solo tackles (PlayerStats.tackles maps to tackles_solo)
+        solo_tackles = self.get_safe_attribute(player_stats, 'tackles', 0)
+        if solo_tackles == 0:
+            # Fallback: check if already using database field name
+            solo_tackles = self.get_safe_attribute(player_stats, 'tackles_solo', 0)
+        player_stat.tackles_solo = solo_tackles
+
+        # Get assisted tackles (PlayerStats.assisted_tackles maps to tackles_assist)
+        assisted_tackles = self.get_safe_attribute(player_stats, 'assisted_tackles', 0)
+        if assisted_tackles == 0:
+            # Fallback: check if already using database field name
+            assisted_tackles = self.get_safe_attribute(player_stats, 'tackles_assist', 0)
+        player_stat.tackles_assist = assisted_tackles
+
+        # Total tackles = solo + assisted
+        player_stat.tackles_total = solo_tackles + assisted_tackles
         player_stat.sacks = self.get_safe_attribute(player_stats, 'sacks', 0.0)
         player_stat.interceptions = self.get_safe_attribute(player_stats, 'interceptions', 0)
         player_stat.forced_fumbles = self.get_safe_attribute(player_stats, 'forced_fumbles', 0)

@@ -31,6 +31,7 @@ class PlayerStats:
     # Rushing stats
     rushing_attempts: int = 0  # Database-compatible name (was: carries)
     rushing_yards: int = 0
+    yards_after_contact: int = 0  # Yards gained after initial defender contact (RB power/elusiveness)
 
     # Passing stats (QB)
     passing_attempts: int = 0  # Database-compatible name (was: pass_attempts)
@@ -71,9 +72,10 @@ class PlayerStats:
     double_team_blocks: int = 0            # Successful double-team blocks
     chip_blocks: int = 0                   # Quick chip blocks before releasing
     
-    # Defensive stats  
+    # Defensive stats
     tackles: int = 0
     assisted_tackles: int = 0
+    missed_tackles: int = 0  # Tackle attempts that failed to bring down ball carrier
     sacks: float = 0  # Changed to float for split sacks
     tackles_for_loss: int = 0
     qb_hits: int = 0
@@ -86,7 +88,30 @@ class PlayerStats:
     tipped_passes: int = 0
     interceptions: int = 0
     forced_fumbles: int = 0
-    
+    fumble_recoveries: int = 0  # Fumbles recovered by this defender
+
+    # Ball carrier fumble stats
+    fumbles_lost: int = 0  # Fumbles lost by ball carrier (turnover)
+
+    # Coverage stats (DB/LB grading metrics)
+    coverage_targets: int = 0       # Times targeted while in coverage
+    coverage_completions: int = 0   # Completions allowed in coverage
+    coverage_yards_allowed: int = 0 # Yards allowed in coverage
+
+    # Pass rush stats (DL grading metrics)
+    pass_rush_wins: int = 0           # Winning pass rush reps (beat blocker)
+    pass_rush_attempts: int = 0       # Total pass rush attempts
+    times_double_teamed: int = 0      # Times this player was double-teamed
+    blocking_encounters: int = 0      # Total blocking encounters (base for double team rate)
+
+    # Ball carrier advanced stats (RB/WR grading)
+    broken_tackles: int = 0           # Tackles broken/evaded after contact
+    tackles_faced: int = 0            # Total tackle attempts faced
+
+    # QB advanced stats
+    time_to_throw_total: float = 0.0  # Cumulative time to throw (seconds)
+    throw_count: int = 0              # Number of throws for averaging
+
     # Special teams stats (field goals, punts, kicks)
     field_goal_attempts: int = 0
     field_goals_made: int = 0
@@ -98,15 +123,38 @@ class PlayerStats:
     special_teams_snaps: int = 0
     blocks_allowed: int = 0
 
+    # Punting stats (Punter)
+    punts: int = 0
+    punt_yards: int = 0
+    net_punt_yards: int = 0
+    long_punts: int = 0
+    punts_inside_20: int = 0
+    punts_downed: int = 0
+
+    # Punt return stats (Returner)
+    punt_returns: int = 0
+    punt_return_yards: int = 0
+    fair_catches: int = 0
+    muffed_punts: int = 0
+    long_punt_returns: int = 0
+
     # Snap tracking (playing time)
     offensive_snaps: int = 0  # Snaps played on offense
     defensive_snaps: int = 0  # Snaps played on defense
-    total_snaps: int = 0      # Total snaps across all phases
+    # Note: total_snaps is now a computed property - see below
 
     # Extra point stats
     extra_points_made: int = 0
     extra_points_attempted: int = 0
-    
+
+    # Distance-based FG tracking
+    fg_attempts_0_39: int = 0
+    fg_made_0_39: int = 0
+    fg_attempts_40_49: int = 0
+    fg_made_40_49: int = 0
+    fg_attempts_50_plus: int = 0
+    fg_made_50_plus: int = 0
+
     # Additional passing stats for holders on fake field goals
     passing_touchdowns: int = 0
     rushing_tds: int = 0  # Database-compatible name (was: rushing_touchdowns)
@@ -119,14 +167,22 @@ class PlayerStats:
         """Add rushing attempt and yards"""
         self.rushing_attempts += 1
         self.rushing_yards += yards
-    
+
+    def add_yards_after_contact(self, yards: int):
+        """Add yards gained after initial defender contact (RB power/elusiveness metric)"""
+        self.yards_after_contact += yards
+
     def add_tackle(self, assisted: bool = False):
         """Add tackle (solo or assisted)"""
         if assisted:
             self.assisted_tackles += 1
         else:
             self.tackles += 1
-    
+
+    def add_missed_tackle(self):
+        """Record a missed tackle attempt (failed to bring down ball carrier)"""
+        self.missed_tackles += 1
+
     def add_block(self, successful: bool = True):
         """Add blocking attempt"""
         if successful:
@@ -188,6 +244,71 @@ class PlayerStats:
         """Set pass blocking efficiency (0-100)"""
         self.pass_blocking_efficiency = max(0.0, min(100.0, efficiency))
     
+    def add_coverage_target(self, completed: bool, yards: int):
+        """Track a pass thrown at this player while in coverage (DB/LB grading metric)"""
+        self.coverage_targets += 1
+        if completed:
+            self.coverage_completions += 1
+            self.coverage_yards_allowed += yards
+
+    @property
+    def catch_rate_allowed(self) -> float:
+        """Calculate catch rate allowed in coverage (lower is better)"""
+        if self.coverage_targets == 0:
+            return 0.0
+        return self.coverage_completions / self.coverage_targets
+
+    # Pass rush helper methods (DL grading)
+    def add_pass_rush_attempt(self, won: bool, double_teamed: bool = False):
+        """Track a pass rush attempt and outcome (DL grading metric)"""
+        self.pass_rush_attempts += 1
+        self.blocking_encounters += 1
+        if won:
+            self.pass_rush_wins += 1
+        if double_teamed:
+            self.times_double_teamed += 1
+
+    @property
+    def pass_rush_win_rate(self) -> float:
+        """Calculate pass rush win rate (higher is better for DL)"""
+        if self.pass_rush_attempts == 0:
+            return 0.0
+        return self.pass_rush_wins / self.pass_rush_attempts
+
+    @property
+    def double_team_rate(self) -> float:
+        """Calculate how often this player is double-teamed (higher = more dominant)"""
+        if self.blocking_encounters == 0:
+            return 0.0
+        return self.times_double_teamed / self.blocking_encounters
+
+    # Ball carrier helper methods (RB/WR grading)
+    def add_tackle_faced(self, broken: bool):
+        """Track a tackle attempt faced by ball carrier"""
+        self.tackles_faced += 1
+        if broken:
+            self.broken_tackles += 1
+
+    @property
+    def broken_tackle_rate(self) -> float:
+        """Calculate broken tackle rate (higher is better for ball carriers)"""
+        if self.tackles_faced == 0:
+            return 0.0
+        return self.broken_tackles / self.tackles_faced
+
+    # QB time to throw helper methods
+    def add_time_to_throw(self, seconds: float):
+        """Track time to throw for a pass attempt (QB grading metric)"""
+        self.time_to_throw_total += seconds
+        self.throw_count += 1
+
+    @property
+    def avg_time_to_throw(self) -> float:
+        """Calculate average time to throw (lower can indicate quick release or pressure)"""
+        if self.throw_count == 0:
+            return 0.0
+        return self.time_to_throw_total / self.throw_count
+
     def add_penalty(self, yards: int):
         """Add penalty and yardage"""
         self.penalties += 1
@@ -205,20 +326,22 @@ class PlayerStats:
         """Add receiving touchdown"""
         self.receiving_tds += 1
 
+    @property
+    def total_snaps(self) -> int:
+        """Computed total snaps across all phases (offense + defense + special teams)"""
+        return self.offensive_snaps + self.defensive_snaps + self.special_teams_snaps
+
     def add_offensive_snap(self):
         """Record an offensive snap"""
         self.offensive_snaps += 1
-        self.total_snaps += 1
 
     def add_defensive_snap(self):
         """Record a defensive snap"""
         self.defensive_snaps += 1
-        self.total_snaps += 1
 
     def add_special_teams_snap(self):
         """Record a special teams snap"""
         self.special_teams_snaps += 1
-        self.total_snaps += 1
 
     def get_total_stats(self) -> Dict[str, int]:
         """Get all non-zero stats as dictionary"""
@@ -257,74 +380,82 @@ class PlayerStats:
         """
         return self.rushing_tds + self.receiving_tds + self.passing_tds + self.passing_touchdowns
 
-    # Legacy compatibility properties (TEMPORARY - will be removed after migration)
+    # ==========================================================================
+    # DEPRECATED: Legacy compatibility properties
+    # These aliases exist for backwards compatibility with older code.
+    # New code should use the canonical field names directly.
+    #
+    # Known callers to migrate:
+    #   - field_goal.py: carries, pass_attempts, completions, rushing_touchdowns
+    #   - punt.py: pass_attempts, pass_completions, carries, rushing_touchdowns
+    #   - pass_plays.py: pass_attempts, completions
+    #   - box_score_generator.py: carries, pass_attempts, completions, rushing_touchdowns
+    # ==========================================================================
+
     @property
     def passing_interceptions(self) -> int:
-        """LEGACY: Use PlayerStatField.INTERCEPTIONS_THROWN instead"""
-        return getattr(self, PlayerStatField.INTERCEPTIONS_THROWN.value)
+        """DEPRECATED: Use interceptions_thrown instead"""
+        return self.interceptions_thrown
 
     @property
     def rushing_touchdowns(self) -> int:
-        """LEGACY: Use PlayerStatField.RUSHING_TOUCHDOWNS instead"""
-        return getattr(self, PlayerStatField.RUSHING_TOUCHDOWNS.value)
+        """DEPRECATED: Use rushing_tds instead"""
+        return self.rushing_tds
 
     @rushing_touchdowns.setter
     def rushing_touchdowns(self, value: int) -> None:
-        """LEGACY SETTER: Use PlayerStatField.RUSHING_TOUCHDOWNS instead"""
-        setattr(self, PlayerStatField.RUSHING_TOUCHDOWNS.value, value)
+        """DEPRECATED: Use rushing_tds instead"""
+        self.rushing_tds = value
 
     @property
     def pass_deflections(self) -> int:
-        """LEGACY: Use PlayerStatField.PASSES_DEFENDED instead"""
-        return getattr(self, PlayerStatField.PASSES_DEFENDED.value)
+        """DEPRECATED: Use passes_defended instead"""
+        return self.passes_defended
 
     @property
     def field_goals_attempted(self) -> int:
-        """LEGACY: Use PlayerStatField.FIELD_GOAL_ATTEMPTS instead"""
-        return getattr(self, PlayerStatField.FIELD_GOAL_ATTEMPTS.value)
+        """DEPRECATED: Use field_goal_attempts instead"""
+        return self.field_goal_attempts
 
-    # Legacy properties for old simulation layer names
     @property
     def carries(self) -> int:
-        """LEGACY: Use rushing_attempts instead"""
+        """DEPRECATED: Use rushing_attempts instead"""
         return self.rushing_attempts
 
     @carries.setter
     def carries(self, value: int) -> None:
-        """LEGACY SETTER: Use rushing_attempts instead"""
+        """DEPRECATED: Use rushing_attempts instead"""
         self.rushing_attempts = value
 
     @property
     def pass_attempts(self) -> int:
-        """LEGACY: Use passing_attempts instead"""
+        """DEPRECATED: Use passing_attempts instead"""
         return self.passing_attempts
 
     @pass_attempts.setter
     def pass_attempts(self, value: int) -> None:
-        """LEGACY SETTER: Use passing_attempts instead"""
+        """DEPRECATED: Use passing_attempts instead"""
         self.passing_attempts = value
 
     @property
     def completions(self) -> int:
-        """LEGACY: Use passing_completions instead"""
+        """DEPRECATED: Use passing_completions instead"""
         return self.passing_completions
 
     @completions.setter
     def completions(self, value: int) -> None:
-        """LEGACY SETTER: Use passing_completions instead"""
+        """DEPRECATED: Use passing_completions instead"""
         self.passing_completions = value
 
     @property
     def pass_completions(self) -> int:
-        """LEGACY: Use passing_completions instead"""
+        """DEPRECATED: Use passing_completions instead"""
         return self.passing_completions
 
     @pass_completions.setter
     def pass_completions(self, value: int) -> None:
-        """LEGACY SETTER: Use passing_completions instead"""
+        """DEPRECATED: Use passing_completions instead"""
         self.passing_completions = value
-
-    # Note: rushing_tds is now the canonical field name, no legacy property needed
     
     def get_player_attribute(self, attribute_name: str, default: int = 75) -> int:
         """Get a specific player attribute/rating"""
@@ -364,7 +495,12 @@ class PlayStatsSummary:
     is_fake_field_goal: bool = False
     fake_field_goal_type: Optional[str] = None  # "pass" or "run" if fake
     field_goal_distance: Optional[int] = None
-    points_scored: int = 0  # 3 for made FG, 6 for fake TD, etc.
+    points_scored: int = 0  # 3 for made FG, 6 for fake TD, 1 for PAT, 2 for 2pt conversion, etc.
+
+    # Extra point specific information (optional, only populated for extra point plays)
+    extra_point_outcome: Optional[str] = None  # "pat_made", "pat_missed", "pat_blocked"
+    two_point_conversion_outcome: Optional[str] = None  # "two_point_good", "two_point_failed"
+    two_point_conversion_type: Optional[str] = None  # "pass" or "run" if 2pt attempt
     
     def add_player_stats(self, stats: PlayerStats):
         """Add individual player stats to the play summary"""
@@ -509,7 +645,7 @@ class PlayStatsSummary:
         """Get field goal specific summary information"""
         if not self.is_field_goal_play():
             return None
-        
+
         summary = {
             "outcome": self.field_goal_outcome,
             "distance": self.field_goal_distance,
@@ -517,10 +653,45 @@ class PlayStatsSummary:
             "is_fake": self.is_fake_field_goal,
             "successful": self.was_field_goal_successful()
         }
-        
+
         if self.is_fake_field_goal:
             summary["fake_type"] = self.fake_field_goal_type
-            
+
+        return summary
+
+    # Extra point specific methods
+    def is_extra_point_play(self) -> bool:
+        """Check if this is an extra point play"""
+        return self.extra_point_outcome is not None
+
+    def is_two_point_conversion_play(self) -> bool:
+        """Check if this is a two-point conversion play"""
+        return self.two_point_conversion_outcome is not None
+
+    def was_extra_point_successful(self) -> bool:
+        """Check if extra point was successful"""
+        return (self.extra_point_outcome == "pat_made" or
+                self.two_point_conversion_outcome == "two_point_good" or
+                self.points_scored in [1, 2])
+
+    def get_extra_point_summary(self) -> Optional[Dict[str, Any]]:
+        """Get extra point specific summary information"""
+        if not (self.is_extra_point_play() or self.is_two_point_conversion_play()):
+            return None
+
+        summary = {
+            "points_scored": self.points_scored,
+            "successful": self.was_extra_point_successful()
+        }
+
+        if self.is_extra_point_play():
+            summary["type"] = "pat"
+            summary["outcome"] = self.extra_point_outcome
+        else:
+            summary["type"] = "two_point_conversion"
+            summary["outcome"] = self.two_point_conversion_outcome
+            summary["conversion_type"] = self.two_point_conversion_type
+
         return summary
 
 
@@ -555,23 +726,55 @@ class PlayerStatsAccumulator:
         # Process each player's stats from the play
         for player_stats in play_summary.player_stats:
             total_stats = player_stats.get_total_stats()
-            if player_stats.interceptions_thrown > 0:
-                print(f"🔴 INT DEBUG Accumulator: {player_stats.player_name} has interceptions_thrown={player_stats.interceptions_thrown}, total_stats={total_stats}")
             if total_stats:  # Only accumulate players with actual stats
                 self._merge_player_stats(player_stats)
-            elif player_stats.interceptions_thrown > 0:
-                print(f"🔴 INT DEBUG: BLOCKED! {player_stats.player_name} interceptions_thrown={player_stats.interceptions_thrown} but get_total_stats() returned EMPTY!")
     
+    # Fields excluded from automatic stat merging (player identity, not stats)
+    _MERGE_EXCLUDED_FIELDS = frozenset({
+        'player_name', 'player_number', 'position', 'team_id',
+        'player_id', 'player_attributes', 'total_snaps'
+    })
+
+    # Fields that use max() instead of sum() when merging
+    _MERGE_MAX_FIELDS = frozenset({
+        'longest_field_goal', 'run_blocking_grade', 'pass_blocking_efficiency'
+    })
+
+    # PFF-critical stats to trace for grading audit
+    # These stats are required for accurate PFF-style grades but often missing
+    _PFF_CRITICAL_STATS = frozenset({
+        # Coverage stats (DB/LB grading)
+        'coverage_targets', 'coverage_completions', 'coverage_yards_allowed',
+        # Pass rush stats (DL grading)
+        'pass_rush_wins', 'pass_rush_attempts', 'times_double_teamed', 'blocking_encounters',
+        # Ball carrier stats (RB/WR grading)
+        'broken_tackles', 'tackles_faced', 'yards_after_contact',
+        # QB stats
+        'time_to_throw_total', 'throw_count', 'air_yards', 'pressures_faced',
+        # OL individual stats
+        'sacks_allowed', 'pressures_allowed', 'hurries_allowed',
+        # Tackling (currently missing)
+        'missed_tackles',
+    })
+
+    # Enable/disable PFF stats tracing (set to True to debug stats flow)
+    _TRACE_PFF_STATS = False
+
     def _merge_player_stats(self, incoming_stats: PlayerStats) -> None:
         """
-        Merge incoming player stats into accumulated totals.
-        
+        Merge incoming player stats into accumulated totals using introspection.
+
+        Automatically handles all numeric stat fields:
+        - Most fields: summed (rushing_yards, tackles, etc.)
+        - Max fields: take maximum (longest_field_goal, grades)
+        - Excluded fields: player identity fields not merged
+
         Args:
             incoming_stats: PlayerStats from a single play to merge into totals
         """
         # Create unique key for this player
         player_key = f"{incoming_stats.player_name}_{incoming_stats.position}"
-        
+
         if player_key not in self._player_totals:
             # First time seeing this player - create new accumulated stats
             self._player_totals[player_key] = PlayerStats(
@@ -582,76 +785,42 @@ class PlayerStatsAccumulator:
                 player_id=incoming_stats.player_id,
                 player_attributes=incoming_stats.player_attributes
             )
-        
-        # Accumulate stats into existing totals
-        existing = self._player_totals[player_key]
-        
-        # Rushing stats - sum totals
-        existing.rushing_attempts += incoming_stats.rushing_attempts
-        existing.rushing_yards += incoming_stats.rushing_yards
 
-        # Passing stats - sum totals
-        existing.passing_attempts += incoming_stats.passing_attempts
-        existing.passing_completions += incoming_stats.passing_completions
-        existing.passing_yards += incoming_stats.passing_yards
-        existing.passing_tds += incoming_stats.passing_tds
-        existing.interceptions_thrown += incoming_stats.interceptions_thrown
-        existing.sacks_taken += incoming_stats.sacks_taken
-        existing.sack_yards_lost += incoming_stats.sack_yards_lost
-        existing.qb_hits_taken += incoming_stats.qb_hits_taken
-        existing.pressures_faced += incoming_stats.pressures_faced
-        existing.air_yards += incoming_stats.air_yards
-        existing.passing_touchdowns += incoming_stats.passing_touchdowns
-        existing.rushing_tds += incoming_stats.rushing_tds
-        
-        # Receiving stats - sum totals
-        existing.targets += incoming_stats.targets
-        existing.receptions += incoming_stats.receptions
-        existing.receiving_yards += incoming_stats.receiving_yards
-        existing.receiving_tds += incoming_stats.receiving_tds
-        existing.drops += incoming_stats.drops
-        existing.yac += incoming_stats.yac
-        
-        # Blocking stats - sum totals
-        existing.blocks_made += incoming_stats.blocks_made
-        existing.blocks_missed += incoming_stats.blocks_missed
-        existing.pass_blocks += incoming_stats.pass_blocks
-        existing.pressures_allowed += incoming_stats.pressures_allowed
-        existing.sacks_allowed += incoming_stats.sacks_allowed
-        
-        # Defensive stats - sum totals
-        existing.tackles += incoming_stats.tackles
-        existing.assisted_tackles += incoming_stats.assisted_tackles
-        existing.sacks += incoming_stats.sacks
-        existing.tackles_for_loss += incoming_stats.tackles_for_loss
-        existing.qb_hits += incoming_stats.qb_hits
-        existing.qb_pressures += incoming_stats.qb_pressures
-        existing.qb_hurries += incoming_stats.qb_hurries
-        
-        # Pass defense stats - sum totals
-        existing.passes_defended += incoming_stats.passes_defended
-        existing.passes_deflected += incoming_stats.passes_deflected
-        existing.tipped_passes += incoming_stats.tipped_passes
-        existing.interceptions += incoming_stats.interceptions
-        existing.forced_fumbles += incoming_stats.forced_fumbles
-        
-        # Special teams stats - sum totals
-        existing.field_goal_attempts += incoming_stats.field_goal_attempts
-        existing.field_goals_made += incoming_stats.field_goals_made
-        existing.field_goals_missed += incoming_stats.field_goals_missed
-        existing.field_goals_blocked += incoming_stats.field_goals_blocked
-        existing.field_goal_holds += incoming_stats.field_goal_holds
-        existing.long_snaps += incoming_stats.long_snaps
-        existing.special_teams_snaps += incoming_stats.special_teams_snaps
-        existing.blocks_allowed += incoming_stats.blocks_allowed
-        
-        # Handle longest field goal (take maximum)
-        existing.longest_field_goal = max(existing.longest_field_goal, incoming_stats.longest_field_goal)
-        
-        # Penalty stats - sum totals
-        existing.penalties += incoming_stats.penalties
-        existing.penalty_yards += incoming_stats.penalty_yards
-    
+        existing = self._player_totals[player_key]
+
+        # PFF stats tracing - log when non-zero PFF-critical stats are being merged
+        if self._TRACE_PFF_STATS:
+            pff_stats_found = []
+            for stat_name in self._PFF_CRITICAL_STATS:
+                value = getattr(incoming_stats, stat_name, 0)
+                if value:
+                    pff_stats_found.append(f"{stat_name}={value}")
+            if pff_stats_found:
+                print(f"[PFF_TRACE:ACCUMULATOR] {incoming_stats.player_name} ({incoming_stats.position}): "
+                      f"{', '.join(pff_stats_found)}")
+
+        # Auto-merge all numeric fields using introspection
+        for field_name, incoming_value in incoming_stats.__dict__.items():
+            # Skip non-stat fields
+            if field_name in self._MERGE_EXCLUDED_FIELDS:
+                continue
+
+            # Only merge numeric values
+            if not isinstance(incoming_value, (int, float)):
+                continue
+
+            # Skip zero values (no stat recorded)
+            if incoming_value == 0:
+                continue
+
+            existing_value = getattr(existing, field_name, 0)
+
+            # Use max strategy for grade/longest fields, sum for everything else
+            if field_name in self._MERGE_MAX_FIELDS:
+                setattr(existing, field_name, max(existing_value, incoming_value))
+            else:
+                setattr(existing, field_name, existing_value + incoming_value)
+
     def get_player_stats(self, player_identifier: str) -> Optional[PlayerStats]:
         """
         Get accumulated stats for a specific player.
@@ -671,16 +840,7 @@ class PlayerStatsAccumulator:
         Returns:
             List of PlayerStats objects for all players with accumulated stats
         """
-        all_stats = [stats for stats in self._player_totals.values() if stats.get_total_stats()]
-
-        # DEBUG: Check accumulated QB stats for interceptions
-        for stats in all_stats:
-            if hasattr(stats, 'passing_attempts') and stats.passing_attempts > 0:
-                ints_thrown = getattr(stats, 'interceptions_thrown', 0)
-                if ints_thrown > 0:
-                    print(f"🔴 INT DEBUG Accumulated Total: {stats.player_name} has interceptions_thrown={ints_thrown} (total across all plays)")
-
-        return all_stats
+        return [stats for stats in self._player_totals.values() if stats.get_total_stats()]
     
     def get_players_by_position(self, position: str) -> List[PlayerStats]:
         """
@@ -774,50 +934,47 @@ class TeamStats:
         """
         return self.passing_yards - self.sack_yards_lost
     
+    # Field categories for filtering stats (defined once, used by all methods)
+    _OFFENSIVE_FIELDS = frozenset({
+        'total_yards', 'passing_yards', 'rushing_yards', 'passing_attempts',
+        'passing_completions', 'touchdowns', 'first_downs', 'turnovers',
+        'times_sacked', 'sack_yards_lost'
+    })
+
+    _DEFENSIVE_FIELDS = frozenset({
+        'sacks', 'tackles_for_loss', 'interceptions', 'forced_fumbles', 'passes_defended'
+    })
+
+    _SPECIAL_TEAMS_FIELDS = frozenset({
+        'field_goals_attempted', 'field_goals_made', 'punt_return_yards', 'kick_return_yards'
+    })
+
+    _PENALTY_FIELDS = frozenset({'penalties', 'penalty_yards'})
+
+    def _get_non_zero_stats(self, fields: frozenset) -> Dict[str, int]:
+        """Helper to get non-zero stats for a set of field names"""
+        return {
+            field: value for field in fields
+            if isinstance(value := getattr(self, field, 0), (int, float)) and value != 0
+        }
+
     def get_total_offensive_stats(self) -> Dict[str, int]:
         """Get all non-zero offensive stats as dictionary"""
-        offensive_fields = {
-            'total_yards', 'passing_yards', 'rushing_yards', 'passing_attempts',
-            'passing_completions', 'touchdowns', 'first_downs', 'turnovers',
-            'times_sacked', 'sack_yards_lost'
-        }
-        
-        stats = {}
-        for field_name in offensive_fields:
-            value = getattr(self, field_name, 0)
-            if isinstance(value, (int, float)) and value != 0:
-                stats[field_name] = value
-        return stats
-    
+        return self._get_non_zero_stats(self._OFFENSIVE_FIELDS)
+
     def get_total_defensive_stats(self) -> Dict[str, int]:
         """Get all non-zero defensive stats as dictionary"""
-        defensive_fields = {
-            'sacks', 'tackles_for_loss', 'interceptions', 'forced_fumbles', 'passes_defended'
-        }
-        
-        stats = {}
-        for field_name in defensive_fields:
-            value = getattr(self, field_name, 0)
-            if isinstance(value, (int, float)) and value != 0:
-                stats[field_name] = value
-        return stats
-    
+        return self._get_non_zero_stats(self._DEFENSIVE_FIELDS)
+
     def get_all_stats(self) -> Dict[str, int]:
         """Get all non-zero stats as dictionary"""
-        all_fields = {
-            'total_yards', 'passing_yards', 'rushing_yards', 'passing_attempts',
-            'passing_completions', 'touchdowns', 'first_downs', 'turnovers',
-            'sacks', 'tackles_for_loss', 'interceptions', 'forced_fumbles', 'passes_defended',
-            'field_goals_attempted', 'field_goals_made', 'punt_return_yards', 'kick_return_yards',
-            'penalties', 'penalty_yards'
-        }
-        
-        stats = {}
-        for field_name in all_fields:
-            value = getattr(self, field_name, 0)
-            if isinstance(value, (int, float)) and value != 0:
-                stats[field_name] = value
-        return stats
+        all_fields = (
+            self._OFFENSIVE_FIELDS |
+            self._DEFENSIVE_FIELDS |
+            self._SPECIAL_TEAMS_FIELDS |
+            self._PENALTY_FIELDS
+        )
+        return self._get_non_zero_stats(all_fields)
 
 
 class TeamStatsAccumulator:
@@ -952,9 +1109,10 @@ class TeamStatsAccumulator:
         # Field goals don't contribute to total yards (they're special teams plays)
         # No yards added for PlayType.FIELD_GOAL
         
-        # Check for turnovers (simplified - could be enhanced)
-        if any(player.interceptions_thrown > 0 for player in play_summary.player_stats):
-            offensive_team.turnovers += 1
+        # Check for turnovers (interceptions and fumbles lost)
+        interceptions = sum(player.interceptions_thrown for player in play_summary.player_stats)
+        fumbles_lost = sum(player.fumbles_lost for player in play_summary.player_stats)
+        offensive_team.turnovers += interceptions + fumbles_lost
     
     def get_team_stats(self, team_id: int) -> Optional[TeamStats]:
         """

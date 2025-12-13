@@ -108,19 +108,22 @@ class GameClock:
         
         original_time = self.time_remaining_seconds
         original_quarter = self.quarter
-        
-        # Create result object to track changes
-        result = ClockResult(time_advanced=seconds_elapsed)
-        
-        # Check for two-minute warning before advancing time
-        if (original_time > 120 and 
-            (original_time - seconds_elapsed) <= 120 and 
+
+        # Advance time - cap to 0 (no negative time)
+        new_time = max(0, self.time_remaining_seconds - int(seconds_elapsed))
+
+        # Calculate ACTUAL time advanced (may be less than requested if clock hit 0)
+        actual_time_advanced = original_time - new_time
+
+        # Create result object with ACTUAL time consumed (not requested time)
+        result = ClockResult(time_advanced=actual_time_advanced)
+
+        # Check for two-minute warning before recording
+        if (original_time > 120 and
+            new_time <= 120 and
             self.quarter in [2, 4]):
             result.two_minute_warning = True
             result.clock_events.append("Two-minute warning")
-        
-        # Advance time
-        new_time = max(0, self.time_remaining_seconds - int(seconds_elapsed))
         
         # Handle quarter transitions
         if new_time == 0 and original_time > 0:

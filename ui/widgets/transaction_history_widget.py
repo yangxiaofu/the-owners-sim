@@ -4,6 +4,9 @@ Transaction History Widget for The Owner's Sim
 Displays 500 most recent player transactions sorted by date.
 Integrated with TransactionAPI for real database data.
 """
+import json
+from pathlib import Path
+
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QTableWidget,
     QTableWidgetItem, QHeaderView, QPushButton, QComboBox
@@ -11,6 +14,27 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from datetime import datetime
 from typing import List, Dict, Any, Optional
+
+
+# Cache for position display names (loaded once from config)
+_POSITION_DISPLAY_NAMES: Optional[Dict[str, str]] = None
+
+
+def _load_position_display_names() -> Dict[str, str]:
+    """Load position display names from config file."""
+    global _POSITION_DISPLAY_NAMES
+    if _POSITION_DISPLAY_NAMES is not None:
+        return _POSITION_DISPLAY_NAMES
+
+    config_path = Path(__file__).parents[2] / "src" / "config" / "positions" / "position_filter_mapping.json"
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            data = json.load(f)
+        _POSITION_DISPLAY_NAMES = data.get("display_names", {})
+    except (FileNotFoundError, json.JSONDecodeError):
+        _POSITION_DISPLAY_NAMES = {}
+
+    return _POSITION_DISPLAY_NAMES
 
 
 class TransactionHistoryWidget(QWidget):
@@ -37,6 +61,8 @@ class TransactionHistoryWidget(QWidget):
         "Releases": "RELEASE",
         "Roster Cuts": "ROSTER_CUT",
         "Waiver Claims": "WAIVER_CLAIM",
+        "Trades": "TRADE",
+        "Trade Picks": "TRADE_PICK",
     }
 
     def __init__(
@@ -382,6 +408,7 @@ class TransactionHistoryWidget(QWidget):
             'RELEASE': 'Released',
             'WAIVER_CLAIM': 'Waiver Claim',
             'TRADE': 'Traded',
+            'TRADE_PICK': 'Pick Traded',
             'ROSTER_CUT': 'Roster Cut',
             'PRACTICE_SQUAD_ADD': 'Practice Squad Added',
             'PRACTICE_SQUAD_REMOVE': 'Practice Squad Removed',
@@ -408,8 +435,26 @@ class TransactionHistoryWidget(QWidget):
             Formatted string (e.g., "Kirk Cousins (QB)")
         """
         if position:
-            return f"{player_name} ({position})"
+            formatted_pos = self._format_position(position)
+            return f"{player_name} ({formatted_pos})"
         return player_name
+
+    def _format_position(self, position: str) -> str:
+        """
+        Format position for display using config mapping.
+
+        Converts code-style positions to NFL abbreviations.
+        E.g., "left_tackle" -> "LT", "quarterback" -> "QB"
+
+        Args:
+            position: Raw position string
+
+        Returns:
+            Formatted position abbreviation
+        """
+        display_names = _load_position_display_names()
+        pos_lower = position.lower().replace(" ", "_")
+        return display_names.get(pos_lower, position.upper())
 
     def _get_team_name(self, team_id: Optional[int]) -> str:
         """
@@ -557,6 +602,18 @@ class TransactionHistoryWidget(QWidget):
             else:
                 # Regular cut
                 return f"{dead_str} dead money, {savings_str} savings"
+
+        elif transaction_type == 'TRADE':
+            # Example: "Trade #123"
+            trade_id = details.get('trade_id', '?')
+            return f"Trade #{trade_id}"
+
+        elif transaction_type == 'TRADE_PICK':
+            # Example: "2025 Round 1 (Trade #123)"
+            pick_season = details.get('pick_season', '?')
+            pick_round = details.get('pick_round', '?')
+            trade_id = details.get('trade_id', '?')
+            return f"{pick_season} Round {pick_round} (Trade #{trade_id})"
 
         # Default: Show all key-value pairs
         return ", ".join(f"{k}={v}" for k, v in details.items())

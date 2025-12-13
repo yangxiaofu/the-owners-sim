@@ -9,11 +9,11 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 
-from src.play_engine.core.play_result import PlayResult
-from src.play_engine.game_state.drive_manager import DriveManager, DriveEndReason
-from src.play_engine.game_state.game_clock import GameClock, ClockResult
-from src.game_management.scoreboard import Scoreboard, ScoringEvent
-from src.team_management.teams.team_loader import Team
+from play_engine.core.play_result import PlayResult
+from play_engine.game_state.drive_manager import DriveManager, DriveEndReason
+from play_engine.game_state.game_clock import GameClock, ClockResult
+from game_management.scoreboard import Scoreboard, ScoringEvent
+from team_management.teams.team_loader import Team
 
 
 class DisplayStyle(Enum):
@@ -79,7 +79,17 @@ class PlayByPlayDisplay:
         self.style = style
         self.play_counter = 0
         self.drive_counter = 0
-        
+        # Track two-minute warning display to show only once per half
+        self._two_minute_warning_shown_first_half = False
+        self._two_minute_warning_shown_second_half = False
+
+    def reset_for_new_game(self):
+        """Reset display state for a new game"""
+        self.play_counter = 0
+        self.drive_counter = 0
+        self._two_minute_warning_shown_first_half = False
+        self._two_minute_warning_shown_second_half = False
+
     def format_play_result(self, 
                           play_result: PlayResult,
                           drive_manager: DriveManager,
@@ -129,9 +139,20 @@ class PlayByPlayDisplay:
             new_scores = scoreboard.get_score()
             score_change = f"{possessing_team_name} scores {play_result.points_scored} points! {self._format_score_display(new_scores)}"
         
-        # Check for penalties
+        # Check for penalties - check both PlayResult and player_stats_summary
         penalty_info = None
+        has_penalty = False
+
+        # Check PlayResult.penalty_occurred first
         if hasattr(play_result, 'penalty_occurred') and play_result.penalty_occurred:
+            has_penalty = True
+
+        # Also check if penalty_instance exists in player_stats_summary
+        if hasattr(play_result, 'player_stats_summary') and play_result.player_stats_summary:
+            if hasattr(play_result.player_stats_summary, 'penalty_instance') and play_result.player_stats_summary.penalty_instance:
+                has_penalty = True
+
+        if has_penalty:
             penalty_info = self._format_penalty_info(play_result)
         
         return PlayDisplay(
@@ -335,11 +356,122 @@ class PlayByPlayDisplay:
         return '\n'.join(lines) + '\n'
     
     def _generate_play_description(self, play_result: PlayResult) -> str:
-        """Generate descriptive play text"""
+        """Generate descriptive play text with proper outcome differentiation"""
+        # If a pre-formatted description exists, use it
         if hasattr(play_result, 'play_description') and play_result.play_description:
             return play_result.play_description
-        
-        # Generate basic description based on play type
+
+        # Extract outcome and player information
+        outcome = getattr(play_result, 'outcome', 'unknown')
+        yards = getattr(play_result, 'yards', 0)
+
+        # Get key players if stats are available
+        key_players = ""
+        if play_result.has_player_stats():
+            key_players = play_result.get_key_players()
+
+        # Handle different outcome types
+        if outcome == 'sack':
+            # Sacks: Show QB SACKED by defender
+            if key_players:
+                # Extract QB and tackler from key_players string
+                parts = key_players.split(', tackled by ')
+                if len(parts) == 2:
+                    qb_name = parts[0]
+                    tackler_name = parts[1]
+                    return f"{qb_name} SACKED by {tackler_name}"
+                else:
+                    return f"QB SACKED for {abs(yards)} yard loss"
+            return f"Quarterback sacked for {abs(yards)} yard loss"
+
+        elif outcome == 'incomplete':
+            # Incomplete passes: Show pass incomplete (no tackler)
+            if key_players:
+                # Extract passer and receiver
+                if ' to ' in key_players:
+                    passer_receiver = key_players.split(', tackled by ')[0]  # Remove tackler if present
+                    return f"Pass {passer_receiver} - INCOMPLETE"
+                else:
+                    return f"Pass by {key_players.split(',')[0]} - INCOMPLETE"
+            return "Pass incomplete"
+
+        elif outcome == 'deflected_incomplete':
+            # Deflected passes
+            if key_players:
+                passer_receiver = key_players.split(', tackled by ')[0]
+                return f"Pass {passer_receiver} - DEFLECTED INCOMPLETE"
+            return "Pass deflected incomplete"
+
+        elif outcome == 'completion':
+            # Completed passes: Show passer, receiver, and tackler
+            if key_players:
+                return f"Pass {key_players}"
+            return f"Pass completed for {yards} yards"
+
+        elif outcome == 'interception':
+            # Interceptions
+            if key_players:
+                return f"INTERCEPTION - {key_players}"
+            return "Pass intercepted"
+
+        elif outcome == 'rush':
+            # Running plays
+            if key_players:
+                return f"Rush by {key_players}"
+            return f"Rush for {yards} yards"
+
+        elif 'fake_' in outcome:
+            # ✅ FIX: Handle fake field goal and fake punt plays with proper formatting
+            # Outcomes: fake_run_success, fake_run_failed, fake_pass_success, fake_pass_failed
+            if 'run' in outcome:
+                play_type = "Run"
+            elif 'pass' in outcome:
+                play_type = "Pass"
+            else:
+                play_type = "Attempt"
+
+            if 'success' in outcome:
+                return f"Fake FG ({play_type}) - SUCCESSFUL for {yards} yards"
+            elif 'interception' in outcome:
+                return f"Fake FG (Pass) - INTERCEPTED"
+            else:  # failed
+                return f"Fake FG ({play_type}) - FAILED"
+
+        elif 'field_goal' in outcome:
+            # Field goals
+            if 'made' in outcome or outcome == 'field_goal_good':
+                return "Field goal GOOD"
+            elif 'blocked' in outcome:
+                return "Field goal BLOCKED"
+            elif 'missed' in outcome:
+                if 'wide_left' in outcome:
+                    return "Field goal MISSED wide left"
+                elif 'wide_right' in outcome:
+                    return "Field goal MISSED wide right"
+                elif 'short' in outcome:
+                    return "Field goal MISSED short"
+                else:
+                    return "Field goal MISSED"
+            return "Field goal attempt"
+
+        elif 'punt_fake' in outcome:
+            # Fake punt plays
+            if 'success' in outcome:
+                return f"Fake Punt - SUCCESSFUL for {yards} yards"
+            elif 'interception' in outcome:
+                return "Fake Punt - INTERCEPTED"
+            else:
+                return "Fake Punt - FAILED"
+
+        elif outcome == 'punt':
+            # Punt plays
+            return "Punt"
+
+        elif outcome == 'kickoff':
+            # Kickoff plays
+            return "Kickoff"
+
+        # Fallback to basic description
         play_type = getattr(play_result, 'play_type', 'Unknown Play')
         return f"{play_type} play"
     
@@ -360,41 +492,98 @@ class PlayByPlayDisplay:
         
         return result
     
-    def _generate_context_notes(self, 
-                              play_result: PlayResult, 
+    def _generate_context_notes(self,
+                              play_result: PlayResult,
                               drive_manager: DriveManager,
                               game_clock: GameClock,
                               context: Dict[str, any] = None) -> List[str]:
         """Generate contextual notes about the play"""
         notes = []
-        
-        # Two-minute warning
+
+        # Two-minute warning - only show ONCE per half when clock first crosses 2:00
         if game_clock.is_two_minute_warning_active:
-            notes.append("Two-minute warning in effect")
-        
+            if game_clock.quarter == 2 and not self._two_minute_warning_shown_first_half:
+                notes.append("⏱️ TWO-MINUTE WARNING - Q2")
+                self._two_minute_warning_shown_first_half = True
+            elif game_clock.quarter == 4 and not self._two_minute_warning_shown_second_half:
+                notes.append("⏱️ TWO-MINUTE WARNING - Q4")
+                self._two_minute_warning_shown_second_half = True
+
+        # Check for timeout usage (from context or clock result)
+        if context:
+            if context.get('timeout_called'):
+                team = context.get('timeout_team', 'Team')
+                timeout_num = context.get('timeout_number', '')
+                if timeout_num:
+                    notes.append(f"⏸️ Timeout called by {team} (Timeout #{timeout_num})")
+                else:
+                    notes.append(f"⏸️ Timeout called by {team}")
+
+        # Clock stopped due to out of bounds
+        if hasattr(play_result, 'went_out_of_bounds') and play_result.went_out_of_bounds:
+            notes.append("⏱️ Clock stopped - ball carrier out of bounds")
+
         # Red zone
         field_pos = drive_manager.current_position
         if field_pos.yard_line >= 80:  # In red zone
-            notes.append("Red zone opportunity")
-        
+            notes.append("🎯 Red zone opportunity")
+
         # Fourth down situations
         down_state = drive_manager.current_down_state
         if down_state.current_down == 4:
-            notes.append("Fourth down - critical play")
-        
-        # Clock management
+            notes.append("⚠️ Fourth down - critical play")
+
+        # Goal line stand
+        if field_pos.yard_line >= 95:
+            notes.append("🛡️ Goal line stand")
+
+        # Clock management - hurry-up offense
         if hasattr(play_result, 'time_elapsed'):
-            if play_result.time_elapsed > 30:
-                notes.append("Long play - significant time elapsed")
-        
+            if play_result.time_elapsed < 10:
+                notes.append("⚡ Quick play - hurry-up offense")
+            elif play_result.time_elapsed > 30:
+                notes.append("🐌 Long play - significant time elapsed")
+
         return notes
     
     def _format_penalty_info(self, play_result: PlayResult) -> str:
-        """Format penalty information"""
+        """Format penalty information from penalty instance"""
+        # Check for penalty instance with detailed information
+        if hasattr(play_result, 'player_stats_summary') and play_result.player_stats_summary:
+            if hasattr(play_result.player_stats_summary, 'penalty_instance') and play_result.player_stats_summary.penalty_instance:
+                penalty = play_result.player_stats_summary.penalty_instance
+
+                # Extract penalty details
+                penalty_type = penalty.penalty_type.replace('_', ' ').title()
+                player_number = penalty.penalized_player_number
+                player_name = penalty.penalized_player_name
+                yards = abs(penalty.yards_assessed)
+
+                # Format: "[PENALTY] Holding on #75 (Smith) - 10 yards"
+                penalty_str = f"[PENALTY] {penalty_type} on #{player_number}"
+
+                # Add player name if not a generic name
+                if player_name and not ('Starting' in player_name or 'Backup' in player_name):
+                    penalty_str += f" ({player_name.split()[-1]})"  # Last name only
+
+                penalty_str += f" - {yards} yards"
+
+                # Add automatic first down or loss of down info
+                if penalty.automatic_first_down:
+                    penalty_str += " (Automatic First Down)"
+                elif penalty.automatic_loss_of_down:
+                    penalty_str += " (Loss of Down)"
+
+                return penalty_str
+
+        # Fallback to basic penalty info from PlayResult
         if hasattr(play_result, 'penalty_yards') and play_result.penalty_yards:
             penalty_type = getattr(play_result, 'penalty_type', 'Penalty')
-            return f"{penalty_type} - {play_result.penalty_yards} yards"
-        return "Penalty occurred"
+            penalty_type = penalty_type.replace('_', ' ').title()
+            yards = abs(play_result.penalty_yards)
+            return f"[PENALTY] {penalty_type} - {yards} yards"
+
+        return "[PENALTY] Penalty occurred"
     
     def _format_drive_result(self, drive_end_reason: DriveEndReason) -> str:
         """Format drive ending reason"""

@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 
-from src.game_cycle import Stage, StageType
+from game_cycle import Stage, StageType
 from .resigning_view import ResigningView
 from .free_agency_view import FreeAgencyView
 from .draft_view import DraftView
@@ -22,6 +22,7 @@ from .roster_cuts_view import RosterCutsView
 from .waiver_wire_view import WaiverWireView
 from .training_camp_view import TrainingCampView
 from .franchise_tag_view import FranchiseTagView
+from .trading_view import TradingView
 
 
 class OffseasonView(QWidget):
@@ -82,7 +83,7 @@ class OffseasonView(QWidget):
         """Create the header section with stage name and description."""
         header_frame = QFrame()
         header_frame.setFrameStyle(QFrame.StyledPanel)
-        header_frame.setStyleSheet("background-color: #f5f5f5; border-radius: 4px;")
+        header_frame.setStyleSheet("background-color: #1e3a5f; border-radius: 4px;")
 
         header_layout = QVBoxLayout(header_frame)
         header_layout.setContentsMargins(16, 12, 16, 12)
@@ -90,12 +91,13 @@ class OffseasonView(QWidget):
         # Stage name (large)
         self.stage_label = QLabel("Offseason")
         self.stage_label.setFont(QFont("Arial", 20, QFont.Bold))
+        self.stage_label.setStyleSheet("color: white;")
         header_layout.addWidget(self.stage_label)
 
         # Description
         self.description_label = QLabel("")
         self.description_label.setWordWrap(True)
-        self.description_label.setStyleSheet("color: #666;")
+        self.description_label.setStyleSheet("color: #e0e0e0;")
         header_layout.addWidget(self.description_label)
 
         # Process button row
@@ -117,7 +119,8 @@ class OffseasonView(QWidget):
         button_layout.addStretch()
         header_layout.addLayout(button_layout)
 
-        parent_layout.addWidget(header_frame)
+        self.header_frame = header_frame  # Store as instance variable
+        parent_layout.addWidget(self.header_frame)
 
     def _create_stacked_views(self, parent_layout: QVBoxLayout):
         """Create the stacked widget with sub-views for each stage."""
@@ -142,31 +145,37 @@ class OffseasonView(QWidget):
         self.free_agency_view.cap_validation_changed.connect(self._on_fa_cap_validation_changed)
         self.stack.addWidget(self.free_agency_view)
 
-        # Draft view (index 3)
+        # Trading view (index 3) - read-only, shows GM trade activity
+        self.trading_view = TradingView()
+        self.trading_view.cap_validation_changed.connect(self._on_trading_cap_validation_changed)
+        self.stack.addWidget(self.trading_view)
+
+        # Draft view (index 4)
         self.draft_view = DraftView()
         self.draft_view.prospect_drafted.connect(self.prospect_drafted.emit)
         self.draft_view.simulate_to_pick_requested.connect(self.simulate_to_pick_requested.emit)
         self.draft_view.auto_draft_all_requested.connect(self.auto_draft_all_requested.emit)
         self.stack.addWidget(self.draft_view)
 
-        # Roster Cuts view (index 4)
+        # Roster Cuts view (index 5)
         self.roster_cuts_view = RosterCutsView()
         self.roster_cuts_view.player_cut.connect(self.player_cut.emit)
         self.roster_cuts_view.get_suggestions_requested.connect(self.get_suggestions_requested.emit)
+        self.roster_cuts_view.cap_validation_changed.connect(self._on_roster_cuts_cap_validation)
         self.stack.addWidget(self.roster_cuts_view)
 
-        # Waiver Wire view (index 5)
+        # Waiver Wire view (index 6)
         self.waiver_wire_view = WaiverWireView()
         self.waiver_wire_view.claim_submitted.connect(self.waiver_claim_submitted.emit)
         self.waiver_wire_view.claim_cancelled.connect(self.waiver_claim_cancelled.emit)
         self.stack.addWidget(self.waiver_wire_view)
 
-        # Training Camp view (index 6)
+        # Training Camp view (index 7)
         self.training_camp_view = TrainingCampView()
         self.training_camp_view.continue_clicked.connect(self.process_stage_requested.emit)
         self.stack.addWidget(self.training_camp_view)
 
-        # Preseason placeholder (index 7)
+        # Preseason placeholder (index 8)
         self.preseason_placeholder = self._create_placeholder_view(
             "Preseason",
             "The Preseason stage completes offseason preparations. Click 'Simulate' to advance to the regular season. "
@@ -229,6 +238,12 @@ class OffseasonView(QWidget):
         # Switch to appropriate sub-view
         stage_type = stage.stage_type
 
+        # Hide header for Free Agency, show for all other stages
+        if stage_type == StageType.OFFSEASON_FREE_AGENCY:
+            self.header_frame.setVisible(False)
+        else:
+            self.header_frame.setVisible(True)
+
         # Show process button by default (hidden for draft which has its own controls)
         self.process_button.setVisible(True)
 
@@ -282,9 +297,27 @@ class OffseasonView(QWidget):
             cap_data = preview_data.get("cap_data")
             if cap_data:
                 self.free_agency_view.set_cap_data(cap_data)
+            # Initialize wave controls (triggers _enable_wave_mode())
+            wave_state = preview_data.get("wave_state", {})
+            if wave_state:
+                self.free_agency_view.set_wave_info(
+                    wave=wave_state.get("current_wave", 0),
+                    wave_name=wave_state.get("wave_name", ""),
+                    day=wave_state.get("current_day", 1),
+                    days_total=wave_state.get("days_in_wave", 1),
+                )
+
+        elif stage_type == StageType.OFFSEASON_TRADING:
+            self.stack.setCurrentIndex(3)
+            # Populate trading data
+            self.trading_view.set_trading_data(preview_data)
+            # Update cap data if available
+            cap_data = preview_data.get("cap_data")
+            if cap_data:
+                self.trading_view.set_cap_data(cap_data)
 
         elif stage_type == StageType.OFFSEASON_DRAFT:
-            self.stack.setCurrentIndex(3)
+            self.stack.setCurrentIndex(4)
             # Hide the process button for draft (draft has its own controls)
             self.process_button.setVisible(False)
             # Populate draft data
@@ -315,7 +348,7 @@ class OffseasonView(QWidget):
                 self.draft_view.set_cap_data(cap_data)
 
         elif stage_type == StageType.OFFSEASON_ROSTER_CUTS:
-            self.stack.setCurrentIndex(4)
+            self.stack.setCurrentIndex(5)
             # Populate roster cuts data
             roster_data = preview_data.get("roster_cuts_data", {})
             if roster_data:
@@ -336,7 +369,7 @@ class OffseasonView(QWidget):
                 self.roster_cuts_view.set_cap_data(cap_data)
 
         elif stage_type == StageType.OFFSEASON_WAIVER_WIRE:
-            self.stack.setCurrentIndex(5)
+            self.stack.setCurrentIndex(6)
             # Populate waiver wire data
             waiver_data = preview_data.get("waiver_data", {})
             if waiver_data:
@@ -356,7 +389,7 @@ class OffseasonView(QWidget):
                 self.waiver_wire_view.set_cap_data(cap_data)
 
         elif stage_type == StageType.OFFSEASON_TRAINING_CAMP:
-            self.stack.setCurrentIndex(6)
+            self.stack.setCurrentIndex(7)
             # Hide the process button (training camp view has its own continue button)
             self.process_button.setVisible(False)
 
@@ -370,7 +403,7 @@ class OffseasonView(QWidget):
                 self.training_camp_view.set_training_camp_data(training_camp_results)
 
         elif stage_type == StageType.OFFSEASON_PRESEASON:
-            self.stack.setCurrentIndex(7)
+            self.stack.setCurrentIndex(8)
 
         else:
             # Default to first view
@@ -410,6 +443,10 @@ class OffseasonView(QWidget):
         """Get the franchise tag view for direct access."""
         return self.franchise_tag_view
 
+    def get_trading_view(self) -> TradingView:
+        """Get the trading view for direct access."""
+        return self.trading_view
+
     def _on_process_clicked(self):
         """Handle process button click."""
         self.process_button.setEnabled(False)
@@ -424,32 +461,87 @@ class OffseasonView(QWidget):
 
     def _on_cap_validation_changed(self, is_valid: bool, over_cap_amount: int):
         """
-        Enable/disable Process button based on cap compliance.
+        Show cap warning but don't block progression (NFL-style).
 
-        Called when re-signing selections change and cap projection updates.
+        In the real NFL, teams can be over the cap during the offseason.
+        Cap compliance is enforced before Training Camp via roster cuts.
         """
-        # Only affect the Process button if we're in the re-signing stage
+        # Only show tooltip if we're in the re-signing stage
         if self._current_stage and self._current_stage.stage_type == StageType.OFFSEASON_RESIGNING:
-            self.process_button.setEnabled(is_valid)
+            # Don't disable button - NFL allows over-cap during offseason
             if not is_valid:
                 self.process_button.setToolTip(
-                    f"Over cap by ${over_cap_amount:,}. Deselect some re-signings to continue."
+                    f"Warning: Over cap by ${over_cap_amount:,}. "
+                    "You'll need to cut players before Training Camp."
                 )
             else:
                 self.process_button.setToolTip("")
 
     def _on_fa_cap_validation_changed(self, is_valid: bool, over_cap_amount: int):
         """
-        Enable/disable Process button based on Free Agency cap compliance.
+        Show cap warning but don't block progression (NFL-style).
 
-        Called when free agent signings change and cap projection updates.
+        In the real NFL, teams can be over the cap during the offseason.
+        Cap compliance is enforced before Training Camp via roster cuts.
         """
-        # Only affect the Process button if we're in the free agency stage
+        # Only show tooltip if we're in the free agency stage
         if self._current_stage and self._current_stage.stage_type == StageType.OFFSEASON_FREE_AGENCY:
-            self.process_button.setEnabled(is_valid)
+            # Don't disable button - NFL allows over-cap during offseason
             if not is_valid:
                 self.process_button.setToolTip(
-                    f"Over cap by ${over_cap_amount:,}. Unsign some players to continue."
+                    f"Warning: Over cap by ${over_cap_amount:,}. "
+                    "You'll need to cut players before Training Camp."
                 )
+            else:
+                self.process_button.setToolTip("")
+
+    def _on_trading_cap_validation_changed(self, is_valid: bool, over_cap_amount: int):
+        """
+        Show cap warning but don't block trading (NFL-style).
+
+        In the real NFL, teams can be over the cap during the offseason.
+        Cap compliance is enforced before Training Camp via roster cuts.
+        """
+        # Only show tooltip if we're in the trading stage
+        if self._current_stage and self._current_stage.stage_type == StageType.OFFSEASON_TRADING:
+            # Don't disable button - NFL allows over-cap during offseason
+            if not is_valid:
+                self.process_button.setToolTip(
+                    f"Warning: Over cap by ${over_cap_amount:,}. "
+                    "You'll need to cut players before Training Camp."
+                )
+            else:
+                self.process_button.setToolTip("")
+
+    def _on_roster_cuts_cap_validation(self, is_compliant: bool, over_cap_amount: int):
+        """
+        Validate roster cuts stage for progression.
+
+        Allow processing if:
+        1. Cap compliant (can advance to next stage), OR
+        2. There are pending cuts marked (let user process them even if still over cap)
+
+        This allows users to make progress by processing marked cuts even when
+        they need multiple rounds of cuts to become cap-compliant.
+        """
+        if self._current_stage and self._current_stage.stage_type == StageType.OFFSEASON_ROSTER_CUTS:
+            # Check if there are pending cuts to process
+            has_pending_cuts = bool(self.roster_cuts_view.get_cut_player_ids())
+
+            # Enable if cap compliant OR there are pending cuts to process
+            can_process = is_compliant or has_pending_cuts
+
+            self.process_button.setEnabled(can_process)
+            if not is_compliant:
+                if has_pending_cuts:
+                    self.process_button.setToolTip(
+                        f"Warning: Still over cap by ${over_cap_amount:,} after these cuts. "
+                        "Process cuts to continue, then cut more players to become cap-compliant."
+                    )
+                else:
+                    self.process_button.setToolTip(
+                        f"Must be under salary cap to proceed. "
+                        f"Over by ${over_cap_amount:,} - cut more players."
+                    )
             else:
                 self.process_button.setToolTip("")

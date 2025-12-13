@@ -22,11 +22,29 @@ Usage:
 """
 
 import os
+import re
 import sqlite3
+import random
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 import json
 import logging
+
+# Local imports - external modules
+from database.unified_api import UnifiedDatabaseAPI
+from team_management.players.player_loader import PlayerDataLoader
+from salary_cap.contract_initializer import ContractInitializer
+
+# Relative imports - game_cycle services
+from .draft_service import DraftService
+from .schedule_service import ScheduleService
+from .primetime_scheduler import PrimetimeScheduler
+from .trade_service import TradeService
+
+# Relative imports - game_cycle database
+from ..database.connection import GameCycleDatabase
+from ..database.game_slots_api import GameSlotsAPI
+from ..database.rivalry_api import RivalryAPI
 
 
 class GameCycleInitializer:
@@ -103,6 +121,9 @@ class GameCycleInitializer:
             # 4. Load players from JSON (all 32 teams + free agents)
             players_with_contracts = self._load_players_from_json(conn)
 
+            # 4b. Initialize depth charts based on overall ratings
+            self._initialize_depth_charts(conn)
+
             # 5. Create contracts
             self._create_contracts(conn, players_with_contracts)
 
@@ -111,6 +132,18 @@ class GameCycleInitializer:
 
             # 6. Generate draft class for current year (AFTER commit so DraftClassAPI has data)
             self._generate_initial_draft_class()
+
+            # 7. Generate regular season schedule for this dynasty
+            self._generate_schedule_for_dynasty()
+
+            # 8. Initialize standings for all 32 teams at 0-0-0
+            self._initialize_standings()
+
+            # 9. Initialize draft pick ownership for trade system
+            self._initialize_pick_ownership()
+
+            # 10. Initialize rivalries for schedule prioritization
+            self._initialize_rivalries()
 
             self._logger.info(
                 f"✅ Dynasty '{self._dynasty_id}' initialized successfully "
@@ -168,7 +201,6 @@ class GameCycleInitializer:
             schema_sql = f.read()
 
         # Make schema idempotent - convert CREATE TABLE to CREATE TABLE IF NOT EXISTS
-        import re
         schema_sql = re.sub(
             r'CREATE TABLE(?!\s+IF\s+NOT\s+EXISTS)',
             'CREATE TABLE IF NOT EXISTS',
@@ -251,9 +283,8 @@ class GameCycleInitializer:
         Raises:
             FileNotFoundError: If JSON files not found
         """
-        # Import PlayerDataLoader to load JSON files
+        # Load JSON files using PlayerDataLoader
         try:
-            from team_management.players.player_loader import PlayerDataLoader
             loader = PlayerDataLoader()
         except Exception as e:
             raise FileNotFoundError(f"Failed to load JSON player data: {e}")
@@ -386,8 +417,6 @@ class GameCycleInitializer:
         self._logger.info(f"Initializing contracts for {len(players_with_contracts)} players...")
 
         try:
-            from salary_cap.contract_initializer import ContractInitializer
-
             # Create contract initializer
             contract_initializer = ContractInitializer(conn)
 
@@ -464,6 +493,11 @@ class GameCycleInitializer:
             attributes: Dict of player attributes/ratings
             birthdate: Optional birthdate (YYYY-MM-DD)
         """
+        # Ensure durability attribute exists (for injury system)
+        if 'durability' not in attributes:
+            position = positions[0] if positions else 'unknown'
+            attributes['durability'] = self._generate_durability_for_position(position)
+
         cursor = conn.cursor()
         cursor.execute('''
             INSERT INTO players (
@@ -512,6 +546,64 @@ class GameCycleInitializer:
             depth_order
         ))
 
+    def _initialize_depth_charts(self, conn: sqlite3.Connection):
+        """
+        Initialize depth chart order for all teams based on overall ratings.
+
+        For each position group on each team, players are ranked by their
+        overall rating (highest = 1, second highest = 2, etc.).
+
+        This ensures star players like Brock Purdy are properly set as starters
+        instead of relying on the default depth_chart_order of 99.
+
+        Args:
+            conn: Database connection
+        """
+        self._logger.info("Initializing depth charts based on overall ratings...")
+        cursor = conn.cursor()
+
+        # Get all players grouped by team and primary position
+        cursor.execute('''
+            SELECT
+                p.player_id,
+                p.team_id,
+                json_extract(p.positions, '$[0]') as primary_position,
+                json_extract(p.attributes, '$.overall') as overall
+            FROM players p
+            JOIN team_rosters tr ON p.dynasty_id = tr.dynasty_id AND p.player_id = tr.player_id
+            WHERE p.dynasty_id = ?
+              AND p.team_id > 0
+              AND tr.roster_status = 'active'
+            ORDER BY p.team_id, primary_position, overall DESC
+        ''', (self._dynasty_id,))
+
+        players = cursor.fetchall()
+
+        # Group by team_id and position, assign depth_chart_order
+        current_team = None
+        current_position = None
+        depth_order = 1
+        updates = []
+
+        for player_id, team_id, position, overall in players:
+            if team_id != current_team or position != current_position:
+                # New position group - reset depth order
+                current_team = team_id
+                current_position = position
+                depth_order = 1
+
+            updates.append((depth_order, self._dynasty_id, player_id))
+            depth_order += 1
+
+        # Batch update depth_chart_order
+        cursor.executemany('''
+            UPDATE team_rosters
+            SET depth_chart_order = ?
+            WHERE dynasty_id = ? AND player_id = ?
+        ''', updates)
+
+        self._logger.info(f"✅ Depth charts initialized for {len(updates)} players")
+
     def _generate_initial_draft_class(self):
         """
         Generate draft class for current season at dynasty initialization.
@@ -523,8 +615,6 @@ class GameCycleInitializer:
         Also generates next year's draft class for future scouting features.
         """
         try:
-            from .draft_service import DraftService
-
             draft_service = DraftService(
                 self._db_path,
                 self._dynasty_id,
@@ -552,3 +642,164 @@ class GameCycleInitializer:
         except Exception as e:
             # Non-critical - draft class can be generated later
             self._logger.warning(f"⚠️ Draft class generation skipped: {e}")
+
+    def _generate_schedule_for_dynasty(self):
+        """
+        Generate regular season schedule for this dynasty.
+
+        Creates game events in the events table with proper dynasty_id,
+        then assigns primetime slots (TNF, SNF, MNF) via PrimetimeScheduler.
+        """
+        try:
+            schedule_service = ScheduleService(
+                self._db_path,
+                self._dynasty_id,
+                self._season
+            )
+
+            game_count = schedule_service.generate_schedule(clear_existing=True)
+            self._logger.info(
+                f"✅ Generated {self._season} schedule for dynasty '{self._dynasty_id}': "
+                f"{game_count} games"
+            )
+
+            # Assign primetime slots (TNF, SNF, MNF) for the schedule
+            db = GameCycleDatabase(self._db_path)
+            try:
+                game_slots_api = GameSlotsAPI(db)
+                game_events = game_slots_api.get_games_for_primetime_assignment(
+                    self._dynasty_id, self._season
+                )
+
+                primetime_scheduler = PrimetimeScheduler(db, self._dynasty_id)
+                assignments = primetime_scheduler.assign_primetime_games(
+                    season=self._season,
+                    games=game_events,
+                    super_bowl_winner_id=None
+                )
+                primetime_scheduler.save_assignments(self._season, assignments)
+                self._logger.info(
+                    f"✅ Assigned primetime slots: {len(assignments)} games"
+                )
+            finally:
+                db.close()
+
+        except Exception as e:
+            # Non-critical - schedule can be generated later
+            self._logger.warning(f"⚠️ Schedule generation skipped: {e}")
+
+    def _initialize_standings(self):
+        """
+        Initialize standings for all 32 teams at 0-0-0 for the current season.
+
+        This must be called during dynasty initialization so that:
+        - Standings UI has data to display
+        - Regular season handler can update standings after games
+        """
+        try:
+            api = UnifiedDatabaseAPI(self._db_path, self._dynasty_id)
+            success = api.standings_reset(
+                season=self._season,
+                season_type='regular_season'
+            )
+
+            if success:
+                self._logger.info(
+                    f"✅ Initialized standings for {self._season}: "
+                    f"All 32 teams at 0-0-0"
+                )
+            else:
+                self._logger.warning("⚠️ Standings initialization returned False")
+
+        except Exception as e:
+            # Non-critical - standings can be created on first game
+            self._logger.warning(f"⚠️ Standings initialization skipped: {e}")
+
+    def _initialize_pick_ownership(self):
+        """
+        Initialize draft pick ownership for the trade system.
+
+        Creates ownership records for current season + 3 future years.
+        Each team starts owning their own picks for all 7 rounds.
+        This enables the trade system to track pick ownership across trades.
+        """
+        try:
+            trade_service = TradeService(
+                self._db_path,
+                self._dynasty_id,
+                self._season
+            )
+
+            # Initialize picks for 4 years total (current + 3 future)
+            records = trade_service.initialize_pick_ownership(seasons_ahead=3)
+            self._logger.info(
+                f"✅ Initialized draft pick ownership for dynasty '{self._dynasty_id}': "
+                f"{records} pick records created"
+            )
+
+        except Exception as e:
+            # Non-critical - pick ownership can be initialized later
+            self._logger.warning(f"⚠️ Pick ownership initialization skipped: {e}")
+
+    def _initialize_rivalries(self):
+        """
+        Initialize team rivalries for the dynasty.
+
+        Creates:
+        - 48 division rivalries (6 pairs per division x 8 divisions)
+        - 25 historic/geographic rivalries from config file
+
+        Rivalries are used for schedule prioritization and gameplay effects.
+        """
+        try:
+            db = GameCycleDatabase(self._db_path)
+            rivalry_api = RivalryAPI(db)
+
+            counts = rivalry_api.initialize_rivalries(self._dynasty_id)
+            total = sum(counts.values())
+
+            self._logger.info(
+                f"✅ Initialized rivalries for dynasty '{self._dynasty_id}': "
+                f"{counts['division']} division, {counts['historic']} historic, "
+                f"{counts['geographic']} geographic ({total} total)"
+            )
+
+        except Exception as e:
+            # Non-critical - rivalries can be initialized later
+            self._logger.warning(f"⚠️ Rivalry initialization skipped: {e}")
+
+    # Class-level cache for durability config
+    _durability_config: Optional[Dict[str, List[int]]] = None
+
+    def _generate_durability_for_position(self, position: str) -> int:
+        """
+        Generate durability rating based on position config.
+
+        Loads durability ranges from src/config/durability_ranges.json.
+        Position-based durability ranges reflect injury risk:
+        - RBs take most hits, most injury-prone (60-75)
+        - WRs/TEs vulnerable to big hits (65-80)
+        - QBs moderately protected (70-85)
+        - OL most durable, steady physical play (72-88)
+        - Specialists very durable, low contact (80-95)
+
+        Args:
+            position: Player position string
+
+        Returns:
+            Durability rating (60-95 range)
+        """
+        # Load config once and cache at class level
+        if GameCycleInitializer._durability_config is None:
+            config_path = Path(__file__).parent.parent.parent / "config" / "durability_ranges.json"
+            try:
+                with open(config_path) as f:
+                    GameCycleInitializer._durability_config = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError) as e:
+                self._logger.warning(f"Failed to load durability config: {e}. Using defaults.")
+                GameCycleInitializer._durability_config = {}
+
+        position_lower = position.lower()
+        durability_range = GameCycleInitializer._durability_config.get(position_lower, [70, 85])
+        min_dur, max_dur = durability_range[0], durability_range[1]
+        return random.randint(min_dur, max_dur)

@@ -1,0 +1,258 @@
+{
+  "1": {
+    "team_name": "Buffalo Bills",
+    "state": "NY",
+    "market_size": 50,
+    "state_income_tax_rate": 0.0882,
+    "weather_score": 25,
+    "metro_population": 1200000
+  },
+  "2": {
+    "team_name": "Miami Dolphins",
+    "state": "FL",
+    "market_size": 75,
+    "state_income_tax_rate": 0.0,
+    "weather_score": 90,
+    "metro_population": 6200000
+  },
+  "3": {
+    "team_name": "New England Patriots",
+    "state": "MA",
+    "market_size": 70,
+    "state_income_tax_rate": 0.05,
+    "weather_score": 35,
+    "metro_population": 4900000
+  },
+  "4": {
+    "team_name": "New York Jets",
+    "state": "NJ",
+    "market_size": 95,
+    "state_income_tax_rate": 0.1075,
+    "weather_score": 45,
+    "metro_population": 20100000
+  },
+  "5": {
+    "team_name": "Baltimore Ravens",
+    "state": "MD",
+    "market_size": 55,
+    "state_income_tax_rate": 0.0575,
+    "weather_score": 50,
+    "metro_population": 2800000
+  },
+  "6": {
+    "team_name": "Cincinnati Bengals",
+    "state": "OH",
+    "market_size": 45,
+    "state_income_tax_rate": 0.04,
+    "weather_score": 45,
+    "metro_population": 2200000
+  },
+  "7": {
+    "team_name": "Cleveland Browns",
+    "state": "OH",
+    "market_size": 50,
+    "state_income_tax_rate": 0.04,
+    "weather_score": 35,
+    "metro_population": 2100000
+  },
+  "8": {
+    "team_name": "Pittsburgh Steelers",
+    "state": "PA",
+    "market_size": 55,
+    "state_income_tax_rate": 0.0307,
+    "weather_score": 40,
+    "metro_population": 2400000
+  },
+  "9": {
+    "team_name": "Houston Texans",
+    "state": "TX",
+    "market_size": 75,
+    "state_income_tax_rate": 0.0,
+    "weather_score": 70,
+    "metro_population": 7200000
+  },
+  "10": {
+    "team_name": "Indianapolis Colts",
+    "state": "IN",
+    "market_size": 50,
+    "state_income_tax_rate": 0.0323,
+    "weather_score": 45,
+    "metro_population": 2100000
+  },
+  "11": {
+    "team_name": "Jacksonville Jaguars",
+    "state": "FL",
+    "market_size": 40,
+    "state_income_tax_rate": 0.0,
+    "weather_score": 80,
+    "metro_population": 1600000
+  },
+  "12": {
+    "team_name": "Tennessee Titans",
+    "state": "TN",
+    "market_size": 55,
+    "state_income_tax_rate": 0.0,
+    "weather_score": 60,
+    "metro_population": 2000000
+  },
+  "13": {
+    "team_name": "Denver Broncos",
+    "state": "CO",
+    "market_size": 55,
+    "state_income_tax_rate": 0.044,
+    "weather_score": 50,
+    "metro_population": 2900000
+  },
+  "14": {
+    "team_name": "Kansas City Chiefs",
+    "state": "MO",
+    "market_size": 50,
+    "state_income_tax_rate": 0.054,
+    "weather_score": 50,
+    "metro_population": 2200000
+  },
+  "15": {
+    "team_name": "Las Vegas Raiders",
+    "state": "NV",
+    "market_size": 65,
+    "state_income_tax_rate": 0.0,
+    "weather_score": 75,
+    "metro_population": 2300000
+  },
+  "16": {
+    "team_name": "Los Angeles Chargers",
+    "state": "CA",
+    "market_size": 95,
+    "state_income_tax_rate": 0.133,
+    "weather_score": 90,
+    "metro_population": 13200000
+  },
+  "17": {
+    "team_name": "Dallas Cowboys",
+    "state": "TX",
+    "market_size": 90,
+    "state_income_tax_rate": 0.0,
+    "weather_score": 70,
+    "metro_population": 7600000
+  },
+  "18": {
+    "team_name": "New York Giants",
+    "state": "NJ",
+    "market_size": 95,
+    "state_income_tax_rate": 0.1075,
+    "weather_score": 45,
+    "metro_population": 20100000
+  },
+  "19": {
+    "team_name": "Philadelphia Eagles",
+    "state": "PA",
+    "market_size": 70,
+    "state_income_tax_rate": 0.0307,
+    "weather_score": 45,
+    "metro_population": 6200000
+  },
+  "20": {
+    "team_name": "Washington Commanders",
+    "state": "VA",
+    "market_size": 65,
+    "state_income_tax_rate": 0.0575,
+    "weather_score": 55,
+    "metro_population": 6400000
+  },
+  "21": {
+    "team_name": "Chicago Bears",
+    "state": "IL",
+    "market_size": 80,
+    "state_income_tax_rate": 0.0495,
+    "weather_score": 30,
+    "metro_population": 9500000
+  },
+  "22": {
+    "team_name": "Detroit Lions",
+    "state": "MI",
+    "market_size": 55,
+    "state_income_tax_rate": 0.0425,
+    "weather_score": 35,
+    "metro_population": 4400000
+  },
+  "23": {
+    "team_name": "Green Bay Packers",
+    "state": "WI",
+    "market_size": 25,
+    "state_income_tax_rate": 0.0765,
+    "weather_score": 20,
+    "metro_population": 320000
+  },
+  "24": {
+    "team_name": "Minnesota Vikings",
+    "state": "MN",
+    "market_size": 55,
+    "state_income_tax_rate": 0.0985,
+    "weather_score": 25,
+    "metro_population": 3700000
+  },
+  "25": {
+    "team_name": "Atlanta Falcons",
+    "state": "GA",
+    "market_size": 70,
+    "state_income_tax_rate": 0.055,
+    "weather_score": 65,
+    "metro_population": 6100000
+  },
+  "26": {
+    "team_name": "Carolina Panthers",
+    "state": "NC",
+    "market_size": 55,
+    "state_income_tax_rate": 0.0525,
+    "weather_score": 65,
+    "metro_population": 2700000
+  },
+  "27": {
+    "team_name": "New Orleans Saints",
+    "state": "LA",
+    "market_size": 50,
+    "state_income_tax_rate": 0.0425,
+    "weather_score": 70,
+    "metro_population": 1300000
+  },
+  "28": {
+    "team_name": "Tampa Bay Buccaneers",
+    "state": "FL",
+    "market_size": 60,
+    "state_income_tax_rate": 0.0,
+    "weather_score": 85,
+    "metro_population": 3200000
+  },
+  "29": {
+    "team_name": "Arizona Cardinals",
+    "state": "AZ",
+    "market_size": 55,
+    "state_income_tax_rate": 0.025,
+    "weather_score": 80,
+    "metro_population": 4900000
+  },
+  "30": {
+    "team_name": "Los Angeles Rams",
+    "state": "CA",
+    "market_size": 95,
+    "state_income_tax_rate": 0.133,
+    "weather_score": 90,
+    "metro_population": 13200000
+  },
+  "31": {
+    "team_name": "San Francisco 49ers",
+    "state": "CA",
+    "market_size": 75,
+    "state_income_tax_rate": 0.133,
+    "weather_score": 75,
+    "metro_population": 4700000
+  },
+  "32": {
+    "team_name": "Seattle Seahawks",
+    "state": "WA",
+    "market_size": 60,
+    "state_income_tax_rate": 0.0,
+    "weather_score": 50,
+    "metro_population": 4000000
+  }
+}

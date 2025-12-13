@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor, QBrush
 
+from game_cycle_ui.theme import TABLE_HEADER_STYLE
+
 
 class TrainingCampView(QWidget):
     """
@@ -36,6 +38,8 @@ class TrainingCampView(QWidget):
         self._filtered_results: List[Dict] = []
         self._summary: Dict[str, Any] = {}
         self._user_team_id: int = 1
+        self._dynasty_id: Optional[str] = None
+        self._db_path: Optional[str] = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -133,9 +137,12 @@ class TrainingCampView(QWidget):
         self.team_combo = QComboBox()
         self.team_combo.addItem("All Teams", -1)
         self.team_combo.addItem("Free Agents", 0)
-        # Teams 1-32 will be populated with actual names when data loads
-        for i in range(1, 33):
-            self.team_combo.addItem(f"Team {i}", i)
+        # Populate with actual team names
+        from team_management.teams.team_loader import get_all_teams
+        teams = get_all_teams()
+        sorted_teams = sorted(teams, key=lambda t: f"{t.city} {t.nickname}")
+        for team in sorted_teams:
+            self.team_combo.addItem(f"{team.city} {team.nickname}", team.team_id)
         self.team_combo.currentIndexChanged.connect(self._apply_filters)
         filter_layout.addWidget(self.team_combo)
 
@@ -169,6 +176,8 @@ class TrainingCampView(QWidget):
         self.change_combo.addItem("Improved Only", "improved")
         self.change_combo.addItem("Declined Only", "declined")
         self.change_combo.addItem("Changed Only", "changed")
+        self.change_combo.addItem("Breakouts Only", "breakout")
+        self.change_combo.addItem("Busts Only", "bust")
         self.change_combo.currentIndexChanged.connect(self._apply_filters)
         filter_layout.addWidget(self.change_combo)
 
@@ -191,49 +200,76 @@ class TrainingCampView(QWidget):
         self._create_declines_table()
         self.tab_widget.addTab(self.declines_table, "Biggest Declines")
 
+        # Position breakdown table
+        self._create_position_breakdown_table()
+        self.tab_widget.addTab(self.position_breakdown_table, "By Position")
+
         parent_layout.addWidget(self.tab_widget, stretch=1)
 
     def _create_results_table(self):
         """Create main results table."""
         self.results_table = QTableWidget()
-        self.results_table.setColumnCount(8)
+        self.results_table.setColumnCount(9)
         self.results_table.setHorizontalHeaderLabels([
             "Player", "Position", "Team", "Age", "Category",
-            "Old OVR", "New OVR", "Change"
+            "Old OVR", "New OVR", "Change", "Potential"
         ])
         self._configure_table(self.results_table)
 
     def _create_top_gainers_table(self):
         """Create top gainers table."""
         self.top_gainers_table = QTableWidget()
-        self.top_gainers_table.setColumnCount(8)
+        self.top_gainers_table.setColumnCount(9)
         self.top_gainers_table.setHorizontalHeaderLabels([
             "Player", "Position", "Team", "Age", "Category",
-            "Old OVR", "New OVR", "Change"
+            "Old OVR", "New OVR", "Change", "Potential"
         ])
         self._configure_table(self.top_gainers_table)
 
     def _create_declines_table(self):
         """Create biggest declines table."""
         self.declines_table = QTableWidget()
-        self.declines_table.setColumnCount(8)
+        self.declines_table.setColumnCount(9)
         self.declines_table.setHorizontalHeaderLabels([
             "Player", "Position", "Team", "Age", "Category",
-            "Old OVR", "New OVR", "Change"
+            "Old OVR", "New OVR", "Change", "Potential"
         ])
         self._configure_table(self.declines_table)
+
+    def _create_position_breakdown_table(self):
+        """Create position breakdown table."""
+        self.position_breakdown_table = QTableWidget()
+        self.position_breakdown_table.setColumnCount(6)
+        self.position_breakdown_table.setHorizontalHeaderLabels([
+            "Position", "Players", "Improved", "Declined", "Avg Change", "Breakouts"
+        ])
+
+        header = self.position_breakdown_table.horizontalHeader()
+        header.setStyleSheet(TABLE_HEADER_STYLE)
+        header.setSectionResizeMode(0, QHeaderView.Stretch)  # Position
+        for i in range(1, 6):
+            header.setSectionResizeMode(i, QHeaderView.ResizeToContents)
+
+        self.position_breakdown_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.position_breakdown_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.position_breakdown_table.setAlternatingRowColors(True)
+        self.position_breakdown_table.verticalHeader().setVisible(False)
 
     def _configure_table(self, table: QTableWidget):
         """Configure table appearance."""
         header = table.horizontalHeader()
+        header.setStyleSheet(TABLE_HEADER_STYLE)
         header.setSectionResizeMode(0, QHeaderView.Stretch)  # Player name
-        for i in range(1, 8):
+        for i in range(1, 9):
             header.setSectionResizeMode(i, QHeaderView.ResizeToContents)
 
         table.setEditTriggers(QTableWidget.NoEditTriggers)
         table.setSelectionBehavior(QTableWidget.SelectRows)
         table.setAlternatingRowColors(True)
         table.verticalHeader().setVisible(False)
+
+        # Connect double-click handler
+        table.cellDoubleClicked.connect(self._on_row_double_clicked)
 
     def _create_continue_button(self, parent_layout: QVBoxLayout):
         """Create continue button."""
@@ -279,6 +315,7 @@ class TrainingCampView(QWidget):
                     "old_overall": r.old_overall,
                     "new_overall": r.new_overall,
                     "overall_change": r.overall_change,
+                    "potential": getattr(r, "potential", 0),
                 }
                 self._results.append(result_dict)
             else:
@@ -306,6 +343,9 @@ class TrainingCampView(QWidget):
 
         self._populate_table(self.top_gainers_table, top_gainers)
         self._populate_table(self.declines_table, biggest_declines)
+
+        # Populate position breakdown
+        self._populate_position_breakdown()
 
         # Apply filters to main table
         self._apply_filters()
@@ -337,6 +377,10 @@ class TrainingCampView(QWidget):
                 continue
             elif change_filter == "changed" and change == 0:
                 continue
+            elif change_filter == "breakout" and not self._is_breakout(result):
+                continue
+            elif change_filter == "bust" and not self._is_bust(result):
+                continue
 
             self._filtered_results.append(result)
 
@@ -347,6 +391,33 @@ class TrainingCampView(QWidget):
         )
 
         self._populate_table(self.results_table, self._filtered_results)
+
+    def _is_breakout(self, result) -> bool:
+        """
+        Determine if a player had a breakout season.
+
+        Breakout criteria:
+        - 5+ overall gain for any age
+        - 3+ overall gain for veterans
+        """
+        change = result.get("overall_change", 0) if isinstance(result, dict) else getattr(result, "overall_change", 0)
+        age_category = result.get("age_category", "prime") if isinstance(result, dict) else getattr(result, "age_category", "prime")
+        if hasattr(age_category, 'value'):
+            age_category = age_category.value
+        return change >= 5 or (age_category == "veteran" and change >= 3)
+
+    def _is_bust(self, result) -> bool:
+        """
+        Determine if a player busted (unexpectedly declined).
+
+        Bust criteria:
+        - Young player with 2+ point decline
+        """
+        change = result.get("overall_change", 0) if isinstance(result, dict) else getattr(result, "overall_change", 0)
+        age_category = result.get("age_category", "prime") if isinstance(result, dict) else getattr(result, "age_category", "prime")
+        if hasattr(age_category, 'value'):
+            age_category = age_category.value
+        return age_category == "young" and change < -2
 
     def _populate_table(self, table: QTableWidget, results: List):
         """Populate a table with results."""
@@ -366,6 +437,8 @@ class TrainingCampView(QWidget):
                     "old_overall": r.old_overall,
                     "new_overall": r.new_overall,
                     "overall_change": r.overall_change,
+                    "potential": getattr(r, "potential", 0),
+                    "player_id": getattr(r, "player_id", 0),
                 })
             else:
                 processed_results.append(r)
@@ -378,9 +451,17 @@ class TrainingCampView(QWidget):
     def _populate_row(self, table: QTableWidget, row: int, result: Dict):
         """Populate a single row."""
         change = result.get("overall_change", 0)
+        is_breakout = self._is_breakout(result)
+        is_bust = self._is_bust(result)
 
-        # Determine row highlight color and text color based on change
-        if change > 0:
+        # Determine row highlight color and text color
+        if is_breakout:
+            row_color = QColor("#E1F5FE")  # Light blue background
+            text_color = QColor("#0D47A1")  # Dark blue text
+        elif is_bust:
+            row_color = QColor("#FFEBEE")  # Light red background
+            text_color = QColor("#B71C1C")  # Dark red text
+        elif change > 0:
             row_color = QColor("#E8F5E9")  # Light green background
             text_color = QColor("#1B5E20")  # Dark green text
         elif change < 0:
@@ -390,15 +471,24 @@ class TrainingCampView(QWidget):
             row_color = None
             text_color = None
 
-        # Player name
-        name_item = QTableWidgetItem(result.get("player_name", "Unknown"))
+        # Player name with prefix for breakout/bust
+        player_name = result.get("player_name", "Unknown")
+        if is_breakout:
+            player_name = "★ " + player_name
+        elif is_bust:
+            player_name = "⚠ " + player_name
+
+        name_item = QTableWidgetItem(player_name)
+        name_item.setData(Qt.UserRole, result.get("player_id"))
         if row_color:
             name_item.setBackground(QBrush(row_color))
             name_item.setForeground(text_color)
         table.setItem(row, 0, name_item)
 
         # Position
-        pos_item = QTableWidgetItem(result.get("position", "").title().replace("_", " "))
+        from constants.position_abbreviations import get_position_abbreviation
+        pos_abbrev = get_position_abbreviation(result.get("position", ""))
+        pos_item = QTableWidgetItem(pos_abbrev)
         pos_item.setTextAlignment(Qt.AlignCenter)
         if row_color:
             pos_item.setBackground(QBrush(row_color))
@@ -407,7 +497,7 @@ class TrainingCampView(QWidget):
 
         # Team
         team_id = result.get("team_id", 0)
-        team_text = "FA" if team_id == 0 else f"Team {team_id}"
+        team_text = self._get_team_name(team_id)
         team_item = QTableWidgetItem(team_text)
         team_item.setTextAlignment(Qt.AlignCenter)
         if row_color:
@@ -469,6 +559,144 @@ class TrainingCampView(QWidget):
             change_item.setBackground(QBrush(row_color))
         table.setItem(row, 7, change_item)
 
+        # Potential with color coding
+        potential = result.get("potential", 0)
+        new_overall = result.get("new_overall", 0)
+        upside = potential - new_overall
+
+        potential_item = QTableWidgetItem(str(potential))
+        potential_item.setTextAlignment(Qt.AlignCenter)
+
+        # Color code based on upside
+        if upside <= 2:
+            # Near ceiling - Green
+            potential_item.setForeground(QColor("#2E7D32"))
+        elif upside >= 10:
+            # High upside - Blue
+            potential_item.setForeground(QColor("#1976D2"))
+
+        if row_color:
+            potential_item.setBackground(QBrush(row_color))
+            if is_breakout or is_bust:
+                potential_item.setForeground(text_color)
+
+        table.setItem(row, 8, potential_item)
+
+    def _populate_position_breakdown(self):
+        """Populate the position breakdown table."""
+        # Position groupings
+        position_groups = {
+            "QB": ["quarterback"],
+            "RB": ["running_back"],
+            "FB": ["fullback"],
+            "WR": ["wide_receiver"],
+            "TE": ["tight_end"],
+            "OL": ["left_tackle", "left_guard", "center", "right_guard", "right_tackle"],
+            "DL": ["defensive_end", "defensive_tackle"],
+            "LB": ["linebacker"],
+            "DB": ["cornerback", "safety"],
+            "K": ["kicker"],
+            "P": ["punter"]
+        }
+
+        breakdown_data = {}
+
+        for group_name, positions in position_groups.items():
+            players = []
+            improved = 0
+            declined = 0
+            total_change = 0
+            breakouts = 0
+
+            for result in self._results:
+                pos = result.get("position", "").lower().replace(" ", "_")
+                if pos in positions:
+                    players.append(result)
+                    change = result.get("overall_change", 0)
+                    total_change += change
+                    if change > 0:
+                        improved += 1
+                    elif change < 0:
+                        declined += 1
+                    if self._is_breakout(result):
+                        breakouts += 1
+
+            if players:
+                avg_change = total_change / len(players)
+                breakdown_data[group_name] = {
+                    "count": len(players),
+                    "improved": improved,
+                    "declined": declined,
+                    "avg_change": avg_change,
+                    "breakouts": breakouts
+                }
+
+        # Populate table
+        self.position_breakdown_table.setRowCount(len(breakdown_data))
+        row = 0
+
+        for position, data in sorted(breakdown_data.items()):
+            # Position
+            pos_item = QTableWidgetItem(position)
+            pos_item.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+            self.position_breakdown_table.setItem(row, 0, pos_item)
+
+            # Players
+            count_item = QTableWidgetItem(str(data["count"]))
+            count_item.setTextAlignment(Qt.AlignCenter)
+            self.position_breakdown_table.setItem(row, 1, count_item)
+
+            # Improved
+            improved_item = QTableWidgetItem(str(data["improved"]))
+            improved_item.setTextAlignment(Qt.AlignCenter)
+            improved_item.setForeground(QColor("#2E7D32"))
+            self.position_breakdown_table.setItem(row, 2, improved_item)
+
+            # Declined
+            declined_item = QTableWidgetItem(str(data["declined"]))
+            declined_item.setTextAlignment(Qt.AlignCenter)
+            declined_item.setForeground(QColor("#C62828"))
+            self.position_breakdown_table.setItem(row, 3, declined_item)
+
+            # Avg Change
+            avg_change = data["avg_change"]
+            if avg_change > 0:
+                avg_text = f"+{avg_change:.2f}"
+                avg_color = QColor("#2E7D32")
+            elif avg_change < 0:
+                avg_text = f"{avg_change:.2f}"
+                avg_color = QColor("#C62828")
+            else:
+                avg_text = "0.00"
+                avg_color = QColor("#666")
+
+            avg_item = QTableWidgetItem(avg_text)
+            avg_item.setTextAlignment(Qt.AlignCenter)
+            avg_item.setForeground(avg_color)
+            avg_item.setFont(QFont("Arial", 10, QFont.Bold))
+            self.position_breakdown_table.setItem(row, 4, avg_item)
+
+            # Breakouts
+            breakout_item = QTableWidgetItem(str(data["breakouts"]))
+            breakout_item.setTextAlignment(Qt.AlignCenter)
+            if data["breakouts"] > 0:
+                breakout_item.setForeground(QColor("#1976D2"))
+                breakout_item.setFont(QFont("Arial", 10, QFont.Bold))
+            self.position_breakdown_table.setItem(row, 5, breakout_item)
+
+            row += 1
+
+    def _get_team_name(self, team_id: int) -> str:
+        """Get team display name from team_id."""
+        if team_id == 0:
+            return "FA"
+        try:
+            from team_management.teams.team_loader import get_team_by_id
+            team = get_team_by_id(team_id)
+            return team.abbreviation if team else f"T{team_id}"
+        except Exception:
+            return f"T{team_id}"
+
     def clear(self):
         """Clear all data from the view."""
         self._results = []
@@ -484,6 +712,55 @@ class TrainingCampView(QWidget):
         self.results_table.setRowCount(0)
         self.top_gainers_table.setRowCount(0)
         self.declines_table.setRowCount(0)
+        self.position_breakdown_table.setRowCount(0)
+
+    def set_dynasty_info(self, dynasty_id: str, db_path: str):
+        """Store dynasty info for player detail dialog access."""
+        self._dynasty_id = dynasty_id
+        self._db_path = db_path
+
+    def _on_row_double_clicked(self, row: int, column: int):
+        """Handle double-click to open player progression dialog."""
+        # Get the sending table
+        table = self.sender()
+
+        # Get player_id from name cell's UserRole data
+        name_item = table.item(row, 0)
+        if not name_item:
+            return
+
+        player_id = name_item.data(Qt.UserRole)
+        if not player_id:
+            return
+
+        # Get player name
+        player_name = name_item.text().lstrip("★⚠ ")  # Remove breakout/bust prefix
+
+        # Build player_data dict from row
+        player_data = {
+            "player_id": player_id,
+            "overall": int(table.item(row, 6).text()) if table.item(row, 6) else 70,  # New OVR column
+            "potential": int(table.item(row, 8).text()) if table.item(row, 8) else 99,  # Potential column
+        }
+
+        # Check if dynasty info is available
+        if not hasattr(self, '_dynasty_id') or not hasattr(self, '_db_path'):
+            return
+
+        if not self._dynasty_id or not self._db_path:
+            return
+
+        # Import and open dialog
+        from game_cycle_ui.dialogs.player_progression_dialog import PlayerProgressionDialog
+        dialog = PlayerProgressionDialog(
+            player_id=player_id,
+            player_name=player_name,
+            player_data=player_data,
+            dynasty_id=self._dynasty_id,
+            db_path=self._db_path,
+            parent=self
+        )
+        dialog.exec()
 
     def set_user_team_id(self, team_id: int):
         """

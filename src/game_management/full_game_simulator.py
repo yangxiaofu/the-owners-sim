@@ -85,12 +85,7 @@ class FullGameSimulator:
             self.home_roster = TeamRosterGenerator.generate_synthetic_roster(home_team_id)
             roster_source = "synthetic (demo mode)"
 
-        print(f"🏈 Full Game Simulator Initialized")
-        print(f"   Away Team: {self.away_team.full_name} (ID: {self.away_team_id})")
-        print(f"   Home Team: {self.home_team.full_name} (ID: {self.home_team_id})")
-        print(f"   Matchup: {self.away_team.abbreviation} @ {self.home_team.abbreviation}")
-        print(f"   Away Roster: {len(self.away_roster)} players ({roster_source})")
-        print(f"   Home Roster: {len(self.home_roster)} players ({roster_source})")
+        # Initialization logging removed for performance - use get_team_info() for details
 
         # Initialize GameManager for core game management
         self.game_manager = GameManager(self.home_team, self.away_team)
@@ -99,18 +94,12 @@ class FullGameSimulator:
         self.away_coaching_staff = self._load_coaching_staff(away_team_id)
         self.home_coaching_staff = self._load_coaching_staff(home_team_id)
 
-        print(f"   Away Coaching Staff: {self.away_coaching_staff['head_coach']['name']}")
-        print(f"   Home Coaching Staff: {self.home_coaching_staff['head_coach']['name']}")
+        # Coaching staff logging removed for performance
 
         # Start game (includes coin toss)
         self.game_manager.start_game()
 
-        # Display coin toss results
-        coin_toss_results = self.game_manager._get_team_name(self.game_manager.coin_toss_winner)
-        receiving_team = self.game_manager.possession_manager.get_possessing_team_id()
-        print(f"   Coin Toss Winner: {coin_toss_results}")
-        print(f"   Receiving Team: {receiving_team}")
-        print(f"   Game Status: {self.game_manager.get_game_state().phase.value}")
+        # Coin toss results available via get_coin_toss_results()
 
 
 
@@ -124,9 +113,7 @@ class FullGameSimulator:
         Returns:
             GameResult: Complete game result with statistics, drive summaries, and outcomes
         """
-        print(f"\n🎮 Starting Full Game Simulation...")
-        print(f"⚡ {self.away_team.full_name} @ {self.home_team.full_name}")
-        print(f"🏟️  Location: {self.home_team.city}")
+        # Game simulation start - logging removed for performance
         
         # Record simulation start time for performance tracking
         simulation_start_time = time.time()
@@ -149,10 +136,7 @@ class FullGameSimulator:
                 season_type=self.season_type
             )
 
-            print("✅ GameLoopController initialized successfully")
-
             # Run complete game simulation
-            print("\n🏈 Beginning Full Game Simulation...")
             game_result = game_loop_controller.run_game()
 
             # Record simulation completion time
@@ -164,35 +148,14 @@ class FullGameSimulator:
             self._game_loop_controller = game_loop_controller  # Store controller for live stats access
             self._simulation_duration = simulation_duration
 
-            # Game simulation complete - no persistence in standalone mode
-            print(f"\n📊 Game complete - results available via get_game_result()")
-
-            # Display final results
-            print(f"\n🏁 GAME COMPLETE!")
-            print(f"⏱️  Simulation Time: {simulation_duration:.2f} seconds")
-            print(f"📊 Final Score:")
-            
-            # Convert team ID-based final score to team names for display
-            final_score = game_result.final_score
-            for team_id, score in final_score.items():
-                team_name = self._get_team_name(team_id)
-                print(f"   {team_name}: {score}")
-            
-            # Determine winner
-            winner = game_result.winner
-            if winner:
-                print(f"🏆 Winner: {winner.full_name}")
-            else:
-                print("🤝 Game ended in a tie")
-                
-            print(f"📈 Total Plays: {game_result.total_plays}")
-            print(f"🚗 Total Drives: {game_result.total_drives}")
+            # Game simulation complete - results available via get_game_result()
             
             return game_result
             
         except Exception as e:
-            print(f"❌ Game simulation failed: {e}")
-            print("🔧 Falling back to basic game state...")
+            # Log error but don't spam console
+            import logging
+            logging.getLogger(__name__).error("Game simulation failed: %s", e)
             
             # Fallback: return basic game state information
             game_state = self.game_manager.get_game_state()
@@ -421,8 +384,8 @@ class FullGameSimulator:
             
             return coaching_staff
             
-        except (FileNotFoundError, KeyError, json.JSONDecodeError) as e:
-            print(f"Warning: Could not load coaching staff for team {team_id}: {e}")
+        except (FileNotFoundError, KeyError, json.JSONDecodeError):
+            # Silent fallback - warning handled by caller if needed
             return self._get_fallback_coaching_staff(team_id)
     
     def _get_fallback_coaching_staff(self, team_id: int):
@@ -526,11 +489,8 @@ class FullGameSimulator:
         for team_id in game_result.final_score.keys():
             team_names[team_id] = self._get_team_name(team_id)
             
-        # Debug logging for winner extraction
         winner_id = game_result.winner.team_id if game_result.winner else None
         winner_name = game_result.winner.full_name if game_result.winner else None
-        print(f"[DEBUG FullGameSimulator] Extracting winner from game_result: "
-              f"winner_id={winner_id}, winner_name={winner_name}")
 
         return {
             "scores": scores,  # Team ID keyed: {22: 21, 23: 14}

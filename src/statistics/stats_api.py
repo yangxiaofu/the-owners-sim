@@ -932,6 +932,285 @@ class StatsAPI:
         """Get fourth quarter/clutch stats (future implementation)"""
         raise NotImplementedError("Fourth quarter stats coming in future update")
 
+    # === PLAYER GRADES (PFF-style analytics) ===
+
+    def get_player_season_grade(
+        self,
+        player_id: str,
+        season: int
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get season grade for a specific player.
+
+        Args:
+            player_id: Player identifier
+            season: Season year
+
+        Returns:
+            Dictionary with overall_grade, position_grade, rankings, or None if not found.
+
+        Example:
+            grade = api.get_player_season_grade('12345', 2025)
+            print(f"Overall: {grade['overall_grade']}, Rank: {grade['position_rank']}")
+        """
+        try:
+            from game_cycle.database.analytics_api import AnalyticsAPI
+            analytics = AnalyticsAPI(self.db_path)
+            result = analytics.get_season_grade(self.dynasty_id, int(player_id), season)
+            if result:
+                return {
+                    'player_id': result.player_id,
+                    'season': result.season,
+                    'position': result.position,
+                    'team_id': result.team_id,
+                    'overall_grade': result.overall_grade,
+                    'passing_grade': result.passing_grade,
+                    'rushing_grade': result.rushing_grade,
+                    'receiving_grade': result.receiving_grade,
+                    'blocking_grade': result.pass_blocking_grade or result.run_blocking_grade,
+                    'defense_grade': result.pass_rush_grade or result.coverage_grade or result.tackling_grade,
+                    'total_snaps': result.total_snaps,
+                    'games_graded': result.games_graded,
+                    'epa_total': result.epa_total,
+                    'epa_per_play': result.epa_per_play,
+                    'position_rank': result.position_rank,
+                    'overall_rank': result.overall_rank,
+                }
+            return None
+        except ImportError:
+            return None
+        except Exception:
+            return None
+
+    def get_grade_leaders(
+        self,
+        season: int,
+        position: Optional[str] = None,
+        limit: int = 25,
+        min_snaps: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get top players by overall grade.
+
+        Args:
+            season: Season year
+            position: Optional position filter (e.g., 'QB', 'WR')
+            limit: Number of leaders to return (default 25)
+            min_snaps: Minimum total snaps required. If None, calculates dynamically
+                       as (current_week * 20) to require ~20 snaps/game average.
+
+        Returns:
+            List of grade dictionaries sorted by overall_grade descending.
+
+        Example:
+            qb_leaders = api.get_grade_leaders(2025, position='QB', limit=10)
+        """
+        try:
+            from game_cycle.database.analytics_api import AnalyticsAPI
+            analytics = AnalyticsAPI(self.db_path)
+            # Use aggregated game grades (works without pre-computed season grades)
+            results = analytics.get_grade_leaders_from_game_grades(
+                self.dynasty_id, season, position, limit, min_snaps
+            )
+            return results
+        except ImportError:
+            return []
+        except Exception as e:
+            # Log the error instead of silently swallowing
+            import logging
+            logging.getLogger(__name__).error(
+                f"get_grade_leaders failed: season={season}, position={position}, error={e}"
+            )
+            import traceback
+            traceback.print_exc()
+            return []
+
+    def get_player_grade_history(
+        self,
+        player_id: str,
+        num_games: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Get recent game grades for a player.
+
+        Args:
+            player_id: Player identifier
+            num_games: Number of recent games to return (default 10)
+
+        Returns:
+            List of game grade dictionaries, most recent first.
+
+        Example:
+            history = api.get_player_grade_history('12345', num_games=5)
+        """
+        try:
+            from game_cycle.database.analytics_api import AnalyticsAPI
+            analytics = AnalyticsAPI(self.db_path)
+            results = analytics.get_player_game_grades(
+                self.dynasty_id, int(player_id), season=None, limit=num_games
+            )
+            return [
+                {
+                    'game_id': r.game_id,
+                    'season': r.season,
+                    'week': r.week,
+                    'overall_grade': r.overall_grade,
+                    'play_count': r.play_count,
+                    'positive_plays': r.positive_plays,
+                    'epa_total': r.epa_total,
+                }
+                for r in results
+            ]
+        except ImportError:
+            return []
+        except Exception:
+            return []
+
+    def get_team_grades(
+        self,
+        team_id: int,
+        season: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all player grades for a team.
+
+        Args:
+            team_id: Team ID (1-32)
+            season: Season year
+
+        Returns:
+            List of player grade dictionaries sorted by overall_grade descending.
+
+        Example:
+            team_grades = api.get_team_grades(22, 2025)  # Lions
+        """
+        try:
+            from game_cycle.database.analytics_api import AnalyticsAPI
+            analytics = AnalyticsAPI(self.db_path)
+            # Use aggregated game grades (works without pre-computed season grades)
+            results = analytics.get_team_grades_from_game_grades(
+                self.dynasty_id, team_id, season
+            )
+            return results
+        except ImportError:
+            return []
+        except Exception:
+            return []
+
+    def get_game_grades(
+        self,
+        game_id: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all player grades from a specific game.
+
+        Args:
+            game_id: Unique game identifier
+
+        Returns:
+            List of player grade dictionaries for the game.
+
+        Example:
+            grades = api.get_game_grades('week1_det_vs_chi')
+        """
+        try:
+            from game_cycle.database.analytics_api import AnalyticsAPI
+            analytics = AnalyticsAPI(self.db_path)
+            results = analytics.get_game_grades(self.dynasty_id, game_id)
+            return [
+                {
+                    'player_id': r.player_id,
+                    'position': r.position,
+                    'team_id': r.team_id,
+                    'overall_grade': r.overall_grade,
+                    'play_count': r.play_count,
+                    'positive_plays': r.positive_plays,
+                    'epa_total': r.epa_total,
+                }
+                for r in results
+            ]
+        except ImportError:
+            return []
+        except Exception:
+            return []
+
+    def get_advanced_metrics(
+        self,
+        season: int,
+        team_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get advanced metrics (EPA, success rate, etc.) for teams.
+
+        Args:
+            season: Season year
+            team_id: Optional specific team (if None, returns all teams)
+
+        Returns:
+            List of advanced metrics dictionaries.
+
+        Example:
+            metrics = api.get_advanced_metrics(2025, team_id=22)
+        """
+        try:
+            from game_cycle.database.analytics_api import AnalyticsAPI
+            analytics = AnalyticsAPI(self.db_path)
+            if team_id:
+                results = analytics.get_team_advanced_metrics(
+                    self.dynasty_id, team_id, season
+                )
+            else:
+                # Get metrics for all teams - would need to iterate
+                results = []
+            return [
+                {
+                    'game_id': r.game_id,
+                    'team_id': r.team_id,
+                    'epa_total': r.epa_total,
+                    'epa_passing': r.epa_passing,
+                    'epa_rushing': r.epa_rushing,
+                    'epa_per_play': r.epa_per_play,
+                    'success_rate': r.success_rate,
+                    'pressure_rate': r.pressure_rate,
+                }
+                for r in results
+            ]
+        except ImportError:
+            return []
+        except Exception:
+            return []
+
+    def get_player_game_history(
+        self,
+        player_id: int,
+        season: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Get a player's game-by-game grade history for the season.
+
+        Args:
+            player_id: Player ID to query
+            season: Season year
+
+        Returns:
+            List of game grade dictionaries with week, opponent, grades, etc.
+
+        Example:
+            history = api.get_player_game_history(player_id=12345, season=2025)
+        """
+        try:
+            from game_cycle.database.analytics_api import AnalyticsAPI
+            analytics = AnalyticsAPI(self.db_path)
+            results = analytics.get_player_game_history(
+                self.dynasty_id, player_id, season
+            )
+            return results
+        except ImportError:
+            return []
+        except Exception as e:
+            print(f"[StatsAPI] Error getting player game history: {e}")
+            return []
+
     # === PRIVATE HELPER METHODS ===
 
     def _get_all_player_stats(self, season: int, season_type: str = "regular_season") -> List[Dict[str, Any]]:

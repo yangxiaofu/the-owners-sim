@@ -900,7 +900,7 @@ class UnifiedDatabaseAPI:
             - results: None if not played, dict with scores if played
         """
         query = """
-            SELECT event_id, data FROM events
+            SELECT event_id, game_id, data FROM events
             WHERE dynasty_id = ? AND event_type = 'GAME'
             AND json_extract(data, '$.parameters.season') = ?
             AND json_extract(data, '$.parameters.week') = ?
@@ -918,7 +918,7 @@ class UnifiedDatabaseAPI:
 
             games.append({
                 'event_id': row['event_id'],
-                'game_id': data.get('metadata', {}).get('game_id', row['event_id']),
+                'game_id': row['game_id'],
                 'home_team_id': params.get('home_team_id'),
                 'away_team_id': params.get('away_team_id'),
                 'week': params.get('week'),
@@ -2057,7 +2057,7 @@ class UnifiedDatabaseAPI:
     # TODO: Add remaining 9 roster operation methods
     # Examples: roster_add_player, roster_release_player, roster_move_to_ir, etc.
     # ========================================================================
-    # STATISTICS OPERATIONS (25 methods)
+    # STATISTICS OPERATIONS (29 methods)
     # ========================================================================
 
     # -------------------- Standings (5 methods) --------------------
@@ -2331,10 +2331,19 @@ class UnifiedDatabaseAPI:
         ties: int,
         points_for: int,
         points_against: int,
-        season_type: str = 'regular_season'
+        season_type: str = 'regular_season',
+        # Optional extended record fields
+        division_wins: Optional[int] = None,
+        division_losses: Optional[int] = None,
+        conference_wins: Optional[int] = None,
+        conference_losses: Optional[int] = None,
+        home_wins: Optional[int] = None,
+        home_losses: Optional[int] = None,
+        away_wins: Optional[int] = None,
+        away_losses: Optional[int] = None,
     ) -> bool:
         """
-        Update team standing record.
+        Update team standing record with all record types.
 
         Args:
             team_id: Team ID (1-32)
@@ -2345,24 +2354,63 @@ class UnifiedDatabaseAPI:
             points_for: Points scored
             points_against: Points allowed
             season_type: Season type
+            division_wins: Division wins (optional)
+            division_losses: Division losses (optional)
+            conference_wins: Conference wins (optional)
+            conference_losses: Conference losses (optional)
+            home_wins: Home wins (optional)
+            home_losses: Home losses (optional)
+            away_wins: Away wins (optional)
+            away_losses: Away losses (optional)
 
         Returns:
             True if successful, False otherwise
         """
         try:
-            query = '''
+            # Build dynamic SET clause
+            set_parts = [
+                "wins = ?", "losses = ?", "ties = ?",
+                "points_for = ?", "points_against = ?",
+                "point_differential = ?"
+            ]
+            point_diff = points_for - points_against
+            params = [wins, losses, ties, points_for, points_against, point_diff]
+
+            # Add optional fields if provided
+            if division_wins is not None:
+                set_parts.append("division_wins = ?")
+                params.append(division_wins)
+            if division_losses is not None:
+                set_parts.append("division_losses = ?")
+                params.append(division_losses)
+            if conference_wins is not None:
+                set_parts.append("conference_wins = ?")
+                params.append(conference_wins)
+            if conference_losses is not None:
+                set_parts.append("conference_losses = ?")
+                params.append(conference_losses)
+            if home_wins is not None:
+                set_parts.append("home_wins = ?")
+                params.append(home_wins)
+            if home_losses is not None:
+                set_parts.append("home_losses = ?")
+                params.append(home_losses)
+            if away_wins is not None:
+                set_parts.append("away_wins = ?")
+                params.append(away_wins)
+            if away_losses is not None:
+                set_parts.append("away_losses = ?")
+                params.append(away_losses)
+
+            # Add WHERE clause params
+            params.extend([self.dynasty_id, team_id, season, season_type])
+
+            query = f'''
                 UPDATE standings
-                SET wins = ?, losses = ?, ties = ?,
-                    points_for = ?, points_against = ?,
-                    point_differential = ?
+                SET {', '.join(set_parts)}
                 WHERE dynasty_id = ? AND team_id = ? AND season = ? AND season_type = ?
             '''
-            point_diff = points_for - points_against
-            self._execute_update(
-                query,
-                (wins, losses, ties, points_for, points_against, point_diff,
-                 self.dynasty_id, team_id, season, season_type)
-            )
+            self._execute_update(query, tuple(params))
             return True
 
         except Exception as e:
@@ -2644,6 +2692,200 @@ class UnifiedDatabaseAPI:
             return None
 
         return results[0]
+
+
+    # -------------------- Box Scores --------------------
+
+    def box_scores_insert(
+        self,
+        game_id: str,
+        home_team_id: int,
+        away_team_id: int,
+        home_box: Dict[str, Any],
+        away_box: Dict[str, Any]
+    ) -> bool:
+        """
+        Insert box scores for both teams in a game.
+
+        Uses INSERT OR REPLACE to handle re-simulation of games.
+
+        Args:
+            game_id: Game identifier
+            home_team_id: Home team ID
+            away_team_id: Away team ID
+            home_box: Dict with home team stats (total_yards, passing_yards, rushing_yards, turnovers, etc.)
+            away_box: Dict with away team stats
+
+        Returns:
+            True if successful
+        """
+        try:
+            from game_cycle.database.box_scores_api import BoxScoresAPI
+
+            api = BoxScoresAPI(self.database_path)
+            return api.insert_game_box_scores(
+                dynasty_id=self.dynasty_id,
+                game_id=game_id,
+                home_team_id=home_team_id,
+                away_team_id=away_team_id,
+                home_box=home_box,
+                away_box=away_box
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to insert box scores for game {game_id}: {e}")
+            return False
+
+    def box_scores_get(
+        self,
+        game_id: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Get box scores for a game.
+
+        Args:
+            game_id: Game identifier
+
+        Returns:
+            List of box score dictionaries (one per team)
+        """
+        try:
+            from game_cycle.database.box_scores_api import BoxScoresAPI
+
+            api = BoxScoresAPI(self.database_path)
+            box_scores = api.get_game_box_scores(self.dynasty_id, game_id)
+            return [bs.to_dict() for bs in box_scores]
+        except Exception as e:
+            self.logger.error(f"Failed to get box scores for game {game_id}: {e}")
+            return []
+
+    def box_scores_get_or_calculate(
+        self,
+        game_id: str,
+        team_id: int
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get box score for a team in a game, calculating from player stats if not found.
+
+        Args:
+            game_id: Game identifier
+            team_id: Team ID
+
+        Returns:
+            Box score dictionary or None
+        """
+        try:
+            from game_cycle.database.box_scores_api import BoxScoresAPI
+
+            api = BoxScoresAPI(self.database_path)
+            box_score = api.get_or_calculate_box_score(self.dynasty_id, game_id, team_id)
+            return box_score.to_dict() if box_score else None
+        except Exception as e:
+            self.logger.error(f"Failed to get/calculate box score for game {game_id}, team {team_id}: {e}")
+            return None
+
+    # -------------------- Team Statistics (4 methods) --------------------
+
+    def team_stats_get_season(
+        self,
+        team_id: int,
+        season: int
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get comprehensive team statistics for a season.
+
+        Combines season stats with record and league rankings.
+
+        Args:
+            team_id: Team ID (1-32)
+            season: Season year
+
+        Returns:
+            Team overview dict with stats, record, and rankings
+        """
+        try:
+            from game_cycle.services.team_stats_service import TeamStatsService
+
+            service = TeamStatsService(self.database_path, self.dynasty_id, season)
+            overview = service.get_team_overview(team_id, season)
+            return overview.to_dict() if overview else None
+        except Exception as e:
+            self.logger.error(f"Failed to get team stats for team {team_id}: {e}")
+            return None
+
+    def team_stats_get_all_teams(
+        self,
+        season: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Get season statistics for all teams.
+
+        Args:
+            season: Season year
+
+        Returns:
+            List of team stats dicts sorted by total yards
+        """
+        try:
+            from game_cycle.database.team_stats_api import TeamSeasonStatsAPI
+
+            api = TeamSeasonStatsAPI(self.database_path)
+            all_stats = api.get_all_teams_season_stats(self.dynasty_id, season)
+            return [stats.to_dict() for stats in all_stats]
+        except Exception as e:
+            self.logger.error(f"Failed to get all teams stats: {e}")
+            return []
+
+    def team_stats_get_rankings(
+        self,
+        season: int,
+        category: Optional[str] = None
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Get league-wide rankings for team statistics.
+
+        Args:
+            season: Season year
+            category: Specific category to get (or all if None)
+
+        Returns:
+            Dict mapping category names to lists of rankings
+        """
+        try:
+            from game_cycle.services.team_stats_service import TeamStatsService
+
+            service = TeamStatsService(self.database_path, self.dynasty_id, season)
+            categories = [category] if category else None
+            rankings = service.get_league_rankings(season, categories)
+            return rankings.categories
+        except Exception as e:
+            self.logger.error(f"Failed to get team rankings: {e}")
+            return {}
+
+    def team_stats_get_comparison(
+        self,
+        team1_id: int,
+        team2_id: int,
+        season: int
+    ) -> Dict[str, Any]:
+        """
+        Get head-to-head comparison between two teams.
+
+        Args:
+            team1_id: First team ID
+            team2_id: Second team ID
+            season: Season year
+
+        Returns:
+            Comparison dict with both teams' stats and advantages
+        """
+        try:
+            from game_cycle.services.team_stats_service import TeamStatsService
+
+            service = TeamStatsService(self.database_path, self.dynasty_id, season)
+            return service.get_team_comparison(team1_id, team2_id, season)
+        except Exception as e:
+            self.logger.error(f"Failed to compare teams {team1_id} vs {team2_id}: {e}")
+            return {}
 
 
     # -------------------- Player Statistics (8 methods) --------------------
@@ -2978,6 +3220,441 @@ class UnifiedDatabaseAPI:
             return False
 
 
+    # -------------------- Game Statistics (4 methods) --------------------
+
+    def stats_insert_game_stats(
+        self,
+        game_id: str,
+        season: int,
+        week: int,
+        season_type: str,
+        player_stats: List[Dict[str, Any]]
+    ) -> int:
+        """
+        Batch insert player game stats.
+
+        Args:
+            game_id: Game identifier
+            season: Season year
+            week: Week number
+            season_type: 'regular_season' or 'playoffs'
+            player_stats: List of player stat dictionaries
+
+        Returns:
+            Number of rows inserted
+
+        Raises:
+            Exception: If database operation fails
+        """
+        if not player_stats:
+            return 0
+
+        # DEBUG: Track if this game's stats were already inserted
+        if not hasattr(self, '_inserted_games'):
+            self._inserted_games = set()
+
+        game_key = f"{game_id}_{season}_{week}"
+        if game_key in self._inserted_games:
+            print(f"🚨 DUPLICATE STATS INSERTION DETECTED!")
+            print(f"   Game: {game_id}, Season: {season}, Week: {week}")
+            print(f"   This game's stats have already been inserted!")
+            print(f"   About to insert {len(player_stats)} player stat records again")
+        else:
+            self._inserted_games.add(game_key)
+            print(f"✅ First stats insertion for game {game_id} (Season {season}, Week {week})")
+
+        # ✅ FIX 3: Deduplicate player_stats list before insertion
+        # Keep the last occurrence of each player (most recent/final stats)
+        seen_players = {}
+        for stats in player_stats:
+            player_key = (stats.get('player_id'), stats.get('team_id'))
+            seen_players[player_key] = stats  # Overwrites duplicates
+
+        deduplicated_stats = list(seen_players.values())
+
+        # ✅ FIX 3: Log if duplicates were found
+        if len(deduplicated_stats) < len(player_stats):
+            duplicate_count = len(player_stats) - len(deduplicated_stats)
+            print(f"⚠️ DEDUPLICATION: Removed {duplicate_count} duplicate players from stats before insertion")
+            print(f"   Original: {len(player_stats)} players, After dedup: {len(deduplicated_stats)} players")
+
+        # PFF stats tracing - log when PFF-critical stats exist but won't be inserted
+        # These stats are currently NOT in the INSERT query columns
+        _TRACE_PFF_STATS = False  # Set to True to enable tracing
+        _PFF_CRITICAL_STATS = {
+            'coverage_targets', 'coverage_completions', 'coverage_yards_allowed',
+            'pass_rush_wins', 'pass_rush_attempts', 'times_double_teamed', 'blocking_encounters',
+            'broken_tackles', 'tackles_faced', 'yards_after_contact',
+            'time_to_throw_total', 'throw_count', 'pressures_faced',
+            'missed_tackles',
+        }
+
+        if _TRACE_PFF_STATS:
+            for stats in deduplicated_stats[:10]:  # Sample first 10 players
+                pff_stats_found = []
+                for stat_name in _PFF_CRITICAL_STATS:
+                    value = stats.get(stat_name, 0)
+                    if value:
+                        pff_stats_found.append(f"{stat_name}={value}")
+                if pff_stats_found:
+                    print(f"[PFF_TRACE:INSERT_LOSS] {stats.get('player_name')} ({stats.get('position')}): "
+                          f"DROPPING stats not in INSERT: {', '.join(pff_stats_found)}")
+
+        try:
+            rows_inserted = 0
+
+            for stats in deduplicated_stats:  # ✅ Use deduplicated list instead of original
+                # Ensure required fields
+                if 'player_id' not in stats or 'team_id' not in stats:
+                    self.logger.warning(f"Skipping stats entry missing player_id or team_id: {stats}")
+                    continue
+
+                # Build the INSERT OR REPLACE query
+                # IMPORTANT: All columns must match the schema in connection.py
+                # Including PFF-critical stats for accurate position grading
+                query = '''
+                    INSERT OR REPLACE INTO player_game_stats (
+                        dynasty_id, game_id, season_type, player_id, player_name,
+                        team_id, position,
+                        passing_yards, passing_tds, passing_attempts, passing_completions,
+                        passing_interceptions, passing_sacks, passing_sack_yards, passing_rating, air_yards,
+                        rushing_yards, rushing_tds, rushing_attempts, rushing_long, rushing_fumbles,
+                        receiving_yards, receiving_tds, receptions, targets, receiving_long, receiving_drops, yards_after_catch,
+                        tackles_total, tackles_solo, tackles_assist, sacks, interceptions,
+                        forced_fumbles, fumbles_recovered, passes_defended, tackles_for_loss, qb_hits, qb_pressures,
+                        field_goals_made, field_goals_attempted, extra_points_made, extra_points_attempted,
+                        punts, punt_yards,
+                        pancakes, sacks_allowed, hurries_allowed, pressures_allowed, pass_blocks,
+                        run_blocking_grade, pass_blocking_efficiency, missed_assignments,
+                        holding_penalties, false_start_penalties, downfield_blocks,
+                        double_team_blocks, chip_blocks,
+                        snap_counts_offense, snap_counts_defense, snap_counts_special_teams,
+                        fantasy_points,
+                        coverage_targets, coverage_completions, coverage_yards_allowed,
+                        pass_rush_wins, pass_rush_attempts, times_double_teamed, blocking_encounters,
+                        broken_tackles, tackles_faced, yards_after_contact,
+                        pressures_faced, time_to_throw_total, throw_count,
+                        missed_tackles
+                    ) VALUES (
+                        ?, ?, ?, ?, ?,
+                        ?, ?,
+                        ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?,
+                        ?, ?,
+                        ?, ?, ?, ?, ?,
+                        ?, ?, ?,
+                        ?, ?, ?,
+                        ?, ?,
+                        ?, ?, ?,
+                        ?,
+                        ?, ?, ?,
+                        ?, ?, ?, ?,
+                        ?, ?, ?,
+                        ?, ?, ?,
+                        ?
+                    )
+                '''
+
+                values = (
+                    self.dynasty_id,
+                    game_id,
+                    season_type,
+                    stats.get('player_id'),
+                    stats.get('player_name', ''),
+                    stats.get('team_id'),
+                    stats.get('position', ''),
+                    # Passing stats
+                    stats.get('passing_yards', 0),
+                    stats.get('passing_tds', 0),
+                    stats.get('passing_attempts', 0),
+                    stats.get('passing_completions', 0),
+                    stats.get('passing_interceptions', 0),
+                    stats.get('passing_sacks', 0),
+                    stats.get('passing_sack_yards', 0),
+                    stats.get('passing_rating', 0.0),
+                    stats.get('air_yards', 0),
+                    # Rushing stats
+                    stats.get('rushing_yards', 0),
+                    stats.get('rushing_tds', 0),
+                    stats.get('rushing_attempts', 0),
+                    stats.get('rushing_long', 0),
+                    stats.get('rushing_fumbles', 0),
+                    # Receiving stats
+                    stats.get('receiving_yards', 0),
+                    stats.get('receiving_tds', 0),
+                    stats.get('receptions', 0),
+                    stats.get('targets', 0),
+                    stats.get('receiving_long', 0),
+                    stats.get('receiving_drops', 0),
+                    stats.get('yards_after_catch', 0),
+                    # Defensive stats
+                    stats.get('tackles_total', 0),
+                    stats.get('tackles_solo', 0),
+                    stats.get('tackles_assist', 0),
+                    stats.get('sacks', 0.0),
+                    stats.get('interceptions', 0),
+                    stats.get('forced_fumbles', 0),
+                    stats.get('fumbles_recovered', 0),
+                    stats.get('passes_defended', 0),
+                    stats.get('tackles_for_loss', 0),
+                    stats.get('qb_hits', 0),
+                    stats.get('qb_pressures', 0),
+                    # Special teams stats
+                    stats.get('field_goals_made', 0),
+                    stats.get('field_goals_attempted', 0),
+                    stats.get('extra_points_made', 0),
+                    stats.get('extra_points_attempted', 0),
+                    stats.get('punts', 0),
+                    stats.get('punt_yards', 0),
+                    # O-Line stats
+                    stats.get('pancakes', 0),
+                    stats.get('sacks_allowed', 0),
+                    stats.get('hurries_allowed', 0),
+                    stats.get('pressures_allowed', 0),
+                    stats.get('pass_blocks', 0),
+                    stats.get('run_blocking_grade', 0.0),
+                    stats.get('pass_blocking_efficiency', 0.0),
+                    stats.get('missed_assignments', 0),
+                    stats.get('holding_penalties', 0),
+                    stats.get('false_start_penalties', 0),
+                    stats.get('downfield_blocks', 0),
+                    stats.get('double_team_blocks', 0),
+                    stats.get('chip_blocks', 0),
+                    # Snap counts
+                    stats.get('snap_counts_offense', 0),
+                    stats.get('snap_counts_defense', 0),
+                    stats.get('snap_counts_special_teams', 0),
+                    # Fantasy
+                    stats.get('fantasy_points', 0.0),
+                    # PFF-critical stats for position grading
+                    # Coverage stats (DB/LB grading)
+                    stats.get('coverage_targets', 0),
+                    stats.get('coverage_completions', 0),
+                    stats.get('coverage_yards_allowed', 0),
+                    # Pass rush stats (DL grading)
+                    stats.get('pass_rush_wins', 0),
+                    stats.get('pass_rush_attempts', 0),
+                    stats.get('times_double_teamed', 0),
+                    stats.get('blocking_encounters', 0),
+                    # Ball carrier stats (RB/WR grading)
+                    stats.get('broken_tackles', 0),
+                    stats.get('tackles_faced', 0),
+                    stats.get('yards_after_contact', 0),
+                    # QB advanced stats
+                    stats.get('pressures_faced', 0),
+                    stats.get('time_to_throw_total', 0.0),
+                    stats.get('throw_count', 0),
+                    # Tackling
+                    stats.get('missed_tackles', 0),
+                )
+
+                self._execute_update(query, values)
+                rows_inserted += 1
+
+            self.logger.info(
+                f"Inserted {rows_inserted} player game stats for game {game_id} "
+                f"(dynasty={self.dynasty_id}, season={season}, week={week})"
+            )
+            return rows_inserted
+
+        except Exception as e:
+            self.logger.error(
+                f"Failed to insert game stats for game {game_id}: {e}",
+                exc_info=True
+            )
+            raise
+
+
+    def stats_get_game_stats(
+        self,
+        game_id: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all player stats for a specific game.
+
+        Args:
+            game_id: Game identifier
+
+        Returns:
+            List of player stat dictionaries
+        """
+        query = '''
+            SELECT
+                player_id, player_name, team_id, position,
+                passing_yards, passing_tds, passing_attempts, passing_completions,
+                passing_interceptions, passing_sacks, passing_sack_yards, passing_rating,
+                rushing_yards, rushing_tds, rushing_attempts, rushing_long, rushing_fumbles,
+                receiving_yards, receiving_tds, receptions, targets, receiving_long, receiving_drops,
+                tackles_total, tackles_solo, tackles_assist, sacks, interceptions,
+                forced_fumbles, fumbles_recovered, passes_defended,
+                field_goals_made, field_goals_attempted, extra_points_made, extra_points_attempted,
+                punts, punt_yards,
+                pancakes, sacks_allowed, hurries_allowed, pressures_allowed, pass_blocks,
+                run_blocking_grade, pass_blocking_efficiency, missed_assignments,
+                holding_penalties, false_start_penalties, downfield_blocks,
+                double_team_blocks, chip_blocks,
+                snap_counts_offense, snap_counts_defense, snap_counts_special_teams,
+                fantasy_points
+            FROM player_game_stats
+            WHERE dynasty_id = ? AND game_id = ?
+            ORDER BY team_id, position, player_name
+        '''
+
+        results = self._execute_query(query, (self.dynasty_id, game_id))
+        return results
+
+
+    def stats_get_season_leaders(
+        self,
+        season: int,
+        stat: str,
+        limit: int = 25,
+        season_type: str = 'regular_season'
+    ) -> List[Dict[str, Any]]:
+        """
+        Get league leaders for a stat category.
+
+        Args:
+            season: Season year
+            stat: Stat column name (passing_yards, rushing_tds, etc.)
+            limit: Number of leaders to return
+            season_type: Filter by season type
+
+        Returns:
+            List of {player_id, player_name, team_id, position, stat_value, games}
+
+        Raises:
+            ValueError: If stat column is invalid
+        """
+        # Validate stat column to prevent SQL injection
+        valid_stats = {
+            'passing_yards', 'passing_tds', 'passing_attempts', 'passing_completions',
+            'passing_interceptions', 'passing_rating',
+            'rushing_yards', 'rushing_tds', 'rushing_attempts',
+            'receiving_yards', 'receiving_tds', 'receptions', 'targets',
+            'tackles_total', 'sacks', 'interceptions', 'forced_fumbles', 'passes_defended',
+            'field_goals_made', 'field_goals_attempted', 'extra_points_made',
+            'fantasy_points'
+        }
+
+        if stat not in valid_stats:
+            raise ValueError(f"Invalid stat column: {stat}. Must be one of {valid_stats}")
+
+        # Build query with dynamic stat column (safe because validated above)
+        query = f'''
+            SELECT
+                pgs.player_id,
+                pgs.player_name,
+                pgs.team_id,
+                pgs.position,
+                SUM(pgs.{stat}) as stat_value,
+                COUNT(DISTINCT pgs.game_id) as games
+            FROM player_game_stats pgs
+            INNER JOIN games g ON pgs.game_id = g.game_id AND pgs.dynasty_id = g.dynasty_id
+            WHERE pgs.dynasty_id = ?
+              AND g.season = ?
+              AND pgs.season_type = ?
+            GROUP BY pgs.player_id, pgs.player_name, pgs.team_id, pgs.position
+            HAVING SUM(pgs.{stat}) > 0
+            ORDER BY stat_value DESC
+            LIMIT ?
+        '''
+
+        results = self._execute_query(
+            query,
+            (self.dynasty_id, season, season_type, limit)
+        )
+        return results
+
+
+    def stats_get_player_season_totals(
+        self,
+        player_id: str,
+        season: int,
+        season_type: str = 'regular_season'
+    ) -> Dict[str, Any]:
+        """
+        Get aggregated season stats for a player.
+
+        Args:
+            player_id: Player identifier
+            season: Season year
+            season_type: Filter by season type
+
+        Returns:
+            Dictionary with aggregated stats and metadata
+        """
+        query = '''
+            SELECT
+                pgs.player_id,
+                pgs.player_name,
+                pgs.team_id,
+                pgs.position,
+                COUNT(DISTINCT pgs.game_id) as games_played,
+                SUM(pgs.passing_yards) as passing_yards,
+                SUM(pgs.passing_tds) as passing_tds,
+                SUM(pgs.passing_attempts) as passing_attempts,
+                SUM(pgs.passing_completions) as passing_completions,
+                SUM(pgs.passing_interceptions) as passing_interceptions,
+                SUM(pgs.passing_sacks) as passing_sacks,
+                SUM(pgs.passing_sack_yards) as passing_sack_yards,
+                AVG(pgs.passing_rating) as avg_passing_rating,
+                SUM(pgs.rushing_yards) as rushing_yards,
+                SUM(pgs.rushing_tds) as rushing_tds,
+                SUM(pgs.rushing_attempts) as rushing_attempts,
+                MAX(pgs.rushing_long) as rushing_long,
+                SUM(pgs.rushing_fumbles) as rushing_fumbles,
+                SUM(pgs.receiving_yards) as receiving_yards,
+                SUM(pgs.receiving_tds) as receiving_tds,
+                SUM(pgs.receptions) as receptions,
+                SUM(pgs.targets) as targets,
+                MAX(pgs.receiving_long) as receiving_long,
+                SUM(pgs.receiving_drops) as receiving_drops,
+                SUM(pgs.tackles_total) as tackles_total,
+                SUM(pgs.tackles_solo) as tackles_solo,
+                SUM(pgs.tackles_assist) as tackles_assist,
+                SUM(pgs.sacks) as sacks,
+                SUM(pgs.interceptions) as interceptions,
+                SUM(pgs.forced_fumbles) as forced_fumbles,
+                SUM(pgs.fumbles_recovered) as fumbles_recovered,
+                SUM(pgs.passes_defended) as passes_defended,
+                SUM(pgs.field_goals_made) as field_goals_made,
+                SUM(pgs.field_goals_attempted) as field_goals_attempted,
+                SUM(pgs.extra_points_made) as extra_points_made,
+                SUM(pgs.extra_points_attempted) as extra_points_attempted,
+                SUM(pgs.punts) as punts,
+                SUM(pgs.punt_yards) as punt_yards,
+                SUM(pgs.fantasy_points) as fantasy_points
+            FROM player_game_stats pgs
+            INNER JOIN games g ON pgs.game_id = g.game_id AND pgs.dynasty_id = g.dynasty_id
+            WHERE pgs.dynasty_id = ?
+              AND pgs.player_id = ?
+              AND g.season = ?
+              AND pgs.season_type = ?
+            GROUP BY pgs.player_id, pgs.player_name, pgs.team_id, pgs.position
+        '''
+
+        results = self._execute_query(
+            query,
+            (self.dynasty_id, player_id, season, season_type)
+        )
+
+        if not results:
+            return {
+                'player_id': player_id,
+                'season': season,
+                'season_type': season_type,
+                'games_played': 0
+            }
+
+        return results[0]
+
+
     # -------------------- Team Statistics (3 methods) --------------------
 
     def stats_get_team_summary(
@@ -3132,6 +3809,737 @@ class UnifiedDatabaseAPI:
         result['season_type'] = season_type
 
         return result
+
+    def stats_get_game_count(
+        self,
+        season: int,
+        season_type: str = 'regular_season'
+    ) -> int:
+        """
+        Get count of games with stats recorded.
+
+        Args:
+            season: Season year
+            season_type: Season type filter
+
+        Returns:
+            Number of games with stats
+        """
+        query = '''
+            SELECT COUNT(DISTINCT pgs.game_id) as game_count
+            FROM player_game_stats pgs
+            JOIN games g ON pgs.game_id = g.game_id AND pgs.dynasty_id = g.dynasty_id
+            WHERE pgs.dynasty_id = ?
+              AND g.season = ?
+              AND pgs.season_type = ?
+        '''
+
+        results = self._execute_query(query, (self.dynasty_id, season, season_type))
+
+        if not results:
+            return 0
+
+        return results[0].get('game_count', 0) or 0
+
+    def stats_get_player_count(
+        self,
+        season: int,
+        season_type: str = 'regular_season'
+    ) -> int:
+        """
+        Get count of unique players with stats recorded.
+
+        Args:
+            season: Season year
+            season_type: Season type filter
+
+        Returns:
+            Number of players with stats
+        """
+        query = '''
+            SELECT COUNT(DISTINCT pgs.player_id) as player_count
+            FROM player_game_stats pgs
+            JOIN games g ON pgs.game_id = g.game_id AND pgs.dynasty_id = g.dynasty_id
+            WHERE pgs.dynasty_id = ?
+              AND g.season = ?
+              AND pgs.season_type = ?
+        '''
+
+        results = self._execute_query(query, (self.dynasty_id, season, season_type))
+
+        if not results:
+            return 0
+
+        return results[0].get('player_count', 0) or 0
+
+    def stats_get_current_week(
+        self,
+        season: int,
+        season_type: str = 'regular_season'
+    ) -> int:
+        """
+        Get the highest week number with stats recorded.
+
+        Args:
+            season: Season year
+            season_type: Season type filter
+
+        Returns:
+            Current/max week with stats
+        """
+        query = '''
+            SELECT MAX(g.week) as max_week
+            FROM player_game_stats pgs
+            JOIN games g ON pgs.game_id = g.game_id AND pgs.dynasty_id = g.dynasty_id
+            WHERE pgs.dynasty_id = ?
+              AND g.season = ?
+              AND pgs.season_type = ?
+        '''
+
+        results = self._execute_query(query, (self.dynasty_id, season, season_type))
+
+        if not results:
+            return 0
+
+        return results[0].get('max_week', 0) or 0
+
+    # ========== Category-Specific Leader Methods (from player_game_stats) ==========
+
+    def stats_get_category_leaders_passing(
+        self,
+        season: int,
+        limit: int = 25,
+        season_type: str = 'regular_season',
+        team_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get passing leaders with ALL passing-related stats.
+
+        Args:
+            season: Season year
+            limit: Number of leaders to return
+            season_type: Filter by season type
+            team_id: Optional team ID to filter by (returns all team players if set)
+
+        Returns:
+            List of dicts with player_id, player_name, team_id, position,
+            and all passing stats aggregated.
+        """
+        team_filter = "AND pgs.team_id = ?" if team_id else ""
+        actual_limit = 100 if team_id else limit  # Show all team players when filtered
+
+        query = f'''
+            SELECT
+                pgs.player_id,
+                pgs.player_name,
+                pgs.team_id,
+                pgs.position,
+                COUNT(DISTINCT pgs.game_id) as games,
+                SUM(pgs.passing_yards) as passing_yards,
+                SUM(pgs.passing_tds) as passing_tds,
+                SUM(pgs.passing_attempts) as passing_attempts,
+                SUM(pgs.passing_completions) as passing_completions,
+                SUM(pgs.passing_interceptions) as passing_interceptions,
+                SUM(pgs.passing_sacks) as passing_sacks,
+                SUM(pgs.passing_sack_yards) as passing_sack_yards
+            FROM player_game_stats pgs
+            INNER JOIN games g ON pgs.game_id = g.game_id AND pgs.dynasty_id = g.dynasty_id
+            WHERE pgs.dynasty_id = ?
+              AND g.season = ?
+              AND pgs.season_type = ?
+              {team_filter}
+            GROUP BY pgs.player_id, pgs.player_name, pgs.team_id, pgs.position
+            HAVING SUM(pgs.passing_attempts) > 0
+            ORDER BY SUM(pgs.passing_yards) DESC
+            LIMIT ?
+        '''
+
+        params = [self.dynasty_id, season, season_type]
+        if team_id:
+            params.append(team_id)
+        params.append(actual_limit)
+
+        return self._execute_query(query, tuple(params))
+
+    def stats_get_category_leaders_rushing(
+        self,
+        season: int,
+        limit: int = 25,
+        season_type: str = 'regular_season',
+        team_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get rushing leaders with ALL rushing-related stats.
+
+        Args:
+            season: Season year
+            limit: Number of leaders to return
+            season_type: Filter by season type
+            team_id: Optional team ID to filter by (returns all team players if set)
+
+        Returns:
+            List of dicts with player_id, player_name, team_id, position,
+            and all rushing stats aggregated.
+        """
+        team_filter = "AND pgs.team_id = ?" if team_id else ""
+        actual_limit = 100 if team_id else limit
+
+        query = f'''
+            SELECT
+                pgs.player_id,
+                pgs.player_name,
+                pgs.team_id,
+                pgs.position,
+                COUNT(DISTINCT pgs.game_id) as games,
+                SUM(pgs.rushing_yards) as rushing_yards,
+                SUM(pgs.rushing_tds) as rushing_tds,
+                SUM(pgs.rushing_attempts) as rushing_attempts,
+                MAX(pgs.rushing_long) as rushing_long,
+                SUM(pgs.rushing_fumbles) as rushing_fumbles,
+                SUM(pgs.snap_counts_offense) as snap_counts_offense
+            FROM player_game_stats pgs
+            INNER JOIN games g ON pgs.game_id = g.game_id AND pgs.dynasty_id = g.dynasty_id
+            WHERE pgs.dynasty_id = ?
+              AND g.season = ?
+              AND pgs.season_type = ?
+              {team_filter}
+            GROUP BY pgs.player_id, pgs.player_name, pgs.team_id, pgs.position
+            HAVING SUM(pgs.rushing_attempts) > 0
+            ORDER BY SUM(pgs.rushing_yards) DESC
+            LIMIT ?
+        '''
+
+        params = [self.dynasty_id, season, season_type]
+        if team_id:
+            params.append(team_id)
+        params.append(actual_limit)
+
+        return self._execute_query(query, tuple(params))
+
+    def stats_get_category_leaders_receiving(
+        self,
+        season: int,
+        limit: int = 25,
+        season_type: str = 'regular_season',
+        team_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get receiving leaders with ALL receiving-related stats.
+
+        Args:
+            season: Season year
+            limit: Number of leaders to return
+            season_type: Filter by season type
+            team_id: Optional team ID to filter by (shows all team players)
+
+        Returns:
+            List of dicts with player_id, player_name, team_id, position,
+            and all receiving stats aggregated.
+        """
+        team_filter = "AND pgs.team_id = ?" if team_id else ""
+        actual_limit = 100 if team_id else limit  # Show all team players when filtered
+
+        query = f'''
+            SELECT
+                pgs.player_id,
+                pgs.player_name,
+                pgs.team_id,
+                pgs.position,
+                COUNT(DISTINCT pgs.game_id) as games,
+                SUM(pgs.receiving_yards) as receiving_yards,
+                SUM(pgs.receiving_tds) as receiving_tds,
+                SUM(pgs.receptions) as receptions,
+                SUM(pgs.targets) as targets,
+                MAX(pgs.receiving_long) as receiving_long,
+                SUM(pgs.receiving_drops) as receiving_drops,
+                SUM(pgs.snap_counts_offense) as snap_counts_offense
+            FROM player_game_stats pgs
+            INNER JOIN games g ON pgs.game_id = g.game_id AND pgs.dynasty_id = g.dynasty_id
+            WHERE pgs.dynasty_id = ?
+              AND g.season = ?
+              AND pgs.season_type = ?
+              {team_filter}
+            GROUP BY pgs.player_id, pgs.player_name, pgs.team_id, pgs.position
+            HAVING SUM(pgs.receptions) > 0
+            ORDER BY SUM(pgs.receiving_yards) DESC
+            LIMIT ?
+        '''
+
+        params = [self.dynasty_id, season, season_type]
+        if team_id:
+            params.append(team_id)
+        params.append(actual_limit)
+
+        return self._execute_query(query, tuple(params))
+
+    def stats_get_category_leaders_defense(
+        self,
+        season: int,
+        limit: int = 25,
+        season_type: str = 'regular_season',
+        team_id: Optional[int] = None,
+        sort_by: str = 'tackles'
+    ) -> List[Dict[str, Any]]:
+        """
+        Get defensive leaders with ALL defensive stats.
+
+        Args:
+            season: Season year
+            limit: Number of leaders to return
+            season_type: Filter by season type
+            team_id: Optional team ID to filter by (shows all team players)
+            sort_by: Column to sort by ('tackles', 'sacks', 'interceptions', 'passes_defended', 'forced_fumbles')
+
+        Returns:
+            List of dicts with player_id, player_name, team_id, position,
+            and all defensive stats aggregated.
+        """
+        team_filter = "AND pgs.team_id = ?" if team_id else ""
+        actual_limit = 100 if team_id else limit  # Show all team players when filtered
+
+        # Map sort_by parameter to actual column names
+        sort_column_map = {
+            'tackles': 'SUM(pgs.tackles_total)',
+            'tackles_total': 'SUM(pgs.tackles_total)',
+            'tackles_solo': 'SUM(pgs.tackles_solo)',
+            'tackles_assist': 'SUM(pgs.tackles_assist)',
+            'sacks': 'SUM(pgs.sacks)',
+            'interceptions': 'SUM(pgs.interceptions)',
+            'passes_defended': 'SUM(pgs.passes_defended)',
+            'forced_fumbles': 'SUM(pgs.forced_fumbles)',
+            'fumbles_recovered': 'SUM(pgs.fumbles_recovered)',
+        }
+        order_column = sort_column_map.get(sort_by, 'SUM(pgs.tackles_total)')
+
+        query = f'''
+            SELECT
+                pgs.player_id,
+                pgs.player_name,
+                pgs.team_id,
+                pgs.position,
+                COUNT(DISTINCT pgs.game_id) as games,
+                SUM(pgs.tackles_total) as tackles_total,
+                SUM(pgs.tackles_solo) as tackles_solo,
+                SUM(pgs.tackles_assist) as tackles_assist,
+                SUM(pgs.sacks) as sacks,
+                SUM(pgs.interceptions) as interceptions,
+                SUM(pgs.forced_fumbles) as forced_fumbles,
+                SUM(pgs.fumbles_recovered) as fumbles_recovered,
+                SUM(pgs.passes_defended) as passes_defended
+            FROM player_game_stats pgs
+            INNER JOIN games g ON pgs.game_id = g.game_id AND pgs.dynasty_id = g.dynasty_id
+            WHERE pgs.dynasty_id = ?
+              AND g.season = ?
+              AND pgs.season_type = ?
+              {team_filter}
+            GROUP BY pgs.player_id, pgs.player_name, pgs.team_id, pgs.position
+            HAVING SUM(pgs.tackles_total) > 0 OR SUM(pgs.sacks) > 0 OR SUM(pgs.interceptions) > 0
+            ORDER BY {order_column} DESC
+            LIMIT ?
+        '''
+
+        params = [self.dynasty_id, season, season_type]
+        if team_id:
+            params.append(team_id)
+        params.append(actual_limit)
+
+        return self._execute_query(query, tuple(params))
+
+    def stats_get_category_leaders_kicking(
+        self,
+        season: int,
+        limit: int = 25,
+        season_type: str = 'regular_season',
+        team_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get kicking leaders with ALL kicking stats.
+
+        Args:
+            season: Season year
+            limit: Number of leaders to return
+            season_type: Filter by season type
+            team_id: Optional team ID to filter by (shows all team players)
+
+        Returns:
+            List of dicts with player_id, player_name, team_id, position,
+            and all kicking stats aggregated.
+        """
+        team_filter = "AND pgs.team_id = ?" if team_id else ""
+        actual_limit = 100 if team_id else limit  # Show all team players when filtered
+
+        query = f'''
+            SELECT
+                pgs.player_id,
+                pgs.player_name,
+                pgs.team_id,
+                pgs.position,
+                COUNT(DISTINCT pgs.game_id) as games,
+                SUM(pgs.field_goals_made) as field_goals_made,
+                SUM(pgs.field_goals_attempted) as field_goals_attempted,
+                SUM(pgs.extra_points_made) as extra_points_made,
+                SUM(pgs.extra_points_attempted) as extra_points_attempted,
+                SUM(pgs.punts) as punts,
+                SUM(pgs.punt_yards) as punt_yards
+            FROM player_game_stats pgs
+            INNER JOIN games g ON pgs.game_id = g.game_id AND pgs.dynasty_id = g.dynasty_id
+            WHERE pgs.dynasty_id = ?
+              AND g.season = ?
+              AND pgs.season_type = ?
+              {team_filter}
+            GROUP BY pgs.player_id, pgs.player_name, pgs.team_id, pgs.position
+            HAVING SUM(pgs.field_goals_attempted) > 0 OR SUM(pgs.extra_points_attempted) > 0
+            ORDER BY SUM(pgs.field_goals_made) DESC
+            LIMIT ?
+        '''
+
+        params = [self.dynasty_id, season, season_type]
+        if team_id:
+            params.append(team_id)
+        params.append(actual_limit)
+
+        return self._execute_query(query, tuple(params))
+
+    def stats_get_category_leaders_punting(
+        self,
+        season: int,
+        limit: int = 25,
+        season_type: str = 'regular_season',
+        team_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get punting leaders with ALL punting stats.
+
+        Args:
+            season: Season year
+            limit: Number of leaders to return
+            season_type: Filter by season type
+            team_id: Optional team ID to filter by (shows all team players)
+
+        Returns:
+            List of dicts with player_id, player_name, team_id, position,
+            and all punting stats aggregated.
+        """
+        team_filter = "AND pgs.team_id = ?" if team_id else ""
+        actual_limit = 100 if team_id else limit  # Show all team players when filtered
+
+        query = f'''
+            SELECT
+                pgs.player_id,
+                pgs.player_name,
+                pgs.team_id,
+                pgs.position,
+                COUNT(DISTINCT pgs.game_id) as games,
+                SUM(pgs.punts) as punts,
+                SUM(pgs.punt_yards) as punt_yards
+            FROM player_game_stats pgs
+            INNER JOIN games g ON pgs.game_id = g.game_id AND pgs.dynasty_id = g.dynasty_id
+            WHERE pgs.dynasty_id = ?
+              AND g.season = ?
+              AND pgs.season_type = ?
+              {team_filter}
+            GROUP BY pgs.player_id, pgs.player_name, pgs.team_id, pgs.position
+            HAVING SUM(pgs.punts) > 0
+            ORDER BY SUM(pgs.punts) DESC
+            LIMIT ?
+        '''
+
+        params = [self.dynasty_id, season, season_type]
+        if team_id:
+            params.append(team_id)
+        params.append(actual_limit)
+
+        return self._execute_query(query, tuple(params))
+
+    def stats_get_category_leaders_blocking(
+        self,
+        season: int,
+        limit: int = 25,
+        season_type: str = 'regular_season',
+        team_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get blocking leaders (OL) with ALL blocking stats.
+
+        Args:
+            season: Season year
+            limit: Number of leaders to return
+            season_type: Filter by season type
+            team_id: Optional team ID to filter by (shows all team players)
+
+        Returns:
+            List of dicts with player_id, player_name, team_id, position,
+            and all blocking stats aggregated.
+        """
+        team_filter = "AND pgs.team_id = ?" if team_id else ""
+        actual_limit = 100 if team_id else limit  # Show all team players when filtered
+
+        query = f'''
+            SELECT
+                pgs.player_id,
+                pgs.player_name,
+                pgs.team_id,
+                pgs.position,
+                COUNT(DISTINCT pgs.game_id) as games,
+                SUM(pgs.pass_blocks) as pass_blocks,
+                SUM(pgs.pancakes) as pancakes,
+                SUM(pgs.sacks_allowed) as sacks_allowed,
+                SUM(pgs.hurries_allowed) as hurries_allowed,
+                SUM(pgs.pressures_allowed) as pressures_allowed,
+                AVG(pgs.run_blocking_grade) as run_blocking_grade,
+                AVG(pgs.pass_blocking_efficiency) as pass_blocking_efficiency,
+                SUM(pgs.missed_assignments) as missed_assignments,
+                SUM(pgs.holding_penalties) as holding_penalties,
+                SUM(pgs.false_start_penalties) as false_start_penalties,
+                SUM(pgs.downfield_blocks) as downfield_blocks,
+                SUM(pgs.double_team_blocks) as double_team_blocks,
+                SUM(pgs.chip_blocks) as chip_blocks
+            FROM player_game_stats pgs
+            INNER JOIN games g ON pgs.game_id = g.game_id AND pgs.dynasty_id = g.dynasty_id
+            WHERE pgs.dynasty_id = ?
+              AND g.season = ?
+              AND pgs.season_type = ?
+              AND pgs.position IN ('LT', 'LG', 'C', 'RG', 'RT', 'center', 'left_tackle', 'right_tackle', 'left_guard', 'right_guard', 'offensive_tackle', 'offensive_guard', 'guard', 'tackle')
+              {team_filter}
+            GROUP BY pgs.player_id, pgs.player_name, pgs.team_id, pgs.position
+            HAVING SUM(pgs.pass_blocks) > 0 OR SUM(pgs.pancakes) > 0 OR COUNT(DISTINCT pgs.game_id) > 0
+            ORDER BY SUM(pgs.pass_blocks) DESC, SUM(pgs.pancakes) DESC
+            LIMIT ?
+        '''
+
+        params = [self.dynasty_id, season, season_type]
+        if team_id:
+            params.append(team_id)
+        params.append(actual_limit)
+
+        return self._execute_query(query, tuple(params))
+
+    def stats_get_category_leaders_coverage(
+        self,
+        season: int,
+        limit: int = 25,
+        season_type: str = 'regular_season',
+        team_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get coverage leaders (DBs and LBs) with ALL coverage stats.
+
+        Args:
+            season: Season year
+            limit: Number of leaders to return
+            season_type: Filter by season type
+            team_id: Optional team ID to filter by (shows all team players)
+
+        Returns:
+            List of dicts with player_id, player_name, team_id, position,
+            and all coverage stats aggregated.
+        """
+        team_filter = "AND pgs.team_id = ?" if team_id else ""
+        actual_limit = 100 if team_id else limit  # Show all team players when filtered
+
+        query = f'''
+            SELECT
+                pgs.player_id,
+                pgs.player_name,
+                pgs.team_id,
+                pgs.position,
+                COUNT(DISTINCT pgs.game_id) as games,
+                SUM(pgs.coverage_targets) as coverage_targets,
+                SUM(pgs.coverage_completions) as coverage_completions,
+                SUM(pgs.coverage_yards_allowed) as coverage_yards_allowed,
+                SUM(pgs.passes_defended) as passes_defended,
+                SUM(pgs.interceptions) as interceptions,
+                SUM(pgs.snap_counts_defense) as snap_counts_defense
+            FROM player_game_stats pgs
+            INNER JOIN games g ON pgs.game_id = g.game_id AND pgs.dynasty_id = g.dynasty_id
+            WHERE pgs.dynasty_id = ?
+              AND g.season = ?
+              AND pgs.season_type = ?
+              AND (pgs.position IN ('CB', 'FS', 'SS', 'S', 'LB', 'MLB', 'LOLB', 'ROLB', 'cornerback', 'safety', 'free_safety', 'strong_safety', 'linebacker', 'middle_linebacker', 'outside_linebacker'))
+              {team_filter}
+            GROUP BY pgs.player_id, pgs.player_name, pgs.team_id, pgs.position
+            HAVING SUM(pgs.coverage_targets) > 0 OR SUM(pgs.passes_defended) > 0
+            ORDER BY SUM(pgs.coverage_targets) DESC
+            LIMIT ?
+        '''
+
+        params = [self.dynasty_id, season, season_type]
+        if team_id:
+            params.append(team_id)
+        params.append(actual_limit)
+
+        return self._execute_query(query, tuple(params))
+
+    def stats_get_category_leaders_pass_rush(
+        self,
+        season: int,
+        limit: int = 25,
+        season_type: str = 'regular_season',
+        team_id: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get pass rush leaders (DL and EDGE) with ALL pass rush stats.
+
+        Args:
+            season: Season year
+            limit: Number of leaders to return
+            season_type: Filter by season type
+            team_id: Optional team ID to filter by (shows all team players)
+
+        Returns:
+            List of dicts with player_id, player_name, team_id, position,
+            and all pass rush stats aggregated.
+        """
+        team_filter = "AND pgs.team_id = ?" if team_id else ""
+        actual_limit = 100 if team_id else limit  # Show all team players when filtered
+
+        query = f'''
+            SELECT
+                pgs.player_id,
+                pgs.player_name,
+                pgs.team_id,
+                pgs.position,
+                COUNT(DISTINCT pgs.game_id) as games,
+                SUM(pgs.pass_rush_wins) as pass_rush_wins,
+                SUM(pgs.pass_rush_attempts) as pass_rush_attempts,
+                SUM(pgs.times_double_teamed) as times_double_teamed,
+                SUM(pgs.sacks) as sacks,
+                SUM(pgs.snap_counts_defense) as snap_counts_defense
+            FROM player_game_stats pgs
+            INNER JOIN games g ON pgs.game_id = g.game_id AND pgs.dynasty_id = g.dynasty_id
+            WHERE pgs.dynasty_id = ?
+              AND g.season = ?
+              AND pgs.season_type = ?
+              AND (pgs.position IN ('DE', 'DT', 'LE', 'RE', 'EDGE', 'NT', 'defensive_end', 'defensive_tackle', 'nose_tackle', 'edge'))
+              {team_filter}
+            GROUP BY pgs.player_id, pgs.player_name, pgs.team_id, pgs.position
+            HAVING SUM(pgs.pass_rush_attempts) > 0 OR SUM(pgs.sacks) > 0
+            ORDER BY SUM(pgs.sacks) DESC, SUM(pgs.pass_rush_wins) DESC
+            LIMIT ?
+        '''
+
+        params = [self.dynasty_id, season, season_type]
+        if team_id:
+            params.append(team_id)
+        params.append(actual_limit)
+
+        return self._execute_query(query, tuple(params))
+
+    def stats_get_team_roster(
+        self,
+        team_id: int,
+        season: int,
+        season_type: str = 'regular_season'
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all players on a team with their aggregated season stats.
+
+        Returns all players on the roster, including those without stats.
+        Each player dict includes position-appropriate stats for UI display.
+
+        Args:
+            team_id: Team ID (1-32)
+            season: Season year
+            season_type: Season type filter
+
+        Returns:
+            List of player dicts with all stats aggregated by player
+        """
+        # Query gets all players on team with LEFT JOIN to stats
+        # so players without game stats still appear
+        query = '''
+            SELECT
+                p.player_id,
+                p.first_name || ' ' || p.last_name as player_name,
+                p.positions,
+                p.attributes,
+                p.team_id,
+                p.years_pro,
+                p.birthdate,
+                COALESCE(COUNT(DISTINCT pgs.game_id), 0) as games,
+                -- Passing stats
+                COALESCE(SUM(pgs.passing_yards), 0) as passing_yards,
+                COALESCE(SUM(pgs.passing_tds), 0) as passing_tds,
+                COALESCE(SUM(pgs.passing_attempts), 0) as passing_attempts,
+                COALESCE(SUM(pgs.passing_completions), 0) as passing_completions,
+                COALESCE(SUM(pgs.passing_interceptions), 0) as passing_interceptions,
+                -- Rushing stats
+                COALESCE(SUM(pgs.rushing_yards), 0) as rushing_yards,
+                COALESCE(SUM(pgs.rushing_tds), 0) as rushing_tds,
+                COALESCE(SUM(pgs.rushing_attempts), 0) as rushing_attempts,
+                COALESCE(MAX(pgs.rushing_long), 0) as rushing_long,
+                -- Receiving stats
+                COALESCE(SUM(pgs.receiving_yards), 0) as receiving_yards,
+                COALESCE(SUM(pgs.receiving_tds), 0) as receiving_tds,
+                COALESCE(SUM(pgs.receptions), 0) as receptions,
+                COALESCE(SUM(pgs.targets), 0) as targets,
+                -- Defensive stats
+                COALESCE(SUM(pgs.tackles_total), 0) as tackles_total,
+                COALESCE(SUM(pgs.tackles_solo), 0) as tackles_solo,
+                COALESCE(SUM(pgs.tackles_assist), 0) as tackles_assist,
+                COALESCE(SUM(pgs.sacks), 0) as sacks,
+                COALESCE(SUM(pgs.interceptions), 0) as interceptions,
+                COALESCE(SUM(pgs.passes_defended), 0) as passes_defended,
+                COALESCE(SUM(pgs.forced_fumbles), 0) as forced_fumbles,
+                -- Kicking stats
+                COALESCE(SUM(pgs.field_goals_made), 0) as field_goals_made,
+                COALESCE(SUM(pgs.field_goals_attempted), 0) as field_goals_attempted,
+                COALESCE(SUM(pgs.extra_points_made), 0) as extra_points_made,
+                COALESCE(SUM(pgs.extra_points_attempted), 0) as extra_points_attempted,
+                -- Blocking stats
+                COALESCE(SUM(pgs.pancakes), 0) as pancakes,
+                COALESCE(SUM(pgs.sacks_allowed), 0) as sacks_allowed
+            FROM players p
+            LEFT JOIN player_game_stats pgs
+                ON p.dynasty_id = pgs.dynasty_id
+                AND p.player_id = pgs.player_id
+                AND pgs.season_type = ?
+            LEFT JOIN games g
+                ON pgs.game_id = g.game_id
+                AND pgs.dynasty_id = g.dynasty_id
+                AND g.season = ?
+            WHERE p.dynasty_id = ?
+                AND p.team_id = ?
+                AND p.status = 'active'
+            GROUP BY p.player_id, p.first_name, p.last_name, p.positions,
+                     p.attributes, p.team_id, p.years_pro, p.birthdate
+            ORDER BY p.positions, p.last_name
+        '''
+
+        results = self._execute_query(
+            query,
+            (season_type, season, self.dynasty_id, team_id)
+        )
+
+        # Post-process to parse JSON fields and extract position/overall
+        processed = []
+        for row in results:
+            player = dict(row)
+
+            # Parse positions JSON to get primary position
+            try:
+                positions_data = json.loads(player.get('positions', '{}'))
+                if isinstance(positions_data, dict) and 'primary' in positions_data:
+                    player['position'] = positions_data['primary']
+                elif isinstance(positions_data, list) and len(positions_data) > 0:
+                    player['position'] = positions_data[0]
+                else:
+                    player['position'] = 'Unknown'
+            except (json.JSONDecodeError, TypeError):
+                player['position'] = 'Unknown'
+
+            # Parse attributes JSON to get overall and age
+            try:
+                attrs = json.loads(player.get('attributes', '{}'))
+                player['overall'] = attrs.get('overall', 0)
+                player['age'] = attrs.get('age', 0)
+            except (json.JSONDecodeError, TypeError):
+                player['overall'] = 0
+                player['age'] = 0
+
+            processed.append(player)
+
+        return processed
 
 
     # -------------------- Utilities (3 methods) --------------------

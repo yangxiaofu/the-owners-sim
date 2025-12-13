@@ -26,9 +26,9 @@ class PenaltyInstance:
     # Penalty impact
     yards_assessed: int                  # -10 for holding
     automatic_first_down: bool           # True/False
-    automatic_loss_of_down: bool         # True/False 
+    automatic_loss_of_down: bool         # True/False
     negated_play: bool                   # True if play result was negated
-    
+
     # Game context
     quarter: int                         # 1-4, 5 for OT
     time_remaining: str                  # "8:43"
@@ -53,7 +53,10 @@ class PenaltyInstance:
     discipline_rating: int = 75         # Player's discipline at time of penalty
     composure_rating: int = 75          # Player's composure at time of penalty
     pressure_situation: bool = False    # Red zone, 4th down, etc.
-    
+
+    # Penalty decision (for non-negated penalties)
+    penalty_accepted: Optional[bool] = None  # True if accepted, False if declined, None if auto-enforced
+
     # Metadata
     penalty_id: str = field(default_factory=lambda: f"penalty_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}")
     timestamp: datetime = field(default_factory=datetime.now)

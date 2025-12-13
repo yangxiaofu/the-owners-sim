@@ -11,6 +11,8 @@ objects and normalize them for database storage.
 
 import json
 import logging
+import sqlite3
+import time
 from typing import Dict, Any, Optional, TYPE_CHECKING
 from datetime import date
 
@@ -129,7 +131,8 @@ class TransactionLogger:
             'RELEASE', 'WAIVER_CLAIM', 'TRADE', 'ROSTER_CUT',
             'PRACTICE_SQUAD_ADD', 'PRACTICE_SQUAD_REMOVE',
             'PRACTICE_SQUAD_ELEVATE', 'FRANCHISE_TAG',
-            'TRANSITION_TAG', 'RESTRUCTURE'
+            'TRANSITION_TAG', 'RESTRUCTURE',
+            'INJURY', 'IR_PLACEMENT', 'IR_ACTIVATION'  # Injury system types
         ]
         if transaction_type not in valid_types:
             raise ValueError(f"Invalid transaction_type: {transaction_type}. Must be one of {valid_types}")
@@ -416,7 +419,7 @@ class TransactionLogger:
         event_id: Optional[str] = None
     ) -> int:
         """
-        Insert transaction record into database.
+        Insert transaction record into database with retry logic.
 
         Private method for database insertion - use log_transaction() or
         log_from_event_result() instead.
@@ -440,47 +443,74 @@ class TransactionLogger:
             transaction_id of newly created transaction
 
         Raises:
-            sqlite3.Error: If database operation fails
+            sqlite3.Error: If database operation fails after retries
         """
-        conn = self.db_connection.get_connection()
+        max_retries = 5
+        base_delay = 0.1  # 100ms base delay
 
-        try:
-            cursor = conn.execute('''
-                INSERT INTO player_transactions (
+        for attempt in range(max_retries):
+            conn = self.db_connection.get_connection()
+
+            try:
+                cursor = conn.execute('''
+                    INSERT INTO player_transactions (
+                        dynasty_id, season, transaction_type,
+                        player_id, first_name, last_name, position,
+                        from_team_id, to_team_id,
+                        transaction_date, details,
+                        contract_id, event_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
                     dynasty_id, season, transaction_type,
                     player_id, first_name, last_name, position,
                     from_team_id, to_team_id,
-                    transaction_date, details,
+                    transaction_date, details_json,
                     contract_id, event_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                dynasty_id, season, transaction_type,
-                player_id, first_name, last_name, position,
-                from_team_id, to_team_id,
-                transaction_date, details_json,
-                contract_id, event_id
-            ))
+                ))
 
-            conn.commit()
-            transaction_id = cursor.lastrowid
+                conn.commit()
+                transaction_id = cursor.lastrowid
 
-            player_name = f"{first_name} {last_name}".strip()
-            self.logger.info(
-                f"Logged {transaction_type} transaction for player {player_name} "
-                f"(ID: {player_id}) in dynasty {dynasty_id}, season {season} "
-                f"[transaction_id: {transaction_id}]"
-            )
+                player_name = f"{first_name} {last_name}".strip()
+                self.logger.info(
+                    f"Logged {transaction_type} transaction for player {player_name} "
+                    f"(ID: {player_id}) in dynasty {dynasty_id}, season {season} "
+                    f"[transaction_id: {transaction_id}]"
+                )
 
-            return transaction_id
+                return transaction_id
 
-        except Exception as e:
-            conn.rollback()
-            player_name = f"{first_name} {last_name}".strip()
-            self.logger.error(
-                f"Error inserting transaction: {e} "
-                f"[dynasty: {dynasty_id}, season: {season}, type: {transaction_type}, "
-                f"player: {player_name}]"
-            )
-            raise
-        finally:
-            conn.close()
+            except sqlite3.OperationalError as e:
+                conn.rollback()
+                if "database is locked" in str(e) and attempt < max_retries - 1:
+                    # Exponential backoff with jitter
+                    delay = base_delay * (2 ** attempt)
+                    self.logger.warning(
+                        f"Database locked, retrying in {delay:.2f}s (attempt {attempt + 1}/{max_retries})"
+                    )
+                    time.sleep(delay)
+                    continue
+                else:
+                    player_name = f"{first_name} {last_name}".strip()
+                    self.logger.error(
+                        f"Error inserting transaction: {e} "
+                        f"[dynasty: {dynasty_id}, season: {season}, type: {transaction_type}, "
+                        f"player: {player_name}]"
+                    )
+                    raise
+
+            except Exception as e:
+                conn.rollback()
+                player_name = f"{first_name} {last_name}".strip()
+                self.logger.error(
+                    f"Error inserting transaction: {e} "
+                    f"[dynasty: {dynasty_id}, season: {season}, type: {transaction_type}, "
+                    f"player: {player_name}]"
+                )
+                raise
+
+            finally:
+                conn.close()
+
+        # Should not reach here, but just in case
+        raise sqlite3.OperationalError("Database is locked after max retries")

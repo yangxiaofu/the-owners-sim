@@ -93,6 +93,7 @@ class PlayerStatField(Enum):
     RUSHING_YARDS = StatFieldMetadata("rushing_yards", "rushing_yards", 0, int, persistable=True)
     RUSHING_TOUCHDOWNS = StatFieldMetadata("rushing_tds", "rushing_tds", 0, int, persistable=True)
     CARRIES = StatFieldMetadata("rushing_attempts", "rushing_attempts", 0, int, persistable=True)
+    YARDS_AFTER_CONTACT = StatFieldMetadata("yards_after_contact", "yards_after_contact", 0, int, persistable=True)
 
     # ============================================================
     # RECEIVING STATS (WR/TE) - Columns 15-18 in player_game_stats
@@ -124,6 +125,25 @@ class PlayerStatField(Enum):
     TIPPED_PASSES = StatFieldMetadata("tipped_passes", "tipped_passes", 0, int, persistable=False)
     FORCED_FUMBLES = StatFieldMetadata("forced_fumbles", "forced_fumbles", 0, int, persistable=False)
 
+    # Coverage stats (DB/LB grading metrics)
+    COVERAGE_TARGETS = StatFieldMetadata("coverage_targets", "coverage_targets", 0, int, persistable=True)
+    COVERAGE_COMPLETIONS = StatFieldMetadata("coverage_completions", "coverage_completions", 0, int, persistable=True)
+    COVERAGE_YARDS_ALLOWED = StatFieldMetadata("coverage_yards_allowed", "coverage_yards_allowed", 0, int, persistable=True)
+
+    # Pass rush stats (DL grading metrics)
+    PASS_RUSH_WINS = StatFieldMetadata("pass_rush_wins", "pass_rush_wins", 0, int, persistable=True)
+    PASS_RUSH_ATTEMPTS = StatFieldMetadata("pass_rush_attempts", "pass_rush_attempts", 0, int, persistable=True)
+    TIMES_DOUBLE_TEAMED = StatFieldMetadata("times_double_teamed", "times_double_teamed", 0, int, persistable=True)
+    BLOCKING_ENCOUNTERS = StatFieldMetadata("blocking_encounters", "blocking_encounters", 0, int, persistable=True)
+
+    # Ball carrier advanced stats (RB/WR grading)
+    BROKEN_TACKLES = StatFieldMetadata("broken_tackles", "broken_tackles", 0, int, persistable=True)
+    TACKLES_FACED = StatFieldMetadata("tackles_faced", "tackles_faced", 0, int, persistable=True)
+
+    # QB advanced stats
+    TIME_TO_THROW_TOTAL = StatFieldMetadata("time_to_throw_total", "time_to_throw_total", 0.0, float, persistable=True)
+    THROW_COUNT = StatFieldMetadata("throw_count", "throw_count", 0, int, persistable=True)
+
     # ============================================================
     # SPECIAL TEAMS STATS - Columns 22-25 in player_game_stats
     # ============================================================
@@ -141,6 +161,26 @@ class PlayerStatField(Enum):
     SPECIAL_TEAMS_SNAPS = StatFieldMetadata("special_teams_snaps", "special_teams_snaps", 0, int, persistable=False)
     BLOCKS_ALLOWED = StatFieldMetadata("blocks_allowed", "blocks_allowed", 0, int, persistable=False)
 
+    # Distance-based FG tracking (for benchmark/analytics)
+    FG_ATTEMPTS_0_39 = StatFieldMetadata("fg_attempts_0_39", "fg_attempts_0_39", 0, int, persistable=False)
+    FG_MADE_0_39 = StatFieldMetadata("fg_made_0_39", "fg_made_0_39", 0, int, persistable=False)
+    FG_ATTEMPTS_40_49 = StatFieldMetadata("fg_attempts_40_49", "fg_attempts_40_49", 0, int, persistable=False)
+    FG_MADE_40_49 = StatFieldMetadata("fg_made_40_49", "fg_made_40_49", 0, int, persistable=False)
+    FG_ATTEMPTS_50_PLUS = StatFieldMetadata("fg_attempts_50_plus", "fg_attempts_50_plus", 0, int, persistable=False)
+    FG_MADE_50_PLUS = StatFieldMetadata("fg_made_50_plus", "fg_made_50_plus", 0, int, persistable=False)
+
+    # Punting stats (Punter) - Added for box score display and persistence
+    PUNTS = StatFieldMetadata("punts", "punts", 0, int, persistable=True)
+    PUNT_YARDS = StatFieldMetadata("punt_yards", "punt_yards", 0, int, persistable=True)
+    NET_PUNT_YARDS = StatFieldMetadata("net_punt_yards", "net_punt_yards", 0, int, persistable=True)
+    LONG_PUNT = StatFieldMetadata("long_punt", "long_punt", 0, int, persistable=True)
+    PUNTS_INSIDE_20 = StatFieldMetadata("punts_inside_20", "punts_inside_20", 0, int, persistable=True)
+    PUNTS_TOUCHBACK = StatFieldMetadata("punts_touchback", "punts_touchback", 0, int, persistable=False)
+    PUNTS_BLOCKED = StatFieldMetadata("punts_blocked", "punts_blocked", 0, int, persistable=False)
+    PUNT_RETURNS = StatFieldMetadata("punt_returns", "punt_returns", 0, int, persistable=False)
+    PUNT_RETURN_YARDS = StatFieldMetadata("punt_return_yards", "punt_return_yards", 0, int, persistable=False)
+    FAIR_CATCHES = StatFieldMetadata("fair_catches", "fair_catches", 0, int, persistable=False)
+
     # ============================================================
     # SNAP TRACKING (Playing Time) - Columns 26-27 in player_game_stats
     # ============================================================
@@ -149,15 +189,15 @@ class PlayerStatField(Enum):
     TOTAL_SNAPS = StatFieldMetadata("total_snaps", "total_snaps", 0, int, persistable=False)
 
     # ============================================================
-    # BLOCKING STATS (Offensive Line) - Not yet in database schema
+    # BLOCKING STATS (Offensive Line)
     # ============================================================
     BLOCKS_MADE = StatFieldMetadata("blocks_made", "blocks_made", 0, int, persistable=False)
     BLOCKS_MISSED = StatFieldMetadata("blocks_missed", "blocks_missed", 0, int, persistable=False)
-    PASS_BLOCKS = StatFieldMetadata("pass_blocks", "pass_blocks", 0, int, persistable=False)
-    PRESSURES_ALLOWED = StatFieldMetadata("pressures_allowed", "pressures_allowed", 0, int, persistable=False)
-    SACKS_ALLOWED = StatFieldMetadata("sacks_allowed", "sacks_allowed", 0, int, persistable=False)
-    PANCAKES = StatFieldMetadata("pancakes", "pancakes", 0, int, persistable=False)
-    HURRIES_ALLOWED = StatFieldMetadata("hurries_allowed", "hurries_allowed", 0, int, persistable=False)
+    PASS_BLOCKS = StatFieldMetadata("pass_blocks", "pass_blocks", 0, int, persistable=True)
+    PRESSURES_ALLOWED = StatFieldMetadata("pressures_allowed", "pressures_allowed", 0, int, persistable=True)
+    SACKS_ALLOWED = StatFieldMetadata("sacks_allowed", "sacks_allowed", 0, int, persistable=True)
+    PANCAKES = StatFieldMetadata("pancakes", "pancakes", 0, int, persistable=True)
+    HURRIES_ALLOWED = StatFieldMetadata("hurries_allowed", "hurries_allowed", 0, int, persistable=True)
     RUN_BLOCKING_GRADE = StatFieldMetadata("run_blocking_grade", "run_blocking_grade", 0.0, float, persistable=False)
     PASS_BLOCKING_EFFICIENCY = StatFieldMetadata("pass_blocking_efficiency", "pass_blocking_efficiency", 0.0, float, persistable=False)
     MISSED_ASSIGNMENTS = StatFieldMetadata("missed_assignments", "missed_assignments", 0, int, persistable=False)
@@ -240,10 +280,14 @@ class PlayerStatField(Enum):
             StatCategory.PASSING: [
                 cls.PASS_ATTEMPTS, cls.COMPLETIONS, cls.PASSING_YARDS, cls.PASSING_TDS,
                 cls.INTERCEPTIONS_THROWN, cls.SACKS_TAKEN, cls.SACK_YARDS_LOST,
-                cls.QB_HITS_TAKEN, cls.PRESSURES_FACED, cls.AIR_YARDS, cls.PASSING_TOUCHDOWNS
+                cls.QB_HITS_TAKEN, cls.PRESSURES_FACED, cls.AIR_YARDS, cls.PASSING_TOUCHDOWNS,
+                # QB advanced stats
+                cls.TIME_TO_THROW_TOTAL, cls.THROW_COUNT
             ],
             StatCategory.RUSHING: [
-                cls.CARRIES, cls.RUSHING_YARDS, cls.RUSHING_TOUCHDOWNS
+                cls.CARRIES, cls.RUSHING_YARDS, cls.RUSHING_TOUCHDOWNS, cls.YARDS_AFTER_CONTACT,
+                # Ball carrier advanced stats
+                cls.BROKEN_TACKLES, cls.TACKLES_FACED
             ],
             StatCategory.RECEIVING: [
                 cls.TARGETS, cls.RECEPTIONS, cls.RECEIVING_YARDS, cls.RECEIVING_TDS,
@@ -252,17 +296,31 @@ class PlayerStatField(Enum):
             StatCategory.DEFENSIVE: [
                 cls.TACKLES, cls.ASSISTED_TACKLES, cls.SACKS, cls.TACKLES_FOR_LOSS,
                 cls.QB_HITS, cls.QB_PRESSURES, cls.QB_HURRIES, cls.PASSES_DEFENDED,
-                cls.PASSES_DEFLECTED, cls.TIPPED_PASSES, cls.INTERCEPTIONS, cls.FORCED_FUMBLES
+                cls.PASSES_DEFLECTED, cls.TIPPED_PASSES, cls.INTERCEPTIONS, cls.FORCED_FUMBLES,
+                # Coverage stats (DB/LB grading)
+                cls.COVERAGE_TARGETS, cls.COVERAGE_COMPLETIONS, cls.COVERAGE_YARDS_ALLOWED,
+                # Pass rush stats (DL grading)
+                cls.PASS_RUSH_WINS, cls.PASS_RUSH_ATTEMPTS, cls.TIMES_DOUBLE_TEAMED, cls.BLOCKING_ENCOUNTERS
             ],
             StatCategory.SPECIAL_TEAMS: [
                 cls.FIELD_GOAL_ATTEMPTS, cls.FIELD_GOALS_MADE, cls.FIELD_GOALS_MISSED,
                 cls.FIELD_GOALS_BLOCKED, cls.LONGEST_FIELD_GOAL, cls.FIELD_GOAL_HOLDS,
                 cls.LONG_SNAPS, cls.SPECIAL_TEAMS_SNAPS, cls.BLOCKS_ALLOWED,
-                cls.EXTRA_POINTS_MADE, cls.EXTRA_POINTS_ATTEMPTED
+                cls.EXTRA_POINTS_MADE, cls.EXTRA_POINTS_ATTEMPTED,
+                # Punting stats
+                cls.PUNTS, cls.PUNT_YARDS, cls.NET_PUNT_YARDS, cls.LONG_PUNT,
+                cls.PUNTS_INSIDE_20, cls.PUNTS_TOUCHBACK, cls.PUNTS_BLOCKED,
+                cls.PUNT_RETURNS, cls.PUNT_RETURN_YARDS, cls.FAIR_CATCHES
             ],
             StatCategory.BLOCKING: [
                 cls.BLOCKS_MADE, cls.BLOCKS_MISSED, cls.PASS_BLOCKS,
-                cls.PRESSURES_ALLOWED, cls.SACKS_ALLOWED
+                cls.PRESSURES_ALLOWED, cls.SACKS_ALLOWED,
+                # Advanced blocking stats
+                cls.PANCAKES, cls.HURRIES_ALLOWED,
+                cls.RUN_BLOCKING_GRADE, cls.PASS_BLOCKING_EFFICIENCY,
+                cls.MISSED_ASSIGNMENTS, cls.HOLDING_PENALTIES,
+                cls.FALSE_START_PENALTIES, cls.DOWNFIELD_BLOCKS,
+                cls.DOUBLE_TEAM_BLOCKS, cls.CHIP_BLOCKS
             ],
             StatCategory.PENALTIES: [
                 cls.PENALTIES, cls.PENALTY_YARDS
@@ -324,7 +382,16 @@ class PlayerStatField(Enum):
             cls.COMPLETIONS.field_name: "Completions",
             cls.PASS_ATTEMPTS.field_name: "Pass Attempts",
             cls.CARRIES.field_name: "Carries",
-            # Add more display names as needed
+            # Punt stats
+            cls.PUNTS.field_name: "Punts",
+            cls.PUNT_YARDS.field_name: "Punt Yards",
+            cls.NET_PUNT_YARDS.field_name: "Net Punt Yards",
+            cls.LONG_PUNT.field_name: "Long Punt",
+            cls.PUNTS_INSIDE_20.field_name: "Inside 20",
+            cls.PUNTS_TOUCHBACK.field_name: "Touchbacks",
+            cls.PUNT_RETURNS.field_name: "Punt Returns",
+            cls.PUNT_RETURN_YARDS.field_name: "PR Yards",
+            cls.FAIR_CATCHES.field_name: "Fair Catches",
         }
 
     # ============================================================

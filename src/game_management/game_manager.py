@@ -14,6 +14,7 @@ from play_engine.game_state.game_clock import GameClock
 from play_engine.game_state.drive_manager import DriveManager
 from play_engine.game_state.possession_manager import PossessionManager
 from game_management.scoreboard import Scoreboard
+from game_management.timeout_manager import TimeoutManager
 from play_engine.simulation.stats import PlayerStatsAccumulator, TeamStatsAccumulator
 from team_management.teams.team_loader import Team
 
@@ -51,6 +52,10 @@ class GameState:
     drives_completed: int
     total_plays: int
 
+    # Timeout tracking
+    home_timeouts_remaining: int = 3
+    away_timeouts_remaining: int = 3
+
 
 class GameManager:
     """
@@ -79,7 +84,11 @@ class GameManager:
         self.game_clock = GameClock()
         self.scoreboard = Scoreboard(home_team.team_id, away_team.team_id)
         self.possession_manager = PossessionManager(home_team.team_id)  # Use team ID, will be updated after coin toss
-        
+        self.timeout_manager = TimeoutManager(
+            home_team_id=home_team.team_id,
+            away_team_id=away_team.team_id
+        )
+
         # Initialize statistics tracking
         self.player_stats = PlayerStatsAccumulator()
         self.team_stats = TeamStatsAccumulator()
@@ -143,8 +152,8 @@ class GameManager:
         receiving_team = self.possession_manager.get_possessing_team_id()
         
         # Start first drive from 25-yard line (typical touchback)
-        from src.play_engine.game_state.field_position import FieldPosition, FieldZone
-        from src.play_engine.game_state.down_situation import DownState
+        from play_engine.game_state.field_position import FieldPosition, FieldZone
+        from play_engine.game_state.down_situation import DownState
         
         starting_position = FieldPosition(
             yard_line=25,
@@ -203,11 +212,14 @@ class GameManager:
     
     def _handle_halftime(self) -> None:
         """Handle halftime possession change and setup"""
-        from src.play_engine.game_state.field_position import FieldPosition, FieldZone
-        from src.play_engine.game_state.down_situation import DownState
-        
+        from play_engine.game_state.field_position import FieldPosition, FieldZone
+        from play_engine.game_state.down_situation import DownState
+
         self._log_event("⏸️  HALFTIME")
-        
+
+        # Reset timeouts for second half (NFL rule)
+        self.timeout_manager.reset_timeouts_for_half()
+
         # Second half kickoff - receiving team was determined at coin toss
         if self.second_half_receiving_team:
             self.possession_manager.handle_halftime_change(self.second_half_receiving_team)
@@ -236,7 +248,7 @@ class GameManager:
     def get_game_state(self) -> GameState:
         """
         Get complete current game state
-        
+
         Returns:
             GameState object with all current game information
         """
@@ -250,13 +262,47 @@ class GameManager:
             time_remaining=self.game_clock.get_time_display(),
             two_minute_warning=False,  # Simplified for testing
             drives_completed=self.drives_completed,
-            total_plays=self.total_plays
+            total_plays=self.total_plays,
+            home_timeouts_remaining=self.timeout_manager.get_timeouts_remaining(self.home_team.team_id),
+            away_timeouts_remaining=self.timeout_manager.get_timeouts_remaining(self.away_team.team_id)
         )
     
     def is_game_over(self) -> bool:
         """Check if game is completed"""
         return self.phase == GamePhase.FINAL
-    
+
+    def end_game(self) -> None:
+        """
+        Mark the game as completed (FINAL).
+
+        Used by overtime handling when a winner is determined.
+        """
+        self.phase = GamePhase.FINAL
+        self._log_event("🏁 FINAL: Game completed")
+
+    def is_quarter_over(self) -> bool:
+        """
+        Check if the current quarter/period has ended.
+
+        Delegates to GameClock.is_end_of_quarter() which checks
+        if time_remaining_seconds <= 0.
+
+        Returns:
+            True if the current quarter/period time has expired
+        """
+        return self.game_clock.is_end_of_quarter
+
+    def get_possessing_team_id(self) -> int:
+        """
+        Get the team ID that currently has possession.
+
+        Delegates to PossessionManager.
+
+        Returns:
+            Current possessing team ID (1-32)
+        """
+        return self.possession_manager.get_possessing_team_id()
+
     def get_winner(self) -> Optional[Team]:
         """
         Get winning team if game is complete
@@ -367,8 +413,8 @@ class GameManager:
         receiving_team = self.possession_manager.get_possessing_team_id()
         
         # Start overtime drive from 25-yard line (typical touchback after kickoff)
-        from src.play_engine.game_state.field_position import FieldPosition, FieldZone
-        from src.play_engine.game_state.down_situation import DownState
+        from play_engine.game_state.field_position import FieldPosition, FieldZone
+        from play_engine.game_state.down_situation import DownState
         
         starting_position = FieldPosition(
             yard_line=25,
@@ -400,10 +446,9 @@ class GameManager:
     
     
     def _log_event(self, event: str) -> None:
-        """Add event to game log"""
+        """Add event to game log (no console output for performance)"""
         quarter_info = f"Q{self.game_clock.quarter} {self.game_clock.get_time_display()}"
         self.game_log.append(f"[{quarter_info}] {event}")
-        print(f"[{quarter_info}] {event}")
     
     def __str__(self) -> str:
         """String representation of current game status"""

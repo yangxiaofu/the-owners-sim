@@ -43,6 +43,7 @@ class FourthDownMatrix:
     """Matrix-based 4th down decision system with realistic NFL probabilities"""
     
     # Field Position Base Probabilities (realistic NFL data-driven)
+    # NFL teams kick FGs frequently in the red zone - TD rate is only ~55%
     FIELD_POSITION_MATRIX = {
         # (yard_start, yard_end): base_go_for_it_probability
         (1, 20): 0.01,      # Deep own territory: 1% - Almost never
@@ -50,9 +51,9 @@ class FourthDownMatrix:
         (36, 45): 0.08,     # Own side approaching midfield: 8% - Occasional
         (46, 55): 0.22,     # Midfield zone: 22% - Situational
         (56, 70): 0.45,     # Opponent territory: 45% - Common
-        (71, 85): 0.68,     # Approaching red zone: 68% - Likely
-        (86, 95): 0.55,     # Red zone: 55% - Reduced due to FG option
-        (96, 100): 0.75     # Goal line: 75% - High likelihood
+        (71, 85): 0.50,     # Approaching red zone: 50% - FG range consideration
+        (86, 95): 0.30,     # Red zone: 30% - FG strongly preferred
+        (96, 100): 0.55     # Goal line: 55% - TD or FG decision
     }
     
     # Distance Multipliers (Critical Factor - Distance to Go)
@@ -236,11 +237,12 @@ class FourthDownMatrix:
         time_remaining: int = 900,
         quarter: int = 4,
         coach_aggression: CoachAggressionLevel = CoachAggressionLevel.BALANCED,
-        special_situations: list = None
+        special_situations: list = None,
+        momentum_modifier: float = 1.0
     ) -> FourthDownDecision:
         """
         Calculate comprehensive 4th down decision using matrix approach
-        
+
         Args:
             field_position: Current field position (1-100)
             yards_to_go: Yards needed for first down
@@ -249,7 +251,8 @@ class FourthDownMatrix:
             quarter: Current quarter (1-4)
             coach_aggression: Coach's aggression level
             special_situations: List of special situation keys
-            
+            momentum_modifier: Momentum-based aggression modifier (0.85-1.15)
+
         Returns:
             FourthDownDecision with probability, recommendation, and analysis
         """
@@ -277,17 +280,32 @@ class FourthDownMatrix:
         
         # Step 5: Apply coach personality (Final Fine-Tuning)
         coach_modifier = cls.get_coach_personality_modifier(coach_aggression)
-        final_probability = after_special * coach_modifier
-        
-        # Step 6: Bound checking (ensure realistic range)
+        after_coach = after_special * coach_modifier
+
+        # Step 6: Apply momentum modifier (Aggression Modifier)
+        # Momentum affects decision-making: positive momentum = more aggressive (go for it more)
+        # Momentum modifier ranges from 0.85 (negative momentum) to 1.15 (positive momentum)
+        final_probability = after_coach * momentum_modifier
+
+        # Step 7: Bound checking (ensure realistic range)
         final_probability = max(0.001, min(0.999, final_probability))
-        
-        # Step 7: Make recommendation based on field position and probability
-        # ✅ FIX: Prioritize field goal range check before go-for-it probability
-        if field_position >= 65:  # In field goal range (opponent 35-yard line or closer)
-            # In field goal range: choose between FIELD_GOAL and GO_FOR_IT
-            # Higher threshold for going for it when FG is available
-            if final_probability > 0.75 and yards_to_go <= 2:  # Only go for it if very high confidence + short yardage
+
+        # Step 8: Make recommendation based on field position and probability
+        # NFL teams kick FGs frequently - red zone TD rate is only ~55%
+        # But they still go for it ~1.5 times per team per game on 4th down
+        if field_position >= 75:  # Standard FG range (opponent 25-yard line or closer)
+            # In field goal range: balance FG vs go-for-it based on distance and probability
+            if yards_to_go <= 1 and final_probability > 0.50:
+                # 4th & 1 with 50%+ go-for-it probability: go for it
+                recommendation = FourthDownDecisionType.GO_FOR_IT
+            elif yards_to_go <= 2 and final_probability > 0.65:
+                # 4th & 2 with 65%+ go-for-it probability: go for it
+                recommendation = FourthDownDecisionType.GO_FOR_IT
+            elif yards_to_go <= 3 and final_probability > 0.75:
+                # 4th & 3 with 75%+ go-for-it probability: go for it
+                recommendation = FourthDownDecisionType.GO_FOR_IT
+            elif field_position >= 96 and yards_to_go <= 2:
+                # Goal line: always go for it from the 4-yard line or closer
                 recommendation = FourthDownDecisionType.GO_FOR_IT
             else:
                 recommendation = FourthDownDecisionType.FIELD_GOAL
@@ -297,8 +315,8 @@ class FourthDownMatrix:
         else:
             # Not in FG range and low go-for-it probability
             recommendation = FourthDownDecisionType.PUNT
-        
-        # Step 8: Calculate confidence (distance from 50/50 decision)
+
+        # Step 9: Calculate confidence (distance from 50/50 decision)
         confidence = abs(final_probability - 0.5) * 2
         
         return FourthDownDecision(
@@ -311,6 +329,7 @@ class FourthDownMatrix:
                 'after_score_modifier': after_context,
                 'after_time_modifier': after_context,
                 'after_special_situations': after_special,
+                'after_coach_modifier': after_coach,
                 'final_probability': final_probability
             },
             factors={
@@ -325,6 +344,7 @@ class FourthDownMatrix:
                 'time_modifier': time_modifier,
                 'special_modifier': special_modifier,
                 'coach_modifier': coach_modifier,
+                'momentum_modifier': momentum_modifier,
                 'special_situations': special_situations
             }
         )

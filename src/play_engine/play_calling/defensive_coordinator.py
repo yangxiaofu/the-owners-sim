@@ -206,18 +206,51 @@ class DefensiveCoordinator(BaseCoachArchetype):
                 primary_coverage = "Man-Free" if self.philosophy.safety_help_reliance > 0.6 else "Man-to-Man"
                 
         elif situation == 'two_minute':
-            # Prevent big plays
-            if self.defensive_situational.prevent_defense_usage > 0.4:
-                primary_coverage = "Prevent" 
+            # Prevent defense: only when PROTECTING a small lead (1-7 points)
+            # Real NFL prevent = soft coverage to prevent big plays when ahead late
+            score_differential = self._get_defensive_score_differential(context)
+
+            # Prevent when: defending 1-7 point lead AND DC has prevent philosophy
+            if (0 < score_differential <= 7 and
+                    self.defensive_situational.prevent_defense_usage > 0.4):
+                primary_coverage = "Prevent"
             else:
+                # Not protecting small lead - use normal two-minute coverage
                 primary_coverage = "Cover-2" if zone_weight > man_weight else "Man-Free"
-                
+
+        # NEW: Respond to opponent's game script
+        override_pressure = None  # Track if we should override normal pressure logic
+        game_context = context.get('game_context')
+        if game_context:
+            from ..mechanics.game_script_modifiers import GameScriptModifiers
+
+            # Infer opponent's script (flip score differential)
+            opponent_script = self._infer_opponent_script(game_context)
+
+            defensive_response = GameScriptModifiers.get_defensive_response(
+                opponent_script=opponent_script,
+                prevent_defense_usage=self.defensive_situational.prevent_defense_usage
+            )
+
+            # Override coverage if prevent should be used
+            if defensive_response.get('use_prevent'):
+                primary_coverage = 'Prevent'
+                override_pressure = False  # 3-man rush, drop 8 into coverage
+            elif defensive_response.get('coverage_adjustment'):
+                primary_coverage = defensive_response['coverage_adjustment']
+                if defensive_response.get('pressure') is not None:
+                    override_pressure = defensive_response.get('pressure')
+
         # NOTE: Special teams coverage logic removed in new architecture
         # Kickoff and special teams coverage now handled by SpecialTeamsCoordinator
         # Fourth down GO_FOR_IT coverage handled as regular conversion defense below
-        
+
         # Add pressure considerations
         should_blitz = self._should_send_pressure(situation, context)
+
+        # Apply game script pressure override if set
+        if override_pressure is not None:
+            should_blitz = override_pressure
         
         # NOTE: Special teams return logic removed in new architecture
         # All kickoff and special teams coverage handled by SpecialTeamsCoordinator
@@ -230,7 +263,65 @@ class DefensiveCoordinator(BaseCoachArchetype):
             'send_pressure': should_blitz,
             'coverage_confidence': zone_weight if 'Cover' in primary_coverage else man_weight
         }
-    
+
+    def _get_defensive_score_differential(self, context: Dict[str, Any]) -> int:
+        """
+        Get score differential from defense perspective (positive = winning).
+
+        Args:
+            context: Play calling context with raw_game_state or game_context
+
+        Returns:
+            Score differential (positive if defense is winning)
+        """
+        # Try raw_game_state first (from game_loop_controller)
+        raw_state = context.get('raw_game_state', {})
+        if raw_state:
+            home_score = raw_state.get('home_score', 0)
+            away_score = raw_state.get('away_score', 0)
+            possessing_team_id = raw_state.get('possessing_team_id')
+            home_team_id = raw_state.get('home_team_id')
+
+            if possessing_team_id and home_team_id:
+                # Offense is possessing - defense is the other team
+                if possessing_team_id == home_team_id:
+                    # Home team has ball -> defense is away team
+                    return away_score - home_score
+                else:
+                    # Away team has ball -> defense is home team
+                    return home_score - away_score
+
+        # Fallback: try game_context
+        game_context = context.get('game_context')
+        if game_context and hasattr(game_context, 'score_differential'):
+            # game_context.score_differential is from offense perspective
+            # So defense perspective is the negative
+            return -game_context.score_differential
+
+        # Default: no lead (neutral)
+        return 0
+
+    def _infer_opponent_script(self, game_context):
+        """
+        Infer opponent's game script by flipping score differential.
+
+        Args:
+            game_context: Current GameContext
+
+        Returns:
+            Opponent's likely GameScript
+        """
+        from .game_situation_analyzer import GameSituationAnalyzer
+
+        # Opponent's perspective = inverse of our differential
+        flipped_differential = -game_context.score_differential
+
+        # Use same logic as GameSituationAnalyzer
+        return GameSituationAnalyzer._determine_game_script(
+            flipped_differential,
+            game_context.game_phase
+        )
+
     def _should_send_pressure(self, situation: str, context: Dict[str, Any]) -> bool:
         """
         Determine if defense should send pressure

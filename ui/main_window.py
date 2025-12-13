@@ -26,15 +26,18 @@ from ui.views.game_view import GameView
 from ui.views.playoff_view import PlayoffView
 from ui.views.transactions_view import TransactionsView
 
-# Add src to path for controller imports
+# Path setup - consolidated at module level
 ui_path = os.path.dirname(__file__)
 if ui_path not in sys.path:
     sys.path.insert(0, ui_path)
 
-# Add project root to path for demo imports
 project_root = os.path.dirname(ui_path)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
+
+src_path = os.path.join(project_root, "src")
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
 
 from controllers.season_controller import SeasonController
 from controllers.calendar_controller import CalendarController
@@ -53,6 +56,17 @@ class MainWindow(QMainWindow):
     - Toolbar with quick actions
     - Status bar displaying current date and phase
     """
+
+    # Tab indices for consistent navigation
+    TAB_SEASON = 0
+    TAB_CALENDAR = 1
+    TAB_TEAM = 2
+    TAB_PLAYER = 3
+    TAB_OFFSEASON = 4
+    TAB_LEAGUE = 5
+    TAB_TRANSACTIONS = 6
+    TAB_PLAYOFFS = 7
+    TAB_GAME = 8
 
     def __init__(self, db_path="data/database/nfl_simulation.db", dynasty_id="default", season=2025):
         super().__init__()
@@ -99,13 +113,6 @@ class MainWindow(QMainWindow):
             Team ID (1-32) if user controls a team, None if league-wide view
         """
         try:
-            # Add src to path for database imports
-            import sys
-            from pathlib import Path
-            src_path = Path(__file__).parent.parent / "src"
-            if str(src_path) not in sys.path:
-                sys.path.insert(0, str(src_path))
-
             from database.dynasty_database_api import DynastyDatabaseAPI
 
             dynasty_api = DynastyDatabaseAPI(self.db_path)
@@ -218,7 +225,7 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.game_view, "Game")
 
         # Store playoff tab index for visibility toggling
-        self.playoff_tab_index = 7  # Playoffs tab position (was 6, now 7 due to Transactions tab)
+        self.playoff_tab_index = self.TAB_PLAYOFFS
 
         # Set Playoffs tab visibility based on initial phase
         current_phase = self.simulation_controller.get_current_phase()
@@ -282,7 +289,7 @@ class MainWindow(QMainWindow):
         season_menu.addSeparator()
         season_menu.addAction(self._create_action(
             "View &Schedule",
-            lambda: self.tabs.setCurrentIndex(0),
+            lambda: self.tabs.setCurrentIndex(self.TAB_SEASON),
             "View season schedule"
         ))
         season_menu.addAction(self._create_action(
@@ -295,7 +302,7 @@ class MainWindow(QMainWindow):
         team_menu = menubar.addMenu("&Team")
         team_menu.addAction(self._create_action(
             "View &Roster",
-            lambda: self.tabs.setCurrentIndex(2),
+            lambda: self.tabs.setCurrentIndex(self.TAB_TEAM),
             "View team roster"
         ))
         team_menu.addAction(self._create_action(
@@ -313,7 +320,7 @@ class MainWindow(QMainWindow):
         player_menu = menubar.addMenu("&Player")
         player_menu.addAction(self._create_action(
             "View &Player",
-            lambda: self.tabs.setCurrentIndex(3),
+            lambda: self.tabs.setCurrentIndex(self.TAB_PLAYER),
             "View player details"
         ))
         player_menu.addAction(self._create_action(
@@ -331,7 +338,7 @@ class MainWindow(QMainWindow):
         ))
         league_menu.addAction(self._create_action(
             "League &Stats",
-            lambda: self.tabs.setCurrentIndex(5),
+            lambda: self.tabs.setCurrentIndex(self.TAB_LEAGUE),
             "View league-wide statistics"
         ))
         league_menu.addAction(self._create_action(
@@ -420,7 +427,7 @@ class MainWindow(QMainWindow):
         # Quick navigation
         self.toolbar.addAction(self._create_action(
             "My Team",
-            lambda: self.tabs.setCurrentIndex(2),
+            lambda: self.tabs.setCurrentIndex(self.TAB_TEAM),
             "Go to my team"
         ))
         self.toolbar.addAction(self._create_action(
@@ -430,7 +437,7 @@ class MainWindow(QMainWindow):
         ))
         self.toolbar.addAction(self._create_action(
             "League",
-            lambda: self.tabs.setCurrentIndex(5),
+            lambda: self.tabs.setCurrentIndex(self.TAB_LEAGUE),
             "View league stats"
         ))
 
@@ -757,12 +764,8 @@ class MainWindow(QMainWindow):
         # Refresh views
         self._refresh_views_after_simulation()
 
-    def _sim_to_phase_end(self):
-        """Simulate to end of current phase, pausing at interactive events."""
-        starting_phase = self.simulation_controller.get_current_phase()
-        start_date_str = self.simulation_controller.get_current_date()
-
-        # Create progress dialog
+    def _create_phase_progress_dialog(self) -> QProgressDialog:
+        """Create a modal progress dialog for phase simulation."""
         progress = QProgressDialog(
             "Simulating to end of phase...",
             "Cancel",
@@ -770,6 +773,15 @@ class MainWindow(QMainWindow):
             self
         )
         progress.setWindowModality(Qt.WindowModal)
+        return progress
+
+    def _sim_to_phase_end(self):
+        """Simulate to end of current phase, pausing at interactive events."""
+        starting_phase = self.simulation_controller.get_current_phase()
+        start_date_str = self.simulation_controller.get_current_date()
+
+        # Create progress dialog
+        progress = self._create_phase_progress_dialog()
 
         days_simulated = 0
         total_games_played = 0
@@ -809,13 +821,7 @@ class MainWindow(QMainWindow):
                         return
 
                     # Recreate progress dialog for remainder
-                    progress = QProgressDialog(
-                        "Simulating to end of phase...",
-                        "Cancel",
-                        0, 100,
-                        self
-                    )
-                    progress.setWindowModality(Qt.WindowModal)
+                    progress = self._create_phase_progress_dialog()
                     progress.setValue(min(99, days_simulated // 7))
 
                 # Advance day
@@ -895,13 +901,11 @@ class MainWindow(QMainWindow):
 
     def _show_standings(self):
         """Show league standings by switching to League tab."""
-        # Switch to League tab (index 5)
-        self.tabs.setCurrentIndex(5)
+        self.tabs.setCurrentIndex(self.TAB_LEAGUE)
 
     def _show_stats_leaders(self):
         """Show statistical leaders by switching to League tab → Stats Leaders sub-tab."""
-        # Switch to League tab (index 5)
-        self.tabs.setCurrentIndex(5)
+        self.tabs.setCurrentIndex(self.TAB_LEAGUE)
         # Switch to Stats Leaders sub-tab (index 2: Standings=0, Free Agents=1, Stats Leaders=2)
         if hasattr(self, 'league_view') and hasattr(self.league_view, 'tabs'):
             self.league_view.tabs.setCurrentIndex(2)
@@ -943,13 +947,6 @@ class MainWindow(QMainWindow):
     def _show_random_team_transactions(self):
         """Show transaction log for a random team (debugging feature)."""
         import random
-        import sys
-        from pathlib import Path
-
-        # Add src to path for imports
-        src_path = Path(__file__).parent.parent / "src"
-        if str(src_path) not in sys.path:
-            sys.path.insert(0, str(src_path))
 
         try:
             from constants.team_ids import TeamIDs
@@ -1315,40 +1312,6 @@ class MainWindow(QMainWindow):
             traceback.print_exc()
             # Don't raise - this is non-critical, simulation can proceed
 
-    def _format_date_range(self, start_date_str: str, end_date_str: str) -> str:
-        """
-        Format date range as 'Feb 25, 2025 → Mar 3, 2025'.
-
-        Args:
-            start_date_str: ISO format start date (e.g., "2025-02-25")
-            end_date_str: ISO format end date (e.g., "2025-03-03")
-
-        Returns:
-            Formatted date range string
-        """
-        try:
-            start = datetime.fromisoformat(start_date_str)
-            end = datetime.fromisoformat(end_date_str)
-            return f"{start.strftime('%b %d, %Y')} → {end.strftime('%b %d, %Y')}"
-        except (ValueError, AttributeError):
-            return f"{start_date_str} → {end_date_str}"
-
-    def _format_date(self, date_str: str) -> str:
-        """
-        Format single date as 'Feb 25, 2025'.
-
-        Args:
-            date_str: ISO format date string (e.g., "2025-02-25")
-
-        Returns:
-            Formatted date string
-        """
-        try:
-            dt = datetime.fromisoformat(date_str)
-            return dt.strftime("%b %d, %Y")
-        except (ValueError, AttributeError):
-            return date_str
-
     def _handle_interactive_event_router(self, event: Dict[str, Any]) -> bool:
         """
         Route interactive event to appropriate handler dialog.
@@ -1608,16 +1571,11 @@ class MainWindow(QMainWindow):
 
     def _on_tab_changed(self, index: int):
         """Handle tab change - refresh data when switching to certain tabs."""
-        # League tab (index 5) - refresh standings
-        if index == 5 and hasattr(self, 'league_view'):
+        if index == self.TAB_LEAGUE and hasattr(self, 'league_view'):
             self.league_view.load_standings()
-
-        # Transactions tab (index 6) - refresh transaction history
-        elif index == 6 and hasattr(self, 'transactions_view'):
+        elif index == self.TAB_TRANSACTIONS and hasattr(self, 'transactions_view'):
             self.transactions_view.refresh()
-
-        # Playoffs tab (index 7) - refresh bracket and seeding
-        elif index == 7 and hasattr(self, 'playoff_view'):
+        elif index == self.TAB_PLAYOFFS and hasattr(self, 'playoff_view'):
             self.playoff_view.refresh()
 
     def _refresh_views_after_simulation(self):

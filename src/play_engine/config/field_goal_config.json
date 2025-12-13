@@ -4,27 +4,27 @@
   "description": "Centralized configuration for field goal simulation parameters - Designer balancing file",
   
   "distance_accuracy": {
-    "description": "NFL-realistic accuracy curves by distance with variance",
+    "description": "NFL-realistic accuracy curves by distance with variance (adjusted for snap/hold/block modifiers)",
     "ranges": {
-      "0-30": {"base_accuracy": 0.98, "variance": 0.02, "description": "Extra point range"},
-      "31-40": {"base_accuracy": 0.92, "variance": 0.05, "description": "High confidence range"},
-      "41-50": {"base_accuracy": 0.75, "variance": 0.12, "description": "Standard NFL range"}, 
-      "51-60": {"base_accuracy": 0.45, "variance": 0.20, "description": "Long range attempts"},
-      "61+": {"base_accuracy": 0.15, "variance": 0.25, "description": "Record attempt range"}
+      "0-30": {"base_accuracy": 0.995, "variance": 0.01, "description": "Extra point range - target 98%"},
+      "31-40": {"base_accuracy": 0.98, "variance": 0.02, "description": "High confidence range - target 95%"},
+      "41-50": {"base_accuracy": 0.92, "variance": 0.04, "description": "Standard NFL range - target 85%"},
+      "51-60": {"base_accuracy": 0.75, "variance": 0.06, "description": "Long range - target 65%"},
+      "61+": {"base_accuracy": 0.40, "variance": 0.10, "description": "Record attempts - target 32%"}
     },
-    "default_accuracy": 0.75
+    "default_accuracy": 0.85
   },
   
   "fake_decision_probabilities": {
-    "description": "Situational probabilities for fake field goal attempts",
-    "base_fake_rate": 0.08,
+    "description": "Situational probabilities for fake field goal attempts (reduced for realistic FG accuracy)",
+    "base_fake_rate": 0.02,
     "situational_modifiers": {
-      "short_yardage": {"distance_threshold": 2, "fake_bonus": 0.12},
-      "long_distance": {"distance_threshold": 55, "fake_bonus": 0.03},
-      "fourth_down": {"fake_bonus": 0.07},
-      "red_zone": {"field_position_threshold": 80, "fake_bonus": 0.15},
-      "two_minute_warning": {"fake_bonus": 0.05},
-      "goal_line": {"field_position_threshold": 95, "fake_bonus": 0.25}
+      "short_yardage": {"distance_threshold": 2, "fake_bonus": 0.03},
+      "long_distance": {"distance_threshold": 55, "fake_bonus": 0.01},
+      "fourth_down": {"fake_bonus": 0.02},
+      "red_zone": {"field_position_threshold": 80, "fake_bonus": 0.03},
+      "two_minute_warning": {"fake_bonus": 0.01},
+      "goal_line": {"field_position_threshold": 95, "fake_bonus": 0.05}
     },
     "fake_type_distribution": {
       "pass": 0.65,

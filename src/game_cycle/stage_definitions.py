@@ -55,9 +55,12 @@ class StageType(Enum):
     SUPER_BOWL = auto()
 
     # Offseason phases (Madden-style)
+    OFFSEASON_HONORS = auto()             # NFL Honors - Awards announced (Thursday before Super Bowl IRL)
+    OFFSEASON_OWNER = auto()              # Owner review - keep/fire GM, HC decisions
     OFFSEASON_FRANCHISE_TAG = auto()      # Apply franchise/transition tags (before re-signing)
     OFFSEASON_RESIGNING = auto()          # Re-sign your own expiring players
     OFFSEASON_FREE_AGENCY = auto()        # Sign free agents from other teams
+    OFFSEASON_TRADING = auto()            # Trade players and draft picks
     OFFSEASON_DRAFT = auto()              # NFL Draft (7 rounds)
     OFFSEASON_ROSTER_CUTS = auto()        # Cut roster from 90 to 53
     OFFSEASON_WAIVER_WIRE = auto()        # Process waiver claims for cut players
@@ -136,7 +139,8 @@ class Stage:
         elif name.startswith("OFFSEASON_"):
             # Map offseason stages to sequential numbers
             offseason_order = [
-                "OFFSEASON_FRANCHISE_TAG", "OFFSEASON_RESIGNING", "OFFSEASON_FREE_AGENCY",
+                "OFFSEASON_HONORS", "OFFSEASON_OWNER", "OFFSEASON_FRANCHISE_TAG",
+                "OFFSEASON_RESIGNING", "OFFSEASON_FREE_AGENCY", "OFFSEASON_TRADING",
                 "OFFSEASON_DRAFT", "OFFSEASON_ROSTER_CUTS", "OFFSEASON_WAIVER_WIRE",
                 "OFFSEASON_TRAINING_CAMP", "OFFSEASON_PRESEASON"
             ]
@@ -167,8 +171,8 @@ class Stage:
         """
         Get the next stage in the cycle.
 
-        When transitioning from OFFSEASON_PRESEASON (last stage) back to PRESEASON_WEEK_1
-        (first stage), the season year is incremented to start a new season.
+        Special cases:
+        - After OFFSEASON_PRESEASON: Loop back to PRESEASON_WEEK_1 with incremented year
         """
         stages = list(StageType)
         current_index = stages.index(self.stage_type)
@@ -205,9 +209,12 @@ GAME_STAGES = (
 
 # Offseason stages in order
 OFFSEASON_STAGES = [
+    StageType.OFFSEASON_HONORS,           # NFL Honors - Awards ceremony
+    StageType.OFFSEASON_OWNER,            # Owner review - keep/fire GM, HC
     StageType.OFFSEASON_FRANCHISE_TAG,
     StageType.OFFSEASON_RESIGNING,
     StageType.OFFSEASON_FREE_AGENCY,
+    StageType.OFFSEASON_TRADING,
     StageType.OFFSEASON_DRAFT,
     StageType.OFFSEASON_ROSTER_CUTS,
     StageType.OFFSEASON_WAIVER_WIRE,

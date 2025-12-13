@@ -46,6 +46,29 @@ class PuntOutcomeType(Enum):
     PUNT_FORMATION_INVALID = "punt_formation_invalid"
 
 
+def ensure_scoring_play_flags(play_result: PlayResult, points: int) -> None:
+    """
+    Ensure PlayResult has correct scoring play flags.
+
+    DriveManager's field position detection is the SSOT for scoring.
+    This function reconciles any mismatch where the play engine's
+    touchdown detection diverged from DriveManager's detection.
+
+    Args:
+        play_result: The play result to update (mutated in place)
+        points: Points to award (6 for TD, 3 for FG)
+
+    Example:
+        >>> play = PlayResult(outcome='run', yards=5, is_scoring_play=False, points=0)
+        >>> ensure_scoring_play_flags(play, 6)
+        >>> play.is_scoring_play, play.points
+        (True, 6)
+    """
+    if not play_result.is_scoring_play or play_result.points != points:
+        play_result.is_scoring_play = True
+        play_result.points = points
+
+
 
 @dataclass
 class DriveStats:
@@ -274,21 +297,22 @@ class DriveManager:
     def process_play_result(self, play_result: PlayResult) -> None:
         """
         Update drive state based on external play execution result
-        
+
         Args:
             play_result: Result of external play execution
         """
         if self.drive_ended:
             raise DriveManagerError("Cannot process play result for ended drive")
-            
+
         # Add to play history
         self.play_history.append(play_result)
-        
+
         # Update statistics first
         self._update_stats(play_result)
-        
+
         # Check for immediate drive-ending conditions
         if self._check_immediate_drive_end(play_result):
+            self._snapshot_state_to_play_result(play_result)
             return  # Drive ended, no need to update field/down state
             
         # Process field position changes
@@ -300,43 +324,113 @@ class DriveManager:
         # Check for scoring that ends drive
         if field_result.is_scored:
             self._end_drive_scoring(field_result, play_result)
+            self._snapshot_state_to_play_result(play_result)
             return
             
         # Update field position
         self.current_position = field_result.new_field_position
-        
-        # Process down progression  
-        down_result = self.down_tracker.process_play(
-            self.current_down_state,
-            play_result.get_net_yards(),
-            self.current_position.yard_line,
-            play_result.is_scoring_play
-        )
+
+        # Process down progression - route to penalty handler if penalty occurred
+        # FIX: Check penalty_occurred (not just play_negated) to handle ALL penalties
+        # This ensures non-negating penalties (Face Mask, Unsportsmanlike, etc.) also
+        # use the correct enforcement_result for field position
+        if getattr(play_result, 'penalty_occurred', False):
+            # Check for new enforcement result (preferred flow)
+            enforcement_result = getattr(play_result, 'enforcement_result', None)
+            if enforcement_result is not None:
+                # Use new enforcement system - single source of truth for ball placement
+                down_result = self.down_tracker.process_penalty(
+                    self.current_down_state,
+                    penalty_yards=0,  # Ignored when enforcement_result provided
+                    is_automatic_first_down=enforcement_result.is_first_down,  # Use enforcement result
+                    enforcement_result=enforcement_result
+                )
+                # Update field position from enforcement result
+                from .field_position import FieldPosition, FieldZone
+                self.current_position = FieldPosition(
+                    yard_line=enforcement_result.new_yard_line,
+                    possession_team=self.current_position.possession_team,
+                    field_zone=FieldZone.OWN_TERRITORY  # Will be auto-calculated in __post_init__
+                )
+            else:
+                # Legacy flow - preserve sign: negative=offensive, positive=defensive
+                down_result = self.down_tracker.process_penalty(
+                    self.current_down_state,
+                    penalty_yards=play_result.penalty_yards,  # Preserve sign for correct calculation
+                    is_automatic_first_down=False  # Offensive penalties don't give first downs
+                )
+        else:
+            down_result = self.down_tracker.process_play(
+                self.current_down_state,
+                play_result.get_net_yards(),
+                self.current_position.yard_line,
+                play_result.is_scoring_play
+            )
         
         # Check for missed field goals BEFORE checking turnover on downs
         if play_result.is_missed_field_goal():
             self._end_drive(DriveEndReason.FIELD_GOAL_MISSED)
+            self._snapshot_state_to_play_result(play_result)
             return
-            
+
         # Check for failed punts BEFORE checking turnover on downs
         if self._is_failed_punt(play_result):
             self._end_drive(DriveEndReason.PUNT)
+            self._snapshot_state_to_play_result(play_result)
             return
-            
-        # Check for turnover on downs
+
+        # Check for successful field goal via outcome string OR points
+        # This catches cases where points wasn't set properly
+        if self._is_successful_field_goal(play_result):
+            self._end_drive(DriveEndReason.FIELD_GOAL)
+            self._snapshot_state_to_play_result(play_result)
+            return
+
+        # Defensive check: If TD was scored (6 points), end as touchdown
+        # This catches cases where is_scoring_play/field_result.is_scored wasn't set properly
+        if play_result.points == 6:
+            self._end_drive(DriveEndReason.TOUCHDOWN)
+            self._snapshot_state_to_play_result(play_result)
+            return
+
+        # Check for turnover on downs (only if not a scoring play)
         if down_result.turnover_on_downs:
             self._end_drive(DriveEndReason.TURNOVER_ON_DOWNS)
+            self._snapshot_state_to_play_result(play_result)
             return
             
             
         # Update down state if drive continues
         if down_result.new_down_state:
+            # ✅ FIX 3: Final safety check - verify not at goal line
+            if self.current_position.yard_line >= 100:
+                # Should have been caught earlier, but end drive as TD
+                print("⚠️ DriveManager safety net: Detected goal line crossing, ending drive as TD")
+                # Reconcile TD flags on the last play
+                if self.play_history:
+                    ensure_scoring_play_flags(self.play_history[-1], 6)
+                self._end_drive(DriveEndReason.TOUCHDOWN)
+                self._snapshot_state_to_play_result(play_result)
+                return
+
+            # ✅ FIX 3: Validate new down state is legal
+            if down_result.new_down_state.yards_to_go < 1 and self.current_position.yard_line < 100:
+                # Invalid state: yards_to_go < 1 when not at goal line
+                # This indicates a bug - log and end drive
+                print(f"⚠️ Invalid down state detected: {down_result.new_down_state}")
+                self._end_drive(DriveEndReason.TURNOVER_ON_DOWNS)
+                self._snapshot_state_to_play_result(play_result)
+                return
+
             self.current_down_state = down_result.new_down_state
-            
-        # Track first downs for statistics  
+
+        # Track first downs for statistics
         if down_result.first_down_achieved:
             self.stats.first_downs_achieved += 1
-    
+
+        # ✅ NEW: Snapshot post-play state back to PlayResult for display layer
+        self._snapshot_state_to_play_result(play_result)
+
     def is_drive_over(self) -> bool:
         """Check if drive has ended"""
         return self.drive_ended
@@ -403,7 +497,12 @@ class DriveManager:
         if play_result.is_scoring_play and play_result.points == 3:
             self._end_drive(DriveEndReason.FIELD_GOAL)
             return True
-            
+
+        # Check for touchdown (6 points scored)
+        if play_result.is_scoring_play and play_result.points == 6:
+            self._end_drive(DriveEndReason.TOUCHDOWN)
+            return True
+
         return False
     
     def _is_failed_punt(self, play_result: PlayResult) -> bool:
@@ -420,63 +519,83 @@ class DriveManager:
         }
         
         return play_result.outcome in punt_failure_outcomes
-    
+
+    def _is_successful_field_goal(self, play_result: PlayResult) -> bool:
+        """
+        Check if this was a successful field goal via outcome string OR points.
+
+        This provides redundant detection to handle cases where points
+        might not be set correctly but the outcome indicates success.
+
+        Args:
+            play_result: PlayResult to check
+
+        Returns:
+            True if field goal was made successfully
+        """
+        # Check points first (most reliable if set correctly)
+        if play_result.points == 3:
+            return True
+
+        # Fallback: Check outcome string for FG success indicators
+        outcome = play_result.outcome if isinstance(play_result.outcome, str) else ""
+        outcome_lower = outcome.lower()
+
+        return (
+            "field_goal_made" in outcome_lower or
+            "field_goal_good" in outcome_lower or
+            (outcome_lower == "made" and "field_goal" in str(getattr(play_result, 'play_type', '')).lower())
+        )
+
     def _end_drive_scoring(self, field_result, play_result: PlayResult) -> None:
         """End drive due to scoring play"""
         if field_result.scoring_type == "touchdown":
-            # ✅ FIX: Update player stats with TD attribution AFTER field tracking detects scoring
-            self._update_touchdown_attribution(play_result)
+            # Reconcile TD flags - DriveManager detection is SSOT
+            ensure_scoring_play_flags(play_result, 6)
             self._end_drive(DriveEndReason.TOUCHDOWN)
         elif play_result.points == 3:  # Field goal
             self._end_drive(DriveEndReason.FIELD_GOAL)
         elif field_result.scoring_type == "safety":
             self._end_drive(DriveEndReason.SAFETY)
 
-    def _update_touchdown_attribution(self, play_result: PlayResult) -> None:
-        """
-        Update player stats with touchdown attribution after FieldTracker detects scoring.
-
-        This fixes the timing issue where TD attribution was happening BEFORE
-        FieldTracker set points_scored = 6.
-
-        Args:
-            play_result: PlayResult with player_stats_summary containing player stats
-        """
-        # Check if play_result has player stats summary
-        if not hasattr(play_result, 'player_stats_summary') or play_result.player_stats_summary is None:
-            return
-
-        player_stats_summary = play_result.player_stats_summary
-
-        # Check if the summary has player_stats attribute
-        if not hasattr(player_stats_summary, 'player_stats'):
-            return
-
-        # Iterate through player stats and add TDs based on play type
-        for player_stat in player_stats_summary.player_stats:
-            # Rushing touchdown: player had rushing attempts
-            if hasattr(player_stat, 'rushing_attempts') and player_stat.rushing_attempts > 0:
-                if hasattr(player_stat, 'add_rushing_touchdown'):
-                    player_stat.add_rushing_touchdown()
-                    print(f"✅ DriveManager: Added rushing TD to {player_stat.player_name}")
-
-            # Passing touchdown: player had passing attempts
-            if hasattr(player_stat, 'passing_attempts') and player_stat.passing_attempts > 0:
-                if hasattr(player_stat, 'add_passing_touchdown'):
-                    player_stat.add_passing_touchdown()
-                    print(f"✅ DriveManager: Added passing TD to {player_stat.player_name}")
-
-            # Receiving touchdown: player had receptions
-            if hasattr(player_stat, 'receptions') and player_stat.receptions > 0:
-                if hasattr(player_stat, 'add_receiving_touchdown'):
-                    player_stat.add_receiving_touchdown()
-                    print(f"✅ DriveManager: Added receiving TD to {player_stat.player_name}")
-
-
     def _end_drive(self, reason: DriveEndReason) -> None:
         """Mark drive as ended with specified reason"""
         self.drive_ended = True
         self.end_reason = reason
+
+    def end_due_to_time_expiration(self) -> None:
+        """
+        End drive due to quarter time expiration.
+
+        Called by GameLoopController when clock hits 0:00 mid-drive.
+        This properly sets TIME_EXPIRATION as the drive end reason.
+        """
+        if not self.drive_ended:
+            self.drive_ended = True
+            self.end_reason = DriveEndReason.TIME_EXPIRATION
+
+    def _snapshot_state_to_play_result(self, play_result: PlayResult) -> None:
+        """
+        Snapshot post-play state back to PlayResult for display layer.
+
+        This allows the display layer to use DriveManager's corrected state
+        instead of reconstructing it from raw play data.
+
+        Args:
+            play_result: PlayResult to populate with state snapshot
+        """
+        if not self.drive_ended:
+            # Drive continues - snapshot current state for next play
+            play_result.down_after_play = self.current_down_state.current_down
+            play_result.distance_after_play = self.current_down_state.yards_to_go
+            play_result.field_position_after_play = self.current_position.yard_line
+            play_result.possession_team_id = self.possessing_team_id
+        else:
+            # Drive ended - no next down state
+            play_result.down_after_play = None
+            play_result.distance_after_play = None
+            play_result.field_position_after_play = self.current_position.yard_line
+            play_result.possession_team_id = self.possessing_team_id
     
     def _update_stats(self, play_result: PlayResult) -> None:
         """Update drive statistics based on play result"""
@@ -497,9 +616,15 @@ class DriveManager:
                 self.stats.third_down_conversions += 1
                 
         if self.current_down_state.current_down == 4:
-            self.stats.fourth_down_attempts += 1
-            if play_result.achieved_first_down:
-                self.stats.fourth_down_conversions += 1
+            # Only track "go for it" attempts - exclude punts and field goals
+            # NFL 4th down conversion % measures success rate when teams GO FOR IT
+            is_punt = getattr(play_result, 'is_punt', False)
+            is_field_goal = 'field_goal' in str(getattr(play_result, 'outcome', '')).lower()
+
+            if not is_punt and not is_field_goal:
+                self.stats.fourth_down_attempts += 1
+                if play_result.achieved_first_down:
+                    self.stats.fourth_down_conversions += 1
                 
         # Track red zone efficiency
         if self.current_position.yard_line >= 80:  # In red zone

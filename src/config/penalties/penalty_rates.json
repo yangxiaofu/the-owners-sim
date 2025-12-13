@@ -1,9 +1,9 @@
 {
-  "description": "Base penalty rates and yardage for different penalty types",
-  "version": "1.0",
+  "description": "Base penalty rates and yardage for different penalty types (NFL-calibrated: ~12-14 penalties/game)",
+  "version": "1.1",
   "base_rates": {
     "offensive_holding": {
-      "rate": 0.08,
+      "rate": 0.03,
       "yard_penalty": -10,
       "automatic_first_down": false,
       "automatic_loss_of_down": false,
@@ -12,7 +12,7 @@
       "description": "Offensive holding during run or pass play"
     },
     "false_start": {
-      "rate": 0.05,
+      "rate": 0.02,
       "yard_penalty": -5,
       "automatic_first_down": false,
       "automatic_loss_of_down": false,
@@ -21,7 +21,7 @@
       "description": "Offensive player moves before snap"
     },
     "illegal_formation": {
-      "rate": 0.02,
+      "rate": 0.008,
       "yard_penalty": -5,
       "automatic_first_down": false,
       "automatic_loss_of_down": false,
@@ -30,7 +30,7 @@
       "description": "Illegal offensive formation"
     },
     "delay_of_game": {
-      "rate": 0.03,
+      "rate": 0.01,
       "yard_penalty": -5,
       "automatic_first_down": false,
       "automatic_loss_of_down": false,
@@ -39,7 +39,7 @@
       "description": "Play clock expires"
     },
     "face_mask": {
-      "rate": 0.03,
+      "rate": 0.012,
       "yard_penalty": 15,
       "automatic_first_down": true,
       "automatic_loss_of_down": false,
@@ -48,7 +48,7 @@
       "description": "Grabbing opponent's face mask during tackle"
     },
     "unnecessary_roughness": {
-      "rate": 0.025,
+      "rate": 0.01,
       "yard_penalty": 15,
       "automatic_first_down": true,
       "automatic_loss_of_down": false,
@@ -57,7 +57,7 @@
       "description": "Excessive force or late hit during play"
     },
     "unsportsmanlike_conduct": {
-      "rate": 0.02,
+      "rate": 0.008,
       "yard_penalty": 15,
       "automatic_first_down": true,
       "automatic_loss_of_down": false,
@@ -66,7 +66,7 @@
       "description": "Unsportsmanlike behavior after play"
     },
     "encroachment": {
-      "rate": 0.04,
+      "rate": 0.015,
       "yard_penalty": 5,
       "automatic_first_down": false,
       "automatic_loss_of_down": false,
@@ -75,7 +75,7 @@
       "description": "Defensive player crosses line of scrimmage early"
     },
     "offsides": {
-      "rate": 0.03,
+      "rate": 0.012,
       "yard_penalty": 5,
       "automatic_first_down": false,
       "automatic_loss_of_down": false,
@@ -84,7 +84,7 @@
       "description": "Player lines up in neutral zone"
     },
     "illegal_contact": {
-      "rate": 0.025,
+      "rate": 0.01,
       "yard_penalty": 5,
       "automatic_first_down": true,
       "automatic_loss_of_down": false,

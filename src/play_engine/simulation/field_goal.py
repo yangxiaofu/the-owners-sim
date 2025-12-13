@@ -13,6 +13,7 @@ import random
 import math
 from typing import List, Tuple, Dict, Optional, Union
 from .stats import PlayerStats, PlayStatsSummary, create_player_stats_from_player
+from .base_simulator import BasePlaySimulator
 from ..mechanics.formations import OffensiveFormation, DefensiveFormation
 from ..mechanics.unified_formations import UnifiedDefensiveFormation, SimulatorContext
 from ..play_types.base_types import PlayType
@@ -76,31 +77,47 @@ class FakeDecision:
         self.confidence = confidence  # 0.0 to 1.0
 
 
-class FieldGoalSimulator:
+class FieldGoalSimulator(BasePlaySimulator):
     """Simulates field goal attempts with comprehensive fake handling and individual player attribution"""
-    
+
     def __init__(self, offensive_players: List, defensive_players: List,
-                 offensive_formation: str, defensive_formation: str):
+                 offensive_formation: str, defensive_formation: str,
+                 offensive_team_id: int = None, defensive_team_id: int = None,
+                 weather_condition: str = "clear",
+                 crowd_noise_level: int = 0,
+                 is_away_team: bool = False):
         """
         Initialize field goal simulator
-        
+
         Args:
             offensive_players: List of 11 offensive Player objects (field goal unit)
             defensive_players: List of 11 defensive Player objects
             offensive_formation: Offensive formation (typically "FIELD_GOAL")
             defensive_formation: Defensive formation ("FIELD_GOAL_BLOCK" or "PREVENT_FAKE")
+            offensive_team_id: Team ID for the kicking team (1-32)
+            defensive_team_id: Team ID for the defending team (1-32)
+            weather_condition: Weather condition ("clear", "rain", "snow", "heavy_wind")
+            crowd_noise_level: Crowd noise intensity (0-100, 0=quiet, 100=deafening)
+            is_away_team: Whether the kicking team is the away team
         """
         self.offensive_players = offensive_players
         self.defensive_players = defensive_players
         self.offensive_formation = offensive_formation
         self.defensive_formation = defensive_formation
-        
+        self.offensive_team_id = offensive_team_id
+        self.defensive_team_id = defensive_team_id
+
+        # Environmental modifiers (Tollgate 6: Environmental & Situational Modifiers)
+        self.weather_condition = weather_condition
+        self.crowd_noise_level = crowd_noise_level
+        self.is_away_team = is_away_team
+
         # Initialize penalty engine
         self.penalty_engine = PenaltyEngine()
-        
+
         # Load field goal configuration
         self.fg_config = config.get_field_goal_config()
-        
+
         # Identify key special teams players
         self._identify_special_teams_players()
     
@@ -130,14 +147,15 @@ class FieldGoalSimulator:
         if not self.long_snapper:
             self.long_snapper = self.offensive_players[2]  # Third player as long snapper
     
-    def simulate_field_goal_play(self, fg_params: Optional[FieldGoalPlayParams] = None, context: Optional[PlayContext] = None) -> 'PlayStatsSummary':
+    def simulate_field_goal_play(self, fg_params: Optional[FieldGoalPlayParams] = None, context: Optional[PlayContext] = None, skip_fake_decision: bool = False) -> 'PlayStatsSummary':
         """
         Main simulation method for field goal attempts
-        
+
         Args:
             fg_params: FieldGoalPlayParams with validated enum formations (preferred method)
             context: PlayContext with game situation information (fallback for backward compatibility)
-            
+            skip_fake_decision: If True, always attempt a real field goal (used for PAT attempts)
+
         Returns:
             PlayStatsSummary with comprehensive field goal outcome and individual player stats
         """
@@ -155,12 +173,15 @@ class FieldGoalSimulator:
                     offensive_formation=self.offensive_formation,
                     defensive_formation=self.defensive_formation
                 )
-        
+
         # Calculate field goal distance
         distance = self._calculate_field_goal_distance(context)
-        
-        # Phase 1: Determine fake decision
-        fake_decision = self._determine_fake_attempt(context, distance)
+
+        # Phase 1: Determine fake decision (skip for PAT attempts to avoid 35% fake rate)
+        if skip_fake_decision:
+            fake_decision = FakeDecision(False, None, 1.0)
+        else:
+            fake_decision = self._determine_fake_attempt(context, distance)
         
         if fake_decision.is_fake:
             # Phase 2A: Execute fake field goal
@@ -177,19 +198,33 @@ class FieldGoalSimulator:
         penalty_result = self.penalty_engine.check_for_penalty(
             self.offensive_players, self.defensive_players, context, original_yards
         )
-        
-        # Determine final yards and negation
-        final_yards = penalty_result.modified_yards if penalty_result.penalty_occurred else original_yards
+
+        # BUG FIX 5: For field goals, yards should ALWAYS be 0 (unless it's a fake)
+        # Real field goals: yards are always 0 (penalties affect field position for next possession)
+        # Fake field goals: yards are actual yards gained
+        if not result.is_fake:
+            # Real field goal - yards are always 0
+            # Penalties affect field position for next possession, NOT this play's yards
+            final_yards = 0
+        else:
+            # Fake field goal - yards are actual yards gained
+            final_yards = penalty_result.modified_yards if penalty_result.penalty_occurred else original_yards
+
+        # Determine play negation
         play_negated = penalty_result.play_negated if penalty_result.penalty_occurred else False
-        
-        # Adjust points if play negated
+
+        # Adjust points if play negated (but NOT for made field goals)
+        # NFL Rules: On a made FG, the offense would decline any offensive penalty
+        # and the defense would decline any defensive penalty (don't want another attempt)
         points_scored = result.points_scored
-        if play_negated:
+        if play_negated and result.outcome != "made":
+            # Only zero points for non-made kicks (blocked, missed) or fake FGs
             points_scored = 0
-        
+        # Made FGs: Keep points regardless of penalty (offense/defense declines)
+
         # Phase 4: Attribute individual player statistics
         player_stats = self._attribute_player_statistics_list(result, context)
-        
+
         # Create comprehensive PlayStatsSummary
         summary = PlayStatsSummary(
             play_type="field_goal",
@@ -201,8 +236,8 @@ class FieldGoalSimulator:
             field_goal_distance=result.distance,
             points_scored=points_scored
         )
-        
-        # Add penalty information if penalty occurred
+
+        # Add penalty information SEPARATELY (not in yards_gained)
         if penalty_result.penalty_occurred:
             summary.penalty_occurred = True
             summary.penalty_instance = penalty_result.penalty_instance
@@ -219,7 +254,16 @@ class FieldGoalSimulator:
         """Calculate field goal distance from field position"""
         # Field goal distance = (100 - field_position) + 17 (end zone depth + goalpost)
         field_position = getattr(context, 'field_position', 75)  # Default to 32-yard attempt
-        return (100 - field_position) + 17
+        distance = (100 - field_position) + 17
+
+        # Validation and logging for unrealistic attempts
+        import logging
+        if distance > 65:
+            logging.warning(f"⚠️ Extremely long FG attempt: {distance} yards (field_pos={field_position})")
+        elif distance > 55:
+            logging.info(f"📊 Long FG attempt: {distance} yards (field_pos={field_position})")
+
+        return distance
     
     def _determine_fake_attempt(self, context: PlayContext, distance: int) -> FakeDecision:
         """
@@ -301,8 +345,8 @@ class FieldGoalSimulator:
         # Phase 3: Kick execution
         base_accuracy = self._get_distance_accuracy(distance)
         kicker_modifier = self._get_kicker_modifier()
-        environmental_modifier = self._get_environmental_modifier(context)
-        
+        environmental_modifier = self._get_environmental_modifier(context, kick_distance=distance)
+
         # Calculate final accuracy
         final_accuracy = base_accuracy * hold_quality * kicker_modifier * environmental_modifier
         
@@ -444,7 +488,7 @@ class FieldGoalSimulator:
     def _get_distance_accuracy(self, distance: int) -> float:
         """Get base accuracy for given distance"""
         distance_config = self.fg_config.get('distance_accuracy', {}).get('ranges', {})
-        
+
         if distance <= 30:
             range_config = distance_config.get('0-30', {})
         elif distance <= 40:
@@ -455,43 +499,97 @@ class FieldGoalSimulator:
             range_config = distance_config.get('51-60', {})
         else:
             range_config = distance_config.get('61+', {})
-        
+
         base_accuracy = range_config.get('base_accuracy', self.fg_config.get('distance_accuracy', {}).get('default_accuracy', 0.75))
-        variance = range_config.get('variance', 0.1)
-        
-        # Apply variance
-        return max(0.1, min(0.99, random.gauss(base_accuracy, variance)))
+
+        # NOTE: Variance is NOT applied here. The base_accuracy already represents
+        # the expected success rate for this distance range. Applying Gaussian variance
+        # would cause unrealistic swings (e.g., a 92% short kick becoming 77%).
+        # Individual kick variation is handled by the random.random() < final_accuracy
+        # check in _simulate_real_field_goal(), which correctly represents the
+        # probabilistic nature of each attempt.
+        return base_accuracy
     
     def _get_kicker_modifier(self) -> float:
         """Get accuracy modifier based on kicker attributes"""
         if not self.kicker:
             return 1.0
-        
+
         kicker_config = self.fg_config.get('player_attributes', {}).get('kicker_modifiers', {})
         accuracy_config = kicker_config.get('kicking_accuracy', {})
-        
-        kicker_accuracy = self.kicker.get_rating('kicking_accuracy') if hasattr(self.kicker, 'get_rating') else 75
-        
+
+        # Try 'accuracy' first, fall back to 'overall' for synthetic players
+        # that don't have specific kicking attributes defined
+        kicker_accuracy = 75  # Default
+        if hasattr(self.kicker, 'get_rating'):
+            kicker_accuracy = self.kicker.get_rating('accuracy')
+            # If accuracy not defined (returns default 50), use overall instead
+            if kicker_accuracy <= 50:
+                kicker_accuracy = self.kicker.get_rating('overall')
+                # Still default? Use 75 as reasonable average
+                if kicker_accuracy <= 50:
+                    kicker_accuracy = 75
+
         if kicker_accuracy >= self.fg_config.get('player_attributes', {}).get('rating_thresholds', {}).get('elite', 90):
             return 1.0 + accuracy_config.get('elite_bonus', 0.08)
         elif kicker_accuracy >= self.fg_config.get('player_attributes', {}).get('rating_thresholds', {}).get('good', 80):
             return 1.0 + accuracy_config.get('good_bonus', 0.04)
         elif kicker_accuracy <= self.fg_config.get('player_attributes', {}).get('rating_thresholds', {}).get('poor', 60):
             return 1.0 + accuracy_config.get('poor_penalty', -0.08)
-        
+
         return 1.0  # Average kicker
     
-    def _get_environmental_modifier(self, context: PlayContext) -> float:
-        """Get environmental modifier for conditions"""
-        # For now, return baseline - could be expanded with weather context
-        return 1.0
+    def _get_environmental_modifier(self, context: PlayContext, kick_distance: int = 40) -> float:
+        """
+        Get environmental modifier for field goal conditions.
+
+        Weather effects on field goals:
+        - Rain: Wet ball affects grip (-8-12% depending on distance)
+        - Snow: Visibility + wet ball (-15-20% depending on distance)
+        - Heavy Wind: Major trajectory impact (-10-15% base, scales with distance)
+
+        Longer kicks are MORE affected by weather (exponential scaling).
+        Effects stack with distance: 60-yard FG in wind = -30% or worse.
+
+        Args:
+            context: PlayContext with game situation
+            kick_distance: Distance of field goal attempt in yards
+
+        Returns:
+            Environmental modifier (0.4-1.0, where 1.0 = no weather effect)
+        """
+        if self.weather_condition == "clear":
+            return 1.0  # No weather effects
+
+        # Distance scaling factor (longer kicks = more weather impact)
+        # 20-yard FG: 0.5x effect, 40-yard: 1.0x, 60-yard: 1.5x
+        distance_factor = 0.5 + (kick_distance - 20) / 40.0
+        distance_factor = max(0.5, min(distance_factor, 2.0))  # Clamp to [0.5, 2.0]
+
+        base_modifier = 1.0
+
+        if self.weather_condition == "rain":
+            # Wet ball reduces accuracy by 8-12% (scaled by distance)
+            base_modifier = 1.0 - (0.10 * distance_factor)  # -5% to -20%
+
+        elif self.weather_condition == "snow":
+            # Visibility + wet ball reduces accuracy by 15-20%
+            base_modifier = 1.0 - (0.17 * distance_factor)  # -8.5% to -34%
+
+        elif self.weather_condition == "heavy_wind":
+            # Wind affects trajectory dramatically
+            # -20% at 40 yards (distance_factor=1.0), scales with distance
+            base_modifier = 1.0 - (0.20 * distance_factor)  # -10% to -40%
+
+        # Clamp to realistic range (weather can't make FG impossible, but can be very hard)
+        return max(base_modifier, 0.4)  # Min 40% of base accuracy
     
     def _evaluate_snap_quality(self) -> float:
         """Evaluate long snapper performance"""
         if not self.long_snapper:
             return 0.95  # Average snap
         
-        snap_accuracy = self.long_snapper.get_rating('snap_accuracy') if hasattr(self.long_snapper, 'get_rating') else 75
+        snap_accuracy = self.long_snapper.get_rating('awareness') if hasattr(self.long_snapper, 'get_rating') else 75
         
         # Convert rating to quality score
         if snap_accuracy >= 90:
@@ -508,7 +606,7 @@ class FieldGoalSimulator:
         if not self.holder:
             return 0.95  # Average hold
         
-        hold_skill = self.holder.get_rating('hold_skill') if hasattr(self.holder, 'get_rating') else 75
+        hold_skill = self.holder.get_rating('awareness') if hasattr(self.holder, 'get_rating') else 75
         
         # Base hold quality affected by snap
         base_quality = min(0.99, snap_quality * 1.02)  # Good holders can improve on good snaps
@@ -577,99 +675,16 @@ class FieldGoalSimulator:
         return 1.0
     
     def _attribute_player_statistics(self, result: FieldGoalAttemptResult, context: PlayContext):
-        """Attribute individual player statistics based on play outcome"""
-        result.player_stats = {}
-        
-        # Always credit kicker with attempt
-        if self.kicker:
-            kicker_stats = create_player_stats_from_player(self.kicker)
-            kicker_stats.field_goal_attempts = 1
-            
-            if result.outcome == "made":
-                kicker_stats.field_goals_made = 1
-                kicker_stats.longest_field_goal = result.distance
-            elif result.outcome.startswith("missed"):
-                kicker_stats.field_goals_missed = 1
-            elif result.outcome == "blocked":
-                kicker_stats.field_goals_blocked = 1
-            
-            # Fake run stats for kicker
-            if result.is_fake and result.fake_type == "run":
-                kicker_stats.carries = 1 if "kicker" in str(result.outcome) else 0
-                kicker_stats.rushing_yards = result.yards_gained if kicker_stats.carries else 0
-            
-            result.player_stats[self.kicker.name] = kicker_stats
-        
-        # Holder statistics
-        if self.holder:
-            holder_stats = create_player_stats_from_player(self.holder)
-            holder_stats.field_goal_holds = 1
-            
-            if result.is_fake:
-                if result.fake_type == "pass":
-                    holder_stats.pass_attempts = 1
-                    if result.outcome == "fake_success":
-                        holder_stats.pass_completions = 1
-                        holder_stats.passing_yards = result.yards_gained
-                        if result.points_scored == 6:
-                            holder_stats.passing_touchdowns = 1
-                elif result.fake_type == "run":
-                    holder_stats.carries = 1
-                    holder_stats.rushing_yards = result.yards_gained
-                    if result.points_scored == 6:
-                        holder_stats.rushing_touchdowns = 1
-            
-            result.player_stats[self.holder.name] = holder_stats
-        
-        # Long snapper statistics
-        if self.long_snapper:
-            ls_stats = create_player_stats_from_player(self.long_snapper)
-            ls_stats.long_snaps = 1
-            result.player_stats[self.long_snapper.name] = ls_stats
-        
-        # Protection unit statistics
-        for blocker in self.protection_unit:
-            blocker_stats = create_player_stats_from_player(blocker)
-            blocker_stats.special_teams_snaps = 1
-            if result.outcome == "blocked":
-                # Randomly assign block responsibility
-                if random.random() < 0.15:  # 15% chance any blocker gets blamed
-                    blocker_stats.blocks_allowed = 1
-            result.player_stats[blocker.name] = blocker_stats
+        """Attribute individual player statistics based on play outcome (dict version)"""
+        # Use the list version and convert to dict
+        stats_list = self._attribute_player_statistics_list(result, context)
+        result.player_stats = {stats.player_name: stats for stats in stats_list}
 
         # Track special teams snaps for ALL 22 players on the field
-        self._track_special_teams_snaps_for_all_players(result)
+        # Uses inherited method from BasePlaySimulator
+        self._track_special_teams_snaps_for_all_players(result.player_stats)
 
-    def _track_special_teams_snaps_for_all_players(self, result):
-        """
-        Track special teams snaps for ALL 22 players on the field during this field goal play
-
-        Args:
-            result: FieldGoalAttemptResult object with player_stats dictionary
-        """
-        # Track special teams snaps for all 11 offensive players (field goal unit)
-        for player in self.offensive_players:
-            player_name = player.name
-            if player_name in result.player_stats:
-                # Player already has stats object, just add the snap
-                result.player_stats[player_name].add_special_teams_snap()
-            else:
-                # Create new PlayerStats object for this player
-                new_stats = create_player_stats_from_player(player)
-                new_stats.add_special_teams_snap()
-                result.player_stats[player_name] = new_stats
-
-        # Track special teams snaps for all 11 defensive players (field goal defense)
-        for player in self.defensive_players:
-            player_name = player.name
-            if player_name in result.player_stats:
-                # Player already has stats object, just add the snap
-                result.player_stats[player_name].add_special_teams_snap()
-            else:
-                # Create new PlayerStats object for this player
-                new_stats = create_player_stats_from_player(player)
-                new_stats.add_special_teams_snap()
-                result.player_stats[player_name] = new_stats
+    # NOTE: _track_special_teams_snaps_for_all_players is inherited from BasePlaySimulator
 
     def _attribute_player_statistics_list(self, result: FieldGoalAttemptResult, context: PlayContext) -> List[PlayerStats]:
         """Attribute individual player statistics and return as list of PlayerStats objects"""
@@ -687,6 +702,21 @@ class FieldGoalSimulator:
                 kicker_stats.field_goals_missed = 1
             elif result.outcome == "blocked":
                 kicker_stats.field_goals_blocked = 1
+
+            # Distance-based FG categorization
+            if result.distance is not None:
+                if result.distance <= 39:
+                    kicker_stats.fg_attempts_0_39 = 1
+                    if result.outcome == "made":
+                        kicker_stats.fg_made_0_39 = 1
+                elif result.distance <= 49:
+                    kicker_stats.fg_attempts_40_49 = 1
+                    if result.outcome == "made":
+                        kicker_stats.fg_made_40_49 = 1
+                else:  # 50+
+                    kicker_stats.fg_attempts_50_plus = 1
+                    if result.outcome == "made":
+                        kicker_stats.fg_made_50_plus = 1
             
             # Fake run stats for kicker
             if result.is_fake and result.fake_type == "run":

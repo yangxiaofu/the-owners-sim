@@ -11,7 +11,7 @@ import sqlite3
 import json
 from datetime import datetime, date
 
-from persistence.transaction_logger import TransactionLogger
+from src.persistence.transaction_logger import TransactionLogger
 
 
 class WaiverService:
@@ -541,6 +541,7 @@ class WaiverService:
 
             awarded_claims = []
             events = []
+            pending_transaction_logs = []  # Batch transaction logs to avoid DB lock
 
             for player_id, claims in claims_by_player.items():
                 # Sort by priority (lowest number = highest priority)
@@ -554,6 +555,7 @@ class WaiverService:
                 # Get player info
                 player_info = roster_api.get_player_by_id(self._dynasty_id, player_id)
                 player_name = f"{player_info.get('first_name', '')} {player_info.get('last_name', '')}".strip() if player_info else f"Player {player_id}"
+                player_position = player_info.get('position', '') if player_info else ''
 
                 # Get team info
                 team = team_loader.get_team_by_id(winning_team_id)
@@ -621,26 +623,27 @@ class WaiverService:
 
                 events.append(f"{team_abbr} claimed {player_name} off waivers (priority #{winner['priority']})")
 
-                # Log transaction for audit trail
-                self._transaction_logger.log_transaction(
-                    dynasty_id=self._dynasty_id,
-                    season=self._season + 1,  # Waiver is during next season's preseason
-                    transaction_type="WAIVER_CLAIM",
-                    player_id=player_id,
-                    player_name=player_name,
-                    from_team_id=None,  # From waivers
-                    to_team_id=winning_team_id,
-                    transaction_date=date(self._season + 1, 8, 28),  # Day after cuts (next year)
-                    details={
+                # Queue transaction for logging AFTER connection closes (avoid DB lock)
+                pending_transaction_logs.append({
+                    "dynasty_id": self._dynasty_id,
+                    "season": self._season + 1,  # Waiver is during next season's preseason
+                    "transaction_type": "WAIVER_CLAIM",
+                    "player_id": player_id,
+                    "player_name": player_name,
+                    "position": player_position,
+                    "from_team_id": None,  # From waivers
+                    "to_team_id": winning_team_id,
+                    "transaction_date": date(self._season + 1, 8, 28),  # Day after cuts (next year)
+                    "details": {
                         "waiver_priority": winner["priority"],
                     }
-                )
+                })
 
             conn.commit()
 
             self._logger.info(f"Processed waiver claims: {len(awarded_claims)} players claimed")
 
-            return {
+            result = {
                 "claims_awarded": awarded_claims,
                 "events": events,
                 "total_awarded": len(awarded_claims),
@@ -648,6 +651,15 @@ class WaiverService:
 
         finally:
             conn.close()
+
+        # Log transactions AFTER closing the main connection to avoid DB lock
+        for tx_data in pending_transaction_logs:
+            try:
+                self._transaction_logger.log_transaction(**tx_data)
+            except Exception as e:
+                self._logger.warning(f"Failed to log waiver transaction: {e}")
+
+        return result
 
     def clear_unclaimed_to_free_agency(self) -> Dict[str, Any]:
         """

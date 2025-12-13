@@ -232,17 +232,17 @@ class PlayoffSeeder:
         """
         Sort teams by NFL tiebreaker rules.
 
-        For MVP: Simple sorting by:
+        Tiebreaker order:
         1. Win percentage (primary)
         2. Total wins (secondary)
-        3. Point differential (tertiary)
-        4. Points scored (quaternary)
+        3. Conference record (tertiary)
+        4. Division record (quaternary)
+        5. Point differential
+        6. Points scored
 
         Future Enhancement: Implement full NFL tiebreaker rules:
         - Head-to-head record
-        - Division record (for division ties)
         - Common games
-        - Conference record
         - Strength of victory
         - Strength of schedule
         - Net points in conference games
@@ -257,10 +257,12 @@ class PlayoffSeeder:
         return sorted(
             teams,
             key=lambda t: (
-                t.win_percentage,      # Primary: Win percentage
-                t.wins,                 # Secondary: Total wins
-                t.point_differential,   # Tertiary: Point differential
-                t.points_for            # Quaternary: Points scored
+                t.win_percentage,       # 1. Win percentage
+                t.wins,                  # 2. Total wins
+                t.conference_wins,       # 3. Conference record
+                t.division_wins,         # 4. Division record
+                t.point_differential,    # 5. Point differential
+                t.points_for             # 6. Points scored
             ),
             reverse=True
         )

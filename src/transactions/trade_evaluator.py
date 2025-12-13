@@ -3,9 +3,12 @@ Trade Evaluator
 
 Evaluates trade proposals from a specific GM's perspective, combining objective
 trade values with personality-driven modifiers to make accept/reject/counter decisions.
+
+Enhanced with player veto logic (Milestone 6: Player Personas).
 """
 
-from typing import List, Tuple
+import logging
+from typing import List, Tuple, Optional, Dict, Any
 
 from team_management.gm_archetype import GMArchetype
 from transactions.personality_modifiers import PersonalityModifiers, TeamContext
@@ -27,18 +30,25 @@ class TradeEvaluator:
     personality modifiers (from PersonalityModifiers) to determine whether
     to accept, reject, or counter a trade proposal.
 
+    Enhanced with player veto logic (Milestone 6) - players can veto trade
+    destinations based on their persona preferences.
+
     The evaluator is stateless - create one instance per GM/team context,
     then call evaluate_proposal() as many times as needed.
     """
 
     # Decision thresholds
     COUNTER_WINDOW = 0.05  # Within 5% of threshold = counter territory
+    VETO_THRESHOLD = 0.30  # Below 30% acceptance probability = player veto
 
     def __init__(
         self,
         gm_archetype: GMArchetype,
         team_context: TeamContext,
-        trade_value_calculator: TradeValueCalculator
+        trade_value_calculator: TradeValueCalculator,
+        db_path: Optional[str] = None,
+        dynasty_id: Optional[str] = None,
+        season: Optional[int] = None
     ):
         """
         Initialize evaluator for specific GM and team context.
@@ -47,10 +57,24 @@ class TradeEvaluator:
             gm_archetype: GM personality traits (0.0-1.0 scales)
             team_context: Current team situation (record, cap, needs, etc.)
             trade_value_calculator: Calculator for objective asset values
+            db_path: Optional database path for player veto checking
+            dynasty_id: Optional dynasty ID for player veto checking
+            season: Optional season year for player veto checking
         """
         self.gm = gm_archetype
         self.team_context = team_context
         self.calculator = trade_value_calculator
+        self._logger = logging.getLogger(__name__)
+
+        # Player veto support (Milestone 6: Player Personas)
+        self._db_path = db_path
+        self._dynasty_id = dynasty_id
+        self._season = season
+
+        # Lazy-loaded persona services
+        self._persona_service = None
+        self._attractiveness_service = None
+        self._preference_engine = None
 
     def evaluate_proposal(
         self,
@@ -101,6 +125,29 @@ class TradeEvaluator:
         min_threshold, max_threshold = PersonalityModifiers.calculate_acceptance_threshold(
             self.gm, self.team_context
         )
+
+        # Step 4.5: Check player vetoes (Milestone 6: Player Personas)
+        # Check if any players being traded TO this team would veto the destination
+        has_veto, veto_details = self._check_player_vetoes(
+            acquiring_assets, from_perspective_of
+        )
+
+        if has_veto:
+            # Player veto overrides GM decision
+            veto_reasoning = self._generate_veto_reasoning(veto_details)
+            return TradeDecision(
+                decision=TradeDecisionType.REJECT,
+                reasoning=veto_reasoning,
+                confidence=0.95,  # High confidence in veto
+                original_proposal=proposal,
+                counter_offer=None,
+                deciding_team_id=from_perspective_of,
+                deciding_gm_name=self.gm.name,
+                perceived_value_ratio=perceived_ratio,
+                objective_value_ratio=objective_ratio,
+                player_veto=True,
+                veto_details=veto_details
+            )
 
         # Step 5: Determine decision type
         decision_type = self._determine_decision_type(
@@ -466,3 +513,172 @@ class TradeEvaluator:
                     f"Asset {asset} has no trade_value. "
                     "Call TradeValueCalculator.evaluate_trade() first to populate values."
                 )
+
+    # =========================================================================
+    # Player Veto Logic (Milestone 6: Player Personas)
+    # =========================================================================
+
+    def _can_check_vetoes(self) -> bool:
+        """Check if player veto checking is enabled (db_path, dynasty_id, season provided)."""
+        return all([self._db_path, self._dynasty_id, self._season is not None])
+
+    def _get_persona_service(self):
+        """Lazy-load PlayerPersonaService."""
+        if self._persona_service is None:
+            from src.game_cycle.services.player_persona_service import PlayerPersonaService
+            self._persona_service = PlayerPersonaService(
+                self._db_path, self._dynasty_id, self._season
+            )
+        return self._persona_service
+
+    def _get_attractiveness_service(self):
+        """Lazy-load TeamAttractivenessService."""
+        if self._attractiveness_service is None:
+            from src.game_cycle.services.team_attractiveness_service import TeamAttractivenessService
+            self._attractiveness_service = TeamAttractivenessService(
+                self._db_path, self._dynasty_id, self._season
+            )
+        return self._attractiveness_service
+
+    def _get_preference_engine(self):
+        """Lazy-load PlayerPreferenceEngine."""
+        if self._preference_engine is None:
+            from src.player_management.preference_engine import PlayerPreferenceEngine
+            self._preference_engine = PlayerPreferenceEngine()
+        return self._preference_engine
+
+    def _estimate_role(self, overall: Optional[int]) -> str:
+        """Estimate player role based on overall rating."""
+        if overall is None:
+            return "rotational"
+        if overall >= 85:
+            return "starter"
+        elif overall >= 75:
+            return "rotational"
+        else:
+            return "depth"
+
+    def _check_player_vetoes(
+        self,
+        acquiring_assets: List[TradeAsset],
+        acquiring_team_id: int
+    ) -> Tuple[bool, List[Dict[str, Any]]]:
+        """
+        Check if any players would veto this trade destination.
+
+        Args:
+            acquiring_assets: Assets being acquired (players to check)
+            acquiring_team_id: Team receiving the players
+
+        Returns:
+            Tuple of (any_veto: bool, veto_details: List[Dict])
+            veto_details contains: player_id, player_name, probability, concerns, persona_type
+        """
+        if not self._can_check_vetoes():
+            return False, []
+
+        veto_details = []
+
+        for asset in acquiring_assets:
+            if asset.asset_type != AssetType.PLAYER:
+                continue
+
+            player_id = asset.player_id
+
+            try:
+                # Get player persona
+                persona_service = self._get_persona_service()
+                persona = persona_service.get_persona(player_id)
+
+                if persona is None:
+                    continue  # No persona = no veto
+
+                # Get destination team attractiveness
+                attractiveness_service = self._get_attractiveness_service()
+                team_attractiveness = attractiveness_service.get_team_attractiveness(
+                    acquiring_team_id
+                )
+
+                if team_attractiveness is None:
+                    self._logger.warning(
+                        f"No attractiveness data for team {acquiring_team_id}, skipping veto check"
+                    )
+                    continue
+
+                # Create trade context offer (current salary, destination role)
+                from src.player_management.preference_engine import ContractOffer
+
+                # Use current salary or estimate market value
+                current_salary = asset.annual_cap_hit or 5_000_000
+                market_value = current_salary  # For trades, use current salary as market proxy
+
+                offer = ContractOffer(
+                    team_id=acquiring_team_id,
+                    aav=current_salary,
+                    total_value=current_salary,  # Trade is immediate
+                    years=1,
+                    guaranteed=0,  # Not relevant for veto
+                    signing_bonus=0,
+                    market_aav=market_value,
+                    role=self._estimate_role(asset.overall_rating)
+                )
+
+                # Calculate acceptance probability
+                preference_engine = self._get_preference_engine()
+                team_score = preference_engine.calculate_team_score(
+                    persona=persona,
+                    team=team_attractiveness,
+                    offer=offer,
+                    is_current_team=False,  # Not their current team
+                    is_drafting_team=(acquiring_team_id == persona.drafting_team_id)
+                )
+
+                probability = preference_engine.calculate_acceptance_probability(
+                    persona=persona,
+                    team_score=team_score,
+                    offer_vs_market=1.0  # Trade at current salary
+                )
+
+                concerns = preference_engine.get_concerns(
+                    persona, team_attractiveness, offer
+                )
+
+                # Check for veto
+                if probability < self.VETO_THRESHOLD:
+                    veto_details.append({
+                        "player_id": player_id,
+                        "player_name": asset.player_name or f"Player #{player_id}",
+                        "probability": probability,
+                        "concerns": concerns,
+                        "persona_type": persona.persona_type.value
+                    })
+                    self._logger.info(
+                        f"Player {asset.player_name} ({persona.persona_type.value}) "
+                        f"vetoes trade to team {acquiring_team_id} "
+                        f"(acceptance: {probability:.2%})"
+                    )
+
+            except Exception as e:
+                self._logger.warning(f"Veto check failed for player {player_id}: {e}")
+                continue
+
+        return len(veto_details) > 0, veto_details
+
+    def _generate_veto_reasoning(self, veto_details: List[Dict[str, Any]]) -> str:
+        """Generate human-readable reasoning for player veto."""
+        if not veto_details:
+            return "No player vetoes."
+
+        parts = []
+        for veto in veto_details:
+            player_name = veto["player_name"]
+            persona_type = veto["persona_type"].replace("_", " ").title()
+            probability = veto["probability"]
+            concerns = veto.get("concerns", [])
+
+            reason = f"{player_name} ({persona_type}) vetoed the trade (acceptance: {probability:.0%})."
+            if concerns:
+                reason += f" Concerns: {', '.join(concerns[:2])}."
+            parts.append(reason)
+
+        return " ".join(parts) + " Trade rejected due to player veto."

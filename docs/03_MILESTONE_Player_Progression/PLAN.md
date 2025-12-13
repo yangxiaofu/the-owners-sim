@@ -211,7 +211,7 @@ def _calculate_potential(self, true_overall: int, archetype: PlayerArchetype, ag
 
 ---
 
-### Tollgate 5: Attribute-Specific Progression
+### Tollgate 5: Attribute-Specific Progression ✅ COMPLETE
 **Goal**: Different attributes progress/regress at different rates based on type (physical vs mental).
 
 **What exists**:
@@ -219,38 +219,40 @@ def _calculate_potential(self, true_overall: int, archetype: PlayerArchetype, ag
 - Current system applies uniform random changes to all attributes
 
 **Tasks**:
-- [ ] Categorize attributes by type:
-  ```python
-  ATTRIBUTE_CATEGORIES = {
-      "physical": ["speed", "strength", "agility", "stamina"],       # Decline faster
-      "technique": ["technique", "route_running", "blocking"],       # Peak-stable
-      "mental": ["awareness", "composure", "discipline", "vision"],  # Improve longer
-  }
-  ```
-- [ ] Apply category-specific aging curves:
-  - Physical: Decline starts at peak_start (not peak_end)
-  - Technique: Stable through peak, gradual decline after
-  - Mental: Can improve until 35+, very slow decline
-- [ ] Weight attribute changes by category in overall recalculation
+- [x] Categorize attributes by type (40 total):
+  - Physical (10): speed, strength, agility, stamina, elusiveness, mobility, range, kick_power, punt_power, hang_time
+  - Mental (10): awareness, discipline, composure, experience, penalty_technique, vision, pocket_presence, pressure, ball_skills, snap_timing
+  - Technique (20): accuracy, arm_strength, route_running, catching, hands, release, blocking, pass_blocking, run_blocking, technique, pass_rush, run_defense, coverage, press, tackling, carrying, kick_accuracy, punt_accuracy, snap_accuracy, run_support
+- [x] Apply category-specific aging curves:
+  - Physical: 70/20/10 young → 5/25/70 veteran (fastest decline)
+  - Mental: 60/30/10 young → 25/50/25 veteran + super_veteran at 35+ (can improve longest)
+  - Technique: 65/25/10 young → 10/50/40 veteran (most stable)
+- [x] Per-attribute probability weights in `calculate_changes()` loop
 
-**Example Decay Rates**:
-| Category | Pre-Peak | Peak | Post-Peak |
-|----------|----------|------|-----------|
-| Physical | +2.0 | 0 | -2.5 |
-| Technique | +1.5 | ±0.5 | -1.0 |
-| Mental | +1.0 | +0.5 | -0.5 |
+**Category-Specific Parameters**:
+| Category | Young | Prime | Veteran |
+|----------|-------|-------|---------|
+| **Physical** | 70/20/10, +1-3 | 10/60/30, 0-1 | 5/25/70, -4 to -1 |
+| **Technique** | 65/25/10, +1-2 | 30/50/20, ±1 | 10/50/40, -2 to -1 |
+| **Mental** | 60/30/10, +1-2 | 40/50/10, ±1 | 25/50/25, -1 |
 
-**Files to modify**:
-- `src/game_cycle/services/training_camp_service.py`
+*Format: improve%/stable%/decline%, range*
+
+**Files modified**:
+- `src/transactions/transaction_constants.py` - Added `AttributeCategory` enum, `AttributeCategoryParameters` class, `ATTRIBUTE_CATEGORY_MAP`, `get_attribute_category()`
+- `src/game_cycle/services/training_camp_service.py` - Modified `calculate_changes()` for category-aware progression
+- `tests/game_cycle/services/test_training_camp_progression.py` - Added 2 new test classes (~20 tests) for Tollgate 5
 
 **Acceptance Criteria**:
-- [ ] 32-year-old QB loses speed but gains/maintains awareness
-- [ ] Physical attributes decline faster than mental attributes
-- [ ] Technique attributes remain stable longest
+- [x] 32-year-old QB loses speed but gains/maintains awareness
+- [x] Physical attributes decline faster than mental attributes
+- [x] Technique attributes remain stable longest
+- [x] Mental attributes can still improve at 35+ (super_veteran)
+- [x] All 100 tests passing (19 new Tollgate 5 tests + 81 existing)
 
 ---
 
-### Tollgate 6: Career History Tracking
+### Tollgate 6: Career History Tracking ✅ COMPLETE
 **Goal**: Track year-over-year progression for analytics and UI display.
 
 **What exists**:
@@ -258,39 +260,31 @@ def _calculate_potential(self, true_overall: int, archetype: PlayerArchetype, ag
 - No persistence of historical progression
 
 **Tasks**:
-- [ ] Create `player_progression_history` database table:
-  ```sql
-  CREATE TABLE player_progression_history (
-      id INTEGER PRIMARY KEY,
-      dynasty_id TEXT NOT NULL,
-      player_id INTEGER NOT NULL,
-      season INTEGER NOT NULL,
-      age INTEGER NOT NULL,
-      overall_before INTEGER,
-      overall_after INTEGER,
-      overall_change INTEGER,
-      attribute_changes TEXT,  -- JSON
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(dynasty_id, player_id, season)
-  );
-  ```
-- [ ] Modify `TrainingCampService._persist_attribute_changes()` to also insert history
-- [ ] Add API method to retrieve player career arc: `get_player_progression_history(player_id)`
-- [ ] UI: Show career progression chart in player detail (optional enhancement)
+- [x] Create `player_progression_history` database table with indexes
+- [x] Create `ProgressionHistoryAPI` class (following project patterns - services don't make direct DB calls)
+- [x] Create `ProgressionHistoryRecord` dataclass for batch inserts
+- [x] Modify `TrainingCampService._persist_attribute_changes()` to call API after player updates
+- [x] Add wrapper method `get_player_progression_history()` to TrainingCampService
+- [x] Add comprehensive unit tests for API (17 tests)
+- [x] Add integration tests for history persistence (10 tests)
 
-**Files to modify**:
-- Database schema (new table)
-- `src/game_cycle/services/training_camp_service.py`
-- `src/database/` (new API method if applicable)
+**Files modified**:
+- `src/game_cycle/database/schema.sql` - Added `player_progression_history` table with indexes
+- `src/game_cycle/database/progression_history_api.py` - NEW: Database API for history operations
+- `src/game_cycle/services/training_camp_service.py` - Import API, instantiate in `__init__`, call from persistence method, wrapper method
+- `tests/game_cycle/database/__init__.py` - NEW
+- `tests/game_cycle/database/test_progression_history_api.py` - NEW: 17 unit tests for API
+- `tests/game_cycle/services/test_training_camp_history.py` - NEW: 10 integration tests
 
 **Acceptance Criteria**:
-- [ ] History record created for every player each training camp
-- [ ] Can query 5-year progression trend for any player
-- [ ] History survives database migrations
+- [x] History record created for every player each training camp
+- [x] Can query 5-year progression trend for any player
+- [x] History survives database migrations (standard schema.sql)
+- [x] 27 new tests for Tollgate 6, all 127 game_cycle tests passing
 
 ---
 
-### Tollgate 7: UI Integration & Polish
+### Tollgate 7: UI Integration & Polish ✅ COMPLETE
 **Goal**: Surface progression information to users in existing views.
 
 **What exists**:
@@ -298,29 +292,43 @@ def _calculate_potential(self, true_overall: int, archetype: PlayerArchetype, ag
 - Player views in roster management
 
 **Tasks**:
-- [ ] Training Camp View enhancements:
+- [x] Training Camp View enhancements:
   - Add "By Position" breakdown tab
-  - Show potential vs current overall
-  - Highlight "breakout" players (exceeded expected growth)
-  - Flag "bust" players (declined when should grow)
-- [ ] Player Detail View additions:
+  - Show potential vs current overall (9th column)
+  - Highlight "breakout" players (★ prefix, blue styling) - exceeded expected growth
+  - Flag "bust" players (⚠ prefix, red styling) - declined when should grow
+  - Add "Breakouts Only" and "Busts Only" filter options
+- [x] Player Detail View additions (PlayerProgressionDialog):
   - Show development curve type (Early/Normal/Late Bloomer)
-  - Show peak age window
+  - Show peak age window from archetype
   - Show potential ceiling
-  - Career arc mini-chart (if history exists)
-- [ ] Roster View column additions:
-  - Add sortable "Potential" column
-  - Add "Dev Type" indicator
+  - Career arc chart using QCharts (line graph over seasons)
+  - Season history table with color-coded changes
+- [x] Roster View column additions:
+  - Add "Potential" column with color coding (green=near ceiling, blue=high upside)
+  - Add "Dev" column with badge styling (E=orange, N=gray, L=blue)
+  - Added to RosterCutsView, FreeAgencyView, ResigningView
 
-**Files to modify**:
-- `game_cycle_ui/views/training_camp_view.py`
-- `game_cycle_ui/views/roster_view.py` (or equivalent)
-- Player detail components
+**Files modified**:
+- `src/game_cycle/services/training_camp_service.py` - Added `potential` and `dev_type` to `PlayerDevelopmentResult`
+- `src/game_cycle/services/roster_cuts_service.py` - Added `_get_dev_type()`, include potential/dev_type in player dicts
+- `src/game_cycle/services/free_agency_service.py` - Added `_get_dev_type()`, include potential/dev_type in player dicts
+- `src/game_cycle/services/resigning_service.py` - Added `_get_dev_type()`, include potential/dev_type in player dicts
+- `game_cycle_ui/views/training_camp_view.py` - Potential column, breakout/bust highlighting, By Position tab, double-click handler
+- `game_cycle_ui/views/roster_cuts_view.py` - Added Potential and Dev columns (10→12 columns)
+- `game_cycle_ui/views/free_agency_view.py` - Added Potential and Dev columns (7→9 columns)
+- `game_cycle_ui/views/resigning_view.py` - Added Potential and Dev columns (7→9 columns)
+- `game_cycle_ui/dialogs/player_progression_dialog.py` - NEW: Player detail dialog with QCharts career arc
+- `game_cycle_ui/dialogs/__init__.py` - Export `PlayerProgressionDialog`
 
 **Acceptance Criteria**:
-- [ ] User can see player potential in roster view
-- [ ] Training camp results show position breakdown
-- [ ] Development type visible on player cards
+- [x] User can see player potential in roster views (RosterCuts, FreeAgency, Resigning)
+- [x] Training camp results show position breakdown (By Position tab)
+- [x] Development type visible (Dev column in roster views)
+- [x] Breakout players highlighted with ★ icon and blue styling
+- [x] Bust players flagged with ⚠ icon and red styling
+- [x] Player detail dialog shows dev curve, peak ages, potential, career chart
+- [x] Career arc chart displays overall rating over seasons
 
 ---
 

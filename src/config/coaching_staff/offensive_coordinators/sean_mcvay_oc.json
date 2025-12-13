@@ -69,7 +69,16 @@
     "deep_threat_prioritization": 0.6
   },
   "situational_calling": {
-    "first_down_pass_rate": 0.6,
+    "first_down_pass_rate": 0.55,
+    "second_and_short_pass_rate": 0.50,
+    "second_and_medium_pass_rate": 0.60,
+    "second_and_long_pass_rate": 0.70,
+    "third_and_short_pass_rate": 0.40,
+    "third_and_medium_pass_rate": 0.65,
+    "third_and_long_pass_rate": 0.88,
+    "goal_line_pass_rate": 0.55,
+    "red_zone_pass_rate": 0.60,
+    "two_minute_pass_rate": 0.80,
     "second_and_long_creativity": 0.9,
     "third_down_conversion_aggression": 0.8,
     "red_zone_fade_preference": 0.5,

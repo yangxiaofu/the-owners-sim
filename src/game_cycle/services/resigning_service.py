@@ -6,10 +6,10 @@ Uses MarketValueCalculator to generate realistic contract offers.
 """
 
 from datetime import date
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 import logging
 
-from persistence.transaction_logger import TransactionLogger
+from src.persistence.transaction_logger import TransactionLogger
 
 
 class ResigningService:
@@ -45,6 +45,11 @@ class ResigningService:
         # Lazy-loaded cap helper
         self._cap_helper = None
 
+        # Lazy-loaded persona/attractiveness services
+        self._persona_service = None
+        self._attractiveness_service = None
+        self._preference_engine = None
+
         # Transaction logger for audit trail
         self._transaction_logger = TransactionLogger(db_path)
 
@@ -59,6 +64,174 @@ class ResigningService:
             # Offseason contracts/cap are for NEXT season
             self._cap_helper = CapHelper(self._db_path, self._dynasty_id, self._season + 1)
         return self._cap_helper
+
+    def _get_persona_service(self):
+        """Lazy-load PlayerPersonaService."""
+        if self._persona_service is None:
+            from src.game_cycle.services.player_persona_service import PlayerPersonaService
+            self._persona_service = PlayerPersonaService(
+                self._db_path, self._dynasty_id, self._season
+            )
+        return self._persona_service
+
+    def _get_attractiveness_service(self):
+        """Lazy-load TeamAttractivenessService."""
+        if self._attractiveness_service is None:
+            from src.game_cycle.services.team_attractiveness_service import TeamAttractivenessService
+            from src.game_cycle.database.connection import GameCycleDatabase
+            db = GameCycleDatabase(self._db_path)
+            self._attractiveness_service = TeamAttractivenessService(
+                db, self._dynasty_id, self._season
+            )
+        return self._attractiveness_service
+
+    def _get_preference_engine(self):
+        """Lazy-load PlayerPreferenceEngine."""
+        if self._preference_engine is None:
+            from src.player_management.preference_engine import PlayerPreferenceEngine
+            self._preference_engine = PlayerPreferenceEngine()
+        return self._preference_engine
+
+    def _calculate_age(self, birthdate: Optional[str]) -> int:
+        """Calculate age from birthdate string."""
+        if not birthdate:
+            return 25  # Default
+        try:
+            birth_year = int(birthdate.split("-")[0])
+            return self._season - birth_year
+        except (ValueError, IndexError):
+            return 25
+
+    def _estimate_role(self, team_id: int, position: str, overall: int) -> str:
+        """Estimate player's role on the team.
+
+        Simple heuristic:
+        - 85+ overall: starter
+        - 70-84 overall: rotational
+        - <70 overall: backup
+        """
+        if overall >= 85:
+            return "starter"
+        elif overall >= 70:
+            return "rotational"
+        else:
+            return "backup"
+
+    def _get_dev_type(self, archetype_id: Optional[str]) -> str:
+        """
+        Get development type abbreviation from archetype ID.
+
+        Args:
+            archetype_id: Archetype ID to look up
+
+        Returns:
+            Development type: "E" (early), "N" (normal), or "L" (late)
+        """
+        if not archetype_id:
+            return "N"
+        try:
+            from src.player_generation.archetypes.archetype_registry import ArchetypeRegistry
+            registry = ArchetypeRegistry()
+            archetype = registry.get_archetype(archetype_id)
+            if archetype and archetype.development_curve:
+                return {"early": "E", "normal": "N", "late": "L"}.get(archetype.development_curve, "N")
+        except Exception:
+            pass
+        return "N"
+
+    def _check_player_acceptance(
+        self,
+        player_id: int,
+        player_info: Dict[str, Any],
+        team_id: int,
+        aav: int,
+        total_value: int,
+        years: int,
+        guaranteed: int,
+        signing_bonus: int,
+        market_aav: int,
+        position: str,
+        overall: int
+    ) -> Dict[str, Any]:
+        """Check if player accepts the re-signing offer based on preferences.
+
+        Key difference from FA: is_current_team=True gives loyalty bonus.
+
+        Returns:
+            Dict with:
+                - accepted: bool
+                - probability: float (0.0-1.0)
+                - concerns: List[str]
+                - interest_level: str ("low", "medium", "high")
+        """
+        from src.player_management.preference_engine import ContractOffer
+
+        try:
+            # Get or generate player persona
+            persona_service = self._get_persona_service()
+            persona = persona_service.get_persona(player_id)
+
+            if persona is None:
+                age = self._calculate_age(player_info.get("birthdate"))
+                persona = persona_service.generate_persona(
+                    player_id=player_id,
+                    age=age,
+                    overall=overall,
+                    position=position,
+                    team_id=team_id,  # Current team, unlike FA
+                )
+                persona_service.save_persona(persona)
+
+            # Get team attractiveness
+            attractiveness_service = self._get_attractiveness_service()
+            team_attractiveness = attractiveness_service.get_team_attractiveness(team_id)
+
+            # Build contract offer
+            offer = ContractOffer(
+                team_id=team_id,
+                aav=aav,
+                total_value=total_value,
+                years=years,
+                guaranteed=guaranteed,
+                signing_bonus=signing_bonus,
+                market_aav=market_aav,
+                role=self._estimate_role(team_id, position, overall)
+            )
+
+            # Evaluate offer - KEY: is_current_team=True for re-signing
+            preference_engine = self._get_preference_engine()
+            accepted, probability, concerns = preference_engine.should_accept_offer(
+                persona=persona,
+                team=team_attractiveness,
+                offer=offer,
+                is_current_team=True,  # KEY DIFFERENCE: Loyalty bonus applies
+                is_drafting_team=(team_id == persona.drafting_team_id)
+            )
+
+            # Determine interest level
+            if probability >= 0.75:
+                interest_level = "high"
+            elif probability >= 0.45:
+                interest_level = "medium"
+            else:
+                interest_level = "low"
+
+            return {
+                "accepted": accepted,
+                "probability": probability,
+                "concerns": concerns,
+                "interest_level": interest_level
+            }
+
+        except Exception as e:
+            self._logger.error(f"Preference check failed for player {player_id}: {e}")
+            # Fallback: Accept (don't block re-signing due to preference system errors)
+            return {
+                "accepted": True,
+                "probability": 0.50,
+                "concerns": [],
+                "interest_level": "medium"
+            }
 
     def get_cap_summary(self, team_id: int) -> dict:
         """
@@ -115,12 +288,13 @@ class ResigningService:
                         positions = json.loads(positions)
                     position = positions[0] if positions else ""
 
-                    # Extract overall from JSON attributes
+                    # Extract overall and potential from JSON attributes
                     attributes = player_info.get("attributes", {})
                     if isinstance(attributes, str):
                         import json
                         attributes = json.loads(attributes)
                     overall = attributes.get("overall", 0)
+                    potential = attributes.get("potential", overall)
 
                     # Calculate age from birthdate if available
                     age = 0
@@ -138,12 +312,18 @@ class ResigningService:
                     contract_years = contract.get("contract_years", 1)
                     aav = total_value // contract_years if contract_years > 0 else 0
 
+                    # Get development type from archetype
+                    archetype_id = player_info.get("archetype_id")
+                    dev_type = self._get_dev_type(archetype_id)
+
                     expiring_players.append({
                         "player_id": player_id,
                         "name": f"{player_info.get('first_name', '')} {player_info.get('last_name', '')}".strip(),
                         "position": position,
                         "age": age,
                         "overall": overall,
+                        "potential": potential,
+                        "dev_type": dev_type,
                         "years_pro": player_info.get("years_pro", 0),
                         "salary": aav,
                         "years_remaining": years_remaining,
@@ -159,17 +339,20 @@ class ResigningService:
         self,
         player_id: int,
         team_id: int,
-        player_info: Optional[Dict[str, Any]] = None
+        player_info: Optional[Dict[str, Any]] = None,
+        skip_preference_check: bool = False
     ) -> Dict[str, Any]:
         """
         Re-sign a player with a new market-value contract.
 
         Uses MarketValueCalculator to determine contract terms automatically.
+        Checks player preferences unless skip_preference_check is True.
 
         Args:
             player_id: Player ID to re-sign
             team_id: Team ID
             player_info: Optional player info dict (to avoid extra DB query)
+            skip_preference_check: If True, bypass player preference check
 
         Returns:
             Dict with:
@@ -178,6 +361,10 @@ class ResigningService:
                 - contract_details: dict with AAV, years, etc.
                 - player_name: str
                 - error_message: str (if failed)
+                - rejection_reason: str (if rejected by player)
+                - concerns: List[str] (if rejected)
+                - acceptance_probability: float (if rejected)
+                - interest_level: str (if rejected)
         """
         from salary_cap.cap_database_api import CapDatabaseAPI
         from salary_cap.contract_manager import ContractManager
@@ -243,6 +430,36 @@ class ResigningService:
             signing_bonus = int(market_value["signing_bonus"] * 1_000_000)
             guaranteed = int(market_value["guaranteed"] * 1_000_000)
             years = market_value["years"]
+
+            # Player preference check (unless skipped)
+            if not skip_preference_check:
+                acceptance_result = self._check_player_acceptance(
+                    player_id=player_id,
+                    player_info=player_info,
+                    team_id=team_id,
+                    aav=aav,
+                    total_value=total_value,
+                    years=years,
+                    guaranteed=guaranteed,
+                    signing_bonus=signing_bonus,
+                    market_aav=aav,  # At market value for re-signings
+                    position=position,
+                    overall=overall
+                )
+
+                if not acceptance_result["accepted"]:
+                    self._logger.info(
+                        f"Player {player_name} declined re-signing from team {team_id}: "
+                        f"{acceptance_result['concerns']}"
+                    )
+                    return {
+                        "success": False,
+                        "error_message": "Player declined re-signing offer",
+                        "rejection_reason": "Player declined based on preferences",
+                        "concerns": acceptance_result["concerns"],
+                        "acceptance_probability": acceptance_result["probability"],
+                        "interest_level": acceptance_result["interest_level"],
+                    }
 
             # Check cap space for NEXT season (offseason re-signings)
             from salary_cap.cap_calculator import CapCalculator
@@ -315,6 +532,7 @@ class ResigningService:
                 transaction_type="UFA_SIGNING",
                 player_id=player_id,
                 player_name=player_name,
+                position=position,
                 from_team_id=team_id,  # Re-signing = same team
                 to_team_id=team_id,
                 transaction_date=date(self._season + 1, 2, 15),  # Re-signing period (next year)
@@ -322,7 +540,6 @@ class ResigningService:
                     "contract_years": years,
                     "contract_value": total_value,
                     "guaranteed": guaranteed,
-                    "position": position,
                     "is_resigning": True,
                 }
             )
@@ -389,6 +606,13 @@ class ResigningService:
             # Handle both "name" key (from get_expiring_contracts) and first_name/last_name keys (from roster API)
             player_name = player_info.get("name") or f"{player_info.get('first_name', '')} {player_info.get('last_name', '')}".strip()
 
+            # Extract position from JSON positions array
+            import json
+            positions = player_info.get("positions", [])
+            if isinstance(positions, str):
+                positions = json.loads(positions)
+            player_position = positions[0] if positions else ""
+
             # Get current team_id from player_info
             current_team_id = player_info.get("team_id", team_id)
 
@@ -418,6 +642,7 @@ class ResigningService:
                 transaction_type="RELEASE",
                 player_id=player_id,
                 player_name=player_name,
+                position=player_position,
                 from_team_id=current_team_id,
                 to_team_id=None,  # To free agency
                 transaction_date=date(self._season + 1, 2, 15),  # Re-signing period (next year)
@@ -440,11 +665,11 @@ class ResigningService:
 
     def process_ai_resignings(self, user_team_id: int) -> Dict[str, Any]:
         """
-        Process AI team re-signing decisions.
+        Process AI team re-signing decisions with player preference awareness.
 
         For each AI team (not user_team_id):
         1. Get expiring contracts
-        2. Decide based on overall rating + age
+        2. Evaluate player preferences
         3. Re-sign or release each player
 
         Args:
@@ -454,6 +679,7 @@ class ResigningService:
             Dict with:
                 - resigned: List of re-signed player info
                 - released: List of released player info
+                - rejections: List of players who rejected re-signing
                 - events: List of event strings for UI
         """
         from team_management.teams.team_loader import TeamDataLoader
@@ -463,6 +689,7 @@ class ResigningService:
 
         resigned = []
         released = []
+        rejections = []
         events = []
 
         for team in all_teams:
@@ -477,10 +704,17 @@ class ResigningService:
 
             for player in expiring:
                 player_id = player["player_id"]
-                should_resign = self._should_ai_resign(player)
+                player_name = player.get("name", "Unknown")
 
-                if should_resign:
+                # Check if AI should attempt re-signing using preferences
+                should_attempt, probability, concerns = self._should_ai_resign(
+                    player, team_id
+                )
+
+                if should_attempt:
+                    # Attempt re-signing (includes preference check)
                     result = self.resign_player(player_id, team_id, player)
+
                     if result["success"]:
                         resigned.append({
                             "player_id": player_id,
@@ -492,7 +726,31 @@ class ResigningService:
                         events.append(
                             f"{team.abbreviation} re-signed {result['player_name']}"
                         )
+                    elif result.get("rejection_reason"):
+                        # Player rejected the re-signing offer
+                        rejections.append({
+                            "player_id": player_id,
+                            "player_name": player_name,
+                            "team_id": team_id,
+                            "team_name": team.full_name,
+                            "reason": result.get("rejection_reason"),
+                            "concerns": result.get("concerns", []),
+                            "acceptance_probability": result.get("acceptance_probability"),
+                        })
+                        # Release player to free agency since they rejected
+                        release_result = self.release_player(player_id, team_id, player)
+                        if release_result["success"]:
+                            released.append({
+                                "player_id": player_id,
+                                "player_name": player_name,
+                                "team_id": team_id,
+                                "team_name": team.full_name,
+                            })
+                            events.append(
+                                f"{team.abbreviation}: {player_name} rejected re-signing, became free agent"
+                            )
                 else:
+                    # AI decided not to attempt re-signing
                     result = self.release_player(player_id, team_id, player)
                     if result["success"]:
                         released.append({
@@ -506,60 +764,149 @@ class ResigningService:
                         )
 
         self._logger.info(
-            f"AI re-signing complete: {len(resigned)} re-signed, {len(released)} released"
+            f"AI re-signing complete: {len(resigned)} re-signed, "
+            f"{len(rejections)} rejected, {len(released)} released"
         )
 
         return {
             "resigned": resigned,
             "released": released,
+            "rejections": rejections,
             "events": events,
         }
 
-    def _should_ai_resign(self, player: Dict[str, Any]) -> bool:
+    def _should_ai_resign(
+        self,
+        player: Dict[str, Any],
+        team_id: int
+    ) -> Tuple[bool, float, List[str]]:
         """
-        Decide if AI should re-sign a player.
+        Decide if AI should re-sign a player using player preferences.
 
-        Simple algorithm based on:
-        - Overall rating
-        - Age
-        - Position value
+        Uses player persona and team attractiveness to determine likelihood
+        of successful re-signing. Falls back to basic heuristics if persona
+        system is unavailable.
 
         Args:
-            player: Player dict with overall, age, position
+            player: Player dict with overall, age, position, player_id
+            team_id: Team ID attempting the re-signing
 
         Returns:
-            True if AI should re-sign, False to release
+            Tuple of (should_attempt, acceptance_probability, concerns)
         """
         overall = player.get("overall", 0)
         age = player.get("age", 0)
         position = player.get("position", "")
+        player_id = player.get("player_id")
 
-        # Elite players always re-sign (unless very old)
-        if overall >= 85:
-            return age < 35
+        # Basic checks first
+        # Elite players always try to re-sign (unless very old)
+        if overall >= 85 and age >= 35:
+            return (False, 0.0, ["Player too old to invest in"])
 
         # Old + mediocre = release
         if age >= 32 and overall < 80:
-            return False
+            return (False, 0.0, ["Player declining with age"])
 
         # Very old players = release unless elite
-        if age >= 34:
-            return overall >= 85
+        if age >= 34 and overall < 85:
+            return (False, 0.0, ["Player past prime"])
 
+        # Below average players = release
+        if overall < 65:
+            return (False, 0.0, ["Player below re-signing threshold"])
+
+        # Try to get preference-based evaluation
+        if player_id:
+            try:
+                persona_service = self._get_persona_service()
+                persona = persona_service.get_persona(player_id)
+
+                if persona:
+                    # Get team attractiveness
+                    attractiveness_service = self._get_attractiveness_service()
+                    team_attractiveness = attractiveness_service.get_team_attractiveness(team_id)
+
+                    # Calculate market value for evaluation
+                    from offseason.market_value_calculator import MarketValueCalculator
+                    from src.player_management.preference_engine import ContractOffer
+
+                    market_calculator = MarketValueCalculator()
+                    years_pro = player.get("years_pro", 3)
+
+                    market_value = market_calculator.calculate_player_value(
+                        position=position,
+                        overall=overall,
+                        age=age,
+                        years_pro=years_pro
+                    )
+
+                    market_aav = int(market_value["aav"] * 1_000_000)
+                    years = market_value["years"]
+
+                    offer = ContractOffer(
+                        team_id=team_id,
+                        aav=market_aav,
+                        total_value=market_aav * years,
+                        years=years,
+                        guaranteed=int(market_value["guaranteed"] * 1_000_000),
+                        signing_bonus=int(market_value["signing_bonus"] * 1_000_000),
+                        market_aav=market_aav,
+                        role=self._estimate_role(team_id, position, overall)
+                    )
+
+                    preference_engine = self._get_preference_engine()
+                    team_score = preference_engine.calculate_team_score(
+                        persona=persona,
+                        team=team_attractiveness,
+                        offer=offer,
+                        is_current_team=True,  # KEY: Loyalty bonus applies
+                        is_drafting_team=(team_id == persona.drafting_team_id)
+                    )
+
+                    probability = preference_engine.calculate_acceptance_probability(
+                        persona=persona,
+                        team_score=team_score,
+                        offer_vs_market=1.0  # At market value
+                    )
+
+                    concerns = preference_engine.get_concerns(
+                        persona, team_attractiveness, offer
+                    )
+
+                    # AI decision based on probability
+                    # High probability: definitely try
+                    # Medium probability: try if important player
+                    # Low probability: skip unless star
+                    if probability >= 0.60:
+                        return (True, probability, concerns)
+                    elif probability >= 0.40 and overall >= 80:
+                        return (True, probability, concerns)
+                    else:
+                        return (False, probability, concerns)
+
+            except Exception as e:
+                self._logger.warning(f"Preference evaluation failed: {e}")
+                # Fall through to default logic
+
+        # Default logic: attempt if decent player
         # Good starters usually re-sign
         if overall >= 75:
-            return True
+            return (True, 0.50, [])
 
         # Premium positions get more leeway
         premium_positions = [
             "quarterback", "left_tackle", "right_tackle",
             "defensive_end", "cornerback", "wide_receiver"
         ]
-        if position in premium_positions:
-            return overall >= 68
+        if position in premium_positions and overall >= 68:
+            return (True, 0.50, [])
 
         # Default: re-sign average or better starters
-        return overall >= 70
+        if overall >= 70:
+            return (True, 0.50, [])
+
+        return (False, 0.0, [])
 
     def get_team_cap_space(self, team_id: int) -> int:
         """

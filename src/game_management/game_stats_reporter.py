@@ -9,12 +9,12 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime
 
-from src.game_management.game_manager import GameManager, GameState
-from src.game_management.scoreboard import Scoreboard, ScoringEvent
-from src.game_management.box_score_generator import BoxScoreGenerator
-from src.game_management.play_by_play_display import PlayByPlayDisplay, DriveDisplay
-from src.play_engine.simulation.stats import PlayerStatsAccumulator, TeamStatsAccumulator
-from src.team_management.teams.team_loader import Team
+from game_management.game_manager import GameManager, GameState
+from game_management.scoreboard import Scoreboard, ScoringEvent
+from game_management.box_score_generator import BoxScoreGenerator
+from game_management.play_by_play_display import PlayByPlayDisplay, DriveDisplay
+from play_engine.simulation.stats import PlayerStatsAccumulator, TeamStatsAccumulator
+from team_management.teams.team_loader import Team
 
 
 @dataclass

@@ -292,7 +292,9 @@ class PlayerRosterAPI:
             WHERE p.dynasty_id = ?
                 AND p.team_id = ?
                 AND tr.roster_status = 'active'
-            ORDER BY tr.depth_chart_order, p.number
+            ORDER BY tr.depth_chart_order,
+                     json_extract(p.attributes, '$.overall') DESC,
+                     p.number
         """
 
         roster = self.db_connection.execute_query(query, (dynasty_id, team_id))

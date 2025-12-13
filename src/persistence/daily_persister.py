@@ -15,12 +15,12 @@ import json
 
 # Use try/except to handle both production and test imports
 try:
-    from persistence.schema_generator import (
+    from .schema_generator import (
         generate_player_stats_insert,
         extract_player_stats_params
     )
-except ModuleNotFoundError:
-    from .schema_generator import (
+except ImportError:
+    from src.persistence.schema_generator import (
         generate_player_stats_insert,
         extract_player_stats_params
     )

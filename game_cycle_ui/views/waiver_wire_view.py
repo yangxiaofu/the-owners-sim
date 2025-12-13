@@ -15,6 +15,9 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor, QBrush
 
+from game_cycle_ui.theme import TABLE_HEADER_STYLE
+from constants.position_abbreviations import get_position_abbreviation
+
 
 class WaiverWireView(QWidget):
     """
@@ -180,6 +183,7 @@ class WaiverWireView(QWidget):
 
         # Configure table appearance
         header = self.players_table.horizontalHeader()
+        header.setStyleSheet(TABLE_HEADER_STYLE)
         header.setSectionResizeMode(0, QHeaderView.Stretch)  # Player name stretches
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
@@ -285,7 +289,8 @@ class WaiverWireView(QWidget):
         self.players_table.setItem(row, 0, name_item)
 
         # Position
-        pos_item = QTableWidgetItem(player.get("position", ""))
+        position = player.get("position", "")
+        pos_item = QTableWidgetItem(get_position_abbreviation(position))
         pos_item.setTextAlignment(Qt.AlignCenter)
         if highlight_color:
             pos_item.setBackground(QBrush(highlight_color))

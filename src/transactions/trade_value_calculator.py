@@ -14,6 +14,7 @@ from .transaction_constants import (
     AgeCurveParameters,
     TradeValueScaling
 )
+from src.constants.position_normalizer import normalize_position
 
 
 class TradeValueCalculator:

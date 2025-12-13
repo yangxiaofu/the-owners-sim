@@ -13,6 +13,7 @@ import random
 import math
 from typing import List, Tuple, Dict, Optional, Union
 from .stats import PlayerStats, PlayStatsSummary, create_player_stats_from_player
+from .base_simulator import BasePlaySimulator
 from ..mechanics.formations import OffensiveFormation, DefensiveFormation
 from ..mechanics.unified_formations import UnifiedDefensiveFormation, SimulatorContext
 from ..play_types.base_types import PlayType
@@ -24,6 +25,7 @@ from ..mechanics.penalties.penalty_engine import PenaltyEngine, PlayContext, Pen
 from ..mechanics.penalties.penalty_data_structures import PenaltyInstance
 from ..config.config_loader import config
 from ..config.timing_config import NFLTimingConfig
+from game_management.random_events import RandomEventChecker
 
 
 class PuntPlayParams:
@@ -52,31 +54,41 @@ class PuntPlayParams:
         return self.defensive_formation
 
 
-class PuntSimulator:
+class PuntSimulator(BasePlaySimulator):
     """Simulates punt plays with comprehensive four-phase penalty integration and individual player attribution"""
-    
+
     def __init__(self, offensive_players: List, defensive_players: List,
-                 offensive_formation: str, defensive_formation: str):
+                 offensive_formation: str, defensive_formation: str,
+                 offensive_team_id: int = None, defensive_team_id: int = None,
+                 random_event_checker=None):
         """
         Initialize punt simulator
-        
+
         Args:
             offensive_players: List of 11 offensive Player objects (punt unit)
             defensive_players: List of 11 defensive Player objects
             offensive_formation: Offensive formation (typically "PUNT")
             defensive_formation: Defensive formation (PUNT_RETURN, PUNT_BLOCK, PUNT_SAFE, SPREAD_RETURN)
+            offensive_team_id: Team ID for the punting team (1-32)
+            defensive_team_id: Team ID for the return team (1-32)
+            random_event_checker: Optional RandomEventChecker for rare events (Tollgate 7)
         """
         self.offensive_players = offensive_players
         self.defensive_players = defensive_players
         self.offensive_formation = offensive_formation
         self.defensive_formation = defensive_formation
-        
+        self.offensive_team_id = offensive_team_id
+        self.defensive_team_id = defensive_team_id
+
+        # Variance & Unpredictability (Tollgate 7)
+        self.random_event_checker = random_event_checker or RandomEventChecker()
+
         # Initialize penalty engine
         self.penalty_engine = PenaltyEngine()
-        
+
         # Load punt configuration
         self.punt_config = config.get_punt_config()
-        
+
         # Identify key special teams players
         self._identify_special_teams_players()
     
@@ -239,9 +251,23 @@ class PuntSimulator:
             })
     
     def _check_for_block(self, formation_matchup: Dict, context: PlayContext) -> bool:
-        """Check if punt attempt is blocked based on formation matchup"""
-        block_probability = formation_matchup.get('block_probability', 0.05)
-        return random.random() < block_probability
+        """
+        Check if punt attempt is blocked.
+
+        Uses random event checker for NFL-realistic 0.8% base probability,
+        modified by formation matchup (e.g., PUNT_BLOCK formation increases chance).
+        """
+        # Base NFL-realistic block probability (0.8% per punt)
+        if self.random_event_checker.check_blocked_punt():
+            return True
+
+        # Additional formation-based block chance (tactical decision)
+        # This supplements the random rare event with strategic blocking attempts
+        formation_block_modifier = formation_matchup.get('block_probability', 0.0)
+        if formation_block_modifier > 0 and random.random() < formation_block_modifier:
+            return True
+
+        return False
     
     def _handle_blocked_punt(self, context: PlayContext) -> 'PuntResult':
         """Handle blocked punt scenario"""
@@ -516,11 +542,13 @@ class PuntSimulator:
         base_distance_config = self.punt_config.get('punt_execution', {}).get('base_punt_distance', {})
         base_distance = base_distance_config.get('avg', 45)
         
-        # Apply punter skill and environmental factors
-        punter_modifier = self._get_punter_distance_modifier()
+        # Apply punter skill (additive bonus) and environmental factors (multiplicative)
+        punter_bonus = self._get_punter_distance_modifier()  # Returns +8, +4, 0, or -6 yards
         environmental_modifier = self._get_environmental_modifier(context)
-        
-        punt_distance = int(base_distance * punter_modifier * environmental_modifier)
+
+        # Punter bonus is additive, environmental is multiplicative
+        base_with_skill = base_distance + punter_bonus  # 45 + 8 = 53 for elite punter
+        punt_distance = int(base_with_skill * environmental_modifier)
         punt_distance = max(25, min(75, punt_distance))  # Realistic bounds
         
         # Calculate hang time based on distance (physics-based)
@@ -555,10 +583,20 @@ class PuntSimulator:
         
         return punt_physics, return_opportunity
     
-    def _simulate_stage_2_return_execution(self, punt_physics: 'PuntPhysics', 
+    def _simulate_stage_2_return_execution(self, punt_physics: 'PuntPhysics',
                                          return_opportunity: 'ReturnOpportunity',
                                          context: PlayContext) -> tuple:
-        """Stage 2: Simulate return decision making and execution"""
+        """
+        Stage 2: Simulate return decision making and execution
+
+        Includes random muffed punt check (Tollgate 7: Variance & Unpredictability)
+        """
+        # NEW (Tollgate 7): Check for muffed punt (2% probability)
+        if self.random_event_checker.check_muffed_return():
+            # Muffed punt! Kicking team recovers, return team loses possession
+            # Return 0 yards (turnover at punt landing spot)
+            return 0, PuntOutcome.MUFFED, punt_physics.hang_time
+
         # Returner decision: fair catch vs attempt return
         fair_catch_prob = return_opportunity.get_fair_catch_probability()
         
@@ -760,10 +798,23 @@ class PuntSimulator:
         
         return 1.0
     
-    def _get_environmental_modifier(self, context: PlayContext) -> float:
-        """Get environmental modifier for conditions (wind, weather, etc.)"""
-        # For now, return baseline - could be expanded with weather context from PlayContext
-        return 1.0
+    def _get_environmental_modifier(self, context: PlayContext, kick_distance: int = 45) -> float:
+        """Get environmental modifier for conditions (wind, weather, etc.)
+
+        Uses inherited BasePlaySimulator._get_environmental_modifier() for weather effects.
+
+        Args:
+            context: PlayContext with optional weather_condition attribute
+            kick_distance: Punt distance in yards (affects weather scaling)
+
+        Returns:
+            Environmental modifier (0.4-1.0, where 1.0 = no weather effect)
+        """
+        weather_condition = getattr(context, 'weather_condition', 'clear')
+        return super()._get_environmental_modifier(
+            weather_condition=weather_condition,
+            kick_distance=kick_distance
+        )
     
     def _attribute_player_statistics(self, result: 'PuntResult', context: PlayContext):
         """Attribute individual player statistics based on play outcome"""
@@ -798,7 +849,10 @@ class PuntSimulator:
                     
                 if result.outcome in [PuntOutcome.COFFIN_CORNER, PuntOutcome.DOWNED]:
                     punter_stats.punts_inside_20 = 1  # Assume good placement
-            
+
+            # Track special teams snap for punter (ensures punter appears in box score)
+            punter_stats.special_teams_snaps = 1
+
             result.player_stats[self.punter.name] = punter_stats
 
         # Punt Protection Statistics (Offensive Line)
@@ -838,12 +892,13 @@ class PuntSimulator:
             if result.outcome == PuntOutcome.PUNT_RETURN:
                 # Coverage tackle attribution
                 if random.random() < 0.4:  # 40% chance coverage player gets tackle
-                    coverage_stats.solo_tackles = 1
+                    coverage_stats.tackles = 1  # Solo tackle (use 'tackles' field, not 'solo_tackles')
             
             result.player_stats[player.name] = coverage_stats
 
         # Track special teams snaps for ALL 22 players on the field
-        self._track_special_teams_snaps_for_all_players(result)
+        # Uses inherited method from BasePlaySimulator
+        self._track_special_teams_snaps_for_all_players(result.player_stats)
 
     def _attribute_punt_protection_stats(self, result: 'PuntResult') -> Dict[str, PlayerStats]:
         """
@@ -859,7 +914,7 @@ class PuntSimulator:
 
         # Get offensive line players for punt protection
         # In punt formation, typically 5-7 players are involved in protection
-        offensive_players = [p for p in self.punting_team if hasattr(p, 'primary_position')]
+        offensive_players = [p for p in self.offensive_players if hasattr(p, 'primary_position')]
         protection_positions = ['left_tackle', 'left_guard', 'center', 'right_guard', 'right_tackle',
                               'tight_end', 'fullback', 'linebacker']  # LBs often help in punt protection
 
@@ -937,36 +992,7 @@ class PuntSimulator:
         grade = base_grade + random.uniform(-5.0, 5.0)
         return max(0.0, min(100.0, grade))
 
-    def _track_special_teams_snaps_for_all_players(self, result: 'PuntResult'):
-        """
-        Track special teams snaps for ALL 22 players on the field during this punt play
-
-        Args:
-            result: PuntResult object with player_stats dictionary
-        """
-        # Track special teams snaps for all 11 offensive players (punt unit)
-        for player in self.offensive_players:
-            player_name = player.name
-            if player_name in result.player_stats:
-                # Player already has stats object, just add the snap
-                result.player_stats[player_name].add_special_teams_snap()
-            else:
-                # Create new PlayerStats object for this player
-                new_stats = create_player_stats_from_player(player)
-                new_stats.add_special_teams_snap()
-                result.player_stats[player_name] = new_stats
-
-        # Track special teams snaps for all 11 defensive players (punt return unit)
-        for player in self.defensive_players:
-            player_name = player.name
-            if player_name in result.player_stats:
-                # Player already has stats object, just add the snap
-                result.player_stats[player_name].add_special_teams_snap()
-            else:
-                # Create new PlayerStats object for this player
-                new_stats = create_player_stats_from_player(player)
-                new_stats.add_special_teams_snap()
-                result.player_stats[player_name] = new_stats
+    # NOTE: _track_special_teams_snaps_for_all_players is inherited from BasePlaySimulator
 
 
 class PuntPhysics:

@@ -11,7 +11,7 @@ import logging
 import sqlite3
 import json
 
-from persistence.transaction_logger import TransactionLogger
+from src.persistence.transaction_logger import TransactionLogger
 
 
 class RosterCutsService:
@@ -199,11 +199,12 @@ class RosterCutsService:
                 positions = json.loads(positions)
             position = positions[0] if positions else ""
 
-            # Extract overall from JSON attributes
+            # Extract overall and potential from JSON attributes
             attributes = player.get("attributes", {})
             if isinstance(attributes, str):
                 attributes = json.loads(attributes)
             overall = attributes.get("overall", 0)
+            potential = attributes.get("potential", 0)
 
             # Calculate age from birthdate if available
             age = 0
@@ -215,11 +216,11 @@ class RosterCutsService:
                 except (ValueError, IndexError):
                     pass
 
-            # Get contract info (use season + 1 for offseason: contracts are for NEXT league year)
+            # Get contract info for current season (players on expiring contracts are still on roster)
             contract = cap_api.get_player_contract(
                 player_id=player_id,
                 team_id=team_id,
-                season=self._season + 1,
+                season=self._season,
                 dynasty_id=self._dynasty_id
             )
 
@@ -251,12 +252,18 @@ class RosterCutsService:
                 cap_hit=cap_hit
             )
 
+            # Get development type from archetype
+            archetype_id = player.get("archetype_id")
+            dev_type = self._get_dev_type(archetype_id)
+
             roster_data.append({
                 "player_id": player_id,
                 "name": f"{player.get('first_name', '')} {player.get('last_name', '')}".strip(),
                 "position": position,
                 "age": age,
                 "overall": overall,
+                "potential": potential,
+                "dev_type": dev_type,
                 "years_pro": player.get("years_pro", 0),
                 "salary": salary,
                 "cap_hit": cap_hit,
@@ -376,12 +383,13 @@ class RosterCutsService:
                 }
 
             player_name = f"{player_info.get('first_name', '')} {player_info.get('last_name', '')}".strip()
+            player_position = player_info.get('position', '')
 
-            # Get contract info (use season + 1 for offseason: contracts are for NEXT league year)
+            # Get contract info for current season (players on expiring contracts are still on roster)
             contract = cap_api.get_player_contract(
                 player_id=player_id,
                 team_id=team_id,
-                season=self._season + 1,
+                season=self._season,
                 dynasty_id=self._dynasty_id
             )
 
@@ -436,6 +444,7 @@ class RosterCutsService:
                 transaction_type="ROSTER_CUT",
                 player_id=player_id,
                 player_name=player_name,
+                position=player_position,
                 from_team_id=team_id,
                 to_team_id=None,  # To waivers/free agency
                 transaction_date=date(self._season + 1, 8, 27),  # Roster cut deadline (next year)
@@ -675,6 +684,28 @@ class RosterCutsService:
 
         return protected
 
+    def _get_dev_type(self, archetype_id: Optional[str]) -> str:
+        """
+        Get development type from archetype.
+
+        Args:
+            archetype_id: Player's archetype ID
+
+        Returns:
+            Development type: "E" (early), "N" (normal), "L" (late)
+        """
+        if not archetype_id:
+            return "N"
+        try:
+            from src.player_generation.archetypes.archetype_registry import ArchetypeRegistry
+            registry = ArchetypeRegistry()
+            archetype = registry.get_archetype(archetype_id)
+            if archetype and archetype.development_curve:
+                return {"early": "E", "normal": "N", "late": "L"}.get(archetype.development_curve, "N")
+        except Exception:
+            pass
+        return "N"
+
     def _add_to_waiver_wire(
         self,
         player_id: int,
@@ -779,6 +810,11 @@ class RosterCutsService:
                     if isinstance(attributes, str):
                         attributes = json.loads(attributes)
                     overall = attributes.get("overall", 0)
+                    potential = attributes.get("potential", 0)
+
+                    # Get development type from archetype
+                    archetype_id = player_info.get("archetype_id")
+                    dev_type = self._get_dev_type(archetype_id)
 
                     waiver_players.append({
                         "waiver_id": waiver_id,
@@ -786,6 +822,8 @@ class RosterCutsService:
                         "name": f"{player_info.get('first_name', '')} {player_info.get('last_name', '')}".strip(),
                         "position": position,
                         "overall": overall,
+                        "potential": potential,
+                        "dev_type": dev_type,
                         "former_team_id": former_team_id,
                         "waiver_order": order,
                         "dead_money": dead_money,

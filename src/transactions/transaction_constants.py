@@ -313,6 +313,137 @@ class DevelopmentCurveModifiers:
         return curve_map.get(curve_type.lower() if curve_type else "normal", cls.NORMAL)
 
 
+from enum import Enum
+
+
+class AttributeCategory(Enum):
+    """
+    Categories for player attributes affecting progression rates.
+
+    Physical: Decline first and fastest (speed, agility, etc.)
+    Mental: Improve longest, decline slowest (awareness, vision, etc.)
+    Technique: Most stable through prime (route running, blocking, etc.)
+    """
+    PHYSICAL = "physical"
+    TECHNIQUE = "technique"
+    MENTAL = "mental"
+
+
+class AttributeCategoryParameters:
+    """
+    Age-phase specific parameters for each attribute category.
+
+    Each category has different probability weights and ranges:
+    - weights: (improve_chance, stable_chance, decline_chance) - must sum to 1.0
+    - improve_range: (min, max) points gained when improving
+    - decline_range: (min, max) points lost when declining (negative values)
+
+    Special case: Mental attributes at age 35+ use "super_veteran" parameters,
+    allowing continued improvement for experienced players.
+    """
+
+    PHYSICAL = {
+        "young": {"weights": (0.70, 0.20, 0.10), "improve_range": (1, 3), "decline_range": (-2, -1)},
+        "prime": {"weights": (0.10, 0.60, 0.30), "improve_range": (0, 1), "decline_range": (-2, -1)},
+        "veteran": {"weights": (0.05, 0.25, 0.70), "improve_range": (0, 1), "decline_range": (-4, -1)},
+    }
+
+    TECHNIQUE = {
+        "young": {"weights": (0.65, 0.25, 0.10), "improve_range": (1, 2), "decline_range": (-1, -1)},
+        "prime": {"weights": (0.30, 0.50, 0.20), "improve_range": (0, 1), "decline_range": (-1, 0)},
+        "veteran": {"weights": (0.10, 0.50, 0.40), "improve_range": (0, 1), "decline_range": (-2, -1)},
+    }
+
+    MENTAL = {
+        "young": {"weights": (0.60, 0.30, 0.10), "improve_range": (1, 2), "decline_range": (-1, -1)},
+        "prime": {"weights": (0.40, 0.50, 0.10), "improve_range": (0, 1), "decline_range": (-1, 0)},
+        "veteran": {"weights": (0.25, 0.50, 0.25), "improve_range": (0, 1), "decline_range": (-1, -1)},
+        "super_veteran": {"weights": (0.15, 0.55, 0.30), "improve_range": (0, 1), "decline_range": (-1, -1)},
+    }
+
+    @classmethod
+    def get_params(cls, category: AttributeCategory, age_category: str, age: int = 0) -> dict:
+        """
+        Get progression parameters for a category and age phase.
+
+        Args:
+            category: The AttributeCategory (PHYSICAL, TECHNIQUE, MENTAL)
+            age_category: Age phase ("young", "prime", "veteran")
+            age: Player's actual age (used for mental super_veteran check)
+
+        Returns:
+            Dict with "weights", "improve_range", "decline_range" keys.
+        """
+        category_params = getattr(cls, category.value.upper(), cls.TECHNIQUE)
+        # Mental attributes can still improve at 35+ (super_veteran)
+        if category == AttributeCategory.MENTAL and age >= 35:
+            return category_params.get("super_veteran", category_params["veteran"])
+        return category_params.get(age_category, category_params["veteran"])
+
+
+# Mapping of attribute names to their category
+ATTRIBUTE_CATEGORY_MAP: dict[str, AttributeCategory] = {
+    # Physical (10) - Decline first and fastest
+    "speed": AttributeCategory.PHYSICAL,
+    "strength": AttributeCategory.PHYSICAL,
+    "agility": AttributeCategory.PHYSICAL,
+    "stamina": AttributeCategory.PHYSICAL,
+    "elusiveness": AttributeCategory.PHYSICAL,
+    "mobility": AttributeCategory.PHYSICAL,
+    "range": AttributeCategory.PHYSICAL,
+    "kick_power": AttributeCategory.PHYSICAL,
+    "punt_power": AttributeCategory.PHYSICAL,
+    "hang_time": AttributeCategory.PHYSICAL,
+
+    # Mental (10) - Improve longest, decline slowest
+    "awareness": AttributeCategory.MENTAL,
+    "discipline": AttributeCategory.MENTAL,
+    "composure": AttributeCategory.MENTAL,
+    "experience": AttributeCategory.MENTAL,
+    "penalty_technique": AttributeCategory.MENTAL,
+    "vision": AttributeCategory.MENTAL,
+    "pocket_presence": AttributeCategory.MENTAL,
+    "pressure": AttributeCategory.MENTAL,
+    "ball_skills": AttributeCategory.MENTAL,
+    "snap_timing": AttributeCategory.MENTAL,
+
+    # Technique (20) - Most stable through prime
+    "accuracy": AttributeCategory.TECHNIQUE,
+    "arm_strength": AttributeCategory.TECHNIQUE,
+    "route_running": AttributeCategory.TECHNIQUE,
+    "catching": AttributeCategory.TECHNIQUE,
+    "hands": AttributeCategory.TECHNIQUE,
+    "release": AttributeCategory.TECHNIQUE,
+    "blocking": AttributeCategory.TECHNIQUE,
+    "pass_blocking": AttributeCategory.TECHNIQUE,
+    "run_blocking": AttributeCategory.TECHNIQUE,
+    "technique": AttributeCategory.TECHNIQUE,
+    "pass_rush": AttributeCategory.TECHNIQUE,
+    "run_defense": AttributeCategory.TECHNIQUE,
+    "coverage": AttributeCategory.TECHNIQUE,
+    "press": AttributeCategory.TECHNIQUE,
+    "tackling": AttributeCategory.TECHNIQUE,
+    "carrying": AttributeCategory.TECHNIQUE,
+    "kick_accuracy": AttributeCategory.TECHNIQUE,
+    "punt_accuracy": AttributeCategory.TECHNIQUE,
+    "snap_accuracy": AttributeCategory.TECHNIQUE,
+    "run_support": AttributeCategory.TECHNIQUE,
+}
+
+
+def get_attribute_category(attr_name: str) -> AttributeCategory:
+    """
+    Get the category for an attribute name.
+
+    Args:
+        attr_name: The attribute name (e.g., "speed", "awareness")
+
+    Returns:
+        AttributeCategory. Defaults to TECHNIQUE for unknown attributes.
+    """
+    return ATTRIBUTE_CATEGORY_MAP.get(attr_name, AttributeCategory.TECHNIQUE)
+
+
 class TradeValueScaling:
     """
     Scaling factors for trade value calculations.

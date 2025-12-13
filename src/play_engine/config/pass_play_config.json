@@ -8,53 +8,53 @@
     "matchups": {
       "SHOTGUN": {
         "FOUR_THREE": {
-          "completion_rate": 0.68,
-          "sack_rate": 0.08,
+          "completion_rate": 0.73,
+          "sack_rate": 0.055,
           "pressure_rate": 0.22,
-          "deflection_rate": 0.06,
-          "int_rate": 0.025,
-          "avg_air_yards": 9.5,
-          "avg_yac": 5.2,
+          "deflection_rate": 0.045,
+          "int_rate": 0.020,
+          "avg_air_yards": 11.5,
+          "avg_yac": 6.2,
           "avg_time_to_throw": 2.6
         },
         "NICKEL": {
-          "completion_rate": 0.72,
-          "sack_rate": 0.06,
+          "completion_rate": 0.77,
+          "sack_rate": 0.045,
           "pressure_rate": 0.18,
-          "deflection_rate": 0.05,
-          "int_rate": 0.020,
-          "avg_air_yards": 8.5,
-          "avg_yac": 5.8,
+          "deflection_rate": 0.04,
+          "int_rate": 0.018,
+          "avg_air_yards": 10.5,
+          "avg_yac": 6.8,
           "avg_time_to_throw": 2.4
         },
         "DIME": {
-          "completion_rate": 0.74,
-          "sack_rate": 0.04,
+          "completion_rate": 0.79,
+          "sack_rate": 0.030,
           "pressure_rate": 0.15,
-          "deflection_rate": 0.04,
-          "int_rate": 0.018,
-          "avg_air_yards": 11.0,
-          "avg_yac": 6.0,
+          "deflection_rate": 0.035,
+          "int_rate": 0.015,
+          "avg_air_yards": 13.0,
+          "avg_yac": 7.0,
           "avg_time_to_throw": 2.8
         }
       },
       "SINGLEBACK": {
         "FOUR_THREE": {
-          "completion_rate": 0.65,
-          "sack_rate": 0.10,
+          "completion_rate": 0.70,
+          "sack_rate": 0.065,
           "pressure_rate": 0.25,
-          "deflection_rate": 0.07,
-          "int_rate": 0.030,
+          "deflection_rate": 0.05,
+          "int_rate": 0.025,
           "avg_air_yards": 8.0,
           "avg_yac": 4.5,
           "avg_time_to_throw": 2.8
         },
         "NICKEL": {
-          "completion_rate": 0.70,
-          "sack_rate": 0.08,
+          "completion_rate": 0.75,
+          "sack_rate": 0.055,
           "pressure_rate": 0.20,
-          "deflection_rate": 0.06,
-          "int_rate": 0.025,
+          "deflection_rate": 0.045,
+          "int_rate": 0.020,
           "avg_air_yards": 7.5,
           "avg_yac": 5.0,
           "avg_time_to_throw": 2.5
@@ -62,11 +62,11 @@
       },
       "I_FORMATION": {
         "FOUR_THREE": {
-          "completion_rate": 0.62,
-          "sack_rate": 0.12,
+          "completion_rate": 0.67,
+          "sack_rate": 0.075,
           "pressure_rate": 0.28,
-          "deflection_rate": 0.08,
-          "interception_rate": 0.035,
+          "deflection_rate": 0.06,
+          "interception_rate": 0.028,
           "avg_air_yards": 6.5,
           "avg_yac": 4.0,
           "avg_time_to_throw": 3.0
@@ -74,23 +74,23 @@
       },
       "PISTOL": {
         "FOUR_THREE": {
-          "completion_rate": 0.67,
-          "sack_rate": 0.09,
+          "completion_rate": 0.72,
+          "sack_rate": 0.060,
           "pressure_rate": 0.24,
-          "deflection_rate": 0.06,
-          "int_rate": 0.028,
-          "avg_air_yards": 8.8,
-          "avg_yac": 4.8,
+          "deflection_rate": 0.045,
+          "int_rate": 0.022,
+          "avg_air_yards": 10.8,
+          "avg_yac": 5.8,
           "avg_time_to_throw": 2.7
         }
       },
       "GOAL_LINE": {
         "GOAL_LINE": {
-          "completion_rate": 0.58,
-          "sack_rate": 0.14,
+          "completion_rate": 0.63,
+          "sack_rate": 0.090,
           "pressure_rate": 0.32,
-          "deflection_rate": 0.09,
-          "int_rate": 0.040,
+          "deflection_rate": 0.07,
+          "int_rate": 0.035,
           "avg_air_yards": 3.0,
           "avg_yac": 2.5,
           "avg_time_to_throw": 2.2
@@ -98,13 +98,13 @@
       }
     },
     "default_matchup": {
-      "completion_rate": 0.65,
-      "sack_rate": 0.09,
+      "completion_rate": 0.70,
+      "sack_rate": 0.060,
       "pressure_rate": 0.24,
-      "deflection_rate": 0.06,
-      "int_rate": 0.025,
-      "avg_air_yards": 8.0,
-      "avg_yac": 4.5,
+      "deflection_rate": 0.045,
+      "int_rate": 0.020,
+      "avg_air_yards": 9.0,
+      "avg_yac": 5.0,
       "avg_time_to_throw": 2.5
     }
   },
@@ -120,12 +120,12 @@
       "poor": 60
     },
     "quarterback_modifiers": {
-      "elite_accuracy_bonus": 0.08,
-      "good_accuracy_bonus": 0.04,
-      "poor_accuracy_penalty": -0.06,
+      "elite_accuracy_bonus": 0.10,
+      "good_accuracy_bonus": 0.05,
+      "poor_accuracy_penalty": -0.05,
       "elite_pressure_resistance": 0.7,
       "good_pressure_resistance": 0.85,
-      "poor_pressure_vulnerability": 1.3
+      "poor_pressure_vulnerability": 1.25
     },
     "receiver_modifiers": {
       "elite_catch_bonus": 0.8,
@@ -159,12 +159,12 @@
       "primary_target_probability": 0.75
     },
     "pressure_effects": {
-      "accuracy_impact": 0.75,
+      "accuracy_impact": 0.82,
       "pressure_to_hit_conversion": 0.4
     },
     "tackling": {
       "long_yac_threshold": 8,
-      "assisted_tackle_probability": 0.6
+      "assisted_tackle_probability": 0.75
     },
     "time_ranges": {
       "sack_time_min": 2.0,

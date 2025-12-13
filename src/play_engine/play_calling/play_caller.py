@@ -30,6 +30,8 @@ class PlayCallContext:
     recent_plays: Optional[List[str]] = None  # Last 3-5 play types for sequencing
     opponent_tendencies: Optional[Dict[str, Any]] = None  # Future expansion
     weather_conditions: Optional[str] = None  # Future expansion
+    momentum_aggression_modifier: Optional[float] = 1.0  # Momentum-based aggression modifier (0.85-1.15)
+    raw_game_state: Optional[Dict[str, Any]] = None  # Game state for GameSituationAnalyzer (scores, time, etc.)
     
 
 class PlayCallerBase(ABC):
@@ -154,16 +156,24 @@ class PlayCaller(PlayCallerBase):
         # Add additional context fields if provided
         if context.game_flow:
             coaching_context['game_flow'] = context.game_flow
-            
+
         if context.recent_plays:
             coaching_context['recent_plays'] = context.recent_plays
-            
+
         if context.opponent_tendencies:
             coaching_context['opponent_tendencies'] = context.opponent_tendencies
-            
+
         if context.weather_conditions:
             coaching_context['weather_conditions'] = context.weather_conditions
-            
+
+        # Add momentum aggression modifier for fourth-down decisions
+        if context.momentum_aggression_modifier is not None:
+            coaching_context['momentum_aggression_modifier'] = context.momentum_aggression_modifier
+
+        # Add raw game state for GameSituationAnalyzer (enables game script modifiers)
+        if context.raw_game_state is not None:
+            coaching_context['raw_game_state'] = context.raw_game_state
+
         return coaching_context
     
     def _update_play_history(self, play_call: Any):

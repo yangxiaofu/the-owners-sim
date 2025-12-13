@@ -15,17 +15,41 @@ import tempfile
 import os
 
 
-# Add src directory and project root to Python path
+# Determine paths
 project_root = Path(__file__).parent.parent
 src_path = project_root / "src"
+tests_path = project_root / "tests"
 
-# Add project root for ui.* imports
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
 
-# Add src directory for direct src imports
-if str(src_path) not in sys.path:
-    sys.path.insert(0, str(src_path))
+def pytest_configure(config):
+    """Configure pytest - runs very early in startup.
+
+    IMPORTANT: Project root MUST come before tests/ to prevent shadowing
+    of packages like game_cycle_ui by tests/game_cycle_ui.
+    """
+    # Clear any cached game_cycle_ui modules that may have been imported from tests/
+    to_remove = [key for key in sys.modules.keys() if key.startswith('game_cycle_ui')]
+    for key in to_remove:
+        del sys.modules[key]
+
+    # Filter out tests directory and any duplicates, keeping first occurrence
+    seen = set()
+    new_path = []
+    for p in sys.path:
+        if p not in seen and p != str(tests_path):
+            seen.add(p)
+            new_path.append(p)
+
+    # Ensure project root and src are at the front
+    for path in [str(src_path), str(project_root)]:
+        if path in new_path:
+            new_path.remove(path)
+
+    # Insert at front: project_root, then src
+    new_path.insert(0, str(src_path))
+    new_path.insert(0, str(project_root))
+
+    sys.path[:] = new_path
 
 
 # ============================================================================

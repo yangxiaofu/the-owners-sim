@@ -4,26 +4,26 @@
   "description": "Centralized configuration for run play simulation parameters - Designer balancing file",
   
   "formation_matchups": {
-    "description": "Formation vs formation matchup matrix with average yards and variance",
+    "description": "Formation vs formation matchup matrix with average yards and variance (NFL avg: 4.4 YPC)",
     "matchups": {
       "I_FORMATION": {
-        "FOUR_THREE": {"avg_yards": 4.2, "variance": 2.5},
-        "NICKEL": {"avg_yards": 5.1, "variance": 2.8},
-        "GOAL_LINE": {"avg_yards": 2.3, "variance": 1.8}
+        "FOUR_THREE": {"avg_yards": 4.8, "variance": 2.5},
+        "NICKEL": {"avg_yards": 5.5, "variance": 2.8},
+        "GOAL_LINE": {"avg_yards": 2.8, "variance": 1.8}
       },
       "SINGLEBACK": {
-        "FOUR_THREE": {"avg_yards": 3.8, "variance": 2.3},
-        "NICKEL": {"avg_yards": 4.6, "variance": 2.6}
+        "FOUR_THREE": {"avg_yards": 4.4, "variance": 2.3},
+        "NICKEL": {"avg_yards": 5.0, "variance": 2.6}
       },
       "SHOTGUN": {
-        "FOUR_THREE": {"avg_yards": 3.2, "variance": 2.1},
-        "NICKEL": {"avg_yards": 3.5, "variance": 2.2}
+        "FOUR_THREE": {"avg_yards": 3.8, "variance": 2.1},
+        "NICKEL": {"avg_yards": 4.2, "variance": 2.2}
       },
       "PISTOL": {
-        "FOUR_THREE": {"avg_yards": 4.0, "variance": 2.4}
+        "FOUR_THREE": {"avg_yards": 4.6, "variance": 2.4}
       }
     },
-    "default_matchup": {"avg_yards": 3.5, "variance": 2.2}
+    "default_matchup": {"avg_yards": 4.2, "variance": 2.2}
   },
   
   "player_attributes": {
@@ -63,8 +63,19 @@
     },
     "tackling": {
       "long_run_threshold": 5,
-      "assisted_tackle_probability": 0.6
+      "assisted_tackle_probability": 0.75
     },
     "variance_cap": 1.2
+  },
+
+  "fumble_rates": {
+    "description": "Fumble probability rates for run plays (NFL avg: ~1.5% per rush, adjusted for simulation)",
+    "base_fumble_rate": 0.025,
+    "rb_skill_modifiers": {
+      "elite_reduction": 0.008,
+      "good_reduction": 0.004,
+      "poor_increase": 0.006
+    },
+    "recovery_rate": 0.50
   }
 }

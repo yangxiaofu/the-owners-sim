@@ -28,12 +28,24 @@ class SituationalTendencies:
     second_down_creativity: float = 0.5      # Likelihood of trick plays on 2nd down
     third_down_aggression: float = 0.6       # Aggressive vs conservative on 3rd down
     fourth_down_aggression: float = 0.3      # Likelihood to go for it vs punt/kick
-    
+
+    # NEW: Down/distance-specific pass rates for dynamic play calling
+    first_down_pass_rate: float = 0.50          # Pass rate on 1st down (modern NFL: 50%)
+    second_and_short_pass_rate: float = 0.45    # 2nd & 2-4 yards (run-leaning)
+    second_and_medium_pass_rate: float = 0.55   # 2nd & 5-7 yards (balanced)
+    second_and_long_pass_rate: float = 0.65     # 2nd & 8+ yards (pass-heavy)
+    third_and_short_pass_rate: float = 0.35     # 3rd & 1-3 yards (run-heavy)
+    third_and_medium_pass_rate: float = 0.60    # 3rd & 4-7 yards (pass-favored)
+    third_and_long_pass_rate: float = 0.85      # 3rd & 8+ yards (pass-dominant)
+    goal_line_pass_rate: float = 0.50           # Goal line (1-3 yards to goal, balanced)
+    red_zone_pass_rate: float = 0.55            # Red zone (inside 20, slightly pass-favored)
+    two_minute_pass_rate: float = 0.75          # Two-minute drill (pass-heavy)
+
     # Field position preferences
     red_zone_aggression: float = 0.6         # Aggression inside red zone
     goal_line_creativity: float = 0.4        # Creative plays at goal line
     midfield_risk_tolerance: float = 0.5     # Risk-taking in midfield
-    
+
     # Clock management
     two_minute_aggression: float = 0.7       # End-of-half aggression
     clock_management_conservatism: float = 0.5  # Late-game clock control
@@ -182,6 +194,16 @@ class BaseCoachArchetype:
                 'second_down_creativity': self.situational.second_down_creativity,
                 'third_down_aggression': self.situational.third_down_aggression,
                 'fourth_down_aggression': self.situational.fourth_down_aggression,
+                'first_down_pass_rate': self.situational.first_down_pass_rate,
+                'second_and_short_pass_rate': self.situational.second_and_short_pass_rate,
+                'second_and_medium_pass_rate': self.situational.second_and_medium_pass_rate,
+                'second_and_long_pass_rate': self.situational.second_and_long_pass_rate,
+                'third_and_short_pass_rate': self.situational.third_and_short_pass_rate,
+                'third_and_medium_pass_rate': self.situational.third_and_medium_pass_rate,
+                'third_and_long_pass_rate': self.situational.third_and_long_pass_rate,
+                'goal_line_pass_rate': self.situational.goal_line_pass_rate,
+                'red_zone_pass_rate': self.situational.red_zone_pass_rate,
+                'two_minute_pass_rate': self.situational.two_minute_pass_rate,
                 'red_zone_aggression': self.situational.red_zone_aggression,
                 'goal_line_creativity': self.situational.goal_line_creativity,
                 'midfield_risk_tolerance': self.situational.midfield_risk_tolerance,

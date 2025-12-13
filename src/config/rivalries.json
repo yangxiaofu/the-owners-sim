@@ -1,0 +1,235 @@
+{
+  "metadata": {
+    "version": "1.0",
+    "description": "Historic and geographic NFL rivalries for schedule prioritization and gameplay effects",
+    "notes": "Rivalries with intensity >= 85 are automatically marked as protected",
+    "total_rivalries": 25
+  },
+  "rivalries": [
+    {
+      "team_a_id": 21,
+      "team_b_id": 23,
+      "rivalry_type": "historic",
+      "rivalry_name": "The Oldest Rivalry",
+      "intensity": 95,
+      "is_protected": true,
+      "description": "Bears vs Packers - NFL's oldest and most storied rivalry"
+    },
+    {
+      "team_a_id": 5,
+      "team_b_id": 8,
+      "rivalry_type": "historic",
+      "rivalry_name": "AFC North Clash",
+      "intensity": 92,
+      "is_protected": true,
+      "description": "Ravens vs Steelers - Hard-hitting AFC North rivalry"
+    },
+    {
+      "team_a_id": 17,
+      "team_b_id": 19,
+      "rivalry_type": "historic",
+      "rivalry_name": "NFC East Classic",
+      "intensity": 90,
+      "is_protected": true,
+      "description": "Cowboys vs Eagles - NFC East's fiercest rivalry"
+    },
+    {
+      "team_a_id": 14,
+      "team_b_id": 15,
+      "rivalry_type": "historic",
+      "rivalry_name": "Silver and Black vs Red Kingdom",
+      "intensity": 88,
+      "is_protected": true,
+      "description": "Chiefs vs Raiders - AFC West powerhouse matchup"
+    },
+    {
+      "team_a_id": 31,
+      "team_b_id": 32,
+      "rivalry_type": "historic",
+      "rivalry_name": "Battle of the Pacific Northwest",
+      "intensity": 87,
+      "is_protected": true,
+      "description": "49ers vs Seahawks - West Coast's premier rivalry"
+    },
+    {
+      "team_a_id": 13,
+      "team_b_id": 15,
+      "rivalry_type": "historic",
+      "rivalry_name": "AFC West Battle",
+      "intensity": 85,
+      "is_protected": true,
+      "description": "Broncos vs Raiders - Classic AFC West showdown"
+    },
+    {
+      "team_a_id": 7,
+      "team_b_id": 8,
+      "rivalry_type": "historic",
+      "rivalry_name": "Turnpike Rivalry",
+      "intensity": 85,
+      "is_protected": true,
+      "description": "Browns vs Steelers - Ohio vs Pennsylvania classic"
+    },
+    {
+      "team_a_id": 6,
+      "team_b_id": 8,
+      "rivalry_type": "historic",
+      "rivalry_name": "Ohio River Rivalry",
+      "intensity": 83,
+      "is_protected": false,
+      "description": "Bengals vs Steelers - Pennsylvania vs Ohio"
+    },
+    {
+      "team_a_id": 17,
+      "team_b_id": 20,
+      "rivalry_type": "historic",
+      "rivalry_name": "Capital vs Lone Star",
+      "intensity": 82,
+      "is_protected": false,
+      "description": "Cowboys vs Commanders - Historic NFC East matchup"
+    },
+    {
+      "team_a_id": 25,
+      "team_b_id": 27,
+      "rivalry_type": "historic",
+      "rivalry_name": "Southern Showdown",
+      "intensity": 81,
+      "is_protected": false,
+      "description": "Falcons vs Saints - Deep South battle"
+    },
+    {
+      "team_a_id": 18,
+      "team_b_id": 19,
+      "rivalry_type": "historic",
+      "rivalry_name": "Battle of the Keystone State",
+      "intensity": 80,
+      "is_protected": false,
+      "description": "Giants vs Eagles - New York vs Philadelphia"
+    },
+    {
+      "team_a_id": 3,
+      "team_b_id": 4,
+      "rivalry_type": "historic",
+      "rivalry_name": "AFC East Showdown",
+      "intensity": 78,
+      "is_protected": false,
+      "description": "Patriots vs Jets - New England vs New York"
+    },
+    {
+      "team_a_id": 22,
+      "team_b_id": 23,
+      "rivalry_type": "historic",
+      "rivalry_name": "NFC North Classic",
+      "intensity": 76,
+      "is_protected": false,
+      "description": "Lions vs Packers - Thanksgiving tradition"
+    },
+    {
+      "team_a_id": 30,
+      "team_b_id": 31,
+      "rivalry_type": "historic",
+      "rivalry_name": "Battle for California",
+      "intensity": 75,
+      "is_protected": false,
+      "description": "Rams vs 49ers - California's NFL rivalry"
+    },
+    {
+      "team_a_id": 9,
+      "team_b_id": 10,
+      "rivalry_type": "historic",
+      "rivalry_name": "AFC South Battle",
+      "intensity": 72,
+      "is_protected": false,
+      "description": "Texans vs Colts - Texas vs Indiana"
+    },
+    {
+      "team_a_id": 16,
+      "team_b_id": 30,
+      "rivalry_type": "geographic",
+      "rivalry_name": "Battle for LA",
+      "intensity": 72,
+      "is_protected": false,
+      "description": "Chargers vs Rams - Los Angeles showdown"
+    },
+    {
+      "team_a_id": 4,
+      "team_b_id": 18,
+      "rivalry_type": "geographic",
+      "rivalry_name": "MetLife Rivalry",
+      "intensity": 70,
+      "is_protected": false,
+      "description": "Jets vs Giants - Stadium roommates"
+    },
+    {
+      "team_a_id": 9,
+      "team_b_id": 17,
+      "rivalry_type": "geographic",
+      "rivalry_name": "Texas Showdown",
+      "intensity": 70,
+      "is_protected": false,
+      "description": "Texans vs Cowboys - Lone Star State bragging rights"
+    },
+    {
+      "team_a_id": 5,
+      "team_b_id": 20,
+      "rivalry_type": "geographic",
+      "rivalry_name": "Beltway Battle",
+      "intensity": 68,
+      "is_protected": false,
+      "description": "Ravens vs Commanders - Baltimore-Washington corridor"
+    },
+    {
+      "team_a_id": 2,
+      "team_b_id": 28,
+      "rivalry_type": "geographic",
+      "rivalry_name": "Florida Rivalry",
+      "intensity": 65,
+      "is_protected": false,
+      "description": "Dolphins vs Buccaneers - Sunshine State showdown"
+    },
+    {
+      "team_a_id": 25,
+      "team_b_id": 26,
+      "rivalry_type": "geographic",
+      "rivalry_name": "Peach State vs Tar Heel",
+      "intensity": 63,
+      "is_protected": false,
+      "description": "Falcons vs Panthers - Southern neighbors"
+    },
+    {
+      "team_a_id": 2,
+      "team_b_id": 11,
+      "rivalry_type": "geographic",
+      "rivalry_name": "Florida Matchup",
+      "intensity": 62,
+      "is_protected": false,
+      "description": "Dolphins vs Jaguars - Florida interstate"
+    },
+    {
+      "team_a_id": 11,
+      "team_b_id": 28,
+      "rivalry_type": "geographic",
+      "rivalry_name": "I-75 Rivalry",
+      "intensity": 60,
+      "is_protected": false,
+      "description": "Jaguars vs Buccaneers - Florida showdown"
+    },
+    {
+      "team_a_id": 29,
+      "team_b_id": 31,
+      "rivalry_type": "geographic",
+      "rivalry_name": "Southwest Showdown",
+      "intensity": 60,
+      "is_protected": false,
+      "description": "Cardinals vs 49ers - NFC West geographic proximity"
+    },
+    {
+      "team_a_id": 26,
+      "team_b_id": 28,
+      "rivalry_type": "geographic",
+      "rivalry_name": "Southeast Clash",
+      "intensity": 58,
+      "is_protected": false,
+      "description": "Panthers vs Buccaneers - Southeast showdown"
+    }
+  ]
+}

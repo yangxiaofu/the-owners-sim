@@ -206,32 +206,53 @@ class BoxScoreGenerator:
         )
     
     def _generate_special_teams_section(self, player_stats: PlayerStatsAccumulator) -> BoxScoreSection:
-        """Generate special teams statistics section"""
-        special_teams = [player for player in player_stats.get_all_players_with_stats() 
-                        if player.field_goal_attempts > 0 or player.field_goals_made > 0]
-        
-        headers = ["Player", "FG Made/Att", "Long", "XP Made/Att", "Punts", "Avg"]
+        """Generate special teams statistics section (kickers and punters)"""
+        # Include both kickers (FG stats) and punters (punt stats)
+        special_teams = [player for player in player_stats.get_all_players_with_stats()
+                        if player.field_goal_attempts > 0 or player.field_goals_made > 0
+                        or getattr(player, 'punts', 0) > 0]
+
+        headers = ["Player", "FG", "Long FG", "XP", "Punts", "Yds", "Avg", "In20"]
         rows = []
-        
-        for kicker in special_teams:
-            fg_display = f"{kicker.field_goals_made}/{kicker.field_goal_attempts}" if kicker.field_goal_attempts > 0 else "0/0"
-            long_fg = str(kicker.longest_field_goal) if kicker.longest_field_goal > 0 else "0"
-            
-            # Note: Punt stats and XP stats would need to be added to PlayerStats for complete special teams
+
+        for player in special_teams:
+            # Field goal stats (for kickers)
+            fg_attempts = getattr(player, 'field_goal_attempts', 0)
+            fg_made = getattr(player, 'field_goals_made', 0)
+            fg_display = f"{fg_made}/{fg_attempts}" if fg_attempts > 0 else "-"
+            long_fg = str(getattr(player, 'longest_field_goal', 0)) if getattr(player, 'longest_field_goal', 0) > 0 else "-"
+
+            # Extra point stats
+            xp_made = getattr(player, 'extra_points_made', 0)
+            xp_attempts = getattr(player, 'extra_points_attempted', 0)
+            xp_display = f"{xp_made}/{xp_attempts}" if xp_attempts > 0 else "-"
+
+            # Punt stats (for punters)
+            punts = getattr(player, 'punts', 0)
+            punt_yards = getattr(player, 'punt_yards', 0)
+            punt_avg = (punt_yards / punts) if punts > 0 else 0
+            punts_inside_20 = getattr(player, 'punts_inside_20', 0)
+
+            punts_display = str(punts) if punts > 0 else "-"
+            punt_yards_display = str(punt_yards) if punts > 0 else "-"
+            punt_avg_display = f"{punt_avg:.1f}" if punts > 0 else "-"
+            inside_20_display = str(punts_inside_20) if punts > 0 else "-"
+
             rows.append([
-                f"{kicker.player_name}",
+                f"{player.player_name}",
                 fg_display,
                 long_fg,
-                "N/A",  # XP stats not currently tracked
-                "N/A",  # Punt stats not currently tracked
-                "N/A"   # Punt average not currently tracked
+                xp_display,
+                punts_display,
+                punt_yards_display,
+                punt_avg_display,
+                inside_20_display
             ])
-        
+
         return BoxScoreSection(
             title="SPECIAL TEAMS",
             headers=headers,
-            rows=rows,
-            footnotes=["* Punt and XP statistics not currently implemented in simulation"]
+            rows=rows
         )
     
     def _generate_team_totals(self, 

@@ -18,6 +18,32 @@ class DownResult(Enum):
     SCORING_DRIVE = "scoring_drive"         # Drive ended with score
 
 
+def calculate_first_down_line(field_position: int, yards_to_go: int) -> int:
+    """
+    Calculate first down line marker, clamped to valid field range (0-100).
+
+    Handles edge cases:
+    - Near end zone: field_position + yards_to_go would exceed 100
+    - Negative field position: upstream edge cases that produce negative values
+
+    Args:
+        field_position: Current yard line (0-100)
+        yards_to_go: Yards needed for first down
+
+    Returns:
+        First down line marker (0-100, clamped to valid range)
+
+    Examples:
+        >>> calculate_first_down_line(25, 10)  # Normal case
+        35
+        >>> calculate_first_down_line(92, 10)  # Near goal line
+        100  # Clamped, not 102
+        >>> calculate_first_down_line(-5, 10)  # Edge case
+        5  # Clamped from negative
+    """
+    return max(0, min(100, field_position + yards_to_go))
+
+
 @dataclass
 class DownState:
     """
@@ -118,7 +144,18 @@ class DownTracker:
                 down_result=DownResult.SCORING_DRIVE,
                 down_events=["scoring_play", "drive_ended"]
             )
-        
+
+        # ✅ FIX 2: Safety check - if at or past goal line, should be a TD
+        # This prevents invalid situations like "2nd & 10 at OPP 0"
+        if new_field_position >= 100:
+            # At goal line or beyond - this should be a touchdown
+            # Even if is_scoring_play is False (shouldn't happen, but defensive)
+            return DownProgressionResult(
+                new_down_state=None,
+                down_result=DownResult.SCORING_DRIVE,
+                down_events=["touchdown_detected", "drive_ended"]
+            )
+
         # Calculate if first down was achieved
         yards_needed = current_down_state.yards_to_go
         first_down_achieved = yards_gained >= yards_needed
@@ -170,36 +207,77 @@ class DownTracker:
         return result
     
     def process_penalty(self, current_down_state: DownState, penalty_yards: int,
-                       is_automatic_first_down: bool = False) -> DownProgressionResult:
+                       is_automatic_first_down: bool = False,
+                       enforcement_result=None) -> DownProgressionResult:
         """
         Handle penalty effects on down situation
-        
+
         Args:
             current_down_state: Current down and distance
-            penalty_yards: Yards gained/lost due to penalty (positive = gained)
-            is_automatic_first_down: Some penalties award automatic first down
-        
+            penalty_yards: Yards gained/lost due to penalty (positive = gained) - DEPRECATED, use enforcement_result
+            is_automatic_first_down: Some penalties award automatic first down - DEPRECATED, use enforcement_result
+            enforcement_result: Optional EnforcementResult from penalty_enforcement module (preferred)
+
         Returns:
             DownProgressionResult with penalty-adjusted down situation
+
+        Note:
+            If enforcement_result is provided, it takes precedence over the legacy
+            penalty_yards/is_automatic_first_down parameters. This ensures all penalty
+            ball placement logic flows through the single source of truth.
         """
+        # Use enforcement result if provided (new flow)
+        if enforcement_result is not None:
+            new_yard_line = enforcement_result.new_yard_line
+            new_down = enforcement_result.new_down
+            new_yards_to_go = enforcement_result.new_yards_to_go
+            is_first_down = enforcement_result.is_first_down
+
+            # Calculate first down line from new position
+            first_down_line = calculate_first_down_line(new_yard_line, new_yards_to_go)
+
+            # Build result based on enforcement
+            if is_first_down:
+                return DownProgressionResult(
+                    new_down_state=DownState(
+                        current_down=new_down,
+                        yards_to_go=new_yards_to_go,
+                        first_down_line=first_down_line
+                    ),
+                    down_result=DownResult.FIRST_DOWN_ACHIEVED,
+                    first_down_achieved=True,
+                    down_events=["penalty_first_down", enforcement_result.enforcement_spot.value]
+                )
+            else:
+                return DownProgressionResult(
+                    new_down_state=DownState(
+                        current_down=new_down,
+                        yards_to_go=new_yards_to_go,
+                        first_down_line=first_down_line
+                    ),
+                    down_result=DownResult.CONTINUE_DRIVE,
+                    down_events=["penalty_enforcement", enforcement_result.enforcement_spot.value]
+                )
+
+        # Legacy flow (deprecated - kept for backwards compatibility)
         if is_automatic_first_down:
             # Automatic first down regardless of yards
             return DownProgressionResult(
                 new_down_state=DownState(
                     current_down=1,
                     yards_to_go=10,  # Standard first and 10
-                    first_down_line=min(100, current_down_state.first_down_line + penalty_yards + 10)
+                    first_down_line=max(0, min(100, current_down_state.first_down_line + penalty_yards + 10))
                 ),
                 down_result=DownResult.FIRST_DOWN_ACHIEVED,
                 first_down_achieved=True,
                 down_events=["automatic_first_down", "penalty_first_down"]
             )
-        
+
         else:
             # Adjust yards to go based on penalty
             new_yards_to_go = max(1, current_down_state.yards_to_go - penalty_yards)
-            new_first_down_line = current_down_state.first_down_line + penalty_yards
-            
+            new_first_down_line = max(0, min(100, current_down_state.first_down_line + penalty_yards))
+
             return DownProgressionResult(
                 new_down_state=DownState(
                     current_down=current_down_state.current_down,

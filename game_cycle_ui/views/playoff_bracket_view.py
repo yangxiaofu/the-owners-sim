@@ -11,10 +11,13 @@ from typing import Dict, Any, List, Optional
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox,
-    QTableWidget, QTableWidgetItem, QHeaderView, QScrollArea
+    QTableWidget, QTableWidgetItem, QHeaderView, QScrollArea, QPushButton
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor
+
+from game_cycle_ui.dialogs.box_score_dialog import BoxScoreDialog
+from game_cycle_ui.theme import TABLE_HEADER_STYLE
 
 
 class PlayoffBracketView(QWidget):
@@ -27,6 +30,9 @@ class PlayoffBracketView(QWidget):
     - Conference Championships (2 games)
     - Super Bowl (1 game)
     """
+
+    # Signals
+    simulate_round_requested = Signal()
 
     # Week numbers for playoff rounds
     WEEK_WILD_CARD = 19
@@ -41,7 +47,34 @@ class PlayoffBracketView(QWidget):
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
+        # Context for BoxScoreDialog
+        self._dynasty_id: Optional[str] = None
+        self._db_path: Optional[str] = None
+        # Cache for GameResult objects (play-by-play data)
+        self._game_results_cache: Dict[str, Any] = {}
         self._setup_ui()
+
+    def set_context(self, dynasty_id: str, db_path: str):
+        """Store dynasty context for opening box scores."""
+        self._dynasty_id = dynasty_id
+        self._db_path = db_path
+
+    def store_game_results(self, games_played: List[Dict[str, Any]]):
+        """
+        Cache GameResult objects from simulated playoff games for play-by-play access.
+
+        Args:
+            games_played: List of game result dicts, each containing:
+                - game_id: Unique game identifier
+                - game_result: GameSimulationResult object with drives/plays data
+        """
+        print(f"[PlayoffBracketView] store_game_results called with {len(games_played)} games")
+        for game in games_played:
+            game_id = game.get("game_id")
+            game_result = game.get("game_result")
+            if game_id and game_result:
+                self._game_results_cache[game_id] = game_result
+                print(f"[PlayoffBracketView] Cached game_result for {game_id}")
 
     def _setup_ui(self):
         """Build the layout with 4 tables (one per round)."""
@@ -49,11 +82,25 @@ class PlayoffBracketView(QWidget):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(15)
 
-        # Header
+        # Header row with title and simulate button
+        header_layout = QHBoxLayout()
+
         header = QLabel("NFL PLAYOFFS")
         header.setFont(QFont("Arial", 18, QFont.Weight.Bold))
-        header.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(header)
+        header_layout.addWidget(header)
+
+        header_layout.addStretch()
+
+        self.simulate_btn = QPushButton("Simulate Round")
+        self.simulate_btn.setStyleSheet(
+            "QPushButton { background-color: #388E3C; color: white; "
+            "border-radius: 4px; padding: 8px 16px; font-weight: bold; }"
+            "QPushButton:hover { background-color: #2E7D32; }"
+        )
+        self.simulate_btn.clicked.connect(self.simulate_round_requested.emit)
+        header_layout.addWidget(self.simulate_btn)
+
+        layout.addLayout(header_layout)
 
         # Scroll area for round tables
         scroll = QScrollArea()
@@ -100,9 +147,15 @@ class PlayoffBracketView(QWidget):
 
         # Configure table
         table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        table.setSelectionMode(QTableWidget.SelectionMode.NoSelection)
+        table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         table.setShowGrid(True)
         table.setAlternatingRowColors(True)
+
+        # Connect double-click to open box score
+        table.cellDoubleClicked.connect(
+            lambda row, col, t=table: self._on_game_double_clicked(t, row)
+        )
 
         # Configure columns
         header = table.horizontalHeader()
@@ -167,6 +220,9 @@ class PlayoffBracketView(QWidget):
         else:
             self.status_label.setText(f"{season} Playoffs: {played_games}/{total_games} games played")
 
+    # Color for placeholder/TBD entries
+    PLACEHOLDER_COLOR = QColor("#999")
+
     def _populate_table(self, group: QGroupBox, games: List[Dict[str, Any]]):
         """Fill table rows with game data."""
         table = self._get_table(group)
@@ -183,35 +239,73 @@ class PlayoffBracketView(QWidget):
             away_team = game.get("away_team", {})
             home_team = game.get("home_team", {})
             is_played = game.get("is_played", False)
+            is_placeholder = game.get("is_placeholder", False)
             home_score = game.get("home_score")
             away_score = game.get("away_score")
             winner_id = game.get("winner_id")
 
-            # Away team column: "#7 MIA"
+            # Away team column: "#7 MIA" or "TBD" for placeholders
             away_abbrev = away_team.get("abbrev", "???")
             away_seed = away_team.get("seed", "")
-            away_text = f"#{away_seed} {away_abbrev}" if away_seed else away_abbrev
+
+            # For placeholders, don't show "?" seeds, just show team text
+            if is_placeholder:
+                away_text = away_abbrev
+            elif away_seed and away_seed != "?":
+                away_text = f"#{away_seed} {away_abbrev}"
+            else:
+                away_text = away_abbrev
+
             away_item = QTableWidgetItem(away_text)
             away_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
+            # Style placeholder entries in gray italic
+            if is_placeholder:
+                away_item.setForeground(self.PLACEHOLDER_COLOR)
+                font = away_item.font()
+                font.setItalic(True)
+                away_item.setFont(font)
             # Highlight winner
-            if is_played and winner_id == away_team.get("id"):
+            elif is_played and winner_id == away_team.get("id"):
                 away_item.setForeground(self.WINNER_COLOR)
                 font = away_item.font()
                 font.setBold(True)
                 away_item.setFont(font)
 
+            # Store game data for double-click handler
+            away_item.setData(Qt.ItemDataRole.UserRole, {
+                'game_id': game.get('game_id'),
+                'home_team': home_team,
+                'away_team': away_team,
+                'home_score': home_score,
+                'away_score': away_score,
+                'is_played': is_played
+            })
+
             table.setItem(row, 0, away_item)
 
-            # Home team column: "#2 BUF"
+            # Home team column: "#2 BUF" or "TBD" for placeholders
             home_abbrev = home_team.get("abbrev", "???")
             home_seed = home_team.get("seed", "")
-            home_text = f"#{home_seed} {home_abbrev}" if home_seed else home_abbrev
+
+            if is_placeholder:
+                home_text = home_abbrev
+            elif home_seed and home_seed != "?":
+                home_text = f"#{home_seed} {home_abbrev}"
+            else:
+                home_text = home_abbrev
+
             home_item = QTableWidgetItem(home_text)
             home_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
+            # Style placeholder entries in gray italic
+            if is_placeholder:
+                home_item.setForeground(self.PLACEHOLDER_COLOR)
+                font = home_item.font()
+                font.setItalic(True)
+                home_item.setFont(font)
             # Highlight winner
-            if is_played and winner_id == home_team.get("id"):
+            elif is_played and winner_id == home_team.get("id"):
                 home_item.setForeground(self.WINNER_COLOR)
                 font = home_item.font()
                 font.setBold(True)
@@ -219,12 +313,18 @@ class PlayoffBracketView(QWidget):
 
             table.setItem(row, 1, home_item)
 
-            # Score column: "24-31"
+            # Score column: "24-31" or "@" for pending or "-" for placeholders
             if is_played and home_score is not None and away_score is not None:
                 score_text = f"{away_score}-{home_score}"
                 score_item = QTableWidgetItem(score_text)
                 score_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 table.setItem(row, 2, score_item)
+            elif is_placeholder:
+                # Show "-" for placeholder matchups
+                vs_item = QTableWidgetItem("-")
+                vs_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                vs_item.setForeground(self.PLACEHOLDER_COLOR)
+                table.setItem(row, 2, vs_item)
             else:
                 vs_item = QTableWidgetItem("@")
                 vs_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -232,13 +332,25 @@ class PlayoffBracketView(QWidget):
                 table.setItem(row, 2, vs_item)
 
             # Status column
-            status_item = QTableWidgetItem("FINAL" if is_played else "")
-            status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            if is_played:
+            if is_placeholder:
+                status_item = QTableWidgetItem("TBD")
+                status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                status_item.setForeground(self.PLACEHOLDER_COLOR)
+                font = status_item.font()
+                font.setPointSize(8)
+                font.setItalic(True)
+                status_item.setFont(font)
+            elif is_played:
+                status_item = QTableWidgetItem("FINAL")
+                status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 status_item.setForeground(QColor("#666"))
                 font = status_item.font()
                 font.setPointSize(8)
                 status_item.setFont(font)
+            else:
+                status_item = QTableWidgetItem("")
+                status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+
             table.setItem(row, 3, status_item)
 
         # Fill empty rows with placeholders
@@ -257,3 +369,51 @@ class PlayoffBracketView(QWidget):
             if table:
                 table.clearContents()
         self.status_label.setText("No playoff data")
+
+    def _on_game_double_clicked(self, table: QTableWidget, row: int):
+        """Handle double-click on a game row to open box score."""
+        if not self._dynasty_id or not self._db_path:
+            print("[PlayoffBracketView] No context set - cannot open box score")
+            return
+
+        item = table.item(row, 0)  # Get away team item (column 0)
+        if not item:
+            return
+
+        game_data = item.data(Qt.ItemDataRole.UserRole)
+        if not game_data:
+            return
+
+        if not game_data.get('is_played'):
+            return  # Game not played yet
+
+        game_id = game_data.get('game_id')
+        if not game_id:
+            return
+
+        # Extract team info for dialog
+        home_team = game_data.get('home_team', {})
+        away_team = game_data.get('away_team', {})
+        home_score = game_data.get('home_score', 0)
+        away_score = game_data.get('away_score', 0)
+
+        # Try to get GameResult from cache (for play-by-play)
+        game_result = self._game_results_cache.get(game_id)
+        if game_result:
+            print(f"[PlayoffBracketView] Found cached GameResult for {game_id} - play-by-play available")
+        else:
+            print(f"[PlayoffBracketView] No cached GameResult for {game_id} - no play-by-play available")
+
+        # Open box score dialog
+        dialog = BoxScoreDialog(
+            game_id=game_id,
+            home_team=home_team,
+            away_team=away_team,
+            home_score=home_score,
+            away_score=away_score,
+            db_path=self._db_path,
+            dynasty_id=self._dynasty_id,
+            game_result=game_result,  # Pass GameResult for play-by-play
+            parent=self
+        )
+        dialog.exec()

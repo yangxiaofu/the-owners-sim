@@ -13,6 +13,7 @@ import math
 from typing import List, Tuple, Dict, Optional, Union
 from enum import Enum
 from .stats import PlayerStats, PlayStatsSummary, create_player_stats_from_player
+from .base_simulator import BasePlaySimulator
 from ..mechanics.formations import OffensiveFormation, DefensiveFormation
 from ..mechanics.unified_formations import UnifiedDefensiveFormation, SimulatorContext
 from ..play_types.base_types import PlayType
@@ -106,7 +107,7 @@ class KickExecution:
         self.kick_angle = 0.0  # Degrees left/right of center
 
 
-class KickoffSimulator:
+class KickoffSimulator(BasePlaySimulator):
     """Simulates NFL 2024 Dynamic Kickoff with comprehensive penalty integration and individual player attribution"""
 
     def __init__(self, offensive_players: List, defensive_players: List,
@@ -123,8 +124,11 @@ class KickoffSimulator:
             offensive_team_id: Team ID for the kicking team
             defensive_team_id: Team ID for the receiving team
         """
-        self.kicking_team = offensive_players
-        self.receiving_team = defensive_players
+        # Set both standard BasePlaySimulator attributes and kickoff-specific names
+        self.offensive_players = offensive_players
+        self.defensive_players = defensive_players
+        self.kicking_team = offensive_players  # Alias for kickoff-specific code
+        self.receiving_team = defensive_players  # Alias for kickoff-specific code
         self.offensive_formation = offensive_formation
         self.defensive_formation = defensive_formation
         self.offensive_team_id = offensive_team_id
@@ -132,10 +136,10 @@ class KickoffSimulator:
 
         # Initialize penalty engine
         self.penalty_engine = PenaltyEngine()
-        
+
         # Load kickoff configuration
         self.kickoff_config = config.get_kickoff_config()
-        
+
         # Identify key special teams players
         self._identify_special_teams_players()
     
@@ -609,38 +613,8 @@ class KickoffSimulator:
             result.player_stats[player.name] = blocker_stats
 
         # Track special teams snaps for ALL 22 players on the field
-        self._track_special_teams_snaps_for_all_players(result)
-
-    def _track_special_teams_snaps_for_all_players(self, result):
-        """
-        Track special teams snaps for ALL 22 players on the field during this kickoff play
-
-        Args:
-            result: KickoffResult object with player_stats dictionary
-        """
-        # Track special teams snaps for all 11 offensive players (kickoff unit)
-        for player in self.offensive_players:
-            player_name = player.name
-            if player_name in result.player_stats:
-                # Player already has stats object, just add the snap
-                result.player_stats[player_name].add_special_teams_snap()
-            else:
-                # Create new PlayerStats object for this player
-                new_stats = create_player_stats_from_player(player, self.offensive_team_id)
-                new_stats.add_special_teams_snap()
-                result.player_stats[player_name] = new_stats
-
-        # Track special teams snaps for all 11 defensive players (kickoff return unit)
-        for player in self.defensive_players:
-            player_name = player.name
-            if player_name in result.player_stats:
-                # Player already has stats object, just add the snap
-                result.player_stats[player_name].add_special_teams_snap()
-            else:
-                # Create new PlayerStats object for this player
-                new_stats = create_player_stats_from_player(player, self.defensive_team_id)
-                new_stats.add_special_teams_snap()
-                result.player_stats[player_name] = new_stats
+        # NOTE: _track_special_teams_snaps_for_all_players is inherited from BasePlaySimulator
+        self._track_special_teams_snaps_for_all_players(result.player_stats)
 
     # Helper methods
     def _get_kicker_tier(self) -> str:

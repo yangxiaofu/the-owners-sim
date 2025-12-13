@@ -206,20 +206,24 @@ class StaffFactory:
             )
         )
         
-        # Balanced offensive coordinator
+        # Balanced offensive coordinator (adjusted for 55% run / 45% pass target)
+        # Base concepts in OC are calibrated for 55% run / 45% pass
+        # Philosophy preferences must stay AT or BELOW 0.5 to avoid triggering boosts
+        # Game script modifiers provide the variation (COMPETITIVE, CONTROL, COMEBACK, etc.)
         oc = OffensiveCoordinator(
             name=f"{team_name} Offensive Coordinator",
             description="Balanced coordinator with multiple looks",
             aggression=0.5,
-            run_preference=0.5,
+            run_preference=0.55,  # Slight run preference for 55% target
+            game_script_adherence=0.7,  # Higher adherence = stronger game script response
             philosophy=OffensivePhilosophy(
-                west_coast_preference=0.6,
-                air_raid_preference=0.4,
-                ground_and_pound_preference=0.4,
+                west_coast_preference=0.45,        # Below 0.5 - no pass boost triggered
+                air_raid_preference=0.3,           # Low - minimal pass emphasis
+                ground_and_pound_preference=0.50,  # AT 0.5 threshold - no boost (base concepts handle 55% run)
                 formation_creativity=0.6,
-                rpo_usage=0.6
+                rpo_usage=0.5
             ),
-            preferred_playbooks=["balanced", "west_coast"]
+            preferred_playbooks=["balanced"]
         )
         
         # Balanced defensive coordinator

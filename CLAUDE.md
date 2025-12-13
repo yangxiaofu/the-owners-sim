@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **New to this codebase? Start here:**
 1. Run the Game Cycle UI: `python main2.py` (stage-based, Madden-style) **← PRIMARY**
-2. Run the legacy desktop UI: `python main.py` (requires `pip install -r requirements-ui.txt`)
+2. Run the legacy desktop UI: `python main.py`
 3. Run tests: `python -m pytest tests/`
 4. Database: `data/database/game_cycle/game_cycle.db` (Game Cycle) or `data/database/nfl_simulation.db` (legacy)
 
@@ -16,6 +16,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 |-------------|----------|--------------|
 | **`main2.py`** | `data/database/game_cycle/game_cycle.db` | **Stage-based (Madden-style, CURRENT FOCUS)** |
 | `main.py` | `data/database/nfl_simulation.db` | Calendar-based (day-by-day, legacy) |
+
+**Database Content Split:**
+- `game_cycle.db`: Standings, schedule, playoff bracket, box scores, player stats, awards, media headlines, progression history
+- `nfl_simulation.db`: Player data, contracts, team rosters, draft picks, transactions (legacy - some data shared via JSON files)
 
 **Do NOT mix `src/game_cycle/` code with the calendar-based season cycle scheduler in `src/season/`.**
 
@@ -30,26 +34,41 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Database Operations**: MUST raise exceptions on failure - never fail silently
 - **Plan Mode**: Provide file paths (linkable), group by backend/frontend, write pseudo code with architecture adherence
 - **Dynasty Isolation**: For any new methods or classes, always consider how to utilize the SSOT for dynasty_id to maintain dynasty isolation
+- **Service Layer Pattern**: Services should NOT make direct database calls - use dedicated API classes:
+  ```python
+  # Correct - use API class
+  standings_api = StandingsAPI(conn, dynasty_id)
+  standings = standings_api.get_standings(season)
+
+  # Wrong - direct database call in service
+  cursor.execute("SELECT * FROM standings WHERE ...")
+  ```
 
 ## Project Overview
 
 "The Owners Sim" - A comprehensive NFL football simulation engine written in Python with realistic gameplay, detailed statistics, penalty systems, team management, and formation-based play calling.
 
-**Current Status:**
-- **Complete**: Game Cycle Milestone 1 (full season loop with multi-year dynasty)
-- **Production Ready**: Desktop UI (Phase 1), salary cap, calendar/events, statistics, AI offseason manager, NFL Draft
-- **Stable**: Play engine, game simulation, coaching staff, playoff system, database persistence
-- **In Development**: Desktop UI Phase 2, Player generation, advanced features (trades, franchise tags, injuries)
+**Game Vision:** You are the **Owner**. Hire your GM and Head Coach, manage team finances, and build a dynasty. Your football decisions flow through the people you hire—choose wisely.
+
+**Current Status:** See `docs/DEVELOPMENT_PRIORITIES.md` for complete roadmap and milestone status.
+
+**Completed Milestones (9 of 41):**
+1. Game Cycle, 2. Salary Cap & Contracts, 3. Player Progression, 4. Statistics, 5. Injuries & IR, 6. Trade System, 7. Player Personas, 8. Team Statistics, 9. Realistic Game Scenarios
+
+**In Progress:** Milestone 10 (Awards System), Milestone 12 (Media Coverage)
+
+**Stable Systems:** Play engine, game simulation, coaching staff, playoff system, database persistence
 
 ## Development Environment
 
 - **Python**: 3.13.5 (required, venv at `.venv/`)
 - **UI Framework**: PySide6/Qt
+- **Key Dependencies**: PySide6, pytest, numpy, psutil
 
 **Setup:**
 ```bash
 source .venv/bin/activate  # Activate virtual environment
-pip install -r requirements-ui.txt  # Install dependencies
+pip install PySide6 pytest numpy psutil  # Core dependencies
 ```
 
 ## Core Commands
@@ -66,7 +85,18 @@ python -m pytest tests/                                                    # All
 python -m pytest tests/calendar/ -v                                        # Specific module
 python -m pytest tests/salary_cap/test_cap_calculator.py::test_cap_calculation -v  # Single test
 python -m pytest tests/ -x --pdb                                           # Debug mode
+python -m pytest tests/ -m "not slow"                                      # Skip slow tests
+python -m pytest tests/ -m "integration"                                   # Integration tests only
 ```
+
+**Test Markers:**
+- `@pytest.mark.slow` - Long-running tests (skip with `-m "not slow"`)
+- `@pytest.mark.integration` - Integration tests (run with `-m "integration"`)
+
+**Key Test Directories:**
+- `tests/game_cycle/` - Game cycle services, handlers, and database tests
+- `tests/calendar/`, `tests/playoff_system/`, `tests/salary_cap/`, `tests/statistics/`
+- `tests/services/` - (10/30 tests fail due to mock paths, production unaffected)
 
 ### Database Inspection
 ```bash
@@ -78,12 +108,12 @@ sqlite3 data/database/nfl_simulation.db ".schema"
 sqlite3 data/database/nfl_simulation.db "SELECT current_date, current_phase FROM dynasty_state WHERE dynasty_id='your_dynasty';"
 ```
 
-### Validation Scripts
+### Running Scripts (require PYTHONPATH)
 ```bash
-python scripts/validate_fa_gm_behavior.py       # AI free agency behavior
-python scripts/validate_roster_cuts_gm_behavior.py
-python scripts/validate_draft_gm_behavior.py
-python scripts/run_all_gm_validations.py        # Run all GM validations
+PYTHONPATH=src python scripts/validate_fa_gm_behavior.py       # AI free agency behavior
+PYTHONPATH=src python scripts/validate_roster_cuts_gm_behavior.py
+PYTHONPATH=src python scripts/validate_draft_gm_behavior.py
+PYTHONPATH=src python scripts/run_all_gm_validations.py        # Run all GM validations
 ```
 
 ## Architecture Overview
@@ -94,15 +124,42 @@ python scripts/run_all_gm_validations.py        # Run all GM validations
 ```
 REGULAR SEASON (18 weeks)
     → PLAYOFFS (Wild Card → Divisional → Conference → Super Bowl)
-    → OFFSEASON (Re-signing → Free Agency → Draft → Roster Cuts → Waiver Wire → Training Camp → Preseason)
+    → OFFSEASON (Honors → Franchise Tag → Re-signing → Free Agency → Trading → Draft → Roster Cuts → Waiver Wire → Training Camp → Preseason)
     → NEXT SEASON (Year + 1)
 ```
+
+**StageType Quick Reference** (from `stage_definitions.py`):
+- Regular: `REGULAR_WEEK_1` through `REGULAR_WEEK_18`
+- Playoffs: `WILD_CARD`, `DIVISIONAL`, `CONFERENCE_CHAMPIONSHIP`, `SUPER_BOWL`
+- Offseason: `OFFSEASON_HONORS`, `OFFSEASON_FRANCHISE_TAG`, `OFFSEASON_RESIGNING`, `OFFSEASON_FREE_AGENCY`, `OFFSEASON_TRADING`, `OFFSEASON_DRAFT`, `OFFSEASON_ROSTER_CUTS`, `OFFSEASON_WAIVER_WIRE`, `OFFSEASON_TRAINING_CAMP`, `OFFSEASON_PRESEASON`
 
 **Key Files:**
 - `src/game_cycle/stage_definitions.py` - `StageType` enum, `Stage` dataclass
 - `src/game_cycle/stage_controller.py` - Main orchestrator (`StageController`)
 - `src/game_cycle/handlers/` - Phase handlers (regular_season.py, playoffs.py, offseason.py)
-- `src/game_cycle/services/` - Business logic (draft, free agency, roster cuts, waiver wire, training camp)
+- `src/game_cycle/services/` - Business logic (30+ services):
+  - `draft_service.py` - NFL Draft with AI GM picks
+  - `free_agency_service.py`, `fa_wave_service.py`, `fa_wave_executor.py` - Multi-wave FA market
+  - `resigning_service.py` - Contract extensions
+  - `roster_cuts_service.py` - Cut to 53-man roster
+  - `waiver_service.py` - Waiver wire claims
+  - `training_camp_service.py` - Player progression (age-weighted development)
+  - `injury_service.py` - Injury simulation, IR management, return-to-play
+  - `trade_service.py` - Player/pick trades with AI evaluation
+  - `player_persona_service.py` - Player personality archetypes
+  - `team_attractiveness_service.py` - FA destination scoring
+  - `rivalry_service.py` - Division/historical rivalries
+  - `awards_service.py` - MVP, All-Pro, weekly awards
+  - `game_simulator_service.py` - Game simulation orchestration
+- `src/game_cycle/database/` - Schema and dedicated API classes (19+ APIs):
+  - `schema.sql`, `full_schema.sql` - Complete game cycle schemas
+  - `connection.py` - Database connection management
+  - `standings_api.py`, `box_scores_api.py`, `team_stats_api.py` - Core stats
+  - `progression_history_api.py`, `play_grades_api.py` - Performance tracking
+  - `persona_api.py`, `pending_offers_api.py` - Player preferences/FA
+  - `rivalry_api.py`, `head_to_head_api.py`, `team_history_api.py` - History
+  - `awards_api.py`, `analytics_api.py` - Awards and analytics
+  - `schedule_api.py`, `schedule_rotation_api.py`, `game_slots_api.py`, `bye_week_api.py` - Schedule
 - `game_cycle_ui/` - Stage-based UI views
 
 ### Calendar-Based Architecture (main.py) - Legacy
@@ -136,6 +193,38 @@ View → Controller (thin) → Domain Model (business logic) → Database API
 Signal-based communication between controllers and views
 ```
 
+**Dynasty Isolation Pattern:**
+Every database table that stores dynasty-specific data includes `dynasty_id` as a required field. All queries MUST filter by `dynasty_id` to prevent data leakage between saves:
+```python
+# Correct - always include dynasty_id
+cursor.execute("SELECT * FROM players WHERE dynasty_id = ? AND team_id = ?", (dynasty_id, team_id))
+
+# Wrong - missing dynasty isolation
+cursor.execute("SELECT * FROM players WHERE team_id = ?", (team_id,))
+```
+
+**Player Progression System:**
+Age-weighted development with position-specific peak ages, individual potential ceilings, and attribute-category progression rates:
+- Physical attributes (speed, strength) decline fastest post-peak
+- Mental attributes (awareness, vision) can improve longest (even past 35)
+- Technique attributes remain most stable throughout career
+- See `src/game_cycle/services/training_camp_service.py` for implementation
+
+**Game Scenario System (Milestone 9):**
+Realistic in-game behavior through interconnected systems in `src/game_management/` and `src/play_engine/`:
+- `timeout_manager.py` - Strategic timeout usage based on game situation
+- `momentum_tracker.py` - Recent plays affect performance (±5%)
+- `game_script_modifiers.py` - Play calling adapts to score/time (control game vs. desperation)
+- `execution_variance.py` - Hot/cold streaks, clutch performance
+- `spike_play.py`, `play_duration.py` - Clock management mechanics
+
+**Game Statistics Flow:**
+```
+Play Engine (per-play stats) → GameManager → BoxScoreStore → BoxScoresAPI → Database
+                                           ↓
+                              PlayerStatisticsExtractor → player_season_stats table
+```
+
 ## Key Implementation Details
 
 ### Team System
@@ -147,6 +236,20 @@ Signal-based communication between controllers and views
 - Penalties: `src/config/penalties/*.json`
 - Coaching: `src/config/coaching_staff/`, `src/config/team_coaching_styles.json`
 - Playbooks: `src/config/playbooks/*.json`
+- Archetypes: `src/config/archetypes/*.json` (45 files with peak ages, development curves)
+
+### Position System
+- 25 positions total: QB, RB, FB, WR, TE, LT, LG, C, RG, RT, LE, DT, RE, LOLB, MLB, ROLB, CB, FS, SS, K, P, KR, PR, LS, EDGE
+- Position abbreviations: `src/constants/position_abbreviations.py`
+- Position-to-archetype mapping in config files
+
+### Common Imports
+```python
+from constants.team_ids import TeamIDs
+from game_cycle.stage_definitions import StageType, SeasonPhase
+from database.unified_api import UnifiedDatabaseAPI
+from statistics.stats_api import StatsAPI
+```
 
 ## Known Issues
 
@@ -170,27 +273,7 @@ Signal-based communication between controllers and views
 
 ## Documentation
 
-**Planning:**
-- `docs/01_MILESTONE_GAME_CYCLE/PLAN.md` - Game Cycle milestone (COMPLETE)
-
-**Architecture (in docs/archive/):**
-- `docs/archive/architecture/play_engine.md` - Core system architecture
-- `docs/archive/architecture/playoff_controller.md` - Playoff orchestration
-- `docs/archive/architecture/event_cap_integration.md` - Event-cap bridge pattern
+- `docs/DEVELOPMENT_PRIORITIES.md` - **Start here** for roadmap, milestone status, and dependency flow
+- `docs/XX_MILESTONE_*/` - Individual milestone plans and implementation details
+- `docs/archive/architecture/` - System architecture docs (play_engine.md, playoff_controller.md)
 - `docs/archive/schema/database_schema.md` - Complete SQLite schema v2.0.0
-
-## Testing
-
-```bash
-python -m pytest tests/                    # All tests
-python -m pytest tests/<module>/ -v        # Specific module
-python -m pytest tests/file.py::test -v    # Single test
-python -m pytest tests/ -x --pdb           # Debug mode
-```
-
-**Key Test Directories:**
-- `tests/calendar/`, `tests/playoff_system/`, `tests/salary_cap/`, `tests/statistics/`
-- `tests/services/` - (10/30 tests expected to fail, known issue)
-- `tests/game_cycle/` - Game cycle tests
-
-**Configuration:** `pytest.ini` sets pythonpath to project root

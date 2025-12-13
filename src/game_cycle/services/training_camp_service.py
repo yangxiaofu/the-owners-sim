@@ -15,6 +15,9 @@ import json
 import random
 
 from src.constants.position_normalizer import normalize_position
+from src.game_cycle.database.progression_history_api import (
+    ProgressionHistoryAPI, ProgressionHistoryRecord
+)
 
 
 class AgeCategory(Enum):
@@ -46,6 +49,8 @@ class PlayerDevelopmentResult:
     new_overall: int
     overall_change: int
     attribute_changes: List[AttributeChange] = field(default_factory=list)
+    potential: int = 99       # Player's ceiling rating
+    dev_type: str = "N"       # Development curve: "E" (early), "N" (normal), "L" (late)
 
 
 class DevelopmentAlgorithm(Protocol):
@@ -331,6 +336,7 @@ class AgeWeightedDevelopment:
         Uses:
         - Position-specific growth/regression rates from AgeCurveParameters
         - Development curve modifiers from archetype (early/normal/late) - Tollgate 4
+        - Attribute category parameters (physical/mental/technique) - Tollgate 5
         - Distance-to-peak multiplier (younger players further from peak grow faster)
         - Age-weighted probabilities for change direction
         - Individual potential ceiling to cap improvements (Tollgate 3)
@@ -346,46 +352,42 @@ class AgeWeightedDevelopment:
             Dict of attribute_name -> change value (can be positive, negative, or 0)
         """
         age_category = self.get_age_category(age, position, archetype_id)
-        improve_chance, stable_chance, decline_chance = self.AGE_WEIGHTS[age_category]
 
         # Get position-specific parameters
         peak_start, peak_end = PositionPeakAges.get_peak_ages(position)
         growth_rate, regression_rate = PositionPeakAges.get_growth_rates(position)
 
         # Get development curve modifiers (Tollgate 4: Development Curve Integration)
-        from src.transactions.transaction_constants import DevelopmentCurveModifiers
+        from src.transactions.transaction_constants import (
+            DevelopmentCurveModifiers,
+            AttributeCategoryParameters,
+            get_attribute_category
+        )
         development_curve = self._get_archetype_development_curve(archetype_id)
         curve_modifiers = DevelopmentCurveModifiers.get_modifiers(development_curve)
 
-        # Calculate effective rates based on distance from peak
+        # Calculate distance multiplier based on age category
         if age_category == AgeCategory.YOUNG:
             years_to_peak = peak_start - age
             # +10% per year away from peak, capped at +50%
             distance_multiplier = 1.0 + min(0.5, 0.1 * years_to_peak)
-            # Apply curve modifier to base growth rate before distance multiplier
-            modified_growth = growth_rate * curve_modifiers["growth"]
-            effective_rate = modified_growth * distance_multiplier
-            improve_range = self._rate_to_range(effective_rate, positive=True)
-            decline_range = (-2, -1)  # Minimal decline for young players
-
-        elif age_category == AgeCategory.PRIME:
-            # Stable with slight random variance
-            improve_range = (0, 1)
-            decline_range = (-1, 0)
-
-        else:  # VETERAN
+        elif age_category == AgeCategory.VETERAN:
             years_past_peak = age - peak_end
             # +10% per year past peak, capped at +50%
             distance_multiplier = 1.0 + min(0.5, 0.1 * years_past_peak)
-            # Apply curve modifier to base regression rate before distance multiplier
-            modified_regression = regression_rate * curve_modifiers["decline"]
-            effective_rate = modified_regression * distance_multiplier
-            improve_range = (0, 1)  # Minimal improve chance for veterans
-            decline_range = self._rate_to_range(effective_rate, positive=False)
+        else:
+            distance_multiplier = 1.0  # PRIME has no distance modifier
 
         # Get position-relevant attributes
         position_key = normalize_position(position)
         relevant_attrs = self.POSITION_ATTRIBUTES.get(position_key, ['awareness'])
+
+        # Map age category to string for AttributeCategoryParameters lookup
+        age_category_str = {
+            AgeCategory.YOUNG: "young",
+            AgeCategory.PRIME: "prime",
+            AgeCategory.VETERAN: "veteran"
+        }[age_category]
 
         changes = {}
 
@@ -398,6 +400,43 @@ class AgeWeightedDevelopment:
                 continue
 
             current_value = int(current_value)
+
+            # Tollgate 5: Get attribute category and category-specific parameters
+            attr_category = get_attribute_category(attr)
+            cat_params = AttributeCategoryParameters.get_params(
+                attr_category, age_category_str, age
+            )
+            improve_chance, stable_chance, decline_chance = cat_params["weights"]
+
+            # Calculate ranges based on age category and attribute category
+            if age_category == AgeCategory.YOUNG:
+                # Apply curve modifier to base growth rate before distance multiplier
+                modified_growth = growth_rate * curve_modifiers["growth"]
+                effective_rate = modified_growth * distance_multiplier
+                base_improve_range = self._rate_to_range(effective_rate, positive=True)
+                # Blend with category-specific range
+                improve_range = (
+                    max(cat_params["improve_range"][0], base_improve_range[0]),
+                    max(cat_params["improve_range"][1], base_improve_range[1])
+                )
+                decline_range = cat_params["decline_range"]
+
+            elif age_category == AgeCategory.PRIME:
+                # Prime uses category-specific ranges directly
+                improve_range = cat_params["improve_range"]
+                decline_range = cat_params["decline_range"]
+
+            else:  # VETERAN
+                # Apply curve modifier to base regression rate before distance multiplier
+                modified_regression = regression_rate * curve_modifiers["decline"]
+                effective_rate = modified_regression * distance_multiplier
+                base_decline_range = self._rate_to_range(effective_rate, positive=False)
+                improve_range = cat_params["improve_range"]
+                # Blend with category-specific range (use more severe decline)
+                decline_range = (
+                    min(cat_params["decline_range"][0], base_decline_range[0]),
+                    min(cat_params["decline_range"][1], base_decline_range[1])
+                )
 
             # Roll for change type
             roll = random.random()
@@ -480,6 +519,7 @@ class TrainingCampService:
         self._season = season
         self._algorithm = algorithm or AgeWeightedDevelopment()
         self._logger = logging.getLogger(__name__)
+        self._history_api = ProgressionHistoryAPI(db_path)
 
     def process_all_players(self) -> Dict[str, Any]:
         """
@@ -608,6 +648,12 @@ class TrainingCampService:
         old_overall = int(attributes.get("overall", 70))
         new_overall = self._recalculate_overall(attributes, changes_dict, position)
 
+        # Get development type from archetype (Tollgate 7: UI Integration)
+        dev_type = "N"
+        if archetype_id:
+            curve = self._algorithm._get_archetype_development_curve(archetype_id)
+            dev_type = {"early": "E", "normal": "N", "late": "L"}.get(curve, "N")
+
         return PlayerDevelopmentResult(
             player_id=player_id,
             player_name=player_name,
@@ -619,6 +665,8 @@ class TrainingCampService:
             new_overall=new_overall,
             overall_change=new_overall - old_overall,
             attribute_changes=attribute_changes,
+            potential=player_potential,
+            dev_type=dev_type,
         )
 
     def _calculate_age(self, birthdate: Optional[str]) -> int:
@@ -730,6 +778,37 @@ class TrainingCampService:
         finally:
             conn.close()
 
+        # Persist progression history records via dedicated API
+        history_records = []
+        for result in results:
+            if result.attribute_changes or result.overall_change != 0:
+                history_records.append(ProgressionHistoryRecord(
+                    player_id=result.player_id,
+                    season=self._season,
+                    age=result.age,
+                    position=result.position,
+                    team_id=result.team_id,
+                    age_category=result.age_category.name,
+                    overall_before=result.old_overall,
+                    overall_after=result.new_overall,
+                    overall_change=result.overall_change,
+                    attribute_changes=[
+                        {"attr": ac.attribute_name, "old": ac.old_value,
+                         "new": ac.new_value, "change": ac.change}
+                        for ac in result.attribute_changes
+                    ]
+                ))
+
+        if history_records:
+            try:
+                inserted = self._history_api.insert_progression_records_batch(
+                    self._dynasty_id, history_records
+                )
+                self._logger.info(f"Training camp: Inserted {inserted} progression history records")
+            except Exception as e:
+                self._logger.error(f"Error inserting progression history: {e}")
+                # Don't re-raise - history is supplementary, player updates already committed
+
         return updated_count
 
     def _regenerate_all_depth_charts(self) -> Dict[str, Any]:
@@ -800,3 +879,22 @@ class TrainingCampService:
                 cat.value: len(players) for cat, players in by_age.items()
             },
         }
+
+    def get_player_progression_history(
+        self,
+        player_id: int,
+        limit: int = 10
+    ) -> List[dict]:
+        """
+        Get player's career progression history.
+
+        Args:
+            player_id: The player's ID
+            limit: Maximum number of seasons to return (default 10)
+
+        Returns:
+            List of progression records, newest first
+        """
+        return self._history_api.get_player_history(
+            self._dynasty_id, player_id, limit
+        )

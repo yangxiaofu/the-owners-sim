@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from team_management.gm_archetype import GMArchetype
 from team_management.players.player import Player
 from transactions.models import TradeAsset, AssetType, DraftPick
+from src.constants.position_normalizer import normalize_position
 
 
 @dataclass

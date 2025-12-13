@@ -13,7 +13,7 @@
     },
     "base_punt_distance": {"min": 35, "max": 65, "avg": 45},
     "hang_time_range": {"min": 3.8, "max": 5.2, "avg": 4.5},
-    "block_probability": 0.03,
+    "block_probability": 0.008,
     "touchback_threshold": 100,
     "coffin_corner_skill_threshold": 80
   },
@@ -39,28 +39,28 @@
     "matchups": {
       "PUNT": {
         "defensive_punt_return": {
-          "block_probability": 0.03,
+          "block_probability": 0.01,
           "fake_advantage_pass": 0.75,
           "fake_advantage_run": 0.70,
           "return_advantage": 1.0,
           "description": "Standard punt vs punt return coverage"
         },
         "defensive_punt_block": {
-          "block_probability": 0.15,
+          "block_probability": 0.04,
           "fake_advantage_pass": 0.45,
           "fake_advantage_run": 0.40,
           "return_advantage": 0.60,
           "description": "Punt vs aggressive block rush"
         },
         "defensive_punt_safe": {
-          "block_probability": 0.05,
+          "block_probability": 0.015,
           "fake_advantage_pass": 0.30,
           "fake_advantage_run": 0.25,
           "return_advantage": 0.80,
           "description": "Punt vs dual-purpose safe defense"
         },
         "defensive_spread_return": {
-          "block_probability": 0.04,
+          "block_probability": 0.012,
           "fake_advantage_pass": 0.65,
           "fake_advantage_run": 0.60,
           "return_advantage": 1.10,
@@ -69,7 +69,7 @@
       }
     },
     "default_matchup": {
-      "block_probability": 0.05,
+      "block_probability": 0.015,
       "fake_advantage_pass": 0.70,
       "fake_advantage_run": 0.65,
       "return_advantage": 1.0

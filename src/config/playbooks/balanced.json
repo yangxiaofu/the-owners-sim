@@ -3,13 +3,13 @@
   "description": "Well-rounded playbook with balanced offensive and defensive options for all situations",
   "situations": {
     "first_down": {
-      "description": "Standard first down plays with run/pass balance",
+      "description": "Standard first down plays with slight run emphasis (55% run target)",
       "offensive_plays": [
         {
           "play_type": "RUN",
           "formation": "I_FORMATION",
           "concept": "power",
-          "weight": 0.4,
+          "weight": 0.5,
           "success_rate": 0.6,
           "risk_level": 0.3,
           "personnel_package": "21"
@@ -18,7 +18,7 @@
           "play_type": "RUN",
           "formation": "I_FORMATION",
           "concept": "sweep",
-          "weight": 0.2,
+          "weight": 0.25,
           "success_rate": 0.5,
           "risk_level": 0.4,
           "personnel_package": "21"
@@ -27,7 +27,7 @@
           "play_type": "PASS",
           "formation": "SHOTGUN",
           "concept": "slants",
-          "weight": 0.3,
+          "weight": 0.2,
           "success_rate": 0.7,
           "risk_level": 0.2,
           "personnel_package": "11"
@@ -36,7 +36,7 @@
           "play_type": "PASS",
           "formation": "I_FORMATION",
           "concept": "play_action_deep",
-          "weight": 0.1,
+          "weight": 0.05,
           "success_rate": 0.4,
           "risk_level": 0.8,
           "personnel_package": "21"
@@ -62,22 +62,31 @@
       ]
     },
     "second_short": {
-      "description": "Second down with short yardage (1-3 yards)",
+      "description": "Second down with short yardage (1-3 yards) - run heavy (60% run target)",
       "offensive_plays": [
         {
           "play_type": "RUN",
           "formation": "I_FORMATION",
           "concept": "power",
-          "weight": 0.5,
+          "weight": 0.45,
           "success_rate": 0.7,
           "risk_level": 0.3,
+          "personnel_package": "21"
+        },
+        {
+          "play_type": "RUN",
+          "formation": "I_FORMATION",
+          "concept": "off_tackle",
+          "weight": 0.2,
+          "success_rate": 0.65,
+          "risk_level": 0.35,
           "personnel_package": "21"
         },
         {
           "play_type": "PASS",
           "formation": "SHOTGUN",
           "concept": "quick_out",
-          "weight": 0.3,
+          "weight": 0.2,
           "success_rate": 0.6,
           "risk_level": 0.3,
           "personnel_package": "11"
@@ -86,7 +95,7 @@
           "play_type": "PASS",
           "formation": "I_FORMATION",
           "concept": "play_action_short",
-          "weight": 0.2,
+          "weight": 0.15,
           "success_rate": 0.5,
           "risk_level": 0.6,
           "personnel_package": "21"
@@ -112,22 +121,13 @@
       ]
     },
     "second_medium": {
-      "description": "Second down with medium yardage (4-7 yards)",
+      "description": "Second down with medium yardage (4-7 yards) - balanced with run lean",
       "offensive_plays": [
-        {
-          "play_type": "PASS",
-          "formation": "SHOTGUN",
-          "concept": "comeback",
-          "weight": 0.4,
-          "success_rate": 0.6,
-          "risk_level": 0.4,
-          "personnel_package": "11"
-        },
         {
           "play_type": "RUN",
           "formation": "I_FORMATION",
           "concept": "draw",
-          "weight": 0.3,
+          "weight": 0.35,
           "success_rate": 0.5,
           "risk_level": 0.5,
           "personnel_package": "21"
@@ -135,8 +135,26 @@
         {
           "play_type": "PASS",
           "formation": "SHOTGUN",
+          "concept": "comeback",
+          "weight": 0.3,
+          "success_rate": 0.6,
+          "risk_level": 0.4,
+          "personnel_package": "11"
+        },
+        {
+          "play_type": "RUN",
+          "formation": "I_FORMATION",
+          "concept": "power",
+          "weight": 0.15,
+          "success_rate": 0.55,
+          "risk_level": 0.45,
+          "personnel_package": "21"
+        },
+        {
+          "play_type": "PASS",
+          "formation": "SHOTGUN",
           "concept": "screen",
-          "weight": 0.2,
+          "weight": 0.15,
           "success_rate": 0.5,
           "risk_level": 0.6,
           "personnel_package": "11"
@@ -145,7 +163,7 @@
           "play_type": "PASS",
           "formation": "I_FORMATION",
           "concept": "play_action_intermediate",
-          "weight": 0.1,
+          "weight": 0.05,
           "success_rate": 0.4,
           "risk_level": 0.7,
           "personnel_package": "21"
@@ -221,22 +239,31 @@
       ]
     },
     "third_short": {
-      "description": "Third down with short yardage (1-3 yards)",
+      "description": "Third down with short yardage (1-3 yards) - run emphasis (55% run target)",
       "offensive_plays": [
         {
           "play_type": "RUN",
           "formation": "I_FORMATION",
           "concept": "power",
-          "weight": 0.4,
+          "weight": 0.45,
           "success_rate": 0.6,
           "risk_level": 0.4,
+          "personnel_package": "21"
+        },
+        {
+          "play_type": "RUN",
+          "formation": "I_FORMATION",
+          "concept": "sneak",
+          "weight": 0.1,
+          "success_rate": 0.75,
+          "risk_level": 0.25,
           "personnel_package": "21"
         },
         {
           "play_type": "PASS",
           "formation": "SHOTGUN",
           "concept": "quick_slant",
-          "weight": 0.4,
+          "weight": 0.3,
           "success_rate": 0.7,
           "risk_level": 0.3,
           "personnel_package": "11"
@@ -245,7 +272,7 @@
           "play_type": "PASS",
           "formation": "I_FORMATION",
           "concept": "play_action_short",
-          "weight": 0.2,
+          "weight": 0.15,
           "success_rate": 0.5,
           "risk_level": 0.6,
           "personnel_package": "21"
@@ -456,22 +483,31 @@
       ]
     },
     "red_zone": {
-      "description": "Red zone offense (inside 20 yard line)",
+      "description": "Red zone offense (inside 20 yard line) - balanced with run lean (45% run target)",
       "offensive_plays": [
         {
           "play_type": "RUN",
           "formation": "I_FORMATION",
           "concept": "power",
-          "weight": 0.3,
+          "weight": 0.35,
           "success_rate": 0.6,
           "risk_level": 0.4,
           "personnel_package": "21"
         },
         {
+          "play_type": "RUN",
+          "formation": "I_FORMATION",
+          "concept": "dive",
+          "weight": 0.1,
+          "success_rate": 0.55,
+          "risk_level": 0.35,
+          "personnel_package": "22"
+        },
+        {
           "play_type": "PASS",
           "formation": "SHOTGUN",
           "concept": "fade",
-          "weight": 0.3,
+          "weight": 0.25,
           "success_rate": 0.4,
           "risk_level": 0.6,
           "personnel_package": "11"
@@ -480,7 +516,7 @@
           "play_type": "PASS",
           "formation": "SHOTGUN",
           "concept": "slant",
-          "weight": 0.2,
+          "weight": 0.15,
           "success_rate": 0.6,
           "risk_level": 0.3,
           "personnel_package": "11"
@@ -489,7 +525,7 @@
           "play_type": "PASS",
           "formation": "I_FORMATION",
           "concept": "play_action_short",
-          "weight": 0.2,
+          "weight": 0.15,
           "success_rate": 0.5,
           "risk_level": 0.5,
           "personnel_package": "21"
@@ -515,22 +551,31 @@
       ]
     },
     "goal_line": {
-      "description": "Goal line situations (inside 5 yard line)",
+      "description": "Goal line situations (inside 5 yard line) - run heavy (60% run target)",
       "offensive_plays": [
         {
           "play_type": "RUN",
           "formation": "I_FORMATION",
           "concept": "power",
-          "weight": 0.5,
+          "weight": 0.45,
           "success_rate": 0.7,
           "risk_level": 0.3,
+          "personnel_package": "22"
+        },
+        {
+          "play_type": "RUN",
+          "formation": "I_FORMATION",
+          "concept": "sneak",
+          "weight": 0.15,
+          "success_rate": 0.75,
+          "risk_level": 0.2,
           "personnel_package": "22"
         },
         {
           "play_type": "PASS",
           "formation": "SHOTGUN",
           "concept": "fade",
-          "weight": 0.3,
+          "weight": 0.25,
           "success_rate": 0.4,
           "risk_level": 0.7,
           "personnel_package": "11"
@@ -539,7 +584,7 @@
           "play_type": "PASS",
           "formation": "I_FORMATION",
           "concept": "play_action_rollout",
-          "weight": 0.2,
+          "weight": 0.15,
           "success_rate": 0.5,
           "risk_level": 0.6,
           "personnel_package": "21"

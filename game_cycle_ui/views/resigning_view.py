@@ -16,6 +16,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor
 
 from game_cycle_ui.dialogs import ContractDetailsDialog
+from game_cycle_ui.theme import TABLE_HEADER_STYLE
+from constants.position_abbreviations import get_position_abbreviation
 
 
 class ResigningView(QWidget):
@@ -152,21 +154,25 @@ class ResigningView(QWidget):
         table_layout = QVBoxLayout(table_group)
 
         self.players_table = QTableWidget()
-        self.players_table.setColumnCount(7)
+        self.players_table.setColumnCount(9)
         self.players_table.setHorizontalHeaderLabels([
-            "Player", "Position", "Age", "OVR", "Est. Cap Hit", "Status", "Action"
+            "Player", "Position", "Age", "OVR", "Potential", "Dev", "Est. Cap Hit", "Status", "Action"
         ])
 
         # Configure table appearance
         header = self.players_table.horizontalHeader()
+        header.setStyleSheet(TABLE_HEADER_STYLE)
         header.setSectionResizeMode(0, QHeaderView.Stretch)  # Player name stretches
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(6, QHeaderView.Fixed)
-        header.resizeSection(6, 150)  # Action column width
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # Position
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Age
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # OVR
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Potential
+        header.setSectionResizeMode(5, QHeaderView.Fixed)  # Dev
+        header.resizeSection(5, 50)  # Dev column width (narrow)
+        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)  # Est. Cap Hit
+        header.setSectionResizeMode(7, QHeaderView.ResizeToContents)  # Status
+        header.setSectionResizeMode(8, QHeaderView.Fixed)  # Action
+        header.resizeSection(8, 220)  # Action column width (wider for View + Re-sign + Let Go)
 
         self.players_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.players_table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -229,7 +235,8 @@ class ResigningView(QWidget):
         self.players_table.setItem(row, 0, name_item)
 
         # Position
-        pos_item = QTableWidgetItem(player.get("position", ""))
+        position = player.get("position", "")
+        pos_item = QTableWidgetItem(get_position_abbreviation(position))
         pos_item.setTextAlignment(Qt.AlignCenter)
         self.players_table.setItem(row, 1, pos_item)
 
@@ -253,19 +260,54 @@ class ResigningView(QWidget):
             ovr_item.setForeground(QColor("#1976D2"))  # Blue - Solid
         self.players_table.setItem(row, 3, ovr_item)
 
+        # Potential rating
+        potential = player.get("potential", 0)
+        potential_item = QTableWidgetItem(str(potential))
+        potential_item.setTextAlignment(Qt.AlignCenter)
+        # Color code potential based on upside
+        if potential > 0:
+            upside = potential - overall
+            if upside >= 10:
+                # High upside (10+ difference) - Blue
+                potential_item.setForeground(QColor("#1976D2"))
+            elif upside <= 2:
+                # Near ceiling (within 2) - Green
+                potential_item.setForeground(QColor("#2E7D32"))
+        self.players_table.setItem(row, 4, potential_item)
+
+        # Dev type (development trait)
+        dev_type = player.get("dev_type", "Normal")
+        # Map dev_type to single letter badge
+        dev_map = {
+            "Early": "E",
+            "Normal": "N",
+            "Late": "L"
+        }
+        dev_letter = dev_map.get(dev_type, "N")
+        dev_item = QTableWidgetItem(dev_letter)
+        dev_item.setTextAlignment(Qt.AlignCenter)
+        # Color code by dev type (badge-style)
+        if dev_type == "Early":
+            dev_item.setForeground(QColor("#FF6F00"))  # Orange
+        elif dev_type == "Late":
+            dev_item.setForeground(QColor("#1976D2"))  # Blue
+        else:  # Normal
+            dev_item.setForeground(QColor("#666666"))  # Gray
+        self.players_table.setItem(row, 5, dev_item)
+
         # Estimated Year 1 Cap Hit (actual cap impact for new contract)
         # Falls back to AAV if year 1 cap hit not available
         estimated_cap_hit = player.get("estimated_year1_cap_hit", player.get("estimated_aav", 0))
         cap_text = f"${estimated_cap_hit:,}" if estimated_cap_hit else "N/A"
         cap_item = QTableWidgetItem(cap_text)
         cap_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.players_table.setItem(row, 4, cap_item)
+        self.players_table.setItem(row, 6, cap_item)
 
         # Status (default: Pending)
         status_item = QTableWidgetItem("Pending")
         status_item.setTextAlignment(Qt.AlignCenter)
         status_item.setForeground(QColor("#666"))
-        self.players_table.setItem(row, 5, status_item)
+        self.players_table.setItem(row, 7, status_item)
 
         # Action buttons
         action_widget = QWidget()
@@ -303,7 +345,7 @@ class ResigningView(QWidget):
         let_go_btn.clicked.connect(lambda checked, pid=player_id, r=row: self._on_let_go_clicked(pid, r))
         action_layout.addWidget(let_go_btn)
 
-        self.players_table.setCellWidget(row, 6, action_widget)
+        self.players_table.setCellWidget(row, 8, action_widget)
 
     def _on_view_contract(self, contract_id: int, player_name: str):
         """Handle view contract button click - opens contract details dialog."""
@@ -324,7 +366,7 @@ class ResigningView(QWidget):
         self._pending_resignings.add(player_id)
 
         # Update status cell
-        status_item = self.players_table.item(row, 5)
+        status_item = self.players_table.item(row, 7)
         if status_item:
             status_item.setText("Re-signing")
             status_item.setForeground(QColor("#2E7D32"))  # Green
@@ -341,7 +383,7 @@ class ResigningView(QWidget):
     def _on_let_go_clicked(self, player_id: int, row: int):
         """Handle let go button click."""
         # Update status cell
-        status_item = self.players_table.item(row, 5)
+        status_item = self.players_table.item(row, 7)
         if status_item:
             status_item.setText("Free Agent")
             status_item.setForeground(QColor("#C62828"))  # Red
@@ -356,7 +398,7 @@ class ResigningView(QWidget):
         """Update the count of pending re-signs."""
         count = 0
         for row in range(self.players_table.rowCount()):
-            status_item = self.players_table.item(row, 5)
+            status_item = self.players_table.item(row, 7)
             if status_item and status_item.text() == "Re-signing":
                 count += 1
         self.resign_count_label.setText(str(count))
@@ -364,7 +406,7 @@ class ResigningView(QWidget):
     def show_no_expiring_message(self):
         """Show a message when there are no expiring contracts."""
         self.players_table.setRowCount(1)
-        self.players_table.setSpan(0, 0, 1, 7)
+        self.players_table.setSpan(0, 0, 1, 9)
 
         message_item = QTableWidgetItem("No expiring contracts for your team")
         message_item.setTextAlignment(Qt.AlignCenter)
@@ -469,16 +511,16 @@ class ResigningView(QWidget):
 
             can_afford = estimated_aav <= effective_cap
 
-            # Update cap hit text color (column 4)
-            cap_item = self.players_table.item(row, 4)
+            # Update cap hit text color (column 6)
+            cap_item = self.players_table.item(row, 6)
             if cap_item:
                 if not can_afford and not is_pending:
                     cap_item.setForeground(QColor("#C62828"))  # Red - unaffordable
                 else:
                     cap_item.setForeground(QColor("#000000"))  # Default
 
-            # Update status column (column 5) if still pending
-            status_item = self.players_table.item(row, 5)
+            # Update status column (column 7) if still pending
+            status_item = self.players_table.item(row, 7)
             if status_item and status_item.text() == "Pending":
                 if not can_afford:
                     status_item.setText("Can't Afford")
@@ -487,8 +529,8 @@ class ResigningView(QWidget):
                     status_item.setText("Pending")
                     status_item.setForeground(QColor("#666"))
 
-            # Update Re-sign button state (in action widget, column 6)
-            action_widget = self.players_table.cellWidget(row, 6)
+            # Update Re-sign button state (in action widget, column 8)
+            action_widget = self.players_table.cellWidget(row, 8)
             if action_widget:
                 # Find the Re-sign button
                 for child in action_widget.children():

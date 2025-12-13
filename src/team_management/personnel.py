@@ -268,6 +268,10 @@ class TeamRosterGenerator:
 
             roster.append(player)
 
+        # Sort roster by depth_chart_order so starters are processed first
+        # This ensures snap tracking assigns snaps to starters, not backups
+        roster.sort(key=lambda p: (getattr(p, 'depth_chart_order', 99), -getattr(p, 'overall', 0)))
+
         return roster
     
     @classmethod

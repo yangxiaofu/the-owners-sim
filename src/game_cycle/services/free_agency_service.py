@@ -10,7 +10,8 @@ from typing import Dict, List, Any, Optional
 import logging
 import json
 
-from persistence.transaction_logger import TransactionLogger
+from src.persistence.transaction_logger import TransactionLogger
+from src.constants.position_normalizer import normalize_position
 
 
 class FreeAgencyService:
@@ -45,6 +46,11 @@ class FreeAgencyService:
         # Lazy-loaded cap helper
         self._cap_helper = None
 
+        # Lazy-loaded persona/attractiveness services for player preferences
+        self._persona_service = None
+        self._attractiveness_service = None
+        self._preference_engine = None
+
         # Transaction logger for audit trail
         self._transaction_logger = TransactionLogger(db_path)
 
@@ -59,6 +65,202 @@ class FreeAgencyService:
             # Offseason contracts/cap are for NEXT season
             self._cap_helper = CapHelper(self._db_path, self._dynasty_id, self._season + 1)
         return self._cap_helper
+
+    def _get_persona_service(self):
+        """Lazy-load PlayerPersonaService."""
+        if self._persona_service is None:
+            from src.game_cycle.services.player_persona_service import PlayerPersonaService
+            self._persona_service = PlayerPersonaService(
+                self._db_path, self._dynasty_id, self._season
+            )
+        return self._persona_service
+
+    def _get_attractiveness_service(self):
+        """Lazy-load TeamAttractivenessService."""
+        if self._attractiveness_service is None:
+            from src.game_cycle.services.team_attractiveness_service import TeamAttractivenessService
+            from src.game_cycle.database.connection import GameCycleDatabase
+            db = GameCycleDatabase(self._db_path)
+            self._attractiveness_service = TeamAttractivenessService(
+                db, self._dynasty_id, self._season
+            )
+        return self._attractiveness_service
+
+    def _get_preference_engine(self):
+        """Lazy-load PlayerPreferenceEngine."""
+        if self._preference_engine is None:
+            from src.player_management.preference_engine import PlayerPreferenceEngine
+            self._preference_engine = PlayerPreferenceEngine()
+        return self._preference_engine
+
+    def _get_dev_type(self, archetype_id: Optional[str]) -> str:
+        """
+        Get development type from archetype.
+
+        Args:
+            archetype_id: Archetype identifier
+
+        Returns:
+            Development type: "E" (early), "N" (normal), or "L" (late)
+        """
+        if not archetype_id:
+            return "N"
+        try:
+            from src.player_generation.archetypes.archetype_registry import ArchetypeRegistry
+            registry = ArchetypeRegistry()
+            archetype = registry.get_archetype(archetype_id)
+            if archetype and archetype.development_curve:
+                return {"early": "E", "normal": "N", "late": "L"}.get(archetype.development_curve, "N")
+        except Exception:
+            pass
+        return "N"
+
+    def _calculate_age(self, birthdate: Optional[str]) -> int:
+        """Calculate age from birthdate string.
+
+        Args:
+            birthdate: Birthdate in YYYY-MM-DD format
+
+        Returns:
+            Age in years, defaults to 25 if birthdate is invalid
+        """
+        if not birthdate:
+            return 25  # Default
+        try:
+            birth_year = int(birthdate.split("-")[0])
+            return self._season - birth_year
+        except (ValueError, IndexError):
+            return 25
+
+    def _estimate_role(self, team_id: int, position: str, overall: int) -> str:
+        """Estimate player's role on the team.
+
+        Simple heuristic based on overall rating:
+        - 85+ overall: starter
+        - 70-84 overall: rotational
+        - <70 overall: backup
+
+        Args:
+            team_id: Team ID (reserved for future roster comparison)
+            position: Player position
+            overall: Player overall rating
+
+        Returns:
+            Role string: 'starter', 'rotational', or 'backup'
+        """
+        if overall >= 85:
+            return "starter"
+        elif overall >= 70:
+            return "rotational"
+        else:
+            return "backup"
+
+    def _check_player_acceptance(
+        self,
+        player_id: int,
+        player_info: Dict[str, Any],
+        team_id: int,
+        aav: int,
+        total_value: int,
+        years: int,
+        guaranteed: int,
+        signing_bonus: int,
+        position: str,
+        overall: int
+    ) -> Dict[str, Any]:
+        """Check if player accepts the offer based on preferences.
+
+        Uses player persona and team attractiveness to evaluate whether
+        the player would accept a contract offer from the team.
+
+        Args:
+            player_id: Player ID
+            player_info: Player info dict
+            team_id: Team ID making the offer
+            aav: Average annual value in dollars
+            total_value: Total contract value in dollars
+            years: Contract length
+            guaranteed: Guaranteed money in dollars
+            signing_bonus: Signing bonus in dollars
+            position: Player position
+            overall: Player overall rating
+
+        Returns:
+            Dict with:
+                - accepted: bool
+                - probability: float (0.0-1.0)
+                - concerns: List[str]
+                - interest_level: str ("low", "medium", "high")
+        """
+        try:
+            from src.player_management.preference_engine import ContractOffer
+
+            # Get or generate player persona
+            persona_service = self._get_persona_service()
+            persona = persona_service.get_persona(player_id)
+
+            if persona is None:
+                # Generate persona for this player
+                age = self._calculate_age(player_info.get("birthdate"))
+                persona = persona_service.generate_persona(
+                    player_id=player_id,
+                    age=age,
+                    overall=overall,
+                    position=position,
+                    team_id=0,  # Free agent, no current team
+                )
+                persona_service.save_persona(persona)
+
+            # Get team attractiveness
+            attractiveness_service = self._get_attractiveness_service()
+            team_attractiveness = attractiveness_service.get_team_attractiveness(team_id)
+
+            # Build contract offer
+            offer = ContractOffer(
+                team_id=team_id,
+                aav=aav,
+                total_value=total_value,
+                years=years,
+                guaranteed=guaranteed,
+                signing_bonus=signing_bonus,
+                market_aav=aav,  # At market value for FA signings
+                role=self._estimate_role(team_id, position, overall)
+            )
+
+            # Evaluate offer
+            preference_engine = self._get_preference_engine()
+            accepted, probability, concerns = preference_engine.should_accept_offer(
+                persona=persona,
+                team=team_attractiveness,
+                offer=offer,
+                is_current_team=False,  # FA is not on any team
+                is_drafting_team=(team_id == persona.drafting_team_id)
+            )
+
+            # Determine interest level
+            if probability >= 0.75:
+                interest_level = "high"
+            elif probability >= 0.45:
+                interest_level = "medium"
+            else:
+                interest_level = "low"
+
+            return {
+                "accepted": accepted,
+                "probability": probability,
+                "concerns": concerns,
+                "interest_level": interest_level
+            }
+
+        except Exception as e:
+            self._logger.error(f"Preference check failed for player {player_id}: {e}")
+            # Fallback: Accept the offer (don't block signing due to preference system errors)
+            return {
+                "accepted": True,
+                "probability": 0.50,
+                "concerns": [],
+                "interest_level": "medium"
+            }
 
     def get_cap_summary(self, team_id: int) -> Dict[str, Any]:
         """
@@ -111,11 +313,12 @@ class FreeAgencyService:
             if position_filter and position.lower() != position_filter.lower():
                 continue
 
-            # Extract overall from JSON attributes
+            # Extract overall and potential from JSON attributes
             attributes = player.get("attributes", {})
             if isinstance(attributes, str):
                 attributes = json.loads(attributes)
             overall = attributes.get("overall", 0)
+            potential = attributes.get("potential", 0)
 
             # Apply min overall filter if specified
             if min_overall and overall < min_overall:
@@ -132,6 +335,10 @@ class FreeAgencyService:
                     pass
 
             years_pro = player.get("years_pro", 0)
+
+            # Get development type from archetype
+            archetype_id = player.get("archetype_id")
+            dev_type = self._get_dev_type(archetype_id)
 
             # Calculate market value for contract estimate
             market_value = market_calculator.calculate_player_value(
@@ -152,6 +359,8 @@ class FreeAgencyService:
                 "position": position,
                 "age": age,
                 "overall": overall,
+                "potential": potential,
+                "dev_type": dev_type,
                 "years_pro": years_pro,
                 "estimated_aav": estimated_aav,
                 "estimated_years": estimated_years,
@@ -167,15 +376,20 @@ class FreeAgencyService:
         self,
         player_id: int,
         team_id: int,
-        player_info: Optional[Dict[str, Any]] = None
+        player_info: Optional[Dict[str, Any]] = None,
+        skip_preference_check: bool = False
     ) -> Dict[str, Any]:
         """
         Sign a free agent to a team with a market-value contract.
+
+        Includes player preference check - players may reject offers based on
+        their persona and the team's attractiveness.
 
         Args:
             player_id: Player ID to sign
             team_id: Team ID signing the player
             player_info: Optional player info dict (to avoid extra DB query)
+            skip_preference_check: If True, bypasses player preference check
 
         Returns:
             Dict with:
@@ -184,6 +398,10 @@ class FreeAgencyService:
                 - contract_details: dict with AAV, years, etc.
                 - player_name: str
                 - error_message: str (if failed)
+                - rejection_reason: str (if player declined)
+                - concerns: List[str] (if player declined)
+                - acceptance_probability: float (if player declined)
+                - interest_level: str (if player declined)
         """
         from salary_cap.cap_database_api import CapDatabaseAPI
         from salary_cap.contract_manager import ContractManager
@@ -254,6 +472,36 @@ class FreeAgencyService:
             signing_bonus = int(market_value["signing_bonus"] * 1_000_000)
             guaranteed = int(market_value["guaranteed"] * 1_000_000)
             years = market_value["years"]
+
+            # Player preference check (unless skipped)
+            if not skip_preference_check:
+                acceptance_result = self._check_player_acceptance(
+                    player_id=player_id,
+                    player_info=player_info,
+                    team_id=team_id,
+                    aav=aav,
+                    total_value=total_value,
+                    years=years,
+                    guaranteed=guaranteed,
+                    signing_bonus=signing_bonus,
+                    position=position,
+                    overall=overall
+                )
+
+                if not acceptance_result["accepted"]:
+                    self._logger.info(
+                        f"FA {player_name} declined offer from team {team_id}: "
+                        f"{acceptance_result['concerns']}"
+                    )
+                    return {
+                        "success": False,
+                        "error_message": "Player declined offer",
+                        "player_name": player_name,
+                        "rejection_reason": "Player declined based on preferences",
+                        "concerns": acceptance_result["concerns"],
+                        "acceptance_probability": acceptance_result["probability"],
+                        "interest_level": acceptance_result["interest_level"],
+                    }
 
             # Check cap space for NEXT season (offseason signings)
             cap_space = cap_calculator.calculate_team_cap_space(
@@ -326,6 +574,7 @@ class FreeAgencyService:
                 transaction_type="UFA_SIGNING",
                 player_id=player_id,
                 player_name=player_name,
+                position=position,
                 from_team_id=None,  # From free agency
                 to_team_id=team_id,
                 transaction_date=date(self._season + 1, 3, 15),  # FA period date (next year)
@@ -333,7 +582,6 @@ class FreeAgencyService:
                     "contract_years": years,
                     "contract_value": total_value,
                     "guaranteed": guaranteed,
-                    "position": position,
                 }
             )
 
@@ -357,27 +605,240 @@ class FreeAgencyService:
                 "error_message": str(e),
             }
 
+    def evaluate_player_interest(
+        self,
+        player_id: int,
+        team_id: int,
+        player_info: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Evaluate a player's interest level in a team BEFORE making an offer.
+
+        Use this to show UI indicators and help users understand likelihood
+        of signing before committing.
+
+        Args:
+            player_id: Player ID
+            team_id: Team ID
+            player_info: Optional player info dict
+
+        Returns:
+            Dict with:
+                - interest_score: int (0-100) - normalized team score
+                - interest_level: str ("very_low", "low", "medium", "high", "very_high")
+                - acceptance_probability: float
+                - concerns: List[str]
+                - suggested_premium: float (e.g., 1.15 = offer 15% above market)
+                - team_score: int (0-100) - raw team score for backwards compatibility
+                - persona_type: str - player's persona type for UI hints
+        """
+        try:
+            from database.player_roster_api import PlayerRosterAPI
+            from offseason.market_value_calculator import MarketValueCalculator
+            from src.player_management.preference_engine import ContractOffer
+
+            roster_api = PlayerRosterAPI(self._db_path)
+            market_calculator = MarketValueCalculator()
+
+            # Get player info if not provided
+            if player_info is None:
+                player_info = roster_api.get_player_by_id(self._dynasty_id, player_id)
+
+            if not player_info:
+                return {
+                    "interest_level": "unknown",
+                    "acceptance_probability": 0.0,
+                    "concerns": ["Player not found"],
+                    "suggested_premium": 1.0,
+                    "team_score": 0
+                }
+
+            # Extract player details
+            positions = player_info.get("positions", [])
+            if isinstance(positions, str):
+                positions = json.loads(positions)
+            position = positions[0] if positions else ""
+
+            attributes = player_info.get("attributes", {})
+            if isinstance(attributes, str):
+                attributes = json.loads(attributes)
+            overall = attributes.get("overall", 70)
+
+            age = self._calculate_age(player_info.get("birthdate"))
+            years_pro = player_info.get("years_pro", 3)
+
+            # Calculate market value
+            market_value = market_calculator.calculate_player_value(
+                position=position,
+                overall=overall,
+                age=age,
+                years_pro=years_pro
+            )
+            aav = int(market_value["aav"] * 1_000_000)
+            total_value = int(market_value["total_value"] * 1_000_000)
+            guaranteed = int(market_value["guaranteed"] * 1_000_000)
+            years = market_value["years"]
+            signing_bonus = int(market_value["signing_bonus"] * 1_000_000)
+
+            # Get or generate persona
+            persona_service = self._get_persona_service()
+            persona = persona_service.get_persona(player_id)
+
+            if persona is None:
+                persona = persona_service.generate_persona(
+                    player_id=player_id,
+                    age=age,
+                    overall=overall,
+                    position=position,
+                    team_id=0,
+                )
+                persona_service.save_persona(persona)
+
+            # Get team attractiveness
+            attractiveness_service = self._get_attractiveness_service()
+            team_attractiveness = attractiveness_service.get_team_attractiveness(team_id)
+
+            # Build hypothetical offer at market value
+            offer = ContractOffer(
+                team_id=team_id,
+                aav=aav,
+                total_value=total_value,
+                years=years,
+                guaranteed=guaranteed,
+                signing_bonus=signing_bonus,
+                market_aav=aav,
+                role=self._estimate_role(team_id, position, overall)
+            )
+
+            # Get preference engine evaluation
+            preference_engine = self._get_preference_engine()
+            team_score = preference_engine.calculate_team_score(
+                persona=persona,
+                team=team_attractiveness,
+                offer=offer,
+                is_current_team=False,
+                is_drafting_team=(team_id == persona.drafting_team_id)
+            )
+            probability = preference_engine.calculate_acceptance_probability(
+                persona=persona,
+                team_score=team_score,
+                offer_vs_market=1.0  # At market value
+            )
+            concerns = preference_engine.get_concerns(persona, team_attractiveness, offer)
+
+            # Determine interest level based on team_score (0-100)
+            # Color bands: Green (80+), Blue (65-79), Gray (50-64), Orange (35-49), Red (<35)
+            if team_score >= 80:
+                interest_level = "very_high"
+                suggested_premium = 0.95  # Can even get discount
+            elif team_score >= 65:
+                interest_level = "high"
+                suggested_premium = 1.0  # No premium needed
+            elif team_score >= 50:
+                interest_level = "medium"
+                suggested_premium = 1.10  # 10% above market
+            elif team_score >= 35:
+                interest_level = "low"
+                suggested_premium = 1.20  # 20% above market
+            else:
+                interest_level = "very_low"
+                suggested_premium = 1.30  # 30% above market (if even possible)
+
+            return {
+                "interest_score": team_score,  # Normalized 0-100 for UI
+                "interest_level": interest_level,
+                "acceptance_probability": probability,
+                "concerns": concerns,
+                "suggested_premium": suggested_premium,
+                "team_score": team_score,  # Backwards compatibility
+                "persona_type": persona.persona_type.value  # For UI hints
+            }
+
+        except Exception as e:
+            self._logger.error(f"Interest evaluation failed for player {player_id}: {e}")
+            return {
+                "interest_score": 50,
+                "interest_level": "unknown",
+                "acceptance_probability": 0.5,
+                "concerns": [],
+                "suggested_premium": 1.0,
+                "team_score": 50,
+                "persona_type": "unknown"
+            }
+
+    def get_player_persona_data(self, player_id: int) -> Dict[str, Any]:
+        """Get full persona data for signing dialog.
+
+        Returns detailed persona information for UI display including
+        persona type and preference weights.
+
+        Args:
+            player_id: Player ID
+
+        Returns:
+            Dict with persona_type and preference weights (0-100)
+        """
+        try:
+            persona_service = self._get_persona_service()
+            persona = persona_service.get_persona(player_id)
+
+            if persona is None:
+                return {
+                    "persona_type": "unknown",
+                    "money_importance": 50,
+                    "winning_importance": 50,
+                    "location_importance": 50,
+                    "playing_time_importance": 50,
+                    "loyalty_importance": 50,
+                    "market_size_importance": 50
+                }
+
+            return {
+                "persona_type": persona.persona_type.value,
+                "money_importance": persona.money_importance,
+                "winning_importance": persona.winning_importance,
+                "location_importance": persona.location_importance,
+                "playing_time_importance": persona.playing_time_importance,
+                "loyalty_importance": persona.loyalty_importance,
+                "market_size_importance": persona.market_size_importance
+            }
+
+        except Exception as e:
+            self._logger.error(f"Failed to get persona data for player {player_id}: {e}")
+            return {
+                "persona_type": "unknown",
+                "money_importance": 50,
+                "winning_importance": 50,
+                "location_importance": 50,
+                "playing_time_importance": 50,
+                "loyalty_importance": 50,
+                "market_size_importance": 50
+            }
+
     def process_ai_signings(
         self,
         user_team_id: int,
-        max_signings_per_team: int = 3
+        max_signings_per_team: int = 3,
+        max_attempts_per_signing: int = 3
     ) -> Dict[str, Any]:
         """
-        Process AI team free agent signings.
+        Process AI team free agent signings with player preference awareness.
 
         For each AI team (not user_team_id):
         1. Get team's positional needs (simple gap analysis)
-        2. Find best available FA for each need
-        3. Sign if cap space allows
+        2. Evaluate player interest before offering
+        3. Sign if cap space allows and player accepts
+        4. Handle rejections and try other players
 
         Args:
             user_team_id: User's team ID (to skip)
             max_signings_per_team: Maximum signings per AI team
+            max_attempts_per_signing: Max players to try per position need
 
         Returns:
             Dict with:
                 - signings: List of signing info dicts
                 - events: List of event strings for UI
+                - rejections: List of rejection info dicts
         """
         from team_management.teams.team_loader import TeamDataLoader
         from database.player_roster_api import PlayerRosterAPI
@@ -390,6 +851,7 @@ class FreeAgencyService:
 
         signings = []
         events = []
+        rejections = []
 
         # Get current free agent pool
         available_fas = self.get_available_free_agents()
@@ -422,21 +884,40 @@ class FreeAgencyService:
                 if signings_made >= max_signings_per_team:
                     break
 
-                # Find best available FA at this position
-                best_fa = None
-                for fa in available_fas:
-                    if fa["position"].lower() == need_position.lower():
-                        if fa["estimated_aav"] <= cap_space:
-                            best_fa = fa
-                            break  # Take the first (highest rated) that fits
+                # Try multiple players at this position
+                attempts = 0
+                signed = False
 
-                if best_fa:
-                    # Sign the player
-                    result = self.sign_free_agent(best_fa["player_id"], team_id, None)
+                for fa in available_fas[:]:  # Iterate over copy
+                    if signed or attempts >= max_attempts_per_signing:
+                        break
+
+                    if fa["position"].lower() != need_position.lower():
+                        continue
+
+                    if fa["estimated_aav"] > cap_space:
+                        continue
+
+                    # Evaluate player interest first
+                    interest = self.evaluate_player_interest(
+                        fa["player_id"], team_id, None
+                    )
+
+                    # Skip if interest is very low and we've tried others
+                    if interest["interest_level"] == "low" and attempts > 0:
+                        continue
+
+                    attempts += 1
+
+                    # Try to sign (will check preferences internally)
+                    result = self.sign_free_agent(
+                        fa["player_id"], team_id, None,
+                        skip_preference_check=False  # Check preferences
+                    )
 
                     if result["success"]:
                         signings.append({
-                            "player_id": best_fa["player_id"],
+                            "player_id": fa["player_id"],
                             "player_name": result["player_name"],
                             "team_id": team_id,
                             "team_name": team.full_name,
@@ -447,20 +928,31 @@ class FreeAgencyService:
                         )
 
                         # Update cap space
-                        cap_space -= best_fa["estimated_aav"]
+                        cap_space -= fa["estimated_aav"]
                         signings_made += 1
 
                         # Remove from available pool
-                        available_fas = [
-                            fa for fa in available_fas
-                            if fa["player_id"] != best_fa["player_id"]
-                        ]
+                        available_fas.remove(fa)
+                        signed = True
+                    else:
+                        # Player rejected - log it
+                        rejections.append({
+                            "player_id": fa["player_id"],
+                            "player_name": fa["name"],
+                            "team_id": team_id,
+                            "team_name": team.full_name,
+                            "reason": result.get("rejection_reason"),
+                            "concerns": result.get("concerns", [])
+                        })
 
-        self._logger.info(f"AI FA signings complete: {len(signings)} signings")
+        self._logger.info(
+            f"AI FA signings complete: {len(signings)} signed, {len(rejections)} rejected"
+        )
 
         return {
             "signings": signings,
             "events": events,
+            "rejections": rejections,
         }
 
     def _get_team_positional_needs(

@@ -46,6 +46,16 @@ class CoordinatorInfluence:
 
 
 @dataclass
+class TimeoutDecision:
+    """Head coach timeout decision."""
+    should_use_timeout: bool
+    confidence: float  # 0.0-1.0
+    reasoning: str
+    urgency_level: float  # 0.0-1.0
+    timeout_type: str  # "clock_stop", "regroup", "momentum", "challenge"
+
+
+@dataclass
 class HeadCoach(BaseCoachArchetype):
     """
     Head coach with game management focus and coordinator oversight
@@ -171,14 +181,18 @@ class HeadCoach(BaseCoachArchetype):
             time_remaining = context.get('time_remaining', 900)
             score_differential = context.get('score_differential', 0)
             quarter = context.get('quarter', 4)
-            
+
             # Get coach's aggression level for matrix system
             coach_aggression = self._get_coach_aggression_level()
-            
+
+            # Get momentum modifier from context (if available)
+            # Momentum affects aggression: positive momentum = go for it more
+            momentum_modifier = context.get('momentum_aggression_modifier', 1.0)
+
             # Analyze game situation for special modifiers
             game_context = GameSituationAnalyzer.analyze_game_context(context)
             special_situations = GameSituationAnalyzer.get_special_situations(game_context)
-            
+
             # Use matrix-based decision system
             matrix_decision = FourthDownMatrix.calculate_fourth_down_decision(
                 field_position=field_position,
@@ -187,7 +201,8 @@ class HeadCoach(BaseCoachArchetype):
                 time_remaining=time_remaining,
                 quarter=quarter,
                 coach_aggression=coach_aggression,
-                special_situations=special_situations
+                special_situations=special_situations,
+                momentum_modifier=momentum_modifier
             )
             
             # Convert matrix decision to expected format
@@ -202,15 +217,143 @@ class HeadCoach(BaseCoachArchetype):
         elif situation == 'two_minute_drill':
             aggression = self.game_management.two_minute_drill_aggression
             timeout_usage = self.game_management.timeout_usage_intelligence
-            
+
             decisions['two_minute'] = {
                 'aggression_level': aggression,
                 'timeout_strategy': 'aggressive' if timeout_usage > 0.6 else 'conservative',
                 'clock_management': 'stop_clock' if aggression > 0.6 else 'control_clock'
             }
-        
+
+        elif situation == 'timeout_decision':
+            timeout_decision = self.should_call_timeout(
+                timeouts_remaining=context.get('timeouts_remaining', 3),
+                time_remaining=context.get('time_remaining', 900),
+                quarter=context.get('quarter', 4),
+                score_differential=context.get('score_differential', 0),
+                clock_running=context.get('clock_running', True),
+                down=context.get('down', 1),
+                possession=context.get('possession', True)
+            )
+
+            decisions['timeout'] = {
+                'call_timeout': timeout_decision.should_use_timeout,
+                'confidence': timeout_decision.confidence,
+                'reasoning': timeout_decision.reasoning,
+                'urgency': timeout_decision.urgency_level,
+                'timeout_type': timeout_decision.timeout_type
+            }
+
         return decisions
-    
+
+    def should_call_timeout(
+        self,
+        timeouts_remaining: int,
+        time_remaining: int,
+        quarter: int,
+        score_differential: int,
+        clock_running: bool = True,
+        down: int = 1,
+        possession: bool = True
+    ) -> TimeoutDecision:
+        """
+        Determine if head coach should call a timeout.
+
+        Args:
+            timeouts_remaining: Timeouts left for this team (0-3)
+            time_remaining: Seconds remaining in quarter
+            quarter: Current quarter (1-4)
+            score_differential: Points ahead (positive) or behind (negative)
+            clock_running: Is play clock running?
+            down: Current down (1-4)
+            possession: Does this team have possession?
+
+        Returns:
+            TimeoutDecision with recommendation
+        """
+        # Can't call timeout with none remaining
+        if timeouts_remaining <= 0:
+            return TimeoutDecision(
+                should_use_timeout=False,
+                confidence=1.0,
+                reasoning="No timeouts remaining",
+                urgency_level=0.0,
+                timeout_type="none"
+            )
+
+        # Get coach's timeout usage intelligence (0.0-1.0)
+        intelligence = self.game_management.timeout_usage_intelligence
+
+        # --- Scenario 1: Two-Minute Drill (Trailing) ---
+        if quarter == 4 and time_remaining < 120 and score_differential < 0:
+            # Need clock stops when trailing in final 2 minutes
+            if clock_running and possession:
+                # High intelligence coaches preserve timeouts more carefully
+                preserve_threshold = 0.7 if intelligence > 0.7 else 0.5
+
+                if timeouts_remaining >= 2:
+                    # Have plenty, use aggressively
+                    return TimeoutDecision(
+                        should_use_timeout=True,
+                        confidence=0.8,
+                        reasoning="Two-minute drill: stop clock while trailing",
+                        urgency_level=0.9,
+                        timeout_type="clock_stop"
+                    )
+                elif timeouts_remaining == 1 and time_remaining < 60:
+                    # Last timeout, only in final minute
+                    return TimeoutDecision(
+                        should_use_timeout=True,
+                        confidence=0.6,
+                        reasoning="Final timeout in critical situation",
+                        urgency_level=1.0,
+                        timeout_type="clock_stop"
+                    )
+
+        # --- Scenario 2: End of Half (Use It or Lose It) ---
+        if time_remaining < 30 and quarter in [2, 4]:
+            # Less than 30 seconds in half - use timeouts before they expire
+            if clock_running and timeouts_remaining > 0:
+                return TimeoutDecision(
+                    should_use_timeout=True,
+                    confidence=0.7,
+                    reasoning="End of half: use timeout before it expires",
+                    urgency_level=0.8,
+                    timeout_type="clock_stop"
+                )
+
+        # --- Scenario 3: Defensive Timeout (Prevent Big Play) ---
+        if not possession and quarter == 4 and abs(score_differential) <= 7:
+            # Close game, on defense, could use timeout to regroup
+            if intelligence > 0.6 and timeouts_remaining >= 2:
+                # Smart coaches use defensive timeouts strategically
+                return TimeoutDecision(
+                    should_use_timeout=False,  # Will be overridden by specific situations
+                    confidence=0.5,
+                    reasoning="Strategic defensive timeout consideration",
+                    urgency_level=0.5,
+                    timeout_type="regroup"
+                )
+
+        # --- Scenario 4: Preserve Timeouts (Winning Late) ---
+        if quarter == 4 and time_remaining < 120 and score_differential > 0:
+            # Winning in final 2 minutes - don't use timeouts
+            return TimeoutDecision(
+                should_use_timeout=False,
+                confidence=0.9,
+                reasoning="Preserve timeouts when winning late",
+                urgency_level=0.2,
+                timeout_type="none"
+            )
+
+        # --- Default: Don't use timeout ---
+        return TimeoutDecision(
+            should_use_timeout=False,
+            confidence=0.6,
+            reasoning="No critical timeout situation",
+            urgency_level=0.3,
+            timeout_type="none"
+        )
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert head coach to dictionary for JSON serialization"""
         base_dict = super().to_dict()

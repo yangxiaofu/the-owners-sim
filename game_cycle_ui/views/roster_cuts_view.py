@@ -5,6 +5,8 @@ Allows the user to cut players from their roster, with AI suggestions
 highlighting low-value players while respecting position minimums.
 """
 
+import json
+from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 from PySide6.QtWidgets import (
@@ -16,6 +18,20 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor, QBrush
 
 from game_cycle_ui.dialogs import ContractDetailsDialog
+from game_cycle_ui.theme import TABLE_HEADER_STYLE
+from constants.position_abbreviations import get_position_abbreviation
+
+
+def _load_position_filter_mapping() -> Dict[str, List[str]]:
+    """Load position filter mapping from config file."""
+    config_path = Path(__file__).parents[2] / "src" / "config" / "positions" / "position_filter_mapping.json"
+    with open(config_path, encoding="utf-8") as f:
+        data = json.load(f)
+    return data.get("mappings", {})
+
+
+# Load position mapping from external config for easy manual updates
+POSITION_FILTER_MAP = _load_position_filter_mapping()
 
 
 class RosterCutsView(QWidget):
@@ -32,6 +48,7 @@ class RosterCutsView(QWidget):
     get_suggestions_requested = Signal()
     process_cuts_requested = Signal()
     view_contract_requested = Signal(int, str)  # contract_id, player_name
+    cap_validation_changed = Signal(bool, int)  # (is_compliant, over_cap_amount)
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -41,6 +58,7 @@ class RosterCutsView(QWidget):
         self._suggested_cuts: Set[int] = set()
         self._protected_players: Set[int] = set()
         self._db_path: str = ""
+        self._cap_space: int = 0  # Current cap space (negative = over cap)
         self._setup_ui()
 
     def set_db_path(self, db_path: str):
@@ -205,25 +223,29 @@ class RosterCutsView(QWidget):
         table_layout = QVBoxLayout(table_group)
 
         self.players_table = QTableWidget()
-        self.players_table.setColumnCount(10)
+        self.players_table.setColumnCount(12)
         self.players_table.setHorizontalHeaderLabels([
-            "Player", "Position", "Age", "OVR", "Salary", "Value",
+            "Player", "Position", "Age", "OVR", "Potential", "Dev", "Salary", "Value",
             "Dead $", "Savings", "Status", "Action"
         ])
 
         # Configure table appearance
         header = self.players_table.horizontalHeader()
+        header.setStyleSheet(TABLE_HEADER_STYLE)
         header.setSectionResizeMode(0, QHeaderView.Stretch)  # Player name stretches
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(7, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(8, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(9, QHeaderView.Fixed)
-        header.resizeSection(9, 200)  # Action column width (wider for View + Cut + June 1)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # Position
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Age
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # OVR
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Potential
+        header.setSectionResizeMode(5, QHeaderView.Fixed)  # Dev
+        header.resizeSection(5, 50)  # Dev column width (narrow for badge)
+        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)  # Salary
+        header.setSectionResizeMode(7, QHeaderView.ResizeToContents)  # Value
+        header.setSectionResizeMode(8, QHeaderView.ResizeToContents)  # Dead $
+        header.setSectionResizeMode(9, QHeaderView.ResizeToContents)  # Savings
+        header.setSectionResizeMode(10, QHeaderView.ResizeToContents)  # Status
+        header.setSectionResizeMode(11, QHeaderView.Fixed)  # Action
+        header.resizeSection(11, 200)  # Action column width (wider for View + Cut + June 1)
 
         self.players_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.players_table.setSelectionBehavior(QTableWidget.SelectRows)
@@ -299,10 +321,17 @@ class RosterCutsView(QWidget):
             if player_id in self._cut_players.keys():
                 continue
 
-            # Position filter
+            # Position filter - use POSITION_FILTER_MAP for abbreviated positions
             if position_filter:
                 player_pos = player.get("position", "").lower().replace(" ", "_")
-                if player_pos != position_filter:
+
+                # Check if player position maps to the selected filter
+                if player_pos in POSITION_FILTER_MAP:
+                    mapped_positions = POSITION_FILTER_MAP[player_pos]
+                    if position_filter not in mapped_positions:
+                        continue
+                elif player_pos != position_filter:
+                    # Unknown position - direct match only
                     continue
 
             # Suggestions filter
@@ -339,7 +368,8 @@ class RosterCutsView(QWidget):
         self.players_table.setItem(row, 0, name_item)
 
         # Position
-        pos_item = QTableWidgetItem(player.get("position", ""))
+        position = player.get("position", "")
+        pos_item = QTableWidgetItem(get_position_abbreviation(position))
         pos_item.setTextAlignment(Qt.AlignCenter)
         if row_color:
             pos_item.setBackground(QBrush(row_color))
@@ -367,6 +397,43 @@ class RosterCutsView(QWidget):
             ovr_item.setBackground(QBrush(row_color))
         self.players_table.setItem(row, 3, ovr_item)
 
+        # Potential
+        potential = player.get("potential", 0)
+        potential_item = QTableWidgetItem(str(potential))
+        potential_item.setTextAlignment(Qt.AlignCenter)
+        # Color coding: Green for near ceiling, Blue for high upside
+        if potential > 0:
+            upside = potential - overall
+            if upside <= 2:
+                potential_item.setForeground(QColor("#2E7D32"))  # Green - near ceiling
+            elif upside >= 10:
+                potential_item.setForeground(QColor("#1976D2"))  # Blue - high upside
+        if row_color:
+            potential_item.setBackground(QBrush(row_color))
+        self.players_table.setItem(row, 4, potential_item)
+
+        # Dev Type (badge-style)
+        dev_type = player.get("dev_type", "Normal")
+        # Map dev type to single letter badge
+        dev_map = {
+            "Early": "E",
+            "Normal": "N",
+            "Late": "L"
+        }
+        dev_letter = dev_map.get(dev_type, "N")
+        dev_item = QTableWidgetItem(dev_letter)
+        dev_item.setTextAlignment(Qt.AlignCenter)
+        # Badge colors
+        if dev_type == "Early":
+            dev_item.setForeground(QColor("#FF6F00"))  # Orange
+        elif dev_type == "Late":
+            dev_item.setForeground(QColor("#1976D2"))  # Blue
+        else:
+            dev_item.setForeground(QColor("#666666"))  # Gray
+        if row_color:
+            dev_item.setBackground(QBrush(row_color))
+        self.players_table.setItem(row, 5, dev_item)
+
         # Salary
         salary = player.get("salary", 0)
         salary_text = f"${salary:,}" if salary else "N/A"
@@ -374,7 +441,7 @@ class RosterCutsView(QWidget):
         salary_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
         if row_color:
             salary_item.setBackground(QBrush(row_color))
-        self.players_table.setItem(row, 4, salary_item)
+        self.players_table.setItem(row, 6, salary_item)
 
         # Value score
         value = player.get("value_score", 0)
@@ -384,7 +451,7 @@ class RosterCutsView(QWidget):
             value_item.setForeground(QColor("#C62828"))  # Red - low value
         if row_color:
             value_item.setBackground(QBrush(row_color))
-        self.players_table.setItem(row, 5, value_item)
+        self.players_table.setItem(row, 7, value_item)
 
         # Dead money
         dead_money = player.get("dead_money", 0)
@@ -395,7 +462,7 @@ class RosterCutsView(QWidget):
             dead_item.setForeground(QColor("#C62828"))
         if row_color:
             dead_item.setBackground(QBrush(row_color))
-        self.players_table.setItem(row, 6, dead_item)
+        self.players_table.setItem(row, 8, dead_item)
 
         # Cap savings
         cap_savings = player.get("cap_savings", 0)
@@ -406,7 +473,7 @@ class RosterCutsView(QWidget):
             savings_item.setForeground(QColor("#2E7D32"))
         if row_color:
             savings_item.setBackground(QBrush(row_color))
-        self.players_table.setItem(row, 7, savings_item)
+        self.players_table.setItem(row, 9, savings_item)
 
         # Status
         if is_protected:
@@ -424,7 +491,7 @@ class RosterCutsView(QWidget):
         status_item.setForeground(status_color)
         if row_color:
             status_item.setBackground(QBrush(row_color))
-        self.players_table.setItem(row, 8, status_item)
+        self.players_table.setItem(row, 10, status_item)
 
         # Action buttons
         action_widget = QWidget()
@@ -478,7 +545,7 @@ class RosterCutsView(QWidget):
             june1_btn.clicked.connect(lambda checked, pid=player_id, r=row: self._on_cut_clicked(pid, r, True))
             action_layout.addWidget(june1_btn)
 
-        self.players_table.setCellWidget(row, 9, action_widget)
+        self.players_table.setCellWidget(row, 11, action_widget)
 
     def _on_cut_clicked(self, player_id: int, row: int, use_june_1: bool = False):
         """Handle cut button click.
@@ -494,14 +561,14 @@ class RosterCutsView(QWidget):
             return
 
         # Update status cell with cut type
-        status_item = self.players_table.item(row, 8)
+        status_item = self.players_table.item(row, 10)
         if status_item:
             status_text = "June 1 Cut" if use_june_1 else "Cutting"
             status_item.setText(status_text)
             status_item.setForeground(QColor("#FF6F00" if use_june_1 else "#C62828"))
 
         # Disable all cut buttons
-        action_widget = self.players_table.cellWidget(row, 9)
+        action_widget = self.players_table.cellWidget(row, 11)
         if action_widget:
             for child in action_widget.children():
                 if isinstance(child, QPushButton) and child.text() in ("Cut", "June 1"):
@@ -563,6 +630,9 @@ class RosterCutsView(QWidget):
         else:
             self.cuts_needed_label.setStyleSheet("color: #2E7D32;")
 
+        # Re-check cap compliance after cuts change
+        self._check_cap_compliance()
+
     def _on_get_suggestions(self):
         """Handle get suggestions button click."""
         self.get_suggestions_requested.emit()
@@ -591,7 +661,7 @@ class RosterCutsView(QWidget):
     def show_no_cuts_needed_message(self):
         """Show message when roster is already at or under limit."""
         self.players_table.setRowCount(1)
-        self.players_table.setSpan(0, 0, 1, 10)
+        self.players_table.setSpan(0, 0, 1, 12)
 
         message_item = QTableWidgetItem("Your roster is already at or below the 53-man limit. No cuts needed!")
         message_item.setTextAlignment(Qt.AlignCenter)
@@ -614,6 +684,31 @@ class RosterCutsView(QWidget):
             cap_data: Dict with available_space, salary_cap_limit, total_spending,
                       dead_money, is_compliant
         """
-        # Roster cuts view already tracks dead money/cap savings per cut
-        # This method updates the summary if needed
-        pass  # Current implementation tracks totals dynamically
+        # Store current cap space for compliance calculations
+        self._cap_space = cap_data.get("available_space", 0)
+        # Check and emit cap compliance status
+        self._check_cap_compliance()
+
+    def _check_cap_compliance(self):
+        """
+        Check if team is cap-compliant after pending cuts and emit validation signal.
+
+        Calculates projected cap space by adding savings from marked cuts
+        to current cap space. Emits cap_validation_changed signal to
+        enable/disable the Process button.
+        """
+        # Calculate total savings from pending cuts
+        total_savings = sum(
+            player.get("cap_savings", 0)
+            for player in self._roster_players
+            if player.get("player_id") in self._cut_players
+        )
+
+        # Projected space = current space + savings from cuts
+        projected_space = self._cap_space + total_savings
+
+        # Compliant if projected space >= 0
+        is_compliant = projected_space >= 0
+        over_cap_amount = abs(projected_space) if not is_compliant else 0
+
+        self.cap_validation_changed.emit(is_compliant, over_cap_amount)

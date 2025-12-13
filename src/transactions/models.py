@@ -4,9 +4,9 @@ Trade Value Calculator Data Models
 Defines data structures for draft picks, trade assets, and complete trade proposals.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 
 @dataclass
@@ -299,6 +299,10 @@ class TradeDecision:
     # Value analysis
     perceived_value_ratio: Optional[float] = None  # After personality modifiers
     objective_value_ratio: Optional[float] = None  # Before modifiers
+
+    # Player veto info (Milestone 6: Player Personas)
+    player_veto: bool = False
+    veto_details: List[Dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self):
         """Validate decision data"""

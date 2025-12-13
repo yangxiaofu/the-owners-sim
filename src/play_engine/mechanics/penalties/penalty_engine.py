@@ -17,6 +17,11 @@ from dataclasses import dataclass
 
 from .penalty_config_loader import get_penalty_config
 from .penalty_data_structures import PenaltyInstance, PlayerPenaltyStats, TeamPenaltyStats
+from .penalty_enforcement import (
+    get_final_enforcement,
+    EnforcementResult,
+    PENALTY_CONFIG as ENFORCEMENT_CONFIG,
+)
 from team_management.players.player import Player
 
 
@@ -45,6 +50,8 @@ class PenaltyResult:
     play_negated: bool = False
     down_change: int = 0  # Change in down (usually 0 or reset to 1)
     distance_change: int = 0  # Change in distance to go
+    # New enforcement result with complete ball placement info
+    enforcement_result: Optional[EnforcementResult] = None
 
 
 class PenaltyEngine:
@@ -384,34 +391,63 @@ class PenaltyEngine:
         return False
     
     def _apply_penalty_effects(self, penalty: PenaltyInstance, original_yards: int) -> PenaltyResult:
-        """Apply penalty effects to play result and game state"""
-        
-        if penalty.negated_play:
-            # Play is completely negated, only penalty yardage applies
-            final_yards = penalty.yards_assessed
-            penalty.final_play_result = final_yards
+        """
+        Apply penalty effects to play result and game state using the new enforcement calculator.
+
+        Delegates to penalty_enforcement.get_final_enforcement() for realistic NFL rules including:
+        - Half-distance-to-goal
+        - Spot of foul vs previous spot enforcement
+        - Automatic first down handling
+        - Accept/decline decision logic
+        """
+        # Determine if penalty is offensive or defensive
+        offensive_penalties = ["offensive_holding", "false_start", "delay_of_game",
+                              "illegal_formation", "offensive_pass_interference",
+                              "illegal_block_in_back", "intentional_grounding"]
+        is_offensive = penalty.penalty_type in offensive_penalties
+
+        # Use the new enforcement calculator for proper ball placement
+        enforcement_result = get_final_enforcement(
+            penalty_type=penalty.penalty_type,
+            pre_snap_yard_line=penalty.field_position,
+            pre_snap_down=penalty.down,
+            pre_snap_distance=penalty.distance,
+            play_yards=original_yards,
+            is_offensive_penalty=is_offensive,
+        )
+
+        # Update penalty instance with enforcement details
+        penalty.penalty_accepted = enforcement_result.penalty_accepted
+
+        # Calculate modified yards based on enforcement result
+        if enforcement_result.penalty_accepted:
+            # Use the new yard line difference as "modified yards" for compatibility
+            final_yards = enforcement_result.new_yard_line - penalty.field_position
         else:
-            # Play result stands, penalty yardage is added
-            final_yards = original_yards + penalty.yards_assessed
-            penalty.final_play_result = final_yards
-        
-        # Determine down and distance changes
-        down_change = 0
-        distance_change = penalty.yards_assessed
-        
-        if penalty.automatic_first_down and penalty.yards_assessed > 0:
-            # Defensive penalty with automatic first down
-            down_change = 1 - penalty.down  # Reset to 1st down
-            distance_change = -penalty.distance  # Reset distance to 10 (handled by game engine)
-        
+            # Penalty declined, use original play result
+            final_yards = original_yards
+
+        penalty.final_play_result = final_yards
+
+        # Calculate down and distance changes for compatibility with existing code
+        if enforcement_result.penalty_accepted:
+            down_change = enforcement_result.new_down - penalty.down
+            # Note: distance_change is less meaningful now that we have full enforcement_result
+            # but kept for backward compatibility
+            distance_change = penalty.distance - enforcement_result.new_yards_to_go
+        else:
+            down_change = 0
+            distance_change = 0
+
         return PenaltyResult(
             penalty_occurred=True,
             penalty_instance=penalty,
             modified_yards=final_yards,
-            automatic_first_down=penalty.automatic_first_down,
+            automatic_first_down=penalty.automatic_first_down and enforcement_result.penalty_accepted,
             play_negated=penalty.negated_play,
             down_change=down_change,
-            distance_change=distance_change
+            distance_change=distance_change,
+            enforcement_result=enforcement_result,  # New: full enforcement details
         )
     
     def calculate_team_discipline_score(self, players: List[Player]) -> Dict[str, Any]:

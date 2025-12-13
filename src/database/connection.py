@@ -147,7 +147,8 @@ class DatabaseConnection:
                 passing_sacks INTEGER DEFAULT 0,
                 passing_sack_yards INTEGER DEFAULT 0,
                 passing_rating REAL DEFAULT 0,
-                
+                air_yards INTEGER DEFAULT 0,
+
                 -- Rushing stats
                 rushing_yards INTEGER DEFAULT 0,
                 rushing_tds INTEGER DEFAULT 0,
@@ -162,7 +163,8 @@ class DatabaseConnection:
                 targets INTEGER DEFAULT 0,
                 receiving_long INTEGER DEFAULT 0,
                 receiving_drops INTEGER DEFAULT 0,
-                
+                yards_after_catch INTEGER DEFAULT 0,
+
                 -- Defensive stats
                 tackles_total INTEGER DEFAULT 0,
                 tackles_solo INTEGER DEFAULT 0,
@@ -172,7 +174,10 @@ class DatabaseConnection:
                 forced_fumbles INTEGER DEFAULT 0,
                 fumbles_recovered INTEGER DEFAULT 0,
                 passes_defended INTEGER DEFAULT 0,
-                
+                tackles_for_loss INTEGER DEFAULT 0,
+                qb_hits INTEGER DEFAULT 0,
+                qb_pressures INTEGER DEFAULT 0,
+
                 -- Special teams stats
                 field_goals_made INTEGER DEFAULT 0,
                 field_goals_attempted INTEGER DEFAULT 0,

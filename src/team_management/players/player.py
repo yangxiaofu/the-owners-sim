@@ -136,9 +136,9 @@ class Player:
             if rating not in self.ratings:
                 self.ratings[rating] = 75
     
-    def get_rating(self, rating_type):
+    def get_rating(self, rating_type, default=50):
         """Get a specific rating for this player"""
-        return self.ratings.get(rating_type, 50)  # Default to 50 if rating doesn't exist
+        return self.ratings.get(rating_type, default)  # Default to provided value if rating doesn't exist
     
     def can_play_position(self, position):
         """Check if player can play a specific position"""

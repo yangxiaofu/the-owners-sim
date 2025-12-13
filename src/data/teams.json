@@ -11,6 +11,13 @@
       "colors": {
         "primary": "#00338D",
         "secondary": "#C60C30"
+      },
+      "stadium": {
+        "name": "Highmark Stadium",
+        "venue_type": "outdoor",
+        "altitude_feet": 585,
+        "capacity": 71608,
+        "typical_crowd_noise": "loud"
       }
     },
     "2": {
@@ -24,6 +31,13 @@
       "colors": {
         "primary": "#008E97",
         "secondary": "#FC4C02"
+      },
+      "stadium": {
+        "name": "Hard Rock Stadium",
+        "venue_type": "outdoor",
+        "altitude_feet": 10,
+        "capacity": 65326,
+        "typical_crowd_noise": "moderate"
       }
     },
     "3": {
@@ -37,6 +51,13 @@
       "colors": {
         "primary": "#002244",
         "secondary": "#C60C30"
+      },
+      "stadium": {
+        "name": "Gillette Stadium",
+        "venue_type": "outdoor",
+        "altitude_feet": 150,
+        "capacity": 65878,
+        "typical_crowd_noise": "loud"
       }
     },
     "4": {
@@ -50,6 +71,13 @@
       "colors": {
         "primary": "#125740",
         "secondary": "#000000"
+      },
+      "stadium": {
+        "name": "MetLife Stadium",
+        "venue_type": "outdoor",
+        "altitude_feet": 10,
+        "capacity": 82500,
+        "typical_crowd_noise": "moderate"
       }
     },
     "5": {
@@ -63,6 +91,13 @@
       "colors": {
         "primary": "#241773",
         "secondary": "#000000"
+      },
+      "stadium": {
+        "name": "M&T Bank Stadium",
+        "venue_type": "outdoor",
+        "altitude_feet": 50,
+        "capacity": 71008,
+        "typical_crowd_noise": "loud"
       }
     },
     "6": {
@@ -76,6 +111,13 @@
       "colors": {
         "primary": "#FB4F14",
         "secondary": "#000000"
+      },
+      "stadium": {
+        "name": "Paycor Stadium",
+        "venue_type": "outdoor",
+        "altitude_feet": 490,
+        "capacity": 65515,
+        "typical_crowd_noise": "moderate"
       }
     },
     "7": {
@@ -89,6 +131,13 @@
       "colors": {
         "primary": "#311D00",
         "secondary": "#FF3C00"
+      },
+      "stadium": {
+        "name": "Cleveland Browns Stadium",
+        "venue_type": "outdoor",
+        "altitude_feet": 660,
+        "capacity": 67895,
+        "typical_crowd_noise": "loud"
       }
     },
     "8": {
@@ -102,6 +151,13 @@
       "colors": {
         "primary": "#FFB612",
         "secondary": "#000000"
+      },
+      "stadium": {
+        "name": "Acrisure Stadium",
+        "venue_type": "outdoor",
+        "altitude_feet": 745,
+        "capacity": 68400,
+        "typical_crowd_noise": "loud"
       }
     },
     "9": {
@@ -115,6 +171,13 @@
       "colors": {
         "primary": "#03202F",
         "secondary": "#A71930"
+      },
+      "stadium": {
+        "name": "NRG Stadium",
+        "venue_type": "retractable_roof",
+        "altitude_feet": 50,
+        "capacity": 72220,
+        "typical_crowd_noise": "moderate"
       }
     },
     "10": {
@@ -128,6 +191,13 @@
       "colors": {
         "primary": "#002C5F",
         "secondary": "#A2AAAD"
+      },
+      "stadium": {
+        "name": "Lucas Oil Stadium",
+        "venue_type": "retractable_roof",
+        "altitude_feet": 715,
+        "capacity": 67000,
+        "typical_crowd_noise": "moderate"
       }
     },
     "11": {
@@ -141,6 +211,13 @@
       "colors": {
         "primary": "#006778",
         "secondary": "#9F792C"
+      },
+      "stadium": {
+        "name": "TIAA Bank Field",
+        "venue_type": "outdoor",
+        "altitude_feet": 20,
+        "capacity": 67814,
+        "typical_crowd_noise": "moderate"
       }
     },
     "12": {
@@ -154,6 +231,13 @@
       "colors": {
         "primary": "#0C2340",
         "secondary": "#4B92DB"
+      },
+      "stadium": {
+        "name": "Nissan Stadium",
+        "venue_type": "outdoor",
+        "altitude_feet": 440,
+        "capacity": 69143,
+        "typical_crowd_noise": "moderate"
       }
     },
     "13": {
@@ -167,6 +251,13 @@
       "colors": {
         "primary": "#FB4F14",
         "secondary": "#002244"
+      },
+      "stadium": {
+        "name": "Empower Field at Mile High",
+        "venue_type": "outdoor",
+        "altitude_feet": 5280,
+        "capacity": 76125,
+        "typical_crowd_noise": "loud"
       }
     },
     "14": {
@@ -180,6 +271,13 @@
       "colors": {
         "primary": "#E31837",
         "secondary": "#FFB81C"
+      },
+      "stadium": {
+        "name": "Arrowhead Stadium",
+        "venue_type": "outdoor",
+        "altitude_feet": 910,
+        "capacity": 76416,
+        "typical_crowd_noise": "deafening"
       }
     },
     "15": {
@@ -193,6 +291,13 @@
       "colors": {
         "primary": "#000000",
         "secondary": "#A5ACAF"
+      },
+      "stadium": {
+        "name": "Allegiant Stadium",
+        "venue_type": "dome",
+        "altitude_feet": 2030,
+        "capacity": 65000,
+        "typical_crowd_noise": "moderate"
       }
     },
     "16": {
@@ -206,6 +311,13 @@
       "colors": {
         "primary": "#0080C6",
         "secondary": "#FFC20E"
+      },
+      "stadium": {
+        "name": "SoFi Stadium",
+        "venue_type": "dome",
+        "altitude_feet": 90,
+        "capacity": 70240,
+        "typical_crowd_noise": "moderate"
       }
     },
     "17": {
@@ -219,6 +331,13 @@
       "colors": {
         "primary": "#003594",
         "secondary": "#041E42"
+      },
+      "stadium": {
+        "name": "AT&T Stadium",
+        "venue_type": "retractable_roof",
+        "altitude_feet": 550,
+        "capacity": 80000,
+        "typical_crowd_noise": "moderate"
       }
     },
     "18": {
@@ -232,6 +351,13 @@
       "colors": {
         "primary": "#0B2265",
         "secondary": "#A71930"
+      },
+      "stadium": {
+        "name": "MetLife Stadium",
+        "venue_type": "outdoor",
+        "altitude_feet": 10,
+        "capacity": 82500,
+        "typical_crowd_noise": "moderate"
       }
     },
     "19": {
@@ -245,6 +371,13 @@
       "colors": {
         "primary": "#004C54",
         "secondary": "#A5ACAF"
+      },
+      "stadium": {
+        "name": "Lincoln Financial Field",
+        "venue_type": "outdoor",
+        "altitude_feet": 35,
+        "capacity": 69796,
+        "typical_crowd_noise": "loud"
       }
     },
     "20": {
@@ -258,6 +391,13 @@
       "colors": {
         "primary": "#5A1414",
         "secondary": "#FFB612"
+      },
+      "stadium": {
+        "name": "Northwest Stadium",
+        "venue_type": "outdoor",
+        "altitude_feet": 165,
+        "capacity": 67617,
+        "typical_crowd_noise": "moderate"
       }
     },
     "21": {
@@ -271,6 +411,13 @@
       "colors": {
         "primary": "#0B162A",
         "secondary": "#C83803"
+      },
+      "stadium": {
+        "name": "Soldier Field",
+        "venue_type": "outdoor",
+        "altitude_feet": 600,
+        "capacity": 61500,
+        "typical_crowd_noise": "loud"
       }
     },
     "22": {
@@ -284,6 +431,13 @@
       "colors": {
         "primary": "#0076B6",
         "secondary": "#B0B7BC"
+      },
+      "stadium": {
+        "name": "Ford Field",
+        "venue_type": "dome",
+        "altitude_feet": 600,
+        "capacity": 65000,
+        "typical_crowd_noise": "loud"
       }
     },
     "23": {
@@ -297,6 +451,13 @@
       "colors": {
         "primary": "#203731",
         "secondary": "#FFB612"
+      },
+      "stadium": {
+        "name": "Lambeau Field",
+        "venue_type": "outdoor",
+        "altitude_feet": 640,
+        "capacity": 81441,
+        "typical_crowd_noise": "loud"
       }
     },
     "24": {
@@ -310,6 +471,13 @@
       "colors": {
         "primary": "#4F2683",
         "secondary": "#FFC62F"
+      },
+      "stadium": {
+        "name": "U.S. Bank Stadium",
+        "venue_type": "dome",
+        "altitude_feet": 840,
+        "capacity": 66860,
+        "typical_crowd_noise": "loud"
       }
     },
     "25": {
@@ -323,6 +491,13 @@
       "colors": {
         "primary": "#A71930",
         "secondary": "#000000"
+      },
+      "stadium": {
+        "name": "Mercedes-Benz Stadium",
+        "venue_type": "retractable_roof",
+        "altitude_feet": 1050,
+        "capacity": 71000,
+        "typical_crowd_noise": "moderate"
       }
     },
     "26": {
@@ -336,6 +511,13 @@
       "colors": {
         "primary": "#0085CA",
         "secondary": "#000000"
+      },
+      "stadium": {
+        "name": "Bank of America Stadium",
+        "venue_type": "outdoor",
+        "altitude_feet": 670,
+        "capacity": 75523,
+        "typical_crowd_noise": "moderate"
       }
     },
     "27": {
@@ -349,6 +531,13 @@
       "colors": {
         "primary": "#D3BC8D",
         "secondary": "#000000"
+      },
+      "stadium": {
+        "name": "Caesars Superdome",
+        "venue_type": "dome",
+        "altitude_feet": 5,
+        "capacity": 73208,
+        "typical_crowd_noise": "loud"
       }
     },
     "28": {
@@ -362,6 +551,13 @@
       "colors": {
         "primary": "#D50A0A",
         "secondary": "#FF7900"
+      },
+      "stadium": {
+        "name": "Raymond James Stadium",
+        "venue_type": "outdoor",
+        "altitude_feet": 15,
+        "capacity": 65890,
+        "typical_crowd_noise": "moderate"
       }
     },
     "29": {
@@ -375,6 +571,13 @@
       "colors": {
         "primary": "#97233F",
         "secondary": "#000000"
+      },
+      "stadium": {
+        "name": "State Farm Stadium",
+        "venue_type": "retractable_roof",
+        "altitude_feet": 1135,
+        "capacity": 63400,
+        "typical_crowd_noise": "moderate"
       }
     },
     "30": {
@@ -388,6 +591,13 @@
       "colors": {
         "primary": "#003594",
         "secondary": "#FFA300"
+      },
+      "stadium": {
+        "name": "SoFi Stadium",
+        "venue_type": "dome",
+        "altitude_feet": 90,
+        "capacity": 70240,
+        "typical_crowd_noise": "moderate"
       }
     },
     "31": {
@@ -401,6 +611,13 @@
       "colors": {
         "primary": "#AA0000",
         "secondary": "#B3995D"
+      },
+      "stadium": {
+        "name": "Levi's Stadium",
+        "venue_type": "outdoor",
+        "altitude_feet": 30,
+        "capacity": 68500,
+        "typical_crowd_noise": "loud"
       }
     },
     "32": {
@@ -414,13 +631,20 @@
       "colors": {
         "primary": "#002244",
         "secondary": "#69BE28"
+      },
+      "stadium": {
+        "name": "Lumen Field",
+        "venue_type": "outdoor",
+        "altitude_feet": 20,
+        "capacity": 68740,
+        "typical_crowd_noise": "deafening"
       }
     }
   },
   "metadata": {
-    "version": "1.0",
-    "last_updated": "2025-01-02",
+    "version": "2.0",
+    "last_updated": "2025-12-04",
     "total_teams": 32,
-    "description": "Complete NFL team data with numerical team IDs, city, nickname, and organizational information"
+    "description": "Complete NFL team data with numerical team IDs, city, nickname, organizational information, and stadium environmental data for Tollgate 6: Environmental & Situational Modifiers"
   }
 }

@@ -16,6 +16,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor
 
 from game_cycle_ui.dialogs import ContractDetailsDialog
+from game_cycle_ui.theme import TABLE_HEADER_STYLE
+from constants.position_abbreviations import get_position_abbreviation
 
 
 class FranchiseTagView(QWidget):
@@ -172,6 +174,7 @@ class FranchiseTagView(QWidget):
 
         # Configure table appearance
         header = self.players_table.horizontalHeader()
+        header.setStyleSheet(TABLE_HEADER_STYLE)
         header.setSectionResizeMode(0, QHeaderView.Stretch)  # Player name stretches
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
@@ -363,7 +366,8 @@ class FranchiseTagView(QWidget):
         self.players_table.setItem(row, 0, name_item)
 
         # Position
-        pos_item = QTableWidgetItem(player.get("position", ""))
+        position = player.get("position", "")
+        pos_item = QTableWidgetItem(get_position_abbreviation(position))
         pos_item.setTextAlignment(Qt.AlignCenter)
         self.players_table.setItem(row, 1, pos_item)
 

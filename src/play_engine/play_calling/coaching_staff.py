@@ -14,7 +14,8 @@ from .defensive_coordinator import DefensiveCoordinator
 from .special_teams_coordinator import SpecialTeamsCoordinator
 from ..play_calls.offensive_play_call import OffensivePlayCall
 from ..play_calls.defensive_play_call import DefensivePlayCall
-from ..mechanics.formations import DefensiveFormation
+from ..mechanics.formations import DefensiveFormation, OffensiveFormation
+from ..play_types.offensive_types import OffensivePlayType
 from ..mechanics.unified_formations import UnifiedDefensiveFormation, SimulatorContext
 from ..play_types.defensive_types import DefensivePlayType
 
@@ -84,15 +85,24 @@ class CoachingStaff:
     def select_offensive_play(self, context: Dict[str, Any]) -> OffensivePlayCall:
         """
         Select offensive play through coaching staff hierarchy
-        
+
         Args:
             context: Play calling context with situation, game state, etc.
-        
+
         Returns:
             Selected offensive play call
         """
         situation = self._extract_situation(context)
-        
+
+        # Check for spike play first (two-minute drill clock management)
+        spike_context = self._build_spike_context(context, situation)
+        if self.offensive_coordinator.should_spike(spike_context):
+            return OffensivePlayCall(
+                play_type=OffensivePlayType.SPIKE,
+                formation=OffensiveFormation.SHOTGUN,
+                concept='spike'
+            )
+
         # Check if head coach wants to override
         if self.head_coach.should_override_coordinator(situation, context):
             return self._head_coach_offensive_override(context, situation)
@@ -123,41 +133,119 @@ class CoachingStaff:
     
     def _extract_situation(self, context: Dict[str, Any]) -> str:
         """
-        Extract primary situation type from context
-        
+        Extract primary situation type from context with granular down/distance detail.
+
+        NEW: Enhanced to provide situation-specific pass rates for realistic
+        down/distance strategy (e.g., second_and_short vs second_and_long).
+
         Args:
             context: Play calling context
-        
+
         Returns:
-            Primary situation string for decision making
+            Granular situation string for decision making
         """
-        # Check for critical situations first
-        if context.get('down') == 4:
-            return 'fourth_down'
-        
         field_position = context.get('field_position', 50)
-        if field_position >= 80:
-            if field_position >= 97:
-                return 'goal_line'
-            return 'red_zone'
-        
-        time_remaining = context.get('time_remaining', 1800)
-        if time_remaining <= 120:  # 2 minutes or less
-            return 'two_minute'
-        
         down = context.get('down', 1)
         yards_to_go = context.get('yards_to_go', 10)
-        
-        if down == 3:
-            if yards_to_go >= 7:
-                return 'third_and_long'
-            else:
-                return 'third_and_short'
-        elif down == 1:
+        time_remaining = context.get('time_remaining', 1800)
+
+        # Priority 1: Goal line (1-3 yards to goal)
+        if field_position >= 97:
+            return 'goal_line'
+
+        # Priority 2: Red zone (inside 20)
+        if field_position >= 80:
+            return 'red_zone'
+
+        # Priority 3: Two-minute drill (final 2 minutes of half)
+        quarter = context.get('quarter', 1)
+        if quarter in [2, 4] and time_remaining <= 120:
+            return 'two_minute'
+
+        # Priority 4: Down/distance situations (granular)
+
+        # Fourth down (special teams/desperation)
+        if down == 4:
+            return 'fourth_down'
+
+        # First down (balanced)
+        if down == 1:
             return 'first_down'
+
+        # Second down with distance breakdown
+        if down == 2:
+            if yards_to_go <= 4:
+                return 'second_and_short'  # 2nd & 2-4 (run-leaning)
+            elif yards_to_go <= 7:
+                return 'second_and_medium'  # 2nd & 5-7 (balanced)
+            else:
+                return 'second_and_long'  # 2nd & 8+ (pass-heavy)
+
+        # Third down with distance breakdown
+        if down == 3:
+            if yards_to_go <= 3:
+                return 'third_and_short'  # 3rd & 1-3 (run-heavy)
+            elif yards_to_go <= 7:
+                return 'third_and_medium'  # 3rd & 4-7 (pass-favored)
+            else:
+                return 'third_and_long'  # 3rd & 8+ (pass-dominant)
+
+        # Default fallback (should not happen)
+        return 'normal'
+
+    def _build_spike_context(self, context: Dict[str, Any], situation: str) -> Dict[str, Any]:
+        """
+        Build context dict for should_spike() check.
+
+        Extracts required fields from PlayCallContext to match should_spike() signature:
+        - time_remaining, quarter, score_differential, down, clock_running, timeouts_remaining
+
+        Args:
+            context: PlayCallContext (may be dict or dataclass)
+            situation: Extracted situation string
+
+        Returns:
+            Dict with fields for should_spike() evaluation
+        """
+        # Handle both dict and PlayCallContext objects
+        if hasattr(context, 'raw_game_state'):
+            raw_state = context.raw_game_state or {}
+            sit = context.situation if hasattr(context, 'situation') else None
         else:
-            return 'second_down'
-    
+            raw_state = context.get('raw_game_state', {}) if isinstance(context, dict) else {}
+            sit = None
+
+        # Extract game state
+        quarter = raw_state.get('quarter', 1)
+        time_remaining = raw_state.get('time_remaining', 900)
+        home_score = raw_state.get('home_score', 0)
+        away_score = raw_state.get('away_score', 0)
+        possessing_team_id = raw_state.get('possessing_team_id')
+        home_team_id = raw_state.get('home_team_id')
+
+        # Calculate score differential from offense perspective
+        if possessing_team_id and home_team_id:
+            if possessing_team_id == home_team_id:
+                score_differential = home_score - away_score
+            else:
+                score_differential = away_score - home_score
+        else:
+            score_differential = 0
+
+        # Get down from situation or raw_state
+        down = raw_state.get('down', 1)
+        if sit and hasattr(sit, 'down'):
+            down = sit.down
+
+        return {
+            'time_remaining': time_remaining,
+            'quarter': quarter,
+            'score_differential': score_differential,
+            'down': down,
+            'clock_running': True,  # Assume clock running (spike is a clock-stopping play)
+            'timeouts_remaining': raw_state.get('timeouts_remaining', 3)
+        }
+
     def _head_coach_offensive_override(self, context: Dict[str, Any], situation: str) -> OffensivePlayCall:
         """
         Head coach makes offensive play call decision
@@ -290,6 +378,14 @@ class CoachingStaff:
         Returns:
             Offensive coordinator's play call
         """
+        # NEW: Analyze game context if raw state available
+        raw_context = context.get('raw_game_state', {})
+        if raw_context:
+            from .game_situation_analyzer import GameSituationAnalyzer
+            game_context = GameSituationAnalyzer.analyze_game_context(raw_context)
+            # Add to context for OC methods
+            context['game_context'] = game_context
+
         # Get OC's natural preferences
         formation_prefs = self.offensive_coordinator.get_formation_preference(situation, context)
         concept_prefs = self.offensive_coordinator.get_play_concept_preference(situation, context)
@@ -336,6 +432,14 @@ class CoachingStaff:
         Returns:
             Defensive coordinator's play call
         """
+        # NEW: Analyze game context if raw state available
+        raw_context = context.get('raw_game_state', {})
+        if raw_context:
+            from .game_situation_analyzer import GameSituationAnalyzer
+            game_context = GameSituationAnalyzer.analyze_game_context(raw_context)
+            # Add to context for DC methods
+            context['game_context'] = game_context
+
         offensive_formation = context.get('offensive_formation', 'SHOTGUN')
         
         # Get DC's natural approach
@@ -433,23 +537,42 @@ class CoachingStaff:
     def _concept_to_play_type(self, concept: str) -> str:
         """Convert concept to play type using proper enum constants"""
         from ..play_types.offensive_types import OffensivePlayType
-        
-        run_concepts = ['power', 'sweep', 'off_tackle']
-        pass_concepts = ['slants', 'fade', 'deep_routes', 'quick_out', 'comeback', 'four_verticals', 'crossing_routes', 
-                        'intermediate_routes', 'sideline_routes', 'quick_slant', 'deep_comeback']
-        special_concepts = ['standard_punt', 'standard_kick']
-        
+
+        # Comprehensive run concept list - any ground-based play
+        run_concepts = [
+            'power', 'sweep', 'off_tackle', 'draw', 'dive', 'sneak',
+            'inside_zone', 'outside_zone', 'counter', 'trap', 'iso',
+            'toss', 'pitch', 'option', 'qb_sneak', 'goal_line_power',
+            'stretch', 'blast', 'lead', 'cutback'
+        ]
+        # Pass concepts - any throw-based play
+        pass_concepts = [
+            'slants', 'fade', 'deep_routes', 'quick_out', 'comeback',
+            'four_verticals', 'crossing_routes', 'intermediate_routes',
+            'sideline_routes', 'quick_slant', 'deep_comeback', 'out_routes',
+            'play_action_short', 'play_action_deep', 'play_action_intermediate',
+            'play_action_rollout', 'screen', 'check_down', 'short_routes',
+            'deep_out', 'pick_play', 'smash', 'tight_end_out', 'slant'
+        ]
+        special_concepts = ['standard_punt', 'standard_kick', 'spike']
+
         # Handle the "standard" concept that many coordinators default to
         if concept == 'standard':
-            return OffensivePlayType.PASS  # Default standard concept to pass play
+            return OffensivePlayType.PASS  # Default standard concept to pass (modern NFL is pass-first)
         elif concept in run_concepts:
             return OffensivePlayType.RUN
         elif concept in pass_concepts:
             return OffensivePlayType.PASS
         elif concept in special_concepts:
-            return OffensivePlayType.PUNT if 'punt' in concept else OffensivePlayType.FIELD_GOAL
+            if 'punt' in concept:
+                return OffensivePlayType.PUNT
+            elif 'kick' in concept:
+                return OffensivePlayType.FIELD_GOAL
+            else:
+                return OffensivePlayType.PASS  # spike is technically a pass
         else:
-            return OffensivePlayType.PASS  # Default to pass for unknown concepts
+            # Default to PASS for unknown concepts (modern NFL is pass-first)
+            return OffensivePlayType.PASS
     
     def get_coaching_philosophy_summary(self) -> Dict[str, Any]:
         """

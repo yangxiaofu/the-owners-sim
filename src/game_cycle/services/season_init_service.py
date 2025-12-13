@@ -79,6 +79,18 @@ class SeasonInitializationService:
         # Define pipeline steps (order matters)
         self._steps: List[InitStep] = [
             InitStep(
+                name="Archive Stats",
+                description="Archiving previous season statistics",
+                handler=self._archive_stats,
+                required=False  # Non-critical - season can start without archival
+            ),
+            InitStep(
+                name="Calculate Awards",
+                description="Calculating NFL awards for completed season",
+                handler=self._calculate_awards,
+                required=False  # Non-critical - season can start without awards
+            ),
+            InitStep(
                 name="Reset Team Records",
                 description="Resetting all team records to 0-0",
                 handler=self._reset_team_records,
@@ -105,12 +117,6 @@ class SeasonInitializationService:
             # ============================================================
             # Future steps - uncomment/add as features are implemented:
             # ============================================================
-            # InitStep(
-            #     name="Archive Stats",
-            #     description="Archiving previous season statistics",
-            #     handler=self._archive_stats,
-            #     required=False
-            # ),
             # InitStep(
             #     name="Age Players",
             #     description="Aging all players by 1 year",
@@ -219,9 +225,12 @@ class SeasonInitializationService:
         """
         Generate the regular season schedule for the new season.
 
-        Uses ScheduleService to create game events in the events table.
+        Uses ScheduleService to create game events in the events table,
+        then assigns primetime slots via PrimetimeScheduler.
         """
         from .schedule_service import ScheduleService
+        from .primetime_scheduler import PrimetimeScheduler
+        from ..database.connection import GameCycleDatabase
 
         try:
             service = ScheduleService(
@@ -230,6 +239,26 @@ class SeasonInitializationService:
                 season=self._to_season
             )
             games_created = service.generate_schedule(clear_existing=True)
+
+            # Assign primetime slots (TNF, SNF, MNF) after schedule generation
+            from ..database.game_slots_api import GameSlotsAPI
+
+            db = GameCycleDatabase(self._db_path)
+            try:
+                game_slots_api = GameSlotsAPI(db)
+                game_events = game_slots_api.get_games_for_primetime_assignment(
+                    self._dynasty_id, self._to_season
+                )
+
+                primetime_scheduler = PrimetimeScheduler(db, self._dynasty_id)
+                assignments = primetime_scheduler.assign_primetime_games(
+                    season=self._to_season,
+                    games=game_events,
+                    super_bowl_winner_id=None
+                )
+                primetime_scheduler.save_assignments(self._to_season, assignments)
+            finally:
+                db.close()
 
             return {
                 "success": True,
@@ -319,13 +348,136 @@ class SeasonInitializationService:
                 "message": f"Failed to apply cap rollover: {e}"
             }
 
+    def _archive_stats(self) -> Dict[str, Any]:
+        """
+        Archive previous season statistics.
+
+        This step:
+        1. Deletes play-by-play grades for the completed season (biggest space saver)
+        2. Archives game-level data older than 2 seasons to CSV and deletes from DB
+
+        Space savings: ~48 MB per season (from play grades deletion alone)
+        """
+        from .stats_archival_service import StatsArchivalService
+
+        try:
+            archival_service = StatsArchivalService(
+                db_path=self._db_path,
+                dynasty_id=self._dynasty_id,
+                retention_seasons=2  # Keep current + 1 prior season
+            )
+
+            summary = archival_service.archive_completed_season(
+                completed_season=self._from_season,
+                current_season=self._to_season
+            )
+
+            if summary.success:
+                message_parts = [f"Stats archived for season {self._from_season}"]
+                if summary.play_grades_deleted > 0:
+                    message_parts.append(f"Play grades deleted: {summary.play_grades_deleted:,}")
+                if summary.seasons_archived:
+                    message_parts.append(f"Seasons archived to CSV: {summary.seasons_archived}")
+
+                return {
+                    "success": True,
+                    "message": ". ".join(message_parts)
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": f"Archival had errors: {summary.errors}"
+                }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"Failed to archive stats: {e}"
+            }
+
+    def _calculate_awards(self) -> Dict[str, Any]:
+        """
+        Calculate NFL awards for the completed season.
+
+        Includes:
+        - 6 major awards (MVP, OPOY, DPOY, OROY, DROY, CPOY)
+        - All-Pro teams (44 players: 22 First Team + 22 Second Team)
+        - Pro Bowl rosters (AFC/NFC)
+        - Statistical leaders (top 10 in 15 categories)
+
+        This step is idempotent - if awards already exist, it skips calculation.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        logger.info(f"Calculating awards for {self._from_season}...")
+
+        try:
+            from .awards_service import AwardsService
+
+            service = AwardsService(
+                db_path=self._db_path,
+                dynasty_id=self._dynasty_id,
+                season=self._from_season  # Completed season
+            )
+
+            # Idempotent: Skip if already calculated
+            if service.awards_already_calculated():
+                logger.info(f"  Awards already exist for {self._from_season}")
+                return {
+                    "success": True,
+                    "skipped": True,
+                    "message": f"Awards already calculated for {self._from_season}"
+                }
+
+            # 1. Major Awards (6)
+            results = service.calculate_all_awards()
+            winners = {
+                k: v.winner.player_name if v.winner else None
+                for k, v in results.items()
+            }
+
+            # Log winners
+            for award_id, winner_name in winners.items():
+                logger.info(f"  {award_id.upper()}: {winner_name or 'No winner'}")
+
+            # 2. All-Pro Teams (44 players)
+            all_pro = service.select_all_pro_teams()
+            logger.info(f"  All-Pro: {all_pro.total_selections} selections")
+
+            # 3. Pro Bowl Rosters
+            pro_bowl = service.select_pro_bowl_rosters()
+            logger.info(f"  Pro Bowl: {pro_bowl.total_selections} selections")
+
+            # 4. Statistical Leaders
+            stat_leaders = service.record_statistical_leaders()
+            logger.info(f"  Stat Leaders: {stat_leaders.total_recorded} entries")
+
+            logger.info(f"Awards complete for {self._from_season}")
+
+            return {
+                "success": True,
+                "season": self._from_season,
+                "awards_calculated": len(results),
+                "all_pro_selections": all_pro.total_selections,
+                "pro_bowl_selections": pro_bowl.total_selections,
+                "stat_leaders_recorded": stat_leaders.total_recorded,
+                "winners": winners,
+                "message": f"Calculated {len(results)} awards, {all_pro.total_selections} All-Pro, "
+                          f"{pro_bowl.total_selections} Pro Bowl for {self._from_season}"
+            }
+
+        except Exception as e:
+            logger.error(f"Awards calculation failed: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+                "message": f"Awards calculation failed for {self._from_season}: {e}"
+            }
+
     # ========================================================================
     # Future Step Handlers (uncomment and implement as needed)
     # ========================================================================
-
-    # def _archive_stats(self) -> Dict[str, Any]:
-    #     """Archive previous season statistics."""
-    #     return {"success": True, "message": f"Stats archived for season {self._from_season}"}
 
     # def _age_players(self) -> Dict[str, Any]:
     #     """Age all players by 1 year."""

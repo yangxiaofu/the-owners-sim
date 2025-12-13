@@ -10,10 +10,10 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 from enum import Enum
 
-from src.play_engine.game_state.drive_manager import DriveManager, DriveEndReason
-from src.play_engine.game_state.possession_manager import PossessionManager
-from src.play_engine.game_state.game_clock import GameClock
-from src.play_engine.core.play_result import PlayResult
+from play_engine.game_state.drive_manager import DriveManager, DriveEndReason
+from play_engine.game_state.possession_manager import PossessionManager
+from play_engine.game_state.game_clock import GameClock
+from play_engine.core.play_result import PlayResult
 
 
 class TransitionType(Enum):
@@ -54,7 +54,7 @@ class PuntResult:
     description: str = ""
 
 
-@dataclass 
+@dataclass
 class TransitionResult:
     """Complete result of drive transition"""
     transition_type: TransitionType
@@ -64,6 +64,10 @@ class TransitionResult:
     description: str = ""
     kickoff_result: Optional[KickoffResult] = None
     punt_result: Optional[PuntResult] = None
+    # Quarter continuation fields - preserve down state when drive continues across quarters
+    continuing_down: Optional[int] = None  # Current down (1-4)
+    continuing_yards_to_go: Optional[int] = None  # Yards needed for first down
+    is_drive_continuation: bool = False  # True if same drive continues (Q1→Q2, Q3→Q4)
 
 
 class DriveTransitionManager:
@@ -88,53 +92,56 @@ class DriveTransitionManager:
         self.possession_manager = possession_manager
         self.game_clock = game_clock
     
-    def handle_drive_transition(self, 
-                              completed_drive: DriveManager, 
+    def handle_drive_transition(self,
+                              completed_drive: DriveManager,
                               home_team_id: int,
-                              away_team_id: int) -> TransitionResult:
+                              away_team_id: int,
+                              actual_punt_play=None) -> TransitionResult:
         """
         Handle transition from completed drive to next drive
-        
+
         Args:
             completed_drive: The drive that just ended
             home_team_id: Home team ID
             away_team_id: Away team ID
-            
+            actual_punt_play: Optional PlayResult containing actual punt data
+                             (if provided, uses this instead of re-simulating)
+
         Returns:
             TransitionResult with details about the transition and new drive setup
         """
         drive_end_reason = completed_drive.get_drive_end_reason()
         possessing_team_id = completed_drive.get_possessing_team_id()
-        
+
         # Determine opposing team
         opposing_team_id = away_team_id if possessing_team_id == home_team_id else home_team_id
-        
+
         # Handle different drive ending scenarios
         if drive_end_reason == DriveEndReason.TOUCHDOWN:
             return self._handle_touchdown_transition(possessing_team_id, opposing_team_id)
-        
+
         elif drive_end_reason == DriveEndReason.FIELD_GOAL:
             return self._handle_field_goal_transition(possessing_team_id, opposing_team_id)
-        
+
         elif drive_end_reason == DriveEndReason.FIELD_GOAL_MISSED:
             return self._handle_field_goal_missed_transition(possessing_team_id, opposing_team_id, completed_drive)
-        
+
         elif drive_end_reason == DriveEndReason.PUNT:
-            return self._handle_punt_transition(possessing_team_id, opposing_team_id, completed_drive)
-        
-        elif drive_end_reason in [DriveEndReason.TURNOVER_INTERCEPTION, 
+            return self._handle_punt_transition(possessing_team_id, opposing_team_id, completed_drive, actual_punt_play)
+
+        elif drive_end_reason in [DriveEndReason.TURNOVER_INTERCEPTION,
                                    DriveEndReason.TURNOVER_FUMBLE]:
             return self._handle_turnover_transition(possessing_team_id, opposing_team_id, completed_drive)
-        
+
         elif drive_end_reason == DriveEndReason.SAFETY:
             return self._handle_safety_transition(possessing_team_id, opposing_team_id)
-        
+
         elif drive_end_reason == DriveEndReason.TIME_EXPIRATION:
-            return self._handle_time_expiration_transition(possessing_team_id, opposing_team_id)
-        
+            return self._handle_time_expiration_transition(possessing_team_id, opposing_team_id, completed_drive)
+
         else:
             # Default to turnover on downs (treat as punt)
-            return self._handle_punt_transition(possessing_team_id, opposing_team_id, completed_drive)
+            return self._handle_punt_transition(possessing_team_id, opposing_team_id, completed_drive, actual_punt_play)
     
     def _handle_touchdown_transition(self, scoring_team_id: int, opposing_team_id: int) -> TransitionResult:
         """Handle transition after touchdown (kickoff)"""
@@ -200,17 +207,68 @@ class DriveTransitionManager:
             description=f"Field goal missed. Turnover on downs to opposing team. New drive starts at {new_field_position}-yard line"
         )
     
-    def _handle_punt_transition(self, punting_team_id: int, receiving_team_id: int, completed_drive: DriveManager) -> TransitionResult:
-        """Handle transition after punt"""
-        punt_result = self._simulate_punt(
-            punting_team_id=punting_team_id,
-            receiving_team_id=receiving_team_id,
-            field_position=completed_drive.get_current_field_position().yard_line
-        )
-        
+    def _handle_punt_transition(self, punting_team_id: int, receiving_team_id: int,
+                                 completed_drive: DriveManager, actual_punt_play=None) -> TransitionResult:
+        """Handle transition after punt
+
+        Args:
+            punting_team_id: Team that punted
+            receiving_team_id: Team receiving the punt
+            completed_drive: The drive that just ended
+            actual_punt_play: Optional PlayResult with actual punt data from the game engine
+        """
+        field_position = completed_drive.get_current_field_position().yard_line
+
+        # ✅ FIX: Use actual punt data if available, otherwise fallback to simulation
+        if actual_punt_play is not None:
+            # Use the ACTUAL punt result from the game engine
+            punt_distance = getattr(actual_punt_play, 'punt_distance', None)
+            return_yards = getattr(actual_punt_play, 'return_yards', None) or 0
+
+            if punt_distance is not None:
+                # Calculate receiving team's field position using actual values
+                landing_spot = field_position + punt_distance
+
+                # Handle touchback
+                if landing_spot >= 100:
+                    receiving_team_field_position = 25
+                    is_touchback = True
+                else:
+                    is_touchback = False
+                    # Flip to receiving team's perspective
+                    receiving_team_field_position = 100 - landing_spot
+                    # Apply return yards (return moves toward opponent's goal = increases field position)
+                    receiving_team_field_position = min(receiving_team_field_position + return_yards, 95)
+
+                # Create a PuntResult with actual data
+                punt_result = PuntResult(
+                    punting_team_id=punting_team_id,
+                    receiving_team_id=receiving_team_id,
+                    punt_yards=punt_distance,
+                    return_yards=return_yards,
+                    starting_field_position=receiving_team_field_position,
+                    is_touchback=is_touchback,
+                    is_fair_catch=return_yards == 0 and not is_touchback,  # Approximate
+                    description=f"Punt {punt_distance} yards, returned {return_yards} yards, starts at {receiving_team_field_position}-yard line"
+                )
+            else:
+                # Fallback: punt_distance not available, re-simulate
+                punt_result = self._simulate_punt(
+                    punting_team_id=punting_team_id,
+                    receiving_team_id=receiving_team_id,
+                    field_position=field_position
+                )
+        else:
+            # No actual punt data, re-simulate (legacy behavior)
+            punt_result = self._simulate_punt(
+                punting_team_id=punting_team_id,
+                receiving_team_id=receiving_team_id,
+                field_position=field_position
+            )
+
         # Update possession to receiving team
         self.possession_manager.set_possession(receiving_team_id)
-        
+
         return TransitionResult(
             transition_type=TransitionType.PUNT,
             new_possessing_team_id=receiving_team_id,
@@ -260,10 +318,12 @@ class DriveTransitionManager:
             kickoff_result=kickoff_result
         )
     
-    def _handle_time_expiration_transition(self, current_possessing_team_id: int, opposing_team_id: int) -> TransitionResult:
+    def _handle_time_expiration_transition(self, current_possessing_team_id: int,
+                                            opposing_team_id: int,
+                                            completed_drive: DriveManager) -> TransitionResult:
         """Handle transition when time expires (end of quarter/half/game)"""
         # When time expires, typically no possession change unless it's halftime
-        if self.game_clock and self.game_clock.get_current_quarter() == 2:
+        if self.game_clock and self.game_clock.quarter == 2:
             # End of first half - halftime possession change
             # The team that didn't receive opening kickoff gets second half kickoff
             halftime_receiving_team = opposing_team_id  # Simplified logic
@@ -284,26 +344,42 @@ class DriveTransitionManager:
                 kickoff_result=kickoff_result
             )
         else:
-            # Regular quarter end - possession stays the same
+            # Regular quarter end (Q1, Q3, Q4) - preserve field position AND down state
+            current_field_position = completed_drive.get_current_field_position().yard_line
+            current_down_state = completed_drive.get_current_down_state()
+
             return TransitionResult(
                 transition_type=TransitionType.TIME_EXPIRATION,
                 new_possessing_team_id=current_possessing_team_id,
-                new_starting_field_position=50,  # Default field position
+                new_starting_field_position=current_field_position,
                 time_elapsed=0,
-                description="Quarter ended. Possession continues next quarter"
+                description=f"Quarter ended. Drive continues at {current_field_position}-yard line, {current_down_state.current_down}{'st' if current_down_state.current_down == 1 else 'nd' if current_down_state.current_down == 2 else 'rd' if current_down_state.current_down == 3 else 'th'} & {current_down_state.yards_to_go}",
+                continuing_down=current_down_state.current_down,
+                continuing_yards_to_go=current_down_state.yards_to_go,
+                is_drive_continuation=True
             )
     
     def _simulate_kickoff(self, kicking_team_id: int, receiving_team_id: int, is_onside_kick: bool = False) -> KickoffResult:
-        """Simulate kickoff with realistic NFL outcomes"""
+        """
+        Simulate kickoff with realistic NFL outcomes
+
+        Based on 2024 NFL data:
+        - Touchback rate: ~50-55% (down from 65% in previous years)
+        - Average return: 23-26 yards (for non-touchbacks)
+        - Return range: 10-40 yards typical, rare 40+ yard returns
+        - Starting position distribution:
+          * Touchbacks: 25-yard line (55%)
+          * Returns: 18-32 yard line average (45%)
+        """
         if is_onside_kick:
             # Onside kick - much shorter with recovery attempt
-            recovery_success = random.random() < 0.3  # ~30% success rate
+            recovery_success = random.random() < 0.25  # ~25% success rate (NFL average)
             if recovery_success:
                 return KickoffResult(
                     kicking_team_id=kicking_team_id,
                     receiving_team_id=receiving_team_id,
                     return_yards=0,
-                    starting_field_position=45,  # Around midfield
+                    starting_field_position=random.randint(42, 48),  # Around midfield
                     is_touchback=False,
                     is_onside_kick=True,
                     onside_kick_recovered=True,
@@ -321,22 +397,50 @@ class DriveTransitionManager:
                     description="Onside kick recovered by receiving team"
                 )
         else:
-            # Regular kickoff
-            touchback_chance = 0.65  # 65% of kickoffs are touchbacks
+            # Regular kickoff - more realistic distribution
+            touchback_chance = 0.52  # 52% touchback rate (2024 NFL average)
+
             if random.random() < touchback_chance:
                 return KickoffResult(
                     kicking_team_id=kicking_team_id,
                     receiving_team_id=receiving_team_id,
                     return_yards=0,
-                    starting_field_position=25,  # Touchback
+                    starting_field_position=25,  # Touchback at 25-yard line
                     is_touchback=True,
                     is_onside_kick=False,
-                    description="Touchback. Drive starts at 25-yard line"
+                    description="Touchback to 25-yard line"
                 )
             else:
-                # Kickoff return
-                return_yards = random.randint(15, 40)  # Typical return range
-                starting_position = min(25 + return_yards, 95)  # Cap at 95-yard line
+                # Kickoff return - simulate realistic outcomes
+                # Most NFL kickoffs reach 3-8 yards deep in the end zone or land at 1-5 yard line
+                distribution_roll = random.random()
+
+                if distribution_roll < 0.10:  # 10% - short return (bad blocking/quick tackle)
+                    return_yards = random.randint(8, 17)
+                elif distribution_roll < 0.70:  # 60% - average return
+                    return_yards = random.randint(18, 28)
+                elif distribution_roll < 0.92:  # 22% - good return
+                    return_yards = random.randint(29, 38)
+                else:  # 8% - big return (40+ yards)
+                    return_yards = random.randint(39, 65)
+
+                # Most kickoffs land in/near the end zone, so returns start from goal line
+                # A 20-yard return from the goal line = 20-yard line
+                # A 25-yard return from the goal line = 25-yard line
+                # NFL average return position is around 22-24 yard line
+                starting_position = min(return_yards, 95)  # Can't exceed 95-yard line
+
+                # Add slight variance for kicks that don't reach end zone
+                # (about 15% of non-touchback kicks land short)
+                if random.random() < 0.15:
+                    # Kick landed short (3-7 yard line)
+                    catch_spot = random.randint(3, 7)
+                    starting_position = min(catch_spot + return_yards, 95)
+
+                # Cap extremely good field position (very rare to cross own 45 unless huge return)
+                if starting_position > 45 and return_yards < 50:
+                    starting_position = random.randint(35, 43)
+
                 return KickoffResult(
                     kicking_team_id=kicking_team_id,
                     receiving_team_id=receiving_team_id,
@@ -350,34 +454,38 @@ class DriveTransitionManager:
     def _simulate_punt(self, punting_team_id: int, receiving_team_id: int, field_position: int) -> PuntResult:
         """Simulate punt with realistic NFL outcomes"""
         # Punt distance varies based on field position
-        base_punt_distance = random.randint(35, 50)
-        
+        punt_distance = random.randint(35, 50)
+
         # Fair catch chance increases in certain situations
         fair_catch_chance = 0.3
         is_fair_catch = random.random() < fair_catch_chance
-        
-        if is_fair_catch:
-            punt_distance = base_punt_distance
+
+        # Calculate where punt lands from punting team's perspective (how far down field)
+        landing_spot = field_position + punt_distance
+
+        # Handle touchback (punt into end zone)
+        if landing_spot >= 100:
+            receiving_team_field_position = 25  # Touchback at 25-yard line
+            is_touchback = True
             return_yards = 0
-            final_position = min(field_position + punt_distance, 99)
         else:
-            punt_distance = base_punt_distance
-            return_yards = random.randint(3, 12)  # Typical punt return
-            final_position = min(field_position + punt_distance - return_yards, 99)
-        
-        # Check for touchback
-        is_touchback = final_position >= 80 and random.random() < 0.4
-        if is_touchback:
-            final_position = 20  # Touchback on punt
-        
-        # Convert to receiving team's field position
-        receiving_team_field_position = 100 - final_position
-        
+            is_touchback = False
+            # Convert to receiving team's yard line (flip the field)
+            receiving_team_field_position = 100 - landing_spot
+
+            # Apply return yards if not a fair catch
+            if is_fair_catch:
+                return_yards = 0
+            else:
+                return_yards = random.randint(3, 12)  # Typical punt return
+                # Return moves the ball toward punting team's goal (increases field position)
+                receiving_team_field_position = min(receiving_team_field_position + return_yards, 95)
+
         return PuntResult(
             punting_team_id=punting_team_id,
             receiving_team_id=receiving_team_id,
             punt_yards=punt_distance,
-            return_yards=return_yards if not is_fair_catch else 0,
+            return_yards=return_yards,
             starting_field_position=receiving_team_field_position,
             is_touchback=is_touchback,
             is_fair_catch=is_fair_catch,

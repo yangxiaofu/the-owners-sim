@@ -45,9 +45,12 @@ class OffseasonHandler:
         """
         # Dispatch to stage-specific handler
         handlers = {
+            StageType.OFFSEASON_HONORS: self._execute_honors,
+            StageType.OFFSEASON_OWNER: self._execute_owner,
             StageType.OFFSEASON_FRANCHISE_TAG: self._execute_franchise_tag,
             StageType.OFFSEASON_RESIGNING: self._execute_resigning,
             StageType.OFFSEASON_FREE_AGENCY: self._execute_free_agency,
+            StageType.OFFSEASON_TRADING: self._execute_trading,
             StageType.OFFSEASON_DRAFT: self._execute_draft,
             StageType.OFFSEASON_ROSTER_CUTS: self._execute_roster_cuts,
             StageType.OFFSEASON_WAIVER_WIRE: self._execute_waiver_wire,
@@ -90,6 +93,38 @@ class OffseasonHandler:
                 # If error, allow advancement
                 return True
 
+        # Check roster cuts completion (user's roster must be at/below 53)
+        if stage.stage_type == StageType.OFFSEASON_ROSTER_CUTS:
+            try:
+                from ..services.roster_cuts_service import RosterCutsService
+
+                dynasty_id = context.get("dynasty_id")
+                season = context.get("season", 2025)
+                db_path = context.get("db_path", self._database_path)
+                user_team_id = context.get("user_team_id", 1)
+
+                cuts_service = RosterCutsService(db_path, dynasty_id, season)
+                cuts_needed = cuts_service.get_cuts_needed(user_team_id)
+                return cuts_needed == 0  # Can advance only if at or below 53
+            except Exception:
+                # If error, allow advancement
+                return True
+
+        # Check FA completion (all waves must be done)
+        if stage.stage_type == StageType.OFFSEASON_FREE_AGENCY:
+            try:
+                from ..services.fa_wave_executor import FAWaveExecutor
+
+                dynasty_id = context.get("dynasty_id")
+                season = context.get("season", 2025)
+                db_path = context.get("db_path", self._database_path)
+
+                executor = FAWaveExecutor.create(db_path, dynasty_id, season)
+                return executor.is_fa_complete()
+            except Exception:
+                # If error, allow advancement
+                return True
+
         # For other stages, return True (allows progression)
         return True
 
@@ -107,6 +142,7 @@ class OffseasonHandler:
             StageType.OFFSEASON_FRANCHISE_TAG,  # User can apply franchise tag
             StageType.OFFSEASON_RESIGNING,    # User decides who to re-sign
             StageType.OFFSEASON_FREE_AGENCY,  # User can sign free agents
+            StageType.OFFSEASON_TRADING,      # User can propose/accept trades
             StageType.OFFSEASON_DRAFT,        # User makes draft picks
             StageType.OFFSEASON_ROSTER_CUTS,  # User decides who to cut
             StageType.OFFSEASON_WAIVER_WIRE,  # User can submit waiver claims
@@ -131,7 +167,22 @@ class OffseasonHandler:
         stage_type = stage.stage_type
         user_team_id = context.get("user_team_id", 1)
 
-        if stage_type == StageType.OFFSEASON_FRANCHISE_TAG:
+        if stage_type == StageType.OFFSEASON_HONORS:
+            return {
+                "stage_name": "NFL Honors",
+                "description": "Announce season awards: MVP, OPOY, DPOY, All-Pro teams, and Pro Bowl selections.",
+                "action_label": "Announce Awards",
+                "is_interactive": False,
+                "show_awards_after": True,  # Signal to UI to show awards tab after execution
+            }
+        elif stage_type == StageType.OFFSEASON_OWNER:
+            return {
+                "stage_name": "Owner Review",
+                "description": "Review the season and make decisions about your GM and Head Coach.",
+                "action_label": "Continue",
+                "is_interactive": True,
+            }
+        elif stage_type == StageType.OFFSEASON_FRANCHISE_TAG:
             return self._get_franchise_tag_preview(context, user_team_id)
         elif stage_type == StageType.OFFSEASON_RESIGNING:
             preview = {
@@ -144,15 +195,9 @@ class OffseasonHandler:
             preview["cap_data"] = self._get_cap_data(context, user_team_id)
             return preview
         elif stage_type == StageType.OFFSEASON_FREE_AGENCY:
-            preview = {
-                "stage_name": "Free Agency",
-                "description": "Sign available free agents to fill roster needs.",
-                "free_agents": self._get_free_agents(context),
-                "is_interactive": True,
-            }
-            # Add cap data for UI display
-            preview["cap_data"] = self._get_cap_data(context, user_team_id)
-            return preview
+            return self._get_free_agency_preview(context, user_team_id)
+        elif stage_type == StageType.OFFSEASON_TRADING:
+            return self._get_trading_preview(context, user_team_id)
         elif stage_type == StageType.OFFSEASON_DRAFT:
             return self._get_draft_preview(context, user_team_id)
         elif stage_type == StageType.OFFSEASON_ROSTER_CUTS:
@@ -385,6 +430,73 @@ class OffseasonHandler:
             traceback.print_exc()
             return []
 
+    def _get_free_agency_preview(
+        self,
+        context: Dict[str, Any],
+        user_team_id: int
+    ) -> Dict[str, Any]:
+        """
+        Get free agency preview data with wave-based filtering.
+
+        Args:
+            context: Execution context
+            user_team_id: User's team ID
+
+        Returns:
+            Dictionary with wave state, filtered players, and user offers
+        """
+        try:
+            from ..services.fa_wave_executor import FAWaveExecutor
+
+            dynasty_id = context.get("dynasty_id")
+            season = context.get("season", 2025)
+            db_path = context.get("db_path", self._database_path)
+
+            executor = FAWaveExecutor.create(db_path, dynasty_id, season)
+
+            # Get wave state
+            wave_state = executor.get_wave_state()
+            wave_summary = executor.get_wave_summary()
+
+            # Get available players for current wave (filtered by OVR tier)
+            available_players = executor.get_available_players(user_team_id)
+
+            # Get user's pending offers
+            user_offers = executor.get_team_pending_offers(user_team_id)
+
+            preview = {
+                "stage_name": f"Free Agency - {wave_state.get('wave_name', 'Unknown')}",
+                "description": (
+                    f"Day {wave_state.get('current_day', 1)}/{wave_state.get('days_in_wave', 1)}. "
+                    f"Submit offers to available players. Offers resolve at wave end."
+                ),
+                "wave_state": wave_state,
+                "wave_summary": wave_summary,
+                "free_agents": available_players,
+                "user_offers": user_offers,
+                "total_available": len(available_players),
+                "pending_offers_count": wave_summary.get("pending_offers", 0),
+                "signing_allowed": wave_state.get("signing_allowed", False),
+                "is_fa_complete": executor.is_fa_complete(),
+                "is_interactive": True,
+            }
+            # Add cap data for UI display
+            preview["cap_data"] = self._get_cap_data(context, user_team_id)
+            return preview
+
+        except Exception as e:
+            import traceback
+            print(f"[OffseasonHandler] Error getting free agency preview: {e}")
+            traceback.print_exc()
+            # Fallback to basic preview
+            return {
+                "stage_name": "Free Agency",
+                "description": "Sign available free agents to fill roster needs.",
+                "free_agents": self._get_free_agents(context),
+                "wave_state": None,
+                "is_interactive": True,
+            }
+
     def _get_draft_preview(
         self,
         context: Dict[str, Any],
@@ -529,71 +641,340 @@ class OffseasonHandler:
         stage: Stage,
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Execute free agency phase for all teams."""
-        from ..services.free_agency_service import FreeAgencyService
+        """
+        Execute free agency phase with wave-based progression.
+
+        Uses FAWaveExecutor for multi-wave management:
+        - Wave 0: Legal Tampering (no signings)
+        - Wave 1: Elite players (85+ OVR)
+        - Wave 2: Quality players (75-84 OVR)
+        - Wave 3: Depth players (65-74 OVR)
+        - Wave 4: Post-Draft (all remaining)
+
+        Context keys:
+            fa_wave_actions: {
+                "submit_offers": [{"player_id": int, "aav": int, ...}],
+                "withdraw_offers": [offer_id, ...]
+            }
+            wave_control: {
+                "advance_day": bool,
+                "advance_wave": bool,
+                "enable_post_draft": bool
+            }
+        """
+        from ..services.fa_wave_executor import FAWaveExecutor, OfferOutcome
+        from team_management.teams.team_loader import TeamDataLoader
 
         dynasty_id = context.get("dynasty_id")
         season = context.get("season", 2025)
         user_team_id = context.get("user_team_id", 1)
-        fa_decisions = context.get("fa_decisions", {})
         db_path = context.get("db_path", self._database_path)
 
-        service = FreeAgencyService(db_path, dynasty_id, season)
+        # Get action and control contexts
+        fa_wave_actions = context.get("fa_wave_actions", {})
+        wave_control = context.get("wave_control", {})
 
-        # Process user and AI signings
-        user_signings = self._process_user_fa_signings(service, fa_decisions, user_team_id)
-        ai_result = service.process_ai_signings(user_team_id)
+        # Legacy support: convert old fa_decisions to new format
+        legacy_decisions = context.get("fa_decisions", {})
+        if legacy_decisions and not fa_wave_actions:
+            fa_wave_actions = self._convert_legacy_fa_decisions(legacy_decisions)
 
-        # Build event list
-        events = []
-        for signing in user_signings:
-            events.append(f"Signed FA {signing['player_name']}")
-        events.extend(ai_result.get("events", []))
-        events.append(
-            f"Free Agency completed: {len(user_signings)} user signings, "
-            f"{len(ai_result.get('signings', []))} AI signings"
+        # Create executor (factory handles service instantiation)
+        executor = FAWaveExecutor.create(db_path, dynasty_id, season)
+
+        # Execute turn with all actions
+        result = executor.execute(
+            user_team_id=user_team_id,
+            submit_offers=fa_wave_actions.get("submit_offers", []),
+            withdraw_offers=fa_wave_actions.get("withdraw_offers", []),
+            advance_day=wave_control.get("advance_day", False),
+            advance_wave=wave_control.get("advance_wave", False),
+            enable_post_draft=wave_control.get("enable_post_draft", False)
         )
+
+        # CRITICAL: Fetch fresh wave state after execution to ensure consistency
+        # Don't rely on result.wave which may be stale - get directly from database
+        fresh_wave_state = executor.get_wave_state()
+
+        # MILESTONE 10/13: Generate GM proposals (if guidance provided and wave active)
+        # Load owner directives for FA guidance if not explicitly provided
+        gm_proposals = []
+        fa_guidance = context.get("fa_guidance")  # FAGuidance object from UI
+        gm_archetype = context.get("gm_archetype")  # GMArchetype object from team
+
+        # Try to load FA guidance from owner directives if not provided
+        if fa_guidance is None:
+            try:
+                from ..database.owner_directives_api import OwnerDirectivesAPI
+                from ..models.owner_directives import OwnerDirectives
+
+                directives_api = OwnerDirectivesAPI(db_path)
+                directives_dict = directives_api.get_directives(dynasty_id, user_team_id, season)
+                if directives_dict:
+                    directives_dict["dynasty_id"] = dynasty_id
+                    directives_dict["team_id"] = user_team_id
+                    directives_dict["season"] = season
+                    owner_directives = OwnerDirectives.from_dict(directives_dict)
+                    fa_guidance = owner_directives.to_fa_guidance()
+            except Exception:
+                pass  # Proceed without directives if loading fails
+
+        if fa_guidance and gm_archetype and not fresh_wave_state.get("wave_complete", False):
+            try:
+                from ..services.gm_fa_proposal_engine import GMFAProposalEngine
+
+                # Get available players for current wave
+                available_players = executor.get_available_players(user_team_id=user_team_id)
+
+                # Get team needs (stub for now - Phase 1 uses simple position-based needs)
+                team_needs = self._get_team_needs(db_path, dynasty_id, user_team_id)
+
+                # Get cap space
+                from salary_cap.cap_calculator import CapCalculator
+                cap_calc = CapCalculator(db_path)
+                cap_data = cap_calc.calculate_team_cap(user_team_id, season, dynasty_id)
+                cap_space = cap_data.get("available_cap", 0)
+
+                # Generate proposals
+                engine = GMFAProposalEngine(gm_archetype, fa_guidance)
+                gm_proposals = engine.generate_proposals(
+                    available_players=available_players,
+                    team_needs=team_needs,
+                    cap_space=cap_space,
+                    wave=fresh_wave_state.get("current_wave", 0)
+                )
+
+                print(f"[DEBUG OffseasonHandler] Generated {len(gm_proposals)} GM proposals for wave {fresh_wave_state.get('current_wave')}")
+            except Exception as e:
+                print(f"[WARNING OffseasonHandler] Failed to generate GM proposals: {e}")
+                gm_proposals = []
+
+        # Format events from structured result
+        events = self._format_fa_events(result, user_team_id)
+
+        # Convert SigningResult dataclasses to dicts for compatibility
+        user_signings = [
+            {
+                "player_id": s.player_id,
+                "player_name": s.player_name,
+                "team_id": s.team_id,
+                "aav": s.aav,
+                "years": s.years,
+            }
+            for s in result.signings if s.team_id == user_team_id
+        ]
+        ai_signings = [
+            {
+                "player_id": s.player_id,
+                "player_name": s.player_name,
+                "team_id": s.team_id,
+                "aav": s.aav,
+                "years": s.years,
+            }
+            for s in result.signings if s.team_id != user_team_id
+        ]
+        surprises = [
+            {
+                "player_id": s.player_id,
+                "player_name": s.player_name,
+                "team_id": s.team_id,
+                "aav": s.aav,
+            }
+            for s in result.surprises
+        ]
+
+        # Calculate user_lost_bids: players user bid on but signed elsewhere
+        user_lost_bids = []
+        team_loader = TeamDataLoader()
+
+        for offer in result.offers_submitted:
+            if offer.outcome == OfferOutcome.SUBMITTED:
+                player_id = offer.player_id
+                # Check if this player signed with a different team
+                signing = next(
+                    (s for s in result.signings if s.player_id == player_id),
+                    None
+                )
+                if signing and signing.team_id != user_team_id:
+                    # User lost this bid - player signed elsewhere
+                    team = team_loader.get_team_by_id(signing.team_id)
+                    team_name = team.full_name if team else f"Team {signing.team_id}"
+
+                    user_lost_bids.append({
+                        "player_id": signing.player_id,
+                        "player_name": signing.player_name,
+                        "position": "",  # Not in SigningResult
+                        "overall": 0,    # Not in SigningResult
+                        "team_id": signing.team_id,
+                        "team_name": team_name,
+                        "aav": signing.aav,
+                        "years": signing.years,
+                    })
+
+        # ALSO check for players who rejected ALL offers
+        # These players had user offers but no signing anywhere
+        for offer in result.offers_submitted:
+            if offer.outcome == OfferOutcome.SUBMITTED:
+                player_id = offer.player_id
+
+                # If player rejected all offers, they'll be in rejections list
+                if player_id in result.rejections:
+                    # Get player name from database (rejections list only has IDs)
+                    import sqlite3
+                    conn = sqlite3.connect(db_path)
+                    conn.row_factory = sqlite3.Row
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT
+                            first_name || ' ' || last_name as name,
+                            positions,
+                            attributes
+                        FROM players
+                        WHERE dynasty_id = ? AND player_id = ?
+                    """, (dynasty_id, player_id))
+                    row = cursor.fetchone()
+                    conn.close()
+
+                    if row:
+                        import json
+                        positions = json.loads(row["positions"])
+                        attributes = json.loads(row["attributes"])
+                        user_lost_bids.append({
+                            "player_id": player_id,
+                            "player_name": row["name"],
+                            "position": positions[0] if positions else "",
+                            "overall": attributes.get("overall", 0),
+                            "team_id": None,  # No team - rejected all
+                            "team_name": "Rejected All Offers",  # Special marker
+                            "aav": 0,  # No contract
+                            "years": 0,
+                        })
+
+        # Add team names to user signings for dialog display
+        for signing in user_signings:
+            team = team_loader.get_team_by_id(user_team_id)
+            signing["team_name"] = team.full_name if team else f"Team {user_team_id}"
+            signing["position"] = ""  # Not in SigningResult
+            signing["overall"] = 0    # Not in SigningResult
+
+        # Use FRESH wave state from database (not from result which may be stale)
+        print(f"[DEBUG OffseasonHandler] Returning wave_state: wave={fresh_wave_state.get('current_wave')}, name={fresh_wave_state.get('wave_name')}")
+        rejections_added = len([p for p in user_lost_bids if p.get('team_name') == 'Rejected All Offers'])
+        print(f"[DEBUG OffseasonHandler] wave_advanced={wave_control.get('advance_wave', False)}, user_signings={len(user_signings)}, user_lost_bids={len(user_lost_bids)}, rejections_added={rejections_added}, gm_proposals={len(gm_proposals)}")
+
+        # Generate FA headlines for notable signings
+        all_signings = user_signings + ai_signings
+        if all_signings:
+            current_wave = fresh_wave_state.get("current_wave", 0)
+            self._generate_fa_headlines(context, all_signings, current_wave)
 
         return {
             "games_played": [],
             "events_processed": events,
             "user_signings": user_signings,
-            "ai_signings": ai_result.get("signings", []),
+            "user_lost_bids": user_lost_bids,
+            "ai_signings": ai_signings,
+            "surprises": surprises,
+            "gm_proposals": gm_proposals,  # Milestone 10: GM proposals for owner approval
+            "wave_state": {
+                "wave": fresh_wave_state.get("current_wave", 0),
+                "wave_name": fresh_wave_state.get("wave_name", "Unknown"),
+                "current_day": fresh_wave_state.get("current_day", 1),
+                "days_in_wave": fresh_wave_state.get("days_in_wave", 1),
+                "wave_complete": fresh_wave_state.get("wave_complete", False),
+                "pending_offers": fresh_wave_state.get("pending_offers", 0),
+            },
+            "wave_advanced": wave_control.get("advance_wave", False),
+            "is_fa_complete": result.is_fa_complete,  # This comes from executor method, not state dict
         }
 
-    def _process_user_fa_signings(
-        self,
-        service,
-        fa_decisions: Dict[int, str],
-        user_team_id: int
-    ) -> List[Dict[str, Any]]:
+    def _format_fa_events(self, result, user_team_id: int) -> List[str]:
         """
-        Process user's free agent signing decisions.
+        Format WaveExecutionResult into event strings.
 
         Args:
-            service: FreeAgencyService instance
-            fa_decisions: Dict of {player_id: "sign"}
+            result: WaveExecutionResult from executor
             user_team_id: User's team ID
 
         Returns:
-            List of successful signing dictionaries
+            List of formatted event strings
         """
-        user_signings = []
+        from ..services.fa_wave_executor import OfferOutcome
+
+        events = []
+        events.append(f"Free Agency {result.wave_name} - Day {result.current_day}")
+
+        # Offer submissions
+        for offer in result.offers_submitted:
+            if offer.outcome == OfferOutcome.SUBMITTED:
+                events.append(f"Submitted offer to player {offer.player_id}")
+            else:
+                events.append(f"Offer failed: {offer.error}")
+
+        # Offer withdrawals
+        for offer_id in result.offers_withdrawn:
+            events.append(f"Withdrew offer #{offer_id}")
+
+        # AI activity
+        if result.ai_offers_made > 0:
+            events.append(f"AI teams submitted {result.ai_offers_made} offers")
+
+        # Surprise signings
+        for s in result.surprises:
+            events.append(f"SURPRISE: {s.player_name} signed by Team {s.team_id}!")
+
+        # Signings from wave resolution
+        for s in result.signings:
+            events.append(
+                f"Signed: {s.player_name} to Team {s.team_id} "
+                f"({s.years} yr, ${s.aav:,}/yr)"
+            )
+
+        # Rejections
+        for player_id in result.rejections:
+            events.append(f"Player {player_id} rejected all offers")
+
+        # Summary
+        events.append(f"Pending offers: {result.pending_offers}")
+
+        return events
+
+    def _convert_legacy_fa_decisions(
+        self,
+        fa_decisions: Dict[Any, str]
+    ) -> Dict[str, Any]:
+        """
+        Convert legacy fa_decisions format to new fa_wave_actions format.
+
+        Legacy format: {player_id: "sign"}
+        New format: {"submit_offers": [{player_id, aav, years, ...}], "withdraw_offers": []}
+
+        Args:
+            fa_decisions: Legacy format dict
+
+        Returns:
+            New format fa_wave_actions dict
+        """
+        submit_offers = []
 
         for player_id_str, decision in fa_decisions.items():
             player_id = int(player_id_str) if isinstance(player_id_str, str) else player_id_str
 
             if decision == "sign":
-                result = service.sign_free_agent(player_id, user_team_id)
-                if result["success"]:
-                    user_signings.append({
-                        "player_id": player_id,
-                        "player_name": result["player_name"],
-                        "team_id": user_team_id,
-                        "contract_details": result.get("contract_details", {}),
-                    })
+                # Legacy signing uses market rate, so we need to estimate
+                # The executor will use market value from the service
+                submit_offers.append({
+                    "player_id": player_id,
+                    "aav": 0,  # Will be calculated from market
+                    "years": 3,  # Default
+                    "guaranteed": 0,  # Will be calculated
+                    "signing_bonus": 0,
+                })
 
-        return user_signings
+        return {
+            "submit_offers": submit_offers,
+            "withdraw_offers": [],
+        }
 
     def _execute_draft(
         self,
@@ -613,6 +994,8 @@ class OffseasonHandler:
             - sim_to_user_pick: bool = True to sim AI picks until user's turn
         """
         from ..services.draft_service import DraftService
+        from ..database.owner_directives_api import OwnerDirectivesAPI
+        from ..models.owner_directives import OwnerDirectives
 
         dynasty_id = context.get("dynasty_id")
         season = context.get("season", 2025)
@@ -621,11 +1004,27 @@ class OffseasonHandler:
         draft_decisions = context.get("draft_decisions", {})  # {pick_num: prospect_id}
         auto_complete = context.get("auto_complete", False)
         sim_to_user_pick = context.get("sim_to_user_pick", False)
+        draft_direction = context.get("draft_direction")  # Owner's strategy (from UI override)
 
         events = []
         picks = []
 
         try:
+            # Load owner directives if no explicit draft_direction provided
+            if draft_direction is None:
+                try:
+                    directives_api = OwnerDirectivesAPI(db_path)
+                    directives_dict = directives_api.get_directives(dynasty_id, user_team_id, season)
+                    if directives_dict:
+                        directives_dict["dynasty_id"] = dynasty_id
+                        directives_dict["team_id"] = user_team_id
+                        directives_dict["season"] = season
+                        owner_directives = OwnerDirectives.from_dict(directives_dict)
+                        draft_direction = owner_directives.to_draft_direction()
+                        events.append(f"Using owner directives: {owner_directives.draft_strategy} strategy")
+                except Exception as e:
+                    pass  # Proceed without directives if loading fails
+
             draft_service = DraftService(db_path, dynasty_id, season)
 
             # Safety: Ensure prerequisites exist
@@ -672,8 +1071,11 @@ class OffseasonHandler:
                                 f"({result['position']}, {result['overall']} OVR)"
                             )
 
-                    # Sim AI picks to user's next turn
-                    ai_results = draft_service.sim_to_user_pick(user_team_id)
+                    # Sim AI picks to user's next turn (with draft direction if provided)
+                    ai_results = draft_service.sim_to_user_pick(
+                        user_team_id=user_team_id,
+                        draft_direction=draft_direction
+                    )
                     for r in ai_results:
                         if r.get("success"):
                             picks.append(r)
@@ -687,6 +1089,10 @@ class OffseasonHandler:
 
             if is_complete:
                 events.append("NFL Draft completed - all 224 picks executed")
+
+            # Generate draft headlines for notable picks
+            if picks:
+                self._generate_draft_headlines(context, picks, is_complete)
 
             return {
                 "games_played": [],
@@ -1183,6 +1589,245 @@ class OffseasonHandler:
                 "is_interactive": True,
             }
 
+    def _execute_honors(
+        self,
+        stage: Stage,
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Execute NFL Honors stage - calculate and announce awards.
+
+        This is the first offseason stage, occurring right after the Super Bowl.
+        Calculates MVP, OPOY, DPOY, OROY, DROY, CPOY, All-Pro teams, Pro Bowl,
+        and statistical leaders.
+
+        Also applies annual decay to inactive RECENT rivalries (Milestone 11, Tollgate 6).
+
+        In real NFL, the NFL Honors ceremony occurs Thursday before the Super Bowl,
+        but for game flow simplicity, we run it as the first offseason stage.
+        """
+        from ..services.awards_service import AwardsService
+
+        dynasty_id = context.get("dynasty_id")
+        season = context.get("season", 2025)
+        db_path = context.get("db_path", self._database_path)
+
+        events = []
+        awards_calculated = []
+
+        # Decay inactive RECENT rivalries (Milestone 11, Tollgate 6)
+        # This runs at the start of offseason to decay rivalries that didn't meet this season
+        try:
+            from ..database.connection import GameCycleDatabase
+            from ..services.rivalry_service import RivalryService
+
+            gc_db = GameCycleDatabase(db_path)
+            rivalry_service = RivalryService(gc_db)
+            decay_results = rivalry_service.decay_inactive_rivalries(dynasty_id, season)
+
+            for rivalry, new_intensity, status in decay_results:
+                if status == 'removed':
+                    events.append(f"Rivalry ended: {rivalry.rivalry_name}")
+                elif status == 'decayed':
+                    events.append(
+                        f"Rivalry fading: {rivalry.rivalry_name} "
+                        f"({rivalry.intensity} -> {new_intensity})"
+                    )
+        except Exception as e:
+            # Don't fail the entire stage if rivalry decay fails
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to decay rivalries: {e}")
+
+        try:
+            service = AwardsService(db_path, dynasty_id, season)
+
+            # Check if awards already exist (idempotent)
+            if service.awards_already_calculated():
+                events.append(f"Awards for {season} season already calculated")
+                return {
+                    "games_played": [],
+                    "events_processed": events,
+                    "awards_calculated": [],
+                    "already_calculated": True,
+                }
+
+            # CRITICAL: Aggregate player stats into season grades BEFORE awards calculation
+            # The EligibilityChecker reads from player_season_grades, which must be populated
+            # from player_game_stats (accumulated during regular season).
+            #
+            # OPTIMIZATION: Skip aggregation if grades already exist (for re-runs)
+            try:
+                from ..database.analytics_api import AnalyticsAPI
+                analytics_api = AnalyticsAPI(db_path)
+
+                # Check if grades already calculated (skip expensive re-aggregation)
+                if analytics_api.season_grades_exist(dynasty_id, season):
+                    events.append("Season grades already calculated - skipping aggregation")
+                else:
+                    # Prefer game_grades aggregation (has OL blocking grades, etc.)
+                    # Fall back to stats-based if no game grades exist
+                    if analytics_api.game_grades_exist(dynasty_id, season):
+                        grades_aggregated = analytics_api.aggregate_season_grades_from_game_grades(
+                            dynasty_id, season
+                        )
+                        events.append(f"Aggregated season grades from game grades for {grades_aggregated} players")
+                    else:
+                        grades_aggregated = analytics_api.aggregate_season_grades_from_stats(
+                            dynasty_id, season
+                        )
+                        events.append(f"Aggregated season grades from stats for {grades_aggregated} players")
+            except Exception as agg_error:
+                import logging
+                import traceback
+                logging.getLogger(__name__).warning(
+                    f"Failed to aggregate season grades: {agg_error}"
+                )
+                traceback.print_exc()
+                events.append(f"Warning: Could not aggregate player grades - awards may be incomplete")
+
+            # Calculate all major awards
+            awards = service.calculate_all_awards()
+            for award_id, result in awards.items():
+                if result.has_winner:
+                    awards_calculated.append({
+                        "award_id": award_id,
+                        "winner_name": result.winner.player_name,
+                        "winner_position": result.winner.position,
+                        "vote_share": result.winner.vote_share,
+                    })
+                    events.append(
+                        f"{result.winner.player_name} ({result.winner.position}) "
+                        f"wins {award_id.upper()} with {result.winner.vote_share:.1%} of votes"
+                    )
+
+            # Select All-Pro teams
+            all_pro = service.select_all_pro_teams()
+            first_team_count = sum(len(players) for players in all_pro.first_team.values())
+            second_team_count = sum(len(players) for players in all_pro.second_team.values())
+            events.append(f"All-Pro teams selected: {first_team_count} First Team, {second_team_count} Second Team")
+
+            # Select Pro Bowl rosters
+            pro_bowl = service.select_pro_bowl_rosters()
+            afc_count = sum(len(players) for players in pro_bowl.afc_roster.values())
+            nfc_count = sum(len(players) for players in pro_bowl.nfc_roster.values())
+            events.append(f"Pro Bowl rosters selected: {afc_count} AFC, {nfc_count} NFC")
+
+            # Record statistical leaders
+            stat_leaders = service.record_statistical_leaders()
+            events.append(f"Statistical leaders recorded: {stat_leaders.total_recorded} entries")
+
+            events.append(f"NFL Honors complete - {len(awards_calculated)} awards presented")
+
+            # Generate headlines for awards
+            self._generate_awards_headlines(
+                context, awards_calculated, all_pro, pro_bowl
+            )
+
+            return {
+                "games_played": [],
+                "events_processed": events,
+                "awards_calculated": awards_calculated,
+                "all_pro_count": first_team_count + second_team_count,
+                "pro_bowl_count": afc_count + nfc_count,
+            }
+
+        except Exception as e:
+            import traceback
+            print(f"[OffseasonHandler] NFL Honors error: {e}")
+            traceback.print_exc()
+            events.append(f"NFL Honors error: {str(e)}")
+            return {
+                "games_played": [],
+                "events_processed": events,
+                "awards_calculated": [],
+                "error": str(e),
+            }
+
+    def _execute_owner(
+        self,
+        stage: Stage,
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Execute Owner Review stage - GM/HC management and directives.
+
+        This stage allows the owner to:
+        - Review the season performance
+        - Fire/hire GM and Head Coach
+        - Set strategic directives for the upcoming season
+
+        Context keys (input):
+            - dynasty_id: Dynasty identifier
+            - season: Current season year
+            - user_team_id: User's team ID
+            - db_path: Database path
+
+        Context keys (processed by controller):
+            - gm_hire: {"candidate_id": str} when hiring GM
+            - hc_hire: {"candidate_id": str} when hiring HC
+            - directives: Dict of owner directives to save
+
+        Returns:
+            - current_staff: Dict with 'gm' and 'hc' data
+            - season_summary: Dict with season record and target
+            - prev_directives: Dict with existing directives
+            - events_processed: List of event strings
+        """
+        from ..services.owner_service import OwnerService
+        from ..database.standings_api import StandingsAPI
+
+        dynasty_id = context.get("dynasty_id")
+        season = context.get("season", 2025)
+        user_team_id = context.get("user_team_id", 1)
+        db_path = context.get("db_path", self._database_path)
+
+        events = []
+
+        try:
+            service = OwnerService(db_path, dynasty_id, season)
+
+            # Ensure staff exists for this team/season
+            current_staff = service.ensure_staff_exists(user_team_id)
+            events.append(f"Owner reviewed {season} season performance")
+
+            # Get season summary with standings
+            season_summary = {"season": season, "wins": None, "losses": None, "target_wins": None}
+            try:
+                from ..database.connection import GameCycleDatabase
+                with GameCycleDatabase(db_path) as conn:
+                    standings_api = StandingsAPI(conn, dynasty_id)
+                    standings = standings_api.get_standings(season)
+                    for team_data in standings:
+                        if team_data.get("team_id") == user_team_id:
+                            season_summary["wins"] = team_data.get("wins", 0)
+                            season_summary["losses"] = team_data.get("losses", 0)
+                            break
+            except Exception:
+                pass  # Standings may not exist yet
+
+            # Get previous directives (if any)
+            prev_directives = service.get_directives(user_team_id)
+            if prev_directives:
+                season_summary["target_wins"] = prev_directives.get("target_wins")
+
+            return {
+                "games_played": [],
+                "events_processed": events,
+                "current_staff": current_staff,
+                "season_summary": season_summary,
+                "prev_directives": prev_directives,
+            }
+
+        except Exception as e:
+            events.append(f"Error in owner review: {str(e)}")
+            return {
+                "games_played": [],
+                "events_processed": events,
+                "current_staff": None,
+                "season_summary": {"season": season},
+                "prev_directives": None,
+            }
+
     def _execute_franchise_tag(
         self,
         stage: Stage,
@@ -1305,3 +1950,832 @@ class OffseasonHandler:
                 for r in results
             ],
         }
+
+    # =========================================================================
+    # Trading Stage Methods (Tollgate 5)
+    # =========================================================================
+
+    def _get_trading_preview(
+        self,
+        context: Dict[str, Any],
+        user_team_id: int
+    ) -> Dict[str, Any]:
+        """
+        Get trading period preview data for UI display.
+
+        Args:
+            context: Execution context
+            user_team_id: User's team ID
+
+        Returns:
+            Dictionary with tradeable assets and recent trade history
+        """
+        try:
+            from ..services.trade_service import TradeService
+            from team_management.teams.team_loader import TeamDataLoader
+
+            dynasty_id = context.get("dynasty_id")
+            season = context.get("season", 2025)
+            db_path = context.get("db_path", self._database_path)
+
+            trade_service = TradeService(db_path, dynasty_id, season)
+            team_loader = TeamDataLoader()
+
+            # Ensure draft pick ownership exists for trades
+            trade_service.initialize_pick_ownership()
+
+            # Get user's tradeable players
+            user_players = trade_service.get_tradeable_players(user_team_id)
+
+            # Get user's tradeable draft picks
+            user_picks = trade_service.get_tradeable_picks(user_team_id)
+
+            # Get recent trade history (this season, all teams)
+            trade_history = trade_service.get_trade_history(season=season)
+
+            # Get all teams for trade partner selection
+            teams = []
+            for team_id in range(1, 33):
+                if team_id != user_team_id:
+                    team = team_loader.get_team_by_id(team_id)
+                    if team:
+                        teams.append({
+                            "team_id": team_id,
+                            "name": team.full_name,
+                            "abbreviation": team.abbreviation,
+                        })
+
+            preview = {
+                "stage_name": "Trading Period",
+                "description": (
+                    "Trade players and draft picks with other teams. "
+                    "Propose trades, review incoming offers, and negotiate deals. "
+                    "AI teams will also be actively trading during this period."
+                ),
+                "user_players": user_players,
+                "user_picks": user_picks,
+                "trade_history": trade_history[:10],  # Limit to recent 10
+                "available_teams": teams,
+                "trade_count_this_season": len(trade_history),
+                "is_interactive": True,
+            }
+            # Add cap data for UI display
+            preview["cap_data"] = self._get_cap_data(context, user_team_id)
+            return preview
+
+        except Exception as e:
+            import traceback
+            print(f"[OffseasonHandler] Error getting trading preview: {e}")
+            traceback.print_exc()
+            return {
+                "stage_name": "Trading Period",
+                "description": "Trade players and draft picks with other teams.",
+                "user_players": [],
+                "user_picks": [],
+                "trade_history": [],
+                "available_teams": [],
+                "trade_count_this_season": 0,
+                "is_interactive": True,
+            }
+
+    def _execute_trading(
+        self,
+        stage: Stage,
+        context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Execute trading phase for all teams.
+
+        Processes:
+        1. User's trade proposals (from context["trade_proposals"])
+        2. AI-to-AI trades with ~50% chance per team (high activity)
+
+        Context keys:
+            - trade_proposals: List of user trade proposals to execute
+              Each proposal: {
+                  "team1_player_ids": [int],
+                  "team2_id": int,
+                  "team2_player_ids": [int],
+                  "team1_pick_ids": [int],  # Optional
+                  "team2_pick_ids": [int],  # Optional
+              }
+        """
+        from ..services.trade_service import TradeService
+
+        dynasty_id = context.get("dynasty_id")
+        season = context.get("season", 2025)
+        user_team_id = context.get("user_team_id", 1)
+        user_proposals = context.get("trade_proposals", [])
+        db_path = context.get("db_path", self._database_path)
+
+        events = []
+        executed_trades = []
+
+        try:
+            trade_service = TradeService(db_path, dynasty_id, season)
+
+            # Ensure draft pick ownership initialized
+            trade_service.initialize_pick_ownership()
+
+            # 1. Process USER trade proposals
+            for prop_data in user_proposals:
+                team2_id = prop_data.get("team2_id")
+                team1_player_ids = prop_data.get("team1_player_ids", [])
+                team2_player_ids = prop_data.get("team2_player_ids", [])
+                team1_pick_ids = prop_data.get("team1_pick_ids", [])
+                team2_pick_ids = prop_data.get("team2_pick_ids", [])
+
+                try:
+                    # Create and evaluate proposal
+                    proposal = trade_service.propose_trade(
+                        team1_id=user_team_id,
+                        team1_player_ids=team1_player_ids,
+                        team2_id=team2_id,
+                        team2_player_ids=team2_player_ids,
+                        team1_pick_ids=team1_pick_ids,
+                        team2_pick_ids=team2_pick_ids
+                    )
+
+                    # Have AI evaluate the trade
+                    decision = trade_service.evaluate_ai_trade(
+                        proposal=proposal,
+                        ai_team_id=team2_id,
+                        is_offseason=True
+                    )
+
+                    if decision.decision.value == "accept":
+                        # Execute the trade
+                        result = trade_service.execute_trade(proposal)
+                        executed_trades.append(result)
+                        events.append(
+                            f"Trade accepted! Team {team2_id} agreed to your offer "
+                            f"(Trade #{result['trade_id']})"
+                        )
+                    elif decision.decision.value == "counter":
+                        events.append(
+                            f"Team {team2_id} countered your offer. "
+                            f"Reason: {decision.reasoning[:50]}..."
+                        )
+                    else:
+                        events.append(
+                            f"Team {team2_id} rejected your trade offer. "
+                            f"Reason: {decision.reasoning[:50]}..."
+                        )
+
+                except ValueError as e:
+                    events.append(f"Trade proposal error: {str(e)}")
+
+            # 2. Process AI-to-AI trades (high activity ~50% per team)
+            ai_result = self._process_ai_trades(trade_service, user_team_id)
+            executed_trades.extend(ai_result.get("trades", []))
+            events.extend(ai_result.get("events", []))
+
+            total_trades = len(executed_trades)
+            events.append(
+                f"Trading period completed: {total_trades} trades executed league-wide"
+            )
+
+            # Generate trade headlines
+            if executed_trades:
+                self._generate_trade_headlines(context, executed_trades)
+
+            return {
+                "games_played": [],
+                "events_processed": events,
+                "executed_trades": executed_trades,
+                "total_trades": total_trades,
+            }
+
+        except Exception as e:
+            import traceback
+            print(f"[OffseasonHandler] Trading execution error: {e}")
+            traceback.print_exc()
+            events.append(f"Trading error: {str(e)}")
+            return {
+                "games_played": [],
+                "events_processed": events,
+                "executed_trades": [],
+                "total_trades": 0,
+            }
+
+    def _process_ai_trades(
+        self,
+        trade_service,
+        user_team_id: int
+    ) -> Dict[str, Any]:
+        """
+        Process AI-to-AI trades during offseason trading period.
+
+        High activity mode: ~50% of teams attempt trades, leading to
+        approximately 15+ trades per offseason (realistic NFL offseason).
+
+        Args:
+            trade_service: TradeService instance
+            user_team_id: User's team ID (excluded from AI-initiated trades)
+
+        Returns:
+            Dict with trades list and events list
+        """
+        import random
+
+        events = []
+        executed_trades = []
+        ai_trade_probability = 0.50  # 50% chance per team to attempt trade
+
+        # Get all AI team IDs (exclude user)
+        ai_teams = [t for t in range(1, 33) if t != user_team_id]
+        random.shuffle(ai_teams)  # Randomize order
+
+        # Track which teams have already traded this round to avoid conflicts
+        teams_traded_this_round = set()
+
+        for team1_id in ai_teams:
+            # Skip if team already traded this round
+            if team1_id in teams_traded_this_round:
+                continue
+
+            # Roll dice for trade attempt
+            if random.random() > ai_trade_probability:
+                continue
+
+            # Find a trade partner (another AI team not yet traded)
+            potential_partners = [
+                t for t in ai_teams
+                if t != team1_id and t not in teams_traded_this_round
+            ]
+            if not potential_partners:
+                continue
+
+            team2_id = random.choice(potential_partners)
+
+            try:
+                # Get tradeable players for both teams
+                team1_players = trade_service.get_tradeable_players(team1_id)
+                team2_players = trade_service.get_tradeable_players(team2_id)
+
+                if not team1_players or not team2_players:
+                    continue
+
+                # Simple AI trade logic: propose swapping 1-2 players
+                # Pick random players (weighted toward lower overall to trade away)
+                team1_players_sorted = sorted(
+                    team1_players, key=lambda p: p.get("overall_rating", 70)
+                )
+                team2_players_sorted = sorted(
+                    team2_players, key=lambda p: p.get("overall_rating", 70)
+                )
+
+                # Select 1-2 players from each team (lower rated more likely)
+                num_players = random.randint(1, min(2, len(team1_players_sorted), len(team2_players_sorted)))
+                team1_offer = [p["player_id"] for p in team1_players_sorted[:num_players]]
+                team2_offer = [p["player_id"] for p in team2_players_sorted[:num_players]]
+
+                # Optionally include draft picks (30% chance)
+                team1_picks = []
+                team2_picks = []
+                if random.random() < 0.30:
+                    picks1 = trade_service.get_tradeable_picks(team1_id)
+                    picks2 = trade_service.get_tradeable_picks(team2_id)
+                    if picks1:
+                        team1_picks = [random.choice(picks1)["id"]]
+                    if picks2:
+                        team2_picks = [random.choice(picks2)["id"]]
+
+                # Create proposal
+                proposal = trade_service.propose_trade(
+                    team1_id=team1_id,
+                    team1_player_ids=team1_offer,
+                    team2_id=team2_id,
+                    team2_player_ids=team2_offer,
+                    team1_pick_ids=team1_picks,
+                    team2_pick_ids=team2_picks
+                )
+
+                # Run negotiation between both AI teams
+                negotiation_result = trade_service.negotiate_trade(
+                    initial_proposal=proposal,
+                    max_rounds=2,
+                    is_offseason=True
+                )
+
+                if negotiation_result.success:
+                    # Execute the agreed trade
+                    final_proposal = negotiation_result.final_proposal
+                    result = trade_service.execute_trade(final_proposal)
+                    executed_trades.append(result)
+                    teams_traded_this_round.add(team1_id)
+                    teams_traded_this_round.add(team2_id)
+                    events.append(
+                        f"AI Trade: Team {team1_id} and Team {team2_id} "
+                        f"completed a trade (#{result['trade_id']})"
+                    )
+
+            except Exception as e:
+                # Log but don't fail the whole process
+                print(f"[OffseasonHandler] AI trade error (Team {team1_id} <-> {team2_id}): {e}")
+                continue
+
+        return {
+            "trades": executed_trades,
+            "events": events,
+            "teams_traded": list(teams_traded_this_round),
+        }
+
+    def _get_team_needs(
+        self,
+        db_path: str,
+        dynasty_id: str,
+        team_id: int
+    ) -> Dict[str, int]:
+        """
+        Get team's position needs for GM proposal scoring.
+
+        Returns dict mapping position -> need level:
+            0 = Critical need (no starter)
+            1 = High need (weak starter or no backup)
+            2 = Moderate need (need depth)
+            3+ = Low/no need (position filled)
+
+        Phase 1 MVP: Simple depth chart count
+        Future: Sophisticated needs analysis (rating thresholds, scheme fit, age)
+        """
+        import sqlite3
+        import json
+
+        needs = {}
+
+        try:
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            # Get all rostered players for this team
+            cursor.execute("""
+                SELECT positions, attributes
+                FROM players
+                WHERE dynasty_id = ? AND team_id = ?
+            """, (dynasty_id, team_id))
+
+            rows = cursor.fetchall()
+            conn.close()
+
+            # Count players by position
+            position_counts = {}
+            for row in rows:
+                positions = json.loads(row["positions"])
+                if positions:
+                    primary_pos = positions[0]
+                    position_counts[primary_pos] = position_counts.get(primary_pos, 0) + 1
+
+            # Standard positions to check
+            standard_positions = [
+                "QB", "RB", "WR", "TE", "OT", "OG", "C",
+                "EDGE", "DT", "LB", "CB", "S", "K", "P"
+            ]
+
+            # Convert counts to need levels
+            for pos in standard_positions:
+                count = position_counts.get(pos, 0)
+                if count == 0:
+                    needs[pos] = 0  # Critical - no player at position
+                elif count == 1:
+                    needs[pos] = 1  # High - only one player
+                elif count == 2:
+                    needs[pos] = 2  # Moderate - minimal depth
+                elif count == 3:
+                    needs[pos] = 3  # Low - some depth
+                else:
+                    needs[pos] = 4  # Very low - good depth
+
+        except Exception as e:
+            print(f"[WARNING OffseasonHandler] Failed to get team needs: {e}")
+            # Return default needs (all positions moderately needed)
+            needs = {pos: 2 for pos in [
+                "QB", "RB", "WR", "TE", "OT", "OG", "C",
+                "EDGE", "DT", "LB", "CB", "S", "K", "P"
+            ]}
+
+        return needs
+
+    # =========================================================================
+    # Media Coverage Headline Generation
+    # =========================================================================
+
+    def _generate_awards_headlines(
+        self,
+        context: Dict[str, Any],
+        awards_calculated: List[Dict],
+        all_pro: Any,
+        pro_bowl: Any
+    ) -> None:
+        """
+        Generate and persist headlines for NFL Honors awards.
+
+        Args:
+            context: Execution context with dynasty_id, season, db_path
+            awards_calculated: List of award result dictionaries
+            all_pro: AllProSelection result
+            pro_bowl: ProBowlSelection result
+        """
+        try:
+            from ..database.connection import GameCycleDatabase
+            from ..database.media_coverage_api import MediaCoverageAPI
+
+            dynasty_id = context.get("dynasty_id")
+            season = context.get("season", 2025)
+            db_path = context.get("db_path", self._database_path)
+
+            gc_db = GameCycleDatabase(db_path)
+            try:
+                media_api = MediaCoverageAPI(gc_db)
+
+                # Week 23 for offseason awards
+                week = 23
+
+                # Generate headline for MVP (highest priority)
+                mvp = next((a for a in awards_calculated if a["award_id"] == "mvp"), None)
+                if mvp:
+                    media_api.save_headline(
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        week=week,
+                        headline_data={
+                            'headline_type': 'AWARD',
+                            'headline': f"{mvp['winner_name']} Wins NFL MVP Award",
+                            'subheadline': f"The {mvp['winner_position']} earns {mvp['vote_share']:.1%} of votes in landslide victory",
+                            'body_text': f"{mvp['winner_name']} has been named the NFL's Most Valuable Player for the {season} season, capturing {mvp['vote_share']:.1%} of the votes. The {mvp['winner_position']} capped off an incredible campaign that saw him dominate opponents week after week.",
+                            'sentiment': 'POSITIVE',
+                            'priority': 95,
+                            'team_ids': [],
+                            'player_ids': [],
+                            'game_id': None,
+                            'metadata': {'award_type': 'mvp'}
+                        }
+                    )
+                    print(f"[OffseasonHandler] Generated MVP headline for {mvp['winner_name']}")
+
+                # Generate combined awards headline
+                if len(awards_calculated) > 1:
+                    award_names = [a['award_id'].upper() for a in awards_calculated[:5]]
+                    media_api.save_headline(
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        week=week,
+                        headline_data={
+                            'headline_type': 'AWARD',
+                            'headline': f"NFL Honors: {season} Award Winners Announced",
+                            'subheadline': f"{len(awards_calculated)} major awards presented at star-studded ceremony",
+                            'body_text': f"The NFL's best were honored at the annual NFL Honors ceremony. Winners included: " + ", ".join([f"{a['winner_name']} ({a['award_id'].upper()})" for a in awards_calculated[:5]]) + ".",
+                            'sentiment': 'POSITIVE',
+                            'priority': 85,
+                            'team_ids': [],
+                            'player_ids': [],
+                            'game_id': None,
+                            'metadata': {'award_type': 'honors_summary'}
+                        }
+                    )
+
+                # Generate OROY/DROY headlines
+                oroy = next((a for a in awards_calculated if a["award_id"] == "oroy"), None)
+                droy = next((a for a in awards_calculated if a["award_id"] == "droy"), None)
+
+                if oroy:
+                    media_api.save_headline(
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        week=week,
+                        headline_data={
+                            'headline_type': 'AWARD',
+                            'headline': f"{oroy['winner_name']} Named Offensive Rookie of the Year",
+                            'subheadline': f"The {oroy['winner_position']} had an immediate impact in his first NFL season",
+                            'body_text': f"{oroy['winner_name']} has been named the NFL's Offensive Rookie of the Year. The {oroy['winner_position']} made an immediate impact, showing why he was worth the draft pick.",
+                            'sentiment': 'POSITIVE',
+                            'priority': 75,
+                            'team_ids': [],
+                            'player_ids': [],
+                            'game_id': None,
+                            'metadata': {'award_type': 'oroy'}
+                        }
+                    )
+
+                if droy:
+                    media_api.save_headline(
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        week=week,
+                        headline_data={
+                            'headline_type': 'AWARD',
+                            'headline': f"{droy['winner_name']} Named Defensive Rookie of the Year",
+                            'subheadline': f"The {droy['winner_position']} terrorized opposing offenses",
+                            'body_text': f"{droy['winner_name']} has been named the NFL's Defensive Rookie of the Year. The {droy['winner_position']} made his presence felt immediately.",
+                            'sentiment': 'POSITIVE',
+                            'priority': 75,
+                            'team_ids': [],
+                            'player_ids': [],
+                            'game_id': None,
+                            'metadata': {'award_type': 'droy'}
+                        }
+                    )
+
+            finally:
+                gc_db.close()
+
+        except Exception as e:
+            print(f"[OffseasonHandler] Failed to generate awards headlines: {e}")
+
+    def _generate_draft_headlines(
+        self,
+        context: Dict[str, Any],
+        picks: List[Dict],
+        is_complete: bool
+    ) -> None:
+        """
+        Generate and persist headlines for draft picks.
+
+        Args:
+            context: Execution context with dynasty_id, season, db_path
+            picks: List of draft pick results
+            is_complete: Whether draft is finished
+        """
+        if not picks:
+            return
+
+        try:
+            from ..database.connection import GameCycleDatabase
+            from ..database.media_coverage_api import MediaCoverageAPI
+            from team_management.teams.team_loader import TeamDataLoader
+
+            dynasty_id = context.get("dynasty_id")
+            season = context.get("season", 2025)
+            db_path = context.get("db_path", self._database_path)
+
+            gc_db = GameCycleDatabase(db_path)
+            team_loader = TeamDataLoader()
+
+            try:
+                media_api = MediaCoverageAPI(gc_db)
+
+                # Week 24 for draft headlines
+                week = 24
+
+                # Generate headline for first overall pick
+                first_pick = next((p for p in picks if p.get("overall_pick") == 1), None)
+                if first_pick:
+                    team = team_loader.get_team_by_id(first_pick["team_id"])
+                    team_name = team.full_name if team else f"Team {first_pick['team_id']}"
+                    media_api.save_headline(
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        week=week,
+                        headline_data={
+                            'headline_type': 'SIGNING',
+                            'headline': f"{team_name} Select {first_pick['player_name']} with No. 1 Pick",
+                            'subheadline': f"The {first_pick['position']} ({first_pick.get('overall', 0)} OVR) is the {season} NFL Draft's top selection",
+                            'body_text': f"{team_name} made {first_pick['player_name']} the first overall selection in the {season} NFL Draft. The {first_pick['position']} is expected to make an immediate impact.",
+                            'sentiment': 'HYPE',
+                            'priority': 90,
+                            'team_ids': [first_pick["team_id"]],
+                            'player_ids': [],
+                            'game_id': None,
+                            'metadata': {'event_type': 'draft_pick', 'pick_number': 1}
+                        }
+                    )
+
+                # Generate headline for notable first round picks (top 10)
+                first_round_picks = [p for p in picks if p.get("overall_pick", 999) <= 10 and p.get("overall_pick") != 1]
+                for pick in first_round_picks[:3]:  # Limit to 3 additional first round headlines
+                    team = team_loader.get_team_by_id(pick["team_id"])
+                    team_name = team.full_name if team else f"Team {pick['team_id']}"
+                    media_api.save_headline(
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        week=week,
+                        headline_data={
+                            'headline_type': 'SIGNING',
+                            'headline': f"{team_name} Land {pick['player_name']} at No. {pick['overall_pick']}",
+                            'subheadline': f"The {pick['position']} fills a key need for {team_name}",
+                            'body_text': f"With the {pick['overall_pick']} pick, {team_name} selected {pick['player_name']}. The {pick['position']} was considered a top prospect.",
+                            'sentiment': 'POSITIVE',
+                            'priority': 80 - pick['overall_pick'],
+                            'team_ids': [pick["team_id"]],
+                            'player_ids': [],
+                            'game_id': None,
+                            'metadata': {'event_type': 'draft_pick', 'pick_number': pick['overall_pick']}
+                        }
+                    )
+
+                # If draft complete, generate summary headline
+                if is_complete:
+                    media_api.save_headline(
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        week=week,
+                        headline_data={
+                            'headline_type': 'SIGNING',
+                            'headline': f"{season} NFL Draft Complete: 224 Selections Made",
+                            'subheadline': "All 32 teams fill roster needs over seven rounds",
+                            'body_text': f"The {season} NFL Draft has concluded with all 224 picks now on the books. Teams will now shift focus to rookie minicamps and offseason workouts.",
+                            'sentiment': 'NEUTRAL',
+                            'priority': 85,
+                            'team_ids': [],
+                            'player_ids': [],
+                            'game_id': None,
+                            'metadata': {'event_type': 'draft_complete'}
+                        }
+                    )
+                    print(f"[OffseasonHandler] Generated draft completion headline")
+
+            finally:
+                gc_db.close()
+
+        except Exception as e:
+            print(f"[OffseasonHandler] Failed to generate draft headlines: {e}")
+
+    def _generate_fa_headlines(
+        self,
+        context: Dict[str, Any],
+        signings: List[Dict],
+        wave: int
+    ) -> None:
+        """
+        Generate and persist headlines for free agency signings.
+
+        Args:
+            context: Execution context with dynasty_id, season, db_path
+            signings: List of signing results
+            wave: Current FA wave (0-4)
+        """
+        if not signings:
+            return
+
+        try:
+            from ..database.connection import GameCycleDatabase
+            from ..database.media_coverage_api import MediaCoverageAPI
+            from team_management.teams.team_loader import TeamDataLoader
+
+            dynasty_id = context.get("dynasty_id")
+            season = context.get("season", 2025)
+            db_path = context.get("db_path", self._database_path)
+
+            gc_db = GameCycleDatabase(db_path)
+            team_loader = TeamDataLoader()
+
+            try:
+                media_api = MediaCoverageAPI(gc_db)
+
+                # Week 25 for FA headlines
+                week = 25
+
+                # Sort signings by AAV to find biggest deals
+                sorted_signings = sorted(signings, key=lambda s: s.get("aav", 0), reverse=True)
+
+                # Generate headlines for top 3 signings by value
+                for signing in sorted_signings[:3]:
+                    team = team_loader.get_team_by_id(signing["team_id"])
+                    team_name = team.full_name if team else f"Team {signing['team_id']}"
+                    aav_millions = signing.get("aav", 0) / 1_000_000
+                    years = signing.get("years", 1)
+
+                    media_api.save_headline(
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        week=week,
+                        headline_data={
+                            'headline_type': 'SIGNING',
+                            'headline': f"{team_name} Sign {signing['player_name']}",
+                            'subheadline': f"{years}-year, ${aav_millions:.1f}M/year deal addresses key need",
+                            'body_text': f"{team_name} have agreed to terms with {signing['player_name']} on a {years}-year contract worth ${aav_millions:.1f}M per year. The signing bolsters the roster heading into the {season} season.",
+                            'sentiment': 'POSITIVE',
+                            'priority': min(85, 60 + int(aav_millions)),
+                            'team_ids': [signing["team_id"]],
+                            'player_ids': [signing.get("player_id")],
+                            'game_id': None,
+                            'metadata': {'event_type': 'fa_signing', 'wave': wave, 'aav': signing.get("aav", 0)}
+                        }
+                    )
+
+                # If wave 1, generate "market opens" headline
+                if wave == 1 and len(signings) > 5:
+                    media_api.save_headline(
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        week=week,
+                        headline_data={
+                            'headline_type': 'SIGNING',
+                            'headline': f"Free Agency Frenzy: {len(signings)} Players Sign on Opening Day",
+                            'subheadline': "Elite free agents find new homes as market opens",
+                            'body_text': f"Free agency is officially underway with {len(signings)} players signing new contracts on the first day of the legal tampering period ending. Teams wasted no time addressing roster needs.",
+                            'sentiment': 'HYPE',
+                            'priority': 88,
+                            'team_ids': [],
+                            'player_ids': [],
+                            'game_id': None,
+                            'metadata': {'event_type': 'fa_market_open', 'wave': wave}
+                        }
+                    )
+
+            finally:
+                gc_db.close()
+
+        except Exception as e:
+            print(f"[OffseasonHandler] Failed to generate FA headlines: {e}")
+
+    def _generate_trade_headlines(
+        self,
+        context: Dict[str, Any],
+        executed_trades: List[Dict]
+    ) -> None:
+        """
+        Generate and persist headlines for completed trades.
+
+        Args:
+            context: Execution context with dynasty_id, season, db_path
+            executed_trades: List of executed trade results
+        """
+        if not executed_trades:
+            return
+
+        try:
+            from ..database.connection import GameCycleDatabase
+            from ..database.media_coverage_api import MediaCoverageAPI
+            from team_management.teams.team_loader import TeamDataLoader
+
+            dynasty_id = context.get("dynasty_id")
+            season = context.get("season", 2025)
+            db_path = context.get("db_path", self._database_path)
+
+            gc_db = GameCycleDatabase(db_path)
+            team_loader = TeamDataLoader()
+
+            try:
+                media_api = MediaCoverageAPI(gc_db)
+
+                # Week 26 for trade headlines
+                week = 26
+
+                for trade in executed_trades[:5]:  # Limit to 5 trade headlines
+                    team1_id = trade.get("team1_id")
+                    team2_id = trade.get("team2_id")
+
+                    team1 = team_loader.get_team_by_id(team1_id)
+                    team2 = team_loader.get_team_by_id(team2_id)
+                    team1_name = team1.full_name if team1 else f"Team {team1_id}"
+                    team2_name = team2.full_name if team2 else f"Team {team2_id}"
+
+                    # Get primary player names
+                    team1_players = trade.get("team1_player_names", [])
+                    team2_players = trade.get("team2_player_names", [])
+
+                    if team1_players:
+                        headline = f"{team1_name} Trade {team1_players[0]} to {team2_name}"
+                        subheadline = f"{'Multiple pieces' if len(team1_players) > 1 or team2_players else 'Assets'} heading in return"
+                    elif team2_players:
+                        headline = f"{team1_name} Acquire {team2_players[0]} from {team2_name}"
+                        subheadline = f"Trade reshapes rosters for both teams"
+                    else:
+                        headline = f"{team1_name} and {team2_name} Complete Trade"
+                        subheadline = "Draft picks exchanged between teams"
+
+                    media_api.save_headline(
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        week=week,
+                        headline_data={
+                            'headline_type': 'TRADE',
+                            'headline': headline,
+                            'subheadline': subheadline,
+                            'body_text': f"{team1_name} and {team2_name} have agreed to a trade. This move signals both teams' intentions heading into the {season} season.",
+                            'sentiment': 'NEUTRAL',
+                            'priority': 75,
+                            'team_ids': [team1_id, team2_id],
+                            'player_ids': [],
+                            'game_id': None,
+                            'metadata': {'event_type': 'trade', 'trade_id': trade.get('trade_id')}
+                        }
+                    )
+
+                # Summary headline if many trades
+                if len(executed_trades) >= 5:
+                    media_api.save_headline(
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        week=week,
+                        headline_data={
+                            'headline_type': 'TRADE',
+                            'headline': f"Active Trade Period: {len(executed_trades)} Deals Completed",
+                            'subheadline': "Teams reshape rosters ahead of training camp",
+                            'body_text': f"The offseason trade market has been busy with {len(executed_trades)} trades completed league-wide. Teams continue to position themselves for the upcoming season.",
+                            'sentiment': 'NEUTRAL',
+                            'priority': 80,
+                            'team_ids': [],
+                            'player_ids': [],
+                            'game_id': None,
+                            'metadata': {'event_type': 'trade_summary', 'trade_count': len(executed_trades)}
+                        }
+                    )
+
+            finally:
+                gc_db.close()
+
+        except Exception as e:
+            print(f"[OffseasonHandler] Failed to generate trade headlines: {e}")

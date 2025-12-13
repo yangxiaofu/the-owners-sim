@@ -4,10 +4,12 @@ Main Entry Point for The Owner's Sim (Game Cycle Version)
 This is the new stage-based UI that uses src/game_cycle instead of
 the day-by-day calendar system.
 
-Dynasty-First Architecture:
-- Uses the SAME database as main.py (shared dynasties)
-- Shows dynasty selection dialog on launch
-- All operations scoped to dynasty_id
+Architecture:
+- Uses SEPARATE database from main.py (game_cycle.db vs nfl_simulation.db)
+- Uses GameCycleDynastySelectionDialog (not legacy DynastySelectionDialog)
+- Dynasty initialization uses GameCycleInitializer (not legacy DynastyInitializationService)
+- Schedule uses NFLScheduleGenerator (regular_* format, not game_YYYYMMDD_*)
+- Primetime slots (TNF/SNF/MNF) assigned during initialization
 
 Usage:
     python main2.py
@@ -31,8 +33,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtCore import Qt
 
 from game_cycle_ui.main_window import GameCycleMainWindow
-from ui.dialogs.dynasty_selection_dialog import DynastySelectionDialog
-from game_cycle.services.initialization_service import GameCycleInitializer
+from game_cycle_ui.dialogs.dynasty_selection_dialog import GameCycleDynastySelectionDialog
 
 
 # Use SEPARATE database for game_cycle (different from main.py)
@@ -67,9 +68,12 @@ def main():
     # Ensure database directory exists
     ensure_db_directory(DEFAULT_DB_PATH)
 
-    # Show dynasty selection dialog (REUSE from main.py)
-    dialog = DynastySelectionDialog(db_path=DEFAULT_DB_PATH)
-    if dialog.exec() != DynastySelectionDialog.DialogCode.Accepted:
+    # Show dynasty selection dialog (uses GameCycleDynastyController)
+    # This dialog uses GameCycleInitializer for dynasty creation, which ensures:
+    # - NFLScheduleGenerator creates regular_* format events
+    # - PrimetimeScheduler assigns TNF/SNF/MNF slots
+    dialog = GameCycleDynastySelectionDialog(db_path=DEFAULT_DB_PATH)
+    if dialog.exec() != GameCycleDynastySelectionDialog.DialogCode.Accepted:
         # User cancelled - exit application
         return 0
 
@@ -82,33 +86,10 @@ def main():
     db_path, dynasty_id, season = dynasty_selection
 
     # Get user team_id from dynasty selection dialog
-    # The dialog returns team_id as part of dynasty info when creating new dynasty
-    user_team_id = getattr(dialog, '_selected_team_id', 1)  # Default to team 1 if not set
+    user_team_id = getattr(dialog, '_selected_team_id', 1)
 
-    # Initialize dynasty with players/contracts from JSON if not already initialized
-    try:
-        initializer = GameCycleInitializer(
-            db_path=db_path,
-            dynasty_id=dynasty_id,
-            season=season
-        )
-
-        # Try to initialize - will skip if dynasty already has data
-        try:
-            initializer.initialize_dynasty(team_id=user_team_id)
-            print(f"[INFO] Dynasty '{dynasty_id}' initialized with player/contract data")
-        except ValueError as e:
-            # Dynasty already initialized - this is fine
-            print(f"[INFO] Dynasty '{dynasty_id}' already initialized: {e}")
-
-    except Exception as e:
-        QMessageBox.critical(
-            None,
-            "Dynasty Initialization Error",
-            f"Failed to initialize dynasty '{dynasty_id}':\n\n{str(e)}\n\n"
-            f"Please check your database and try again."
-        )
-        return 1
+    # Note: Dynasty initialization now happens inside the dialog's controller
+    # when creating a new dynasty. No need to call GameCycleInitializer here.
 
     # Create main window with dynasty context
     window = GameCycleMainWindow(
