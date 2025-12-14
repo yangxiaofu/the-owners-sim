@@ -105,23 +105,25 @@ class RunPlaySimulator(BasePlaySimulator):
         running_back = self._find_player_by_position(Position.RB)
         fumble_occurred, defense_recovered = self._check_fumble(running_back)
 
-        if fumble_occurred and defense_recovered:
-            # Fumble lost - create turnover result
+        if fumble_occurred:
+            # Fumble occurred - create result (may or may not be a turnover)
             player_stats = self._attribute_player_stats(original_yards, penalty_result=None)
-            player_stats = self._track_snaps_for_all_players(player_stats)
 
             # Add fumble stats to RB and forced fumble to defender
-            self._attribute_fumble_stats(player_stats, running_back)
+            self._attribute_fumble_stats(player_stats, running_back, fumble_lost=defense_recovered)
 
-            summary = PlayStatsSummary(
-                play_type="fumble",  # Engine detects 'fumble' in outcome for is_turnover
-                yards_gained=original_yards,  # Yards gained before fumble
-                time_elapsed=time_elapsed,
-                points_scored=0
-            )
-            for stats in player_stats:
-                summary.add_player_stats(stats)
-            return summary
+            if defense_recovered:
+                # Fumble lost - create turnover result
+                summary = PlayStatsSummary(
+                    play_type="fumble",  # Engine detects 'fumble' in outcome for is_turnover
+                    yards_gained=original_yards,  # Yards gained before fumble
+                    time_elapsed=time_elapsed,
+                    points_scored=0
+                )
+                for stats in player_stats:
+                    summary.add_player_stats(stats)
+                return summary
+            # If offense recovered, continue with normal play flow
 
         # Phase 2A: Check for penalties and apply effects
         penalty_result = self.penalty_engine.check_for_penalty(
@@ -154,46 +156,21 @@ class RunPlaySimulator(BasePlaySimulator):
         # Phase 2C: Track snaps for ALL players on the field (offensive and defensive)
         player_stats = self._track_snaps_for_all_players(player_stats)
 
-        # ✅ FIX 1: Detect touchdown BEFORE penalty adjustment
-        # Check if ORIGINAL play reached end zone (penalties don't negate TDs in most cases)
-        original_target = self.field_position + original_yards
-        original_was_touchdown = original_target >= 100
-
-        if original_was_touchdown and not play_negated:
-            # TD stands - penalty will be enforced on PAT/kickoff
-            actual_yards = 100 - self.field_position
-            points_scored = 6
-        else:
-            # Non-TD play or play was negated by penalty - use penalty-adjusted yards
-            target_yard_line = self.field_position + final_yards
-            is_touchdown = target_yard_line >= 100
-
-            if is_touchdown:
-                actual_yards = 100 - self.field_position
-                points_scored = 6
-            else:
-                actual_yards = final_yards
-                points_scored = 0
-
-        # Create play summary with penalty information
-        summary = PlayStatsSummary(
-            play_type=PlayType.RUN,
-            yards_gained=actual_yards,
-            time_elapsed=time_elapsed,
-            points_scored=points_scored
+        # Calculate touchdown outcome using base class method
+        actual_yards, points_scored = self._calculate_touchdown_outcome(
+            original_yards, final_yards, play_negated
         )
-        
-        # Add penalty information to summary if penalty occurred
-        if penalty_result.penalty_occurred:
-            summary.penalty_occurred = True
-            summary.penalty_instance = penalty_result.penalty_instance
-            summary.original_yards = original_yards
-            summary.play_negated = play_negated
-            # NEW: Attach enforcement result for downstream ball placement
-            summary.enforcement_result = getattr(penalty_result, 'enforcement_result', None)
-        
-        for stats in player_stats:
-            summary.add_player_stats(stats)
+
+        # Create play summary with penalty information and player stats
+        summary = self._create_play_summary(
+            play_type=PlayType.RUN,
+            actual_yards=actual_yards,
+            time_elapsed=time_elapsed,
+            points_scored=points_scored,
+            player_stats=player_stats,
+            penalty_result=penalty_result,
+            original_yards=original_yards
+        )
 
         # Add touchdown attribution if points were scored
         self._add_touchdown_attribution(summary)
@@ -246,11 +223,32 @@ class RunPlaySimulator(BasePlaySimulator):
         # Use round() instead of int() to preserve statistical mean (int() truncates, losing ~0.4 yards avg)
         # Allow TFL up to -3 yards for realistic tackles behind the line
         yards_gained = max(-3, round(random.gauss(modified_avg_yards, modified_variance)))
-        
+
+        # NEW: Breakaway run check (speed-based explosive play mechanism)
+        # Separate from normal distribution to achieve NFL-realistic 20+ yard run frequency
+        running_back = self._find_player_by_position(Position.RB)
+        if running_back and hasattr(running_back, 'get_rating'):
+            speed = running_back.get_rating('speed') or 70
+            breakaway_config = config.get_breakaway_run_config()
+            speed_threshold = breakaway_config.get('speed_threshold', 82)
+
+            if speed >= speed_threshold:
+                # Base probability + speed bonus
+                base_prob = breakaway_config.get('base_probability', 0.07)
+                speed_bonus_rate = breakaway_config.get('speed_bonus_per_point', 0.0015)
+                speed_bonus = (speed - speed_threshold) * speed_bonus_rate
+                breakaway_chance = min(0.12, base_prob + speed_bonus)  # Cap at 12%
+
+                if random.random() < breakaway_chance:
+                    # Breakaway! Generate explosive yards
+                    min_yards = breakaway_config.get('min_yards', 15)
+                    max_yards = breakaway_config.get('max_yards', 35)
+                    yards_gained = random.randint(min_yards, max_yards)
+
         # Time elapsed - use realistic NFL timing (includes huddle, play clock, execution)
         min_time, max_time = NFLTimingConfig.get_run_play_timing()
         time_elapsed = round(random.uniform(min_time, max_time), 1)
-        
+
         return yards_gained, time_elapsed
     
     def _apply_player_attribute_modifiers(self, base_avg_yards: float, base_variance: float) -> Tuple[float, float]:
@@ -305,7 +303,7 @@ class RunPlaySimulator(BasePlaySimulator):
         lb_good_bonus = lb_modifiers.get('good_bonus', 0.10)
         lb_poor_penalty = lb_modifiers.get('poor_penalty', -0.15)
         
-        linebackers = self._find_defensive_players_by_positions([Position.MIKE, Position.SAM, Position.WILL])
+        linebackers = self._get_field_defensive_players_by_positions([Position.MIKE, Position.SAM, Position.WILL])
         if linebackers:
             # Average LB rating impacts run defense
             lb_ratings = []
@@ -333,7 +331,7 @@ class RunPlaySimulator(BasePlaySimulator):
         dl_good_bonus = dl_modifiers.get('good_bonus', 0.08)
         dl_poor_penalty = dl_modifiers.get('poor_penalty', -0.10)
 
-        defensive_line = self._find_defensive_players_by_positions([
+        defensive_line = self._get_field_defensive_players_by_positions([
             Position.DE, Position.DT, Position.NT, "defensive_end", "defensive_tackle", "nose_tackle"
         ])
         if defensive_line:
@@ -418,19 +416,19 @@ class RunPlaySimulator(BasePlaySimulator):
             List of PlayerStats objects for players who recorded stats
         """
         player_stats = []
-        
-        # Find key players by position
-        running_back = self._find_player_by_position(Position.RB)
-        offensive_line = self._find_players_by_positions([Position.LT, Position.LG, Position.C, Position.RG, Position.RT])
 
-        # Include all linebacker variations (specific and generic)
-        linebackers = self._find_defensive_players_by_positions([
+        # Find key players by position (using field-limited method for on-field players only)
+        running_back = self._find_player_by_position(Position.RB)
+        offensive_line = self._get_field_offensive_players_by_positions([Position.LT, Position.LG, Position.C, Position.RG, Position.RT])
+
+        # Include all linebacker variations (specific and generic) - only on-field players
+        linebackers = self._get_field_defensive_players_by_positions([
             Position.MIKE, Position.SAM, Position.WILL, Position.ILB, Position.OLB, "linebacker"
         ])
-        safeties = self._find_defensive_players_by_positions([Position.FS, Position.SS, "safety"])
+        safeties = self._get_field_defensive_players_by_positions([Position.FS, Position.SS, "safety"])
 
-        # Include defensive line for potential tackles behind the line
-        defensive_line = self._find_defensive_players_by_positions([
+        # Include defensive line for potential tackles behind the line - only on-field players
+        defensive_line = self._get_field_defensive_players_by_positions([
             Position.DE, Position.DT, Position.NT, "defensive_end", "defensive_tackle", "nose_tackle"
         ])
         
@@ -438,6 +436,12 @@ class RunPlaySimulator(BasePlaySimulator):
         if running_back:
             rb_stats = create_player_stats_from_player(running_back, team_id=self.offensive_team_id)
             rb_stats.add_carry(yards_gained)
+            # Track longest rush (use max to track the longest single carry)
+            current_long = getattr(rb_stats, 'rushing_long', 0)
+            rb_stats.rushing_long = max(current_long, yards_gained)
+            # Track explosive plays (20+ yards)
+            if yards_gained >= 20:
+                rb_stats.rushing_20_plus = 1
 
             # Calculate yards after contact (YAC) for RB power/elusiveness grading
             # Contact typically occurs 40-60% into the run; YAC is yards gained after first hit
@@ -494,7 +498,8 @@ class RunPlaySimulator(BasePlaySimulator):
                 player_stats.append(missed_stats)
 
                 # Track from ball carrier perspective (broken tackle)
-                rb_stats.add_tackle_faced(broken=True)
+                if running_back:
+                    rb_stats.add_tackle_faced(broken=True)
 
             # === Attribute successful tackles ===
             for tackler_info in tacklers:
@@ -509,7 +514,8 @@ class RunPlaySimulator(BasePlaySimulator):
                 player_stats.append(tackler_stats)
 
                 # Track from ball carrier perspective (successful tackle)
-                rb_stats.add_tackle_faced(broken=False)
+                if running_back:
+                    rb_stats.add_tackle_faced(broken=False)
 
         # Add sacks for significant negative yardage plays (TFL of 5+ yards likely indicates sack)
         if yards_gained <= -5:
@@ -780,13 +786,13 @@ class RunPlaySimulator(BasePlaySimulator):
         tacklers.append((primary_tackler, False))
 
         # Assisted tackle probability varies by run length
-        # NFL reality: ~40-50% of tackles are assisted (gang tackles common)
+        # NFL reality: ~30-40% of tackles are assisted (reduced from 40-50%)
         if yards_gained >= long_run_threshold:
-            # Long run: high chance of assisted tackle (pursuit angles)
-            effective_assist_prob = assisted_tackle_prob
+            # Long run: moderate chance of assisted tackle (pursuit angles)
+            effective_assist_prob = assisted_tackle_prob * 0.7  # REDUCED from 1.0 to 0.7 (42%)
         else:
-            # Short run: moderate chance of assisted tackle (pile tackles)
-            effective_assist_prob = assisted_tackle_prob * 0.6
+            # Short run: low chance of assisted tackle (pile tackles)
+            effective_assist_prob = assisted_tackle_prob * 0.3  # REDUCED from 0.6 to 0.3 (18%)
 
         if random.random() < effective_assist_prob:
             remaining = [p for p in potential_tacklers if p != primary_tackler]
@@ -807,7 +813,13 @@ class RunPlaySimulator(BasePlaySimulator):
         - Cornerbacks: 5% base weight (edge contain)
 
         Within each position group, players are weighted by their tackle/pursuit ratings.
-        Elite tacklers (90+) get 2x multiplier, poor tacklers (<65) get 0.5x.
+        Elite tacklers (90+) get 1.3x multiplier, poor tacklers (<65) get 0.7x.
+
+        Diminishing returns prevent unrealistic tackle accumulation (Phase 3: aggressive):
+        - 0-5 tackles: No reduction (normal range)
+        - 6-7 tackles: 30% reduction (good performance)
+        - 8-9 tackles: 60% reduction (elite range)
+        - 10+ tackles: 80% reduction (extreme rarity, hard cap ~12-13)
 
         Args:
             potential_tacklers: List of defensive players
@@ -819,22 +831,33 @@ class RunPlaySimulator(BasePlaySimulator):
         if not potential_tacklers:
             return None
 
+        # Track tackles per player per game (reset at start of game)
+        if not hasattr(self, '_tackle_counts'):
+            from collections import defaultdict
+            self._tackle_counts = defaultdict(int)
+
         # Categorize tacklers by position
-        linebackers = []
+        # Separate coverage LBs from EDGE rushers for proper tackle attribution
+        coverage_lbs = []
+        edge_rushers = []
         safeties = []
         defensive_line = []
         cornerbacks = []
 
-        lb_positions = ['mike_linebacker', 'sam_linebacker', 'will_linebacker', 'linebacker',
-                       'inside_linebacker', 'outside_linebacker', 'ilb', 'olb']
+        # Split linebacker positions: coverage LBs vs EDGE rushers
+        coverage_lb_positions = ['mike_linebacker', 'sam_linebacker', 'will_linebacker', 'linebacker',
+                                 'inside_linebacker', 'ilb']
+        edge_lb_positions = ['outside_linebacker', 'olb']  # EDGE pass rushers
         safety_positions = ['safety', 'free_safety', 'strong_safety', 'fs', 'ss']
-        dl_positions = ['defensive_end', 'defensive_tackle', 'nose_tackle', 'de', 'dt', 'nt']
+        dl_positions = ['defensive_end', 'defensive_tackle', 'nose_tackle', 'de', 'dt', 'nt', 'edge']
         cb_positions = ['cornerback', 'cb']
 
         for player in potential_tacklers:
             pos = player.primary_position.lower()
-            if pos in lb_positions:
-                linebackers.append(player)
+            if pos in coverage_lb_positions:
+                coverage_lbs.append(player)
+            elif pos in edge_lb_positions:
+                edge_rushers.append(player)
             elif pos in safety_positions:
                 safeties.append(player)
             elif pos in dl_positions:
@@ -845,31 +868,54 @@ class RunPlaySimulator(BasePlaySimulator):
         def get_tackle_weight(player, base_position_weight: float, group_size: int) -> float:
             """Calculate skill-weighted tackle probability for a player."""
             # Get tackle rating (or related attributes as fallback)
+            # Prioritize run-stopping attributes over pass rush attributes
             rating = 70  # Default
             if hasattr(player, 'get_rating'):
-                rating = player.get_rating('tackle') or player.get_rating('pursuit') or \
-                         player.get_rating('block_shedding') or player.get_rating('play_recognition') or \
+                rating = player.get_rating('tackle') or \
+                         player.get_rating('run_defense') or \
+                         player.get_rating('pursuit') or \
+                         player.get_rating('block_shedding') or \
+                         player.get_rating('play_recognition') or \
                          player.get_rating('overall') or 70
             elif hasattr(player, 'ratings'):
-                rating = player.ratings.get('tackle', player.ratings.get('pursuit',
-                         player.ratings.get('block_shedding', player.ratings.get('overall', 70))))
+                rating = player.ratings.get('tackle',
+                         player.ratings.get('run_defense',
+                         player.ratings.get('pursuit',
+                         player.ratings.get('block_shedding',
+                         player.ratings.get('overall', 70)))))
 
             # Base weight from position group
             base_weight = base_position_weight / group_size
 
-            # Skill multiplier - elite tacklers dominate tackle totals
+            # Skill multiplier - elite tacklers get slight edge, not dominance
             if rating >= 90:
-                skill_mult = 2.0  # Elite tacklers dominate
+                skill_mult = 1.3  # REDUCED from 2.0 to 1.3 (elite, not dominant)
             elif rating >= 85:
-                skill_mult = 1.5
+                skill_mult = 1.15  # REDUCED from 1.5 to 1.15
             elif rating >= 75:
                 skill_mult = 1.0
             elif rating >= 65:
-                skill_mult = 0.75
+                skill_mult = 0.85  # INCREASED from 0.75 to 0.85
             else:
-                skill_mult = 0.5  # Poor tacklers rarely make plays
+                skill_mult = 0.7  # INCREASED from 0.5 to 0.7
 
-            return base_weight * skill_mult
+            # Calculate base weight with skill multiplier
+            final_weight = base_weight * skill_mult
+
+            # Apply diminishing returns based on tackles already made this game
+            player_key = getattr(player, 'player_id', player.name)
+            tackles_made = self._tackle_counts.get(player_key, 0)
+
+            # Progressive reduction to prevent unrealistic accumulation (Phase 3: more aggressive)
+            if tackles_made >= 10:
+                final_weight *= 0.2  # 80% reduction after 10 tackles (extreme rarity)
+            elif tackles_made >= 8:
+                final_weight *= 0.4  # 60% reduction after 8 tackles (elite max)
+            elif tackles_made >= 6:
+                final_weight *= 0.7  # 30% reduction after 6 tackles (good performance)
+            # No reduction for 0-5 tackles (normal range)
+
+            return final_weight
 
         # Build weighted selection pool with skill-based weights
         candidates = []
@@ -878,23 +924,31 @@ class RunPlaySimulator(BasePlaySimulator):
         # Dynamic weights based on play outcome (TFL situations favor DL)
         is_tfl_situation = yards_gained <= 0
         if is_tfl_situation:
-            # TFL: DL dominate stuffs at the line
-            lb_base_weight = 0.35   # Reduced from 50%
-            dl_base_weight = 0.40   # Increased from 25%
-            safety_base_weight = 0.20
+            # TFL: DL dominate stuffs at the line, EDGE rushers contribute
+            coverage_lb_base_weight = 0.25   # Coverage LBs less involved in TFLs
+            edge_lb_base_weight = 0.25       # EDGE rushers share TFL load with DL
+            dl_base_weight = 0.40            # Increased from 25%
+            safety_base_weight = 0.05
             cb_base_weight = 0.05
         else:
-            # Normal play: standard distribution
-            lb_base_weight = 0.50
-            dl_base_weight = 0.25
-            safety_base_weight = 0.20
+            # Normal play: More balanced distribution to prevent elite LB dominance
+            coverage_lb_base_weight = 0.35   # REDUCED from 0.45 to 0.35
+            edge_lb_base_weight = 0.15       # EDGE rushers play upfield, fewer tackles
+            dl_base_weight = 0.30            # INCREASED from 0.25 to 0.30
+            safety_base_weight = 0.15        # INCREASED from 0.10 to 0.15
             cb_base_weight = 0.05
 
-        # Linebackers: Primary run stoppers
-        if linebackers:
-            for lb in linebackers:
+        # Coverage Linebackers: Primary run stoppers (MIKE, SAM, WILL)
+        if coverage_lbs:
+            for lb in coverage_lbs:
                 candidates.append(lb)
-                weights.append(get_tackle_weight(lb, lb_base_weight, len(linebackers)))
+                weights.append(get_tackle_weight(lb, coverage_lb_base_weight, len(coverage_lbs)))
+
+        # EDGE Rushers: Pass rush specialists, fewer run tackles (OLB in 3-4)
+        if edge_rushers:
+            for edge in edge_rushers:
+                candidates.append(edge)
+                weights.append(get_tackle_weight(edge, edge_lb_base_weight, len(edge_rushers)))
 
         # Defensive Line: TFLs, penetration, pursuit
         if defensive_line:
@@ -923,7 +977,13 @@ class RunPlaySimulator(BasePlaySimulator):
         normalized_weights = [w / total_weight for w in weights]
 
         # Use weighted random selection
-        return random.choices(candidates, weights=normalized_weights, k=1)[0]
+        selected_player = random.choices(candidates, weights=normalized_weights, k=1)[0]
+
+        # Update tackle count for diminishing returns tracking
+        player_key = getattr(selected_player, 'player_id', selected_player.name)
+        self._tackle_counts[player_key] += 1
+
+        return selected_player
 
     def _select_tfl_sacker_weighted(self, potential_sackers: List):
         """
@@ -1124,19 +1184,21 @@ class RunPlaySimulator(BasePlaySimulator):
 
         return True, defense_recovered
 
-    def _attribute_fumble_stats(self, player_stats: List[PlayerStats], running_back) -> None:
+    def _attribute_fumble_stats(self, player_stats: List[PlayerStats], running_back, fumble_lost: bool = False) -> None:
         """
         Add fumble statistics to player stats.
 
-        - RB gets fumble_lost stat
+        - RB gets rushing_fumbles stat (always)
+        - RB gets fumbles_lost stat (only if defense recovered)
         - Random defender gets forced_fumble stat
-        - Random defender gets fumble_recovery stat
+        - Random defender gets fumble_recovery stat (only if defense recovered)
 
         Args:
             player_stats: List of PlayerStats objects to update
             running_back: The ball carrier who fumbled
+            fumble_lost: True if defense recovered the fumble (turnover), False if offense recovered
         """
-        # Find or create RB stats and add fumble lost
+        # Find or create RB stats and add fumble stats
         rb_stats = None
         for stats in player_stats:
             if stats.player_name == running_back.name:
@@ -1144,14 +1206,18 @@ class RunPlaySimulator(BasePlaySimulator):
                 break
 
         if rb_stats:
-            rb_stats.fumbles_lost = getattr(rb_stats, 'fumbles_lost', 0) + 1
+            # Always increment rushing_fumbles (fumble occurred)
+            rb_stats.rushing_fumbles = getattr(rb_stats, 'rushing_fumbles', 0) + 1
+            # Only increment fumbles_lost if it resulted in a turnover
+            if fumble_lost:
+                rb_stats.fumbles_lost = getattr(rb_stats, 'fumbles_lost', 0) + 1
 
-        # Select a defender for forced fumble (linebackers and safeties most likely)
-        linebackers = self._find_defensive_players_by_positions([
+        # Select a defender for forced fumble (linebackers and safeties most likely) - only on-field players
+        linebackers = self._get_field_defensive_players_by_positions([
             Position.MIKE, Position.SAM, Position.WILL, Position.ILB, Position.OLB
         ])
-        safeties = self._find_defensive_players_by_positions([Position.FS, Position.SS])
-        defensive_line = self._find_defensive_players_by_positions([
+        safeties = self._get_field_defensive_players_by_positions([Position.FS, Position.SS])
+        defensive_line = self._get_field_defensive_players_by_positions([
             Position.DE, Position.DT, Position.NT
         ])
 
@@ -1160,5 +1226,7 @@ class RunPlaySimulator(BasePlaySimulator):
             forcer = random.choice(potential_forcers)
             forcer_stats = create_player_stats_from_player(forcer, team_id=self.defensive_team_id)
             forcer_stats.forced_fumbles = 1
-            forcer_stats.fumble_recoveries = 1  # Defense recovered
+            # Only credit fumble recovery if defense actually recovered
+            if fumble_lost:
+                forcer_stats.fumble_recoveries = 1
             player_stats.append(forcer_stats)

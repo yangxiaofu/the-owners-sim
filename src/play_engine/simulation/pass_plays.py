@@ -35,7 +35,8 @@ class PassPlaySimulator(BasePlaySimulator):
                  weather_condition: str = "clear", crowd_noise_level: int = 0,
                  clutch_factor: float = 0.0, primetime_variance: float = 0.0,
                  is_away_team: bool = False, performance_tracker = None,
-                 field_position: int = 50, down: int = None):
+                 field_position: int = 50, down: int = None,
+                 blitz_package: str = None, rusher_assignments = None):
         """
         Initialize pass play simulator
 
@@ -55,6 +56,8 @@ class PassPlaySimulator(BasePlaySimulator):
             is_away_team: Whether the offensive team is the away team (for crowd noise penalties)
             performance_tracker: Optional PlayerPerformanceTracker for hot/cold streaks (Tollgate 7)
             field_position: Current yard line (0-100, where 100 is opponent's goal line)
+            blitz_package: Named blitz package (e.g., "four_man_base", "corner_blitz", "safety_blitz")
+            rusher_assignments: RusherAssignments tracking which positions are rushing vs covering
         """
         self.offensive_players = offensive_players
         self.defensive_players = defensive_players
@@ -77,6 +80,13 @@ class PassPlaySimulator(BasePlaySimulator):
         # Variance & Unpredictability (Tollgate 7)
         self.performance_tracker = performance_tracker  # Hot/cold streak tracking
 
+        # NEW: Blitz package and rusher assignments for dynamic sack attribution
+        # When set, these enable:
+        # - DBs to get sacks when they blitz (safety/corner blitzes)
+        # - LBs in coverage to NOT get sacks (only rushing LBs eligible)
+        self.blitz_package = blitz_package
+        self.rusher_assignments = rusher_assignments
+
         # Load balancing configs (Tier 1 refactoring)
         self.receiver_targeting_config = config.get_receiver_targeting_config()
         self.environmental_modifiers_config = config.get_environmental_modifiers_config()
@@ -85,7 +95,49 @@ class PassPlaySimulator(BasePlaySimulator):
 
         # Initialize penalty engine
         self.penalty_engine = PenaltyEngine()
-    
+
+    def _get_actual_pass_rushers(self) -> List:
+        """
+        Get pass rushers based on blitz package - REPLACES static pool.
+
+        When rusher_assignments is set, only positions marked as rushing are eligible.
+        This allows:
+        - DBs (CB, FS, SS) to get sacks when they blitz
+        - LBs in coverage to be excluded from sack attribution
+
+        Fallback: 4-man rush (DL only) when no blitz info is provided.
+
+        Returns:
+            List of defensive players who are actually rushing the passer
+        """
+        # Fallback: 4-man rush (DL only) when no blitz package info
+        if not self.rusher_assignments:
+            return self._get_field_defensive_players_by_positions([
+                Position.DE, Position.DT, "defensive_end", "defensive_tackle",
+                "nose_tackle", "edge", "leo"
+            ])
+
+        # Dynamic pool: only players whose position is marked as rushing
+        all_defenders = self._get_all_field_defensive_players()
+        actual_rushers = []
+
+        for player in all_defenders:
+            pos = getattr(player, 'primary_position', '')
+            if self.rusher_assignments.is_position_rushing(pos):
+                actual_rushers.append(player)
+
+        # Safety fallback: if no rushers found, use DL
+        if not actual_rushers:
+            return self._get_field_defensive_players_by_positions([
+                Position.DE, Position.DT, "defensive_end", "defensive_tackle"
+            ])
+
+        return actual_rushers
+
+    def _get_all_field_defensive_players(self) -> List:
+        """Get all 11 defensive players currently on the field."""
+        return self.defensive_players[:11] if self.defensive_players else []
+
     def simulate_pass_play(self, context: Optional[PlayContext] = None) -> PlayStatsSummary:
         """
         Simulate complete pass play with comprehensive NFL statistics
@@ -145,46 +197,21 @@ class PassPlaySimulator(BasePlaySimulator):
         # Phase 3B: Track snaps for ALL players on the field (offensive and defensive)
         player_stats = self._track_snaps_for_all_players(player_stats)
 
-        # ✅ FIX 1: Detect touchdown BEFORE penalty adjustment
-        # Check if ORIGINAL play reached end zone (penalties don't negate TDs in most cases)
-        original_target = self.field_position + original_yards
-        original_was_touchdown = original_target >= 100
-
-        if original_was_touchdown and not play_negated:
-            # TD stands - penalty will be enforced on PAT/kickoff
-            actual_yards = 100 - self.field_position
-            points_scored = 6
-        else:
-            # Non-TD play or play was negated by penalty - use penalty-adjusted yards
-            target_yard_line = self.field_position + final_yards
-            is_touchdown = target_yard_line >= 100
-
-            if is_touchdown:
-                actual_yards = 100 - self.field_position
-                points_scored = 6
-            else:
-                actual_yards = final_yards
-                points_scored = 0
-
-        # Create comprehensive play summary
-        summary = PlayStatsSummary(
-            play_type=pass_outcome.get('outcome_type', 'pass'),  # Use specific outcome instead of generic PASS
-            yards_gained=actual_yards,
-            time_elapsed=pass_outcome.get('time_elapsed', 3.0),
-            points_scored=points_scored
+        # Calculate touchdown outcome using base class method
+        actual_yards, points_scored = self._calculate_touchdown_outcome(
+            original_yards, final_yards, play_negated
         )
-        
-        # Add penalty information to summary if penalty occurred
-        if penalty_result.penalty_occurred:
-            summary.penalty_occurred = True
-            summary.penalty_instance = penalty_result.penalty_instance
-            summary.original_yards = original_yards
-            summary.play_negated = play_negated
-            # NEW: Attach enforcement result for downstream ball placement
-            summary.enforcement_result = getattr(penalty_result, 'enforcement_result', None)
-        
-        for stats in player_stats:
-            summary.add_player_stats(stats)
+
+        # Create play summary with penalty information and player stats
+        summary = self._create_play_summary(
+            play_type=pass_outcome.get('outcome_type', 'pass'),
+            actual_yards=actual_yards,
+            time_elapsed=pass_outcome.get('time_elapsed', 3.0),
+            points_scored=points_scored,
+            player_stats=player_stats,
+            penalty_result=penalty_result,
+            original_yards=original_yards
+        )
 
         # Add touchdown attribution if points were scored
         self._add_touchdown_attribution(summary)
@@ -1151,7 +1178,34 @@ class PassPlaySimulator(BasePlaySimulator):
         mechanics_config = config.get_play_mechanics_config('pass_play')
         time_ranges = mechanics_config.get('time_ranges', {})
         variance_config = config.get_variance_ranges_config('pass_play')
-        
+
+        # NEW: Check for drop BEFORE other outcomes (Phase 4: Drop Architecture Fix)
+        # This ensures drop checks apply to all non-sack attempts (not just the 14.5% that reach the old location)
+        # Target: 2.8 drops/game = 35 attempts × 8% drop rate
+        if target_receiver:
+            hands_rating = getattr(target_receiver, 'hands', 75)
+            # Base drop rate: 3.5% of ALL non-sack attempts (not just incomplete passes)
+            base_drop_rate = 0.035
+            # Hands modifier: worse hands = more drops (75 is average)
+            hands_modifier = (75 - hands_rating) / 300
+            drop_chance = max(0.025, min(0.08, base_drop_rate + hands_modifier))
+
+            drop_roll = random.random()
+            if drop_roll < drop_chance:
+                # Dropped pass - return immediately
+                inc_time_min = time_ranges.get('incompletion_time_min', 2.0)
+                inc_time_max = time_ranges.get('incompletion_time_max', 3.5)
+
+                return {
+                    'outcome_type': 'incomplete',
+                    'yards': 0,
+                    'time_elapsed': round(random.uniform(*NFLTimingConfig.get_pass_play_timing()), 1),
+                    'target_receiver': target_receiver,
+                    'incomplete': True,
+                    'dropped': True,  # NEW FLAG - distinguishes drops from other incompletions
+                    'pressure_applied': pressure_outcome['pressured']
+                }
+
         # Check for interception first (worst outcome)
         if int_roll < params['int_rate']:
             int_time_min = time_ranges.get('interception_time_min', 2.5)
@@ -1188,6 +1242,14 @@ class PassPlaySimulator(BasePlaySimulator):
 
             air_yards = max(1, int(random.gauss(params['avg_air_yards'], air_yards_variance)))
             yac = max(0, int(random.gauss(params['avg_yac'], yac_variance)))
+
+            # TE YAC penalty - TEs average less YAC than WRs (slower, tackled near LOS)
+            if target_receiver and hasattr(target_receiver, 'position') and target_receiver.position == 'TE':
+                yac = int(yac * 0.70)
+            # WR YAC adjustment - reduce slightly to match NFL averages
+            elif target_receiver and hasattr(target_receiver, 'position') and target_receiver.position == 'WR':
+                yac = int(yac * 0.90)
+
             total_yards = air_yards + yac
 
             # NEW: Apply primetime variance (Tollgate 6: Environmental & Situational Modifiers)
@@ -1322,15 +1384,10 @@ class PassPlaySimulator(BasePlaySimulator):
         quarterback = self._find_player_by_position(Position.QB)
         offensive_line = self._get_field_offensive_players_by_positions([Position.LT, Position.LG, Position.C, Position.RG, Position.RT])
 
-        # Include all position variations (specific and generic)
-        # Pass rushers now include all D-line AND linebackers (LBs blitz and get sacks)
-        # IMPORTANT: Use _get_field_defensive_players_by_positions to only include on-field players
-        pass_rushers = self._get_field_defensive_players_by_positions([
-            Position.DE, Position.DT, Position.OLB, Position.MIKE, Position.SAM,
-            Position.WILL, Position.ILB, "defensive_end", "defensive_tackle",
-            "nose_tackle", "mike_linebacker", "sam_linebacker", "will_linebacker",
-            "inside_linebacker", "outside_linebacker"
-        ])
+        # Get pass rushers dynamically based on blitz package
+        # - With blitz info: Only positions actually rushing (DBs can blitz, LBs may cover)
+        # - Without blitz info: Fallback to 4-man rush (DL only)
+        pass_rushers = self._get_actual_pass_rushers()
         linebackers = self._get_field_defensive_players_by_positions([
             Position.MIKE, Position.SAM, Position.WILL, Position.ILB, Position.OLB, "linebacker"
         ])
@@ -1342,18 +1399,18 @@ class PassPlaySimulator(BasePlaySimulator):
         if quarterback:
             qb_stats = create_player_stats_from_player(quarterback, team_id=self.offensive_team_id)
             qb_stats.pass_attempts = 1
-            
+
             if pass_outcome.get('completed'):
                 qb_stats.completions = 1
                 qb_stats.passing_yards = pass_outcome.get('yards', 0)
                 qb_stats.air_yards = pass_outcome.get('air_yards', 0)
             elif pass_outcome.get('intercepted'):
                 qb_stats.interceptions_thrown = 1
-            
+
             if pass_outcome.get('qb_sacked'):
                 qb_stats.sacks_taken = 1
                 qb_stats.sack_yards_lost = abs(pass_outcome.get('yards', 0))
-            
+
             if pass_outcome.get('pressure_applied'):
                 qb_stats.pressures_faced = 1
 
@@ -1375,13 +1432,17 @@ class PassPlaySimulator(BasePlaySimulator):
         if target_receiver:
             receiver_stats = create_player_stats_from_player(target_receiver, team_id=self.offensive_team_id)
             receiver_stats.targets = 1
-            
+
             if pass_outcome.get('completed'):
                 receiver_stats.receptions = 1
-                receiver_stats.receiving_yards = pass_outcome.get('yards', 0)
+                yards = pass_outcome.get('yards', 0)
+                receiver_stats.receiving_yards = yards
                 receiver_stats.yac = pass_outcome.get('yac', 0)
-                receiver_stats.receiving_long = pass_outcome.get('yards', 0)
-            
+                receiver_stats.receiving_long = yards
+                # Track explosive plays (20+ yards)
+                if yards >= 20:
+                    receiver_stats.receiving_20_plus = 1
+
             player_stats.append(receiver_stats)
         
         # Comprehensive Offensive Line Pass Protection Statistics
@@ -1418,7 +1479,7 @@ class PassPlaySimulator(BasePlaySimulator):
                 mechanics_config = config.get_play_mechanics_config('pass_play')
                 pressure_effects = mechanics_config.get('pressure_effects', {})
                 hit_conversion_rate = pressure_effects.get('pressure_to_hit_conversion', 0.4)
-                
+
                 if random.random() < hit_conversion_rate:
                     pressure_stats.qb_hits = 1
                 player_stats.append(pressure_stats)
@@ -1482,6 +1543,18 @@ class PassPlaySimulator(BasePlaySimulator):
                     deflection_stats.passes_deflected = 1
                     deflection_stats.passes_defended = 1
                     player_stats.append(deflection_stats)
+            elif pass_outcome.get('dropped'):
+                # NEW: Handle drops from Phase 4 architecture fix
+                # These drops were already determined in _simulate_pass_outcome (before INT/deflection checks)
+                # Directly attribute drop to receiver - no further probability checks needed
+                target_receiver = pass_outcome.get('target_receiver')
+                if target_receiver:
+                    # Find and update existing receiver_stats
+                    for stats in player_stats:
+                        if (stats.player_name == target_receiver.name and
+                            stats.position == target_receiver.primary_position):
+                            stats.drops = 1
+                            break
             elif pass_outcome.get('incomplete'):
                 # Tight coverage forcing incompletion - attribute pass defended
                 # NFL counts ~40-50% of incompletions as "passes defended" (tight coverage)
@@ -1500,10 +1573,10 @@ class PassPlaySimulator(BasePlaySimulator):
                         # Elite (95 hands) = 2% drops, Poor (50 hands) = 10% drops
                         hands_rating = getattr(target_receiver, 'hands', 75)
 
-                        # Convert hands rating to drop chance
-                        base_drop_rate = 0.05  # 5% baseline
-                        hands_modifier = (75 - hands_rating) / 500  # ±0.05 adjustment
-                        drop_chance = max(0.02, min(0.15, base_drop_rate + hands_modifier))
+                        # Convert hands rating to drop chance - INCREASED FOR NFL ACCURACY
+                        base_drop_rate = 0.10  # 10% baseline (was 0.05)
+                        hands_modifier = (75 - hands_rating) / 400  # ±0.0625 adjustment (was /500)
+                        drop_chance = max(0.03, min(0.20, base_drop_rate + hands_modifier))
 
                         if random.random() < drop_chance:
                             # Find and update existing receiver_stats
@@ -1809,13 +1882,13 @@ class PassPlaySimulator(BasePlaySimulator):
         tacklers.append((primary_tackler, False))
 
         # Assisted tackle probability varies by YAC
-        # NFL reality: ~40-50% of tackles are assisted
+        # NFL reality: ~30-40% of tackles are assisted (reduced from 40-50%)
         if yac_yards >= long_yac_threshold:
-            # Long YAC: high chance of assisted tackle (pursuit)
-            effective_assist_prob = assisted_tackle_prob
+            # Long YAC: moderate chance of assisted tackle (pursuit)
+            effective_assist_prob = assisted_tackle_prob * 0.7  # REDUCED from 1.0 to 0.7 (42%)
         else:
-            # Short/no YAC: moderate chance of assisted tackle
-            effective_assist_prob = assisted_tackle_prob * 0.5
+            # Short/no YAC: low chance of assisted tackle
+            effective_assist_prob = assisted_tackle_prob * 0.3  # REDUCED from 0.5 to 0.3 (18%)
 
         if random.random() < effective_assist_prob:
             remaining = [p for p in potential_tacklers if p != primary_tackler]
@@ -1832,10 +1905,15 @@ class PassPlaySimulator(BasePlaySimulator):
         Elite pass rushers (high pass_rush/overall rating) are more likely to get sacks.
         NFL Reality: Myles Garrett gets 15 sacks/season, average DT gets 2-3.
 
+        Blitz Surprise Factor: When DBs or LBs blitz, they often come FREE (unblocked)
+        because the offense wasn't expecting the pressure. This is why DB blitzes
+        result in sacks ~9% of the time in the NFL despite DBs having lower pass rush skills.
+
         Weighting formula:
         - Base weight = player's pass_rush rating (or overall if unavailable)
         - Position bonus: EDGE/DE +10, OLB +5, DT +0, ILB -5
-        - Elite (90+) gets 2x weight multiplier
+        - Blitz surprise bonus: DBs get +25, LBs get +15 (represents unblocked rushes)
+        - Elite (90+) gets 1.5x weight multiplier (reduced from 2x to not overpower blitzers)
         - Poor (<65) gets 0.5x weight multiplier
 
         Args:
@@ -1862,27 +1940,45 @@ class PassPlaySimulator(BasePlaySimulator):
             elif hasattr(rusher, 'ratings'):
                 rating = rusher.ratings.get('pass_rush', rusher.ratings.get('overall', 70))
 
-            # Position-based bonus (edge rushers get more sacks)
+            # Position-based bonus and blitz surprise factor
+            # NFL Reality: ~63% of sacks from DL, ~28% from LB, ~9% from DB
+            # DBs get sacks through surprise (unblocked) rather than skill
             pos = getattr(rusher, 'primary_position', '').lower()
+
+            # Calculate position bonus based on natural pass rushing ability
+            # and blitz surprise factor (unblocked rushers are very effective)
             if pos in ['defensive_end', 'de', 'edge', 'leo']:
-                position_bonus = 10
-            elif pos in ['outside_linebacker', 'olb']:
-                position_bonus = 5
+                position_bonus = 10   # Primary edge rushers - always rush
+                blitz_surprise = 1.0  # No surprise (expected)
             elif pos in ['defensive_tackle', 'dt', 'nose_tackle', 'nt']:
-                position_bonus = 0
-            else:  # ILBs, MLBs
-                position_bonus = -5
+                position_bonus = 0    # Interior rushers - always rush
+                blitz_surprise = 1.0  # No surprise
+            elif pos in ['outside_linebacker', 'olb']:
+                position_bonus = 5    # Edge rushers/blitzers
+                blitz_surprise = 5.0  # High surprise - often unblocked on designed blitzes
+            elif pos in ['free_safety', 'fs', 'strong_safety', 'ss', 'safety']:
+                position_bonus = 0    # Low natural rush ability (neutral)
+                blitz_surprise = 6.0  # VERY HIGH surprise - often come completely unblocked!
+            elif pos in ['cornerback', 'cb', 'nickel_cornerback', 'ncb']:
+                position_bonus = 0    # Low natural rush ability
+                blitz_surprise = 5.5  # Very high surprise - edge blitz usually unblocked
+            elif pos in ['inside_linebacker', 'ilb', 'middle_linebacker', 'mlb',
+                        'mike', 'will', 'sam', 'linebacker', 'lb', 'mike_linebacker',
+                        'will_linebacker', 'sam_linebacker']:
+                position_bonus = 0    # Neutral - A-gap blitzes are quick paths to QB
+                blitz_surprise = 6.0  # Very high - A-gap/interior blitzes often unblocked
+            else:
+                position_bonus = -10  # Unknown position
+                blitz_surprise = 1.0
 
-            # Calculate weight
-            base_weight = rating + position_bonus
+            # Calculate weight: rating + position bonus, then multiply by surprise factor
+            base_weight = (rating + position_bonus) * blitz_surprise
 
-            # Elite/poor multipliers
-            if rating >= 90:
-                base_weight *= 2.0  # Elite rushers dominate sack totals
-            elif rating >= 85:
-                base_weight *= 1.5
-            elif rating < 65:
-                base_weight *= 0.5  # Poor rushers rarely get sacks
+            # Elite/poor multipliers (DL only - blitzing players already got bonus from surprise)
+            if rating >= 90 and blitz_surprise == 1.0:  # Only for base rushers (DL)
+                base_weight *= 1.3  # Elite DL still get bonus, but smaller
+            elif rating < 65 and blitz_surprise == 1.0:  # Only penalize poor DL, not blitzing LB/DB
+                base_weight *= 0.5  # Poor base rushers rarely get sacks
 
             weights.append(max(1, base_weight))  # Minimum weight of 1
 
@@ -2000,74 +2096,113 @@ class PassPlaySimulator(BasePlaySimulator):
         if not potential_tacklers:
             return None
 
+        # Track tackles per player per game (reset at start of game)
+        if not hasattr(self, '_tackle_counts'):
+            from collections import defaultdict
+            self._tackle_counts = defaultdict(int)
+
         # Categorize tacklers by position
+        # Separate coverage LBs from EDGE rushers for proper tackle attribution
         defensive_backs = []
-        linebackers = []
+        coverage_lbs = []
+        edge_rushers = []
         defensive_line = []
 
         db_positions = ['cornerback', 'cb', 'safety', 'free_safety', 'strong_safety', 'fs', 'ss', 'nickel_cornerback', 'ncb']
-        lb_positions = ['mike_linebacker', 'sam_linebacker', 'will_linebacker', 'linebacker',
-                       'inside_linebacker', 'outside_linebacker', 'ilb', 'olb']
-        dl_positions = ['defensive_end', 'defensive_tackle', 'nose_tackle', 'de', 'dt', 'nt']
+        # Split linebacker positions: coverage LBs vs EDGE rushers
+        coverage_lb_positions = ['mike_linebacker', 'sam_linebacker', 'will_linebacker', 'linebacker',
+                                 'inside_linebacker', 'ilb']
+        edge_lb_positions = ['outside_linebacker', 'olb']  # EDGE pass rushers
+        dl_positions = ['defensive_end', 'defensive_tackle', 'nose_tackle', 'de', 'dt', 'nt', 'edge']
 
         for player in potential_tacklers:
             pos = player.primary_position.lower()
             if pos in db_positions:
                 defensive_backs.append(player)
-            elif pos in lb_positions:
-                linebackers.append(player)
+            elif pos in coverage_lb_positions:
+                coverage_lbs.append(player)
+            elif pos in edge_lb_positions:
+                edge_rushers.append(player)
             elif pos in dl_positions:
                 defensive_line.append(player)
 
         def get_tackle_weight(player, base_position_weight: float, group_size: int) -> float:
             """Calculate skill-weighted tackle probability for a player."""
-            # Get tackle rating (or overall as fallback)
+            # Get tackle rating (or related attributes as fallback)
+            # Prioritize run-stopping attributes over pass rush attributes
             rating = 70  # Default
             if hasattr(player, 'get_rating'):
-                rating = player.get_rating('tackle') or player.get_rating('pursuit') or \
-                         player.get_rating('play_recognition') or player.get_rating('overall') or 70
+                rating = player.get_rating('tackle') or \
+                         player.get_rating('run_defense') or \
+                         player.get_rating('pursuit') or \
+                         player.get_rating('play_recognition') or \
+                         player.get_rating('overall') or 70
             elif hasattr(player, 'ratings'):
-                rating = player.ratings.get('tackle', player.ratings.get('pursuit',
-                         player.ratings.get('overall', 70)))
+                rating = player.ratings.get('tackle',
+                         player.ratings.get('run_defense',
+                         player.ratings.get('pursuit',
+                         player.ratings.get('overall', 70))))
 
             # Base weight from position group
             base_weight = base_position_weight / group_size
 
-            # Skill multiplier
+            # Skill multiplier - elite tacklers get slight edge, not dominance
             if rating >= 90:
-                skill_mult = 2.0  # Elite tacklers dominate
+                skill_mult = 1.3  # REDUCED from 2.0 to 1.3 (elite, not dominant)
             elif rating >= 85:
-                skill_mult = 1.5
+                skill_mult = 1.15  # REDUCED from 1.5 to 1.15
             elif rating >= 75:
                 skill_mult = 1.0
             elif rating >= 65:
-                skill_mult = 0.75
+                skill_mult = 0.85  # INCREASED from 0.75 to 0.85
             else:
-                skill_mult = 0.5  # Poor tacklers rarely make plays
+                skill_mult = 0.7  # INCREASED from 0.5 to 0.7
 
-            return base_weight * skill_mult
+            # Calculate base weight with skill multiplier
+            final_weight = base_weight * skill_mult
+
+            # Apply diminishing returns based on tackles already made this game
+            player_key = getattr(player, 'player_id', player.name)
+            tackles_made = self._tackle_counts.get(player_key, 0)
+
+            # Progressive reduction to prevent unrealistic accumulation (Phase 3: more aggressive)
+            if tackles_made >= 10:
+                final_weight *= 0.2  # 80% reduction after 10 tackles (extreme rarity)
+            elif tackles_made >= 8:
+                final_weight *= 0.4  # 60% reduction after 8 tackles (elite max)
+            elif tackles_made >= 6:
+                final_weight *= 0.7  # 30% reduction after 6 tackles (good performance)
+            # No reduction for 0-5 tackles (normal range)
+
+            return final_weight
 
         # Build weighted selection pool with skill-based weights
         candidates = []
         weights = []
 
-        # Defensive Backs: 55% base weight
+        # Defensive Backs: 55% base weight (in coverage, closest to catch point)
         if defensive_backs:
             for db in defensive_backs:
                 candidates.append(db)
                 weights.append(get_tackle_weight(db, 0.55, len(defensive_backs)))
 
-        # Linebackers: 30% base weight
-        if linebackers:
-            for lb in linebackers:
+        # Coverage Linebackers: 25% base weight (zone drops, underneath coverage)
+        if coverage_lbs:
+            for lb in coverage_lbs:
                 candidates.append(lb)
-                weights.append(get_tackle_weight(lb, 0.30, len(linebackers)))
+                weights.append(get_tackle_weight(lb, 0.25, len(coverage_lbs)))
 
-        # Defensive Line: 15% base weight
+        # EDGE Rushers: 5% base weight (pass rushing, rarely make tackles after catch)
+        if edge_rushers:
+            for edge in edge_rushers:
+                candidates.append(edge)
+                weights.append(get_tackle_weight(edge, 0.05, len(edge_rushers)))
+
+        # Defensive Line: 10% base weight (screens, short completions)
         if defensive_line:
             for dl in defensive_line:
                 candidates.append(dl)
-                weights.append(get_tackle_weight(dl, 0.15, len(defensive_line)))
+                weights.append(get_tackle_weight(dl, 0.10, len(defensive_line)))
 
         # Fallback to uniform if no categorized players
         if not candidates:
@@ -2078,7 +2213,13 @@ class PassPlaySimulator(BasePlaySimulator):
         normalized_weights = [w / total_weight for w in weights]
 
         # Use weighted random selection
-        return random.choices(candidates, weights=normalized_weights, k=1)[0]
+        selected_player = random.choices(candidates, weights=normalized_weights, k=1)[0]
+
+        # Update tackle count for diminishing returns tracking
+        player_key = getattr(selected_player, 'player_id', selected_player.name)
+        self._tackle_counts[player_key] += 1
+
+        return selected_player
     
     def _has_meaningful_stats(self, player_stats: PlayerStats) -> bool:
         """
