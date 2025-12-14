@@ -5,7 +5,8 @@ Handles re-signing, free agency, draft, roster cuts, training camp, preseason.
 Madden-style simplified offseason flow.
 """
 
-from typing import Any, Dict, List
+import sqlite3
+from typing import Any, Dict, List, Optional
 
 from ..stage_definitions import Stage, StageType
 
@@ -185,15 +186,7 @@ class OffseasonHandler:
         elif stage_type == StageType.OFFSEASON_FRANCHISE_TAG:
             return self._get_franchise_tag_preview(context, user_team_id)
         elif stage_type == StageType.OFFSEASON_RESIGNING:
-            preview = {
-                "stage_name": "Re-signing Period",
-                "description": "Re-sign your team's expiring contract players before they hit free agency.",
-                "expiring_players": self._get_expiring_contracts(context, user_team_id),
-                "is_interactive": True,
-            }
-            # Add cap data for UI display
-            preview["cap_data"] = self._get_cap_data(context, user_team_id)
-            return preview
+            return self._get_resigning_preview(context, user_team_id)
         elif stage_type == StageType.OFFSEASON_FREE_AGENCY:
             return self._get_free_agency_preview(context, user_team_id)
         elif stage_type == StageType.OFFSEASON_TRADING:
@@ -404,6 +397,133 @@ class OffseasonHandler:
             # Return empty list on error - UI will show "No expiring contracts"
             return []
 
+    def _get_resigning_preview(
+        self,
+        context: Dict[str, Any],
+        team_id: int
+    ) -> Dict[str, Any]:
+        """
+        Get re-signing preview data for UI display.
+
+        Includes GM extension proposals if owner directives exist.
+        (Tollgate 6: Re-signing Integration)
+
+        Args:
+            context: Execution context
+            team_id: User's team ID
+
+        Returns:
+            Dictionary with expiring players, cap data, and GM proposals
+        """
+        expiring_players = self._get_expiring_contracts(context, team_id)
+
+        preview = {
+            "stage_name": "Re-signing Period",
+            "description": "Re-sign your team's expiring contract players before they hit free agency.",
+            "expiring_players": expiring_players,
+            "is_interactive": True,
+        }
+        # Add cap data for UI display
+        preview["cap_data"] = self._get_cap_data(context, team_id)
+
+        # Generate GM proposals if directives exist (Tollgate 6)
+        gm_proposals = []
+        trust_gm = False
+
+        if expiring_players:
+            try:
+                from ..database.owner_directives_api import OwnerDirectivesAPI
+                from ..database.proposal_api import ProposalAPI
+                from ..database.connection import GameCycleDatabase
+                from ..services.proposal_generators import ResigningProposalGenerator
+
+                dynasty_id = context.get("dynasty_id")
+                season = context.get("season", 2025)
+                db_path = context.get("db_path", self._database_path)
+
+                # Load owner directives
+                # Note: Directives are saved for "next season" during Owner Review,
+                # so we need to load season + 1 during offseason stages
+                db = GameCycleDatabase(db_path)
+                directives_api = OwnerDirectivesAPI(db)
+                directives = directives_api.get_directives(dynasty_id, team_id, season + 1)
+
+                if directives:
+                    trust_gm = directives.trust_gm
+
+                    # Generate proposals
+                    generator = ResigningProposalGenerator(
+                        db_path=db_path,
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        team_id=team_id,
+                        directives=directives,
+                    )
+                    proposals = generator.generate_proposals(expiring_players)
+
+                    if proposals:
+                        # Persist proposals to database
+                        proposal_api = ProposalAPI(db)
+                        for proposal in proposals:
+                            proposal_api.create_proposal(proposal)
+
+                        # Handle Trust GM mode - auto-approve all
+                        if trust_gm:
+                            for proposal in proposals:
+                                proposal_api.approve_proposal(
+                                    dynasty_id=dynasty_id,
+                                    team_id=team_id,
+                                    proposal_id=proposal.proposal_id,
+                                    notes="Auto-approved (Trust GM mode)",
+                                )
+                            gm_proposals = [
+                                p.to_dict() | {"auto_approved": True}
+                                for p in proposals
+                            ]
+                        else:
+                            gm_proposals = [
+                                p.to_dict() | {"auto_approved": False}
+                                for p in proposals
+                            ]
+
+            except Exception as prop_error:
+                print(f"[OffseasonHandler] Error generating resigning proposals: {prop_error}")
+                import traceback
+                traceback.print_exc()
+
+        preview["gm_proposals"] = gm_proposals
+        preview["trust_gm"] = trust_gm
+
+        # Get GM rejection recommendations (players NOT to extend)
+        gm_rejections = []
+        if expiring_players:
+            try:
+                from ..services.resigning_service import ResigningService
+
+                dynasty_id = context.get("dynasty_id")
+                season = context.get("season", 2025)
+                db_path = context.get("db_path", self._database_path)
+
+                resigning_service = ResigningService(
+                    db_path=db_path,
+                    dynasty_id=dynasty_id,
+                    season=season
+                )
+
+                gm_rejections = resigning_service.get_gm_rejection_recommendations(
+                    team_id=team_id,
+                    expiring_players=expiring_players
+                )
+
+            except Exception as reject_error:
+                print(f"[OffseasonHandler] Error generating rejection recommendations: {reject_error}")
+                import traceback
+                traceback.print_exc()
+
+        preview["gm_rejections"] = gm_rejections
+
+        return preview
+
     def _get_free_agents(self, context: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Get list of available free agents.
@@ -554,6 +674,67 @@ class OffseasonHandler:
             }
             # Add cap data for UI display
             preview["cap_data"] = self._get_cap_data(context, user_team_id)
+
+            # Tollgate 9: Generate GM draft proposal if user's pick is on the clock
+            gm_proposal = None
+            trust_gm = False
+
+            if current_pick and current_pick.get("team_id") == user_team_id:
+                try:
+                    from ..services.proposal_generators.draft_generator import DraftProposalGenerator
+                    from ..database.owner_directives_api import OwnerDirectivesAPI
+                    from ..database.proposal_api import ProposalAPI
+                    from ..models.owner_directives import OwnerDirectives
+                    from database.database_api import DatabaseAPI
+
+                    # Load owner directives (saved for season + 1 during Owner Review)
+                    directives_api = OwnerDirectivesAPI(db_path)
+                    directives_dict = directives_api.get_directives(dynasty_id, user_team_id, season + 1)
+
+                    if directives_dict:
+                        directives_dict["dynasty_id"] = dynasty_id
+                        directives_dict["team_id"] = user_team_id
+                        directives_dict["season"] = season
+                        directives = OwnerDirectives.from_dict(directives_dict)
+                        trust_gm = directives.trust_gm
+
+                        # Generate draft proposal
+                        generator = DraftProposalGenerator(
+                            db_path=db_path,
+                            dynasty_id=dynasty_id,
+                            season=season,
+                            team_id=user_team_id,
+                            directives=directives,
+                        )
+                        proposal = generator.generate_proposal_for_pick(
+                            pick_info=current_pick,
+                            available_prospects=prospects,
+                        )
+
+                        # Persist proposal
+                        db_api = DatabaseAPI(db_path)
+                        with db_api.get_game_cycle_connection() as conn:
+                            proposal_api = ProposalAPI(conn, dynasty_id)
+                            proposal_api.create_proposal(proposal)
+
+                            if trust_gm:
+                                proposal_api.approve_proposal(
+                                    dynasty_id=dynasty_id,
+                                    team_id=user_team_id,
+                                    proposal_id=proposal.proposal_id,
+                                    notes="Auto-approved by Trust GM mode"
+                                )
+
+                        gm_proposal = proposal.to_dict()
+
+                except Exception as e:
+                    import traceback
+                    print(f"[OffseasonHandler] Error generating draft proposal: {e}")
+                    traceback.print_exc()
+
+            preview["gm_proposal"] = gm_proposal
+            preview["trust_gm"] = trust_gm
+
             return preview
 
         except Exception as e:
@@ -580,8 +761,9 @@ class OffseasonHandler:
         Execute re-signing phase for all teams.
 
         Processes:
-        1. User team decisions (from context["user_decisions"])
-        2. AI team re-signing decisions
+        1. Approved GM extension proposals (Tollgate 6)
+        2. User team manual decisions (from context["user_decisions"])
+        3. AI team re-signing decisions
         """
         from ..services.resigning_service import ResigningService
 
@@ -589,6 +771,7 @@ class OffseasonHandler:
         season = context.get("season", 2025)
         user_team_id = context.get("user_team_id", 1)
         user_decisions = context.get("user_decisions", {})  # {player_id: "resign"|"release"}
+        approved_proposals = context.get("approved_proposals", [])  # Tollgate 6
         db_path = context.get("db_path", self._database_path)
 
         service = ResigningService(db_path, dynasty_id, season)
@@ -596,10 +779,45 @@ class OffseasonHandler:
         events = []
         resigned_players = []
         released_players = []
+        processed_player_ids = set()  # Track players handled by proposals
 
-        # 1. Process USER team decisions (from UI)
+        # 1. Process APPROVED GM extension proposals (Tollgate 6)
+        for proposal_dict in approved_proposals:
+            player_id = int(proposal_dict.get("subject_player_id", 0))
+            if not player_id:
+                continue
+
+            player_name = proposal_dict.get("details", {}).get("player_name", "Unknown")
+
+            result = service.resign_player(
+                player_id,
+                user_team_id,
+                player_info=None,
+                skip_preference_check=True,  # GM already evaluated
+            )
+
+            if result["success"]:
+                resigned_players.append({
+                    "player_id": player_id,
+                    "player_name": result["player_name"],
+                    "team_id": user_team_id,
+                    "contract_details": result.get("contract_details", {}),
+                    "gm_proposed": True,  # Mark as GM-proposed extension
+                })
+                events.append(f"Re-signed {result['player_name']} (GM recommendation)")
+                processed_player_ids.add(player_id)
+            else:
+                # Log failure but continue
+                error = result.get("error_message", "Unknown error")
+                events.append(f"Failed to re-sign {player_name}: {error}")
+
+        # 2. Process USER team manual decisions (skip if already handled by proposal)
         for player_id_str, decision in user_decisions.items():
             player_id = int(player_id_str) if isinstance(player_id_str, str) else player_id_str
+
+            # Skip if already processed via GM proposal
+            if player_id in processed_player_ids:
+                continue
 
             if decision == "resign":
                 result = service.resign_player(player_id, user_team_id)
@@ -621,7 +839,7 @@ class OffseasonHandler:
                     })
                     events.append(f"Released {result['player_name']} to free agency")
 
-        # 2. Process AI team decisions
+        # 3. Process AI team decisions
         ai_result = service.process_ai_resignings(user_team_id)
         resigned_players.extend(ai_result.get("resigned", []))
         released_players.extend(ai_result.get("released", []))
@@ -679,6 +897,56 @@ class OffseasonHandler:
         if legacy_decisions and not fa_wave_actions:
             fa_wave_actions = self._convert_legacy_fa_decisions(legacy_decisions)
 
+        # TOLLGATE 7: Process approved proposals from previous iteration
+        # When owner clicks "Approve" on a GM proposal, it gets added here
+        approved_proposal_ids = context.get("approved_proposal_ids", [])
+        if approved_proposal_ids:
+            print(f"[DEBUG OffseasonHandler] Processing {len(approved_proposal_ids)} approved proposals")
+            try:
+                from ..database.proposal_api import ProposalAPI
+                from ..models.proposal_enums import ProposalStatus
+                import sqlite3
+
+                conn = sqlite3.connect(db_path)
+                proposal_api = ProposalAPI(conn, dynasty_id)
+
+                # Get approved proposals and convert to offers
+                additional_offers = []
+                for proposal_id in approved_proposal_ids:
+                    proposal = proposal_api.get_proposal(proposal_id)
+                    if proposal and proposal.proposal_type.value == "SIGNING":
+                        details = proposal.details
+                        contract = details.get("contract", {})
+
+                        # Build offer from proposal details
+                        offer = {
+                            "player_id": int(proposal.subject_player_id),
+                            "aav": contract.get("aav", 5_000_000),
+                            "years": contract.get("years", 3),
+                            "guaranteed": contract.get("guaranteed", 0),
+                            "signing_bonus": details.get("signing_bonus", 0),
+                        }
+                        additional_offers.append(offer)
+
+                        # Mark proposal as executed
+                        proposal_api.update_status(
+                            proposal_id,
+                            ProposalStatus.APPROVED,
+                            notes="Offer submitted"
+                        )
+                        print(f"[DEBUG OffseasonHandler] Submitting offer for player {offer['player_id']} from proposal {proposal_id}")
+
+                conn.close()
+
+                # Add to existing offers
+                existing_offers = fa_wave_actions.get("submit_offers", [])
+                fa_wave_actions["submit_offers"] = existing_offers + additional_offers
+
+            except Exception as e:
+                print(f"[WARNING OffseasonHandler] Failed to process approved proposals: {e}")
+                import traceback
+                traceback.print_exc()
+
         # Create executor (factory handles service instantiation)
         executor = FAWaveExecutor.create(db_path, dynasty_id, season)
 
@@ -708,8 +976,10 @@ class OffseasonHandler:
                 from ..database.owner_directives_api import OwnerDirectivesAPI
                 from ..models.owner_directives import OwnerDirectives
 
+                # Note: Directives are saved for "next season" during Owner Review,
+                # so we need to load season + 1 during offseason stages
                 directives_api = OwnerDirectivesAPI(db_path)
-                directives_dict = directives_api.get_directives(dynasty_id, user_team_id, season)
+                directives_dict = directives_api.get_directives(dynasty_id, user_team_id, season + 1)
                 if directives_dict:
                     directives_dict["dynasty_id"] = dynasty_id
                     directives_dict["team_id"] = user_team_id
@@ -737,16 +1007,82 @@ class OffseasonHandler:
 
                 # Generate proposals
                 engine = GMFAProposalEngine(gm_archetype, fa_guidance)
-                gm_proposals = engine.generate_proposals(
+                ephemeral_proposals = engine.generate_proposals(
                     available_players=available_players,
                     team_needs=team_needs,
                     cap_space=cap_space,
                     wave=fresh_wave_state.get("current_wave", 0)
                 )
 
-                print(f"[DEBUG OffseasonHandler] Generated {len(gm_proposals)} GM proposals for wave {fresh_wave_state.get('current_wave')}")
+                print(f"[DEBUG OffseasonHandler] Generated {len(ephemeral_proposals)} GM proposals for wave {fresh_wave_state.get('current_wave')}")
+
+                # TOLLGATE 7: Convert ephemeral proposals to persistent format
+                if ephemeral_proposals:
+                    from ..services.proposal_generators import FASigningProposalGenerator
+                    from ..database.proposal_api import ProposalAPI
+                    from ..models.proposal_enums import ProposalStatus
+
+                    # Get directives for generator (reload if we only have fa_guidance)
+                    directives_for_gen = None
+                    if 'owner_directives' in dir():
+                        directives_for_gen = owner_directives
+                    else:
+                        # Reload directives
+                        try:
+                            directives_dict_reload = directives_api.get_directives(dynasty_id, user_team_id, season + 1)
+                            if directives_dict_reload:
+                                directives_dict_reload["dynasty_id"] = dynasty_id
+                                directives_dict_reload["team_id"] = user_team_id
+                                directives_dict_reload["season"] = season
+                                from ..models.owner_directives import OwnerDirectives as OD
+                                directives_for_gen = OD.from_dict(directives_dict_reload)
+                        except Exception:
+                            pass
+
+                    # Convert to persistent proposals
+                    generator = FASigningProposalGenerator(
+                        db_path=db_path,
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        team_id=user_team_id,
+                        directives=directives_for_gen,
+                    )
+                    persistent_proposals = generator.generate_proposals(
+                        gm_proposals=ephemeral_proposals,
+                        wave_number=fresh_wave_state.get("current_wave", 0),
+                        cap_space=cap_space,
+                    )
+
+                    # Persist to database
+                    import sqlite3
+                    conn = sqlite3.connect(db_path)
+                    proposal_api = ProposalAPI(conn, dynasty_id)
+
+                    for proposal in persistent_proposals:
+                        proposal_api.create_proposal(proposal)
+
+                    # Handle Trust GM mode: auto-approve and execute
+                    if directives_for_gen and directives_for_gen.trust_gm:
+                        print(f"[DEBUG OffseasonHandler] Trust GM mode: auto-approving {len(persistent_proposals)} proposals")
+                        for proposal in persistent_proposals:
+                            proposal.approve(notes="Auto-approved (Trust GM mode)")
+                            proposal_api.update_status(
+                                proposal.proposal_id,
+                                ProposalStatus.APPROVED,
+                                notes="Auto-approved (Trust GM mode)"
+                            )
+
+                    conn.close()
+
+                    # Use persistent proposals (as dicts) for return
+                    gm_proposals = [p.to_dict() for p in persistent_proposals]
+                    print(f"[DEBUG OffseasonHandler] Persisted {len(gm_proposals)} proposals to database")
+                else:
+                    gm_proposals = []
             except Exception as e:
                 print(f"[WARNING OffseasonHandler] Failed to generate GM proposals: {e}")
+                import traceback
+                traceback.print_exc()
                 gm_proposals = []
 
         # Format events from structured result
@@ -1013,8 +1349,10 @@ class OffseasonHandler:
             # Load owner directives if no explicit draft_direction provided
             if draft_direction is None:
                 try:
+                    # Note: Directives are saved for "next season" during Owner Review,
+                    # so we need to load season + 1 during offseason stages
                     directives_api = OwnerDirectivesAPI(db_path)
-                    directives_dict = directives_api.get_directives(dynasty_id, user_team_id, season)
+                    directives_dict = directives_api.get_directives(dynasty_id, user_team_id, season + 1)
                     if directives_dict:
                         directives_dict["dynasty_id"] = dynasty_id
                         directives_dict["team_id"] = user_team_id
@@ -1022,6 +1360,26 @@ class OffseasonHandler:
                         owner_directives = OwnerDirectives.from_dict(directives_dict)
                         draft_direction = owner_directives.to_draft_direction()
                         events.append(f"Using owner directives: {owner_directives.draft_strategy} strategy")
+
+                        # Resolve draft wishlist names to prospect IDs
+                        if owner_directives.draft_wishlist:
+                            try:
+                                from database.draft_class_api import DraftClassAPI
+                                draft_class_api = DraftClassAPI()
+                                for prospect_name in owner_directives.draft_wishlist:
+                                    prospect = draft_class_api.find_prospect_by_name(
+                                        dynasty_id, season, prospect_name
+                                    )
+                                    if prospect:
+                                        draft_direction.watchlist_prospect_ids.append(
+                                            prospect["player_id"]
+                                        )
+                                        events.append(
+                                            f"Watchlist: {prospect['first_name']} {prospect['last_name']} "
+                                            f"({prospect['position']}, {prospect['overall']} OVR)"
+                                        )
+                            except Exception as e:
+                                pass  # Proceed without resolved wishlist
                 except Exception as e:
                     pass  # Proceed without directives if loading fails
 
@@ -1049,8 +1407,11 @@ class OffseasonHandler:
                 }
 
             if auto_complete:
-                # Auto-complete entire draft
-                results = draft_service.auto_complete_draft(user_team_id)
+                # Auto-complete entire draft with owner directives
+                results = draft_service.auto_complete_draft(
+                    user_team_id=user_team_id,
+                    draft_direction=draft_direction
+                )
                 picks = [r for r in results if r.get("success")]
                 events.append(f"NFL Draft completed ({len(picks)} picks)")
             else:
@@ -1060,8 +1421,25 @@ class OffseasonHandler:
                 if current_pick:
                     overall_pick = current_pick["overall_pick"]
 
-                    # Execute user pick if decision provided
-                    if overall_pick in draft_decisions:
+                    # Tollgate 9: Check for approved GM draft proposal FIRST
+                    approved_prospect_id = self._get_approved_draft_pick(
+                        context=context,
+                        user_team_id=user_team_id,
+                    )
+
+                    if approved_prospect_id:
+                        # Execute the approved GM pick
+                        result = draft_service.make_draft_pick(
+                            approved_prospect_id, user_team_id, current_pick
+                        )
+                        if result.get("success"):
+                            picks.append(result)
+                            events.append(
+                                f"Pick {overall_pick}: You selected {result['player_name']} "
+                                f"({result['position']}, {result['overall']} OVR) (GM recommendation)"
+                            )
+                    # Execute user pick if decision provided (manual override)
+                    elif overall_pick in draft_decisions:
                         prospect_id = draft_decisions[overall_pick]
                         result = draft_service.make_draft_pick(prospect_id, user_team_id, current_pick)
                         if result.get("success"):
@@ -1114,6 +1492,66 @@ class OffseasonHandler:
                 "draft_complete": False,
             }
 
+    def _get_approved_draft_pick(
+        self,
+        context: Dict[str, Any],
+        user_team_id: int,
+    ) -> Optional[int]:
+        """
+        Get prospect ID from approved GM draft proposal.
+
+        Checks for approved DRAFT_PICK proposals for the current pick.
+        If found, marks the proposal as executed and returns the prospect ID.
+
+        Args:
+            context: Execution context with dynasty_id, season, db_path
+            user_team_id: User's team ID
+
+        Returns:
+            Prospect ID if approved proposal exists, None otherwise
+        """
+        try:
+            from ..database.proposal_api import ProposalAPI
+            from ..models.proposal_enums import ProposalType
+
+            dynasty_id = context.get("dynasty_id")
+            db_path = context.get("db_path", self._database_path)
+
+            with sqlite3.connect(db_path) as conn:
+                proposal_api = ProposalAPI(conn, dynasty_id)
+
+                # Get approved draft pick proposals
+                approved = proposal_api.get_approved_proposals(
+                    dynasty_id=dynasty_id,
+                    team_id=user_team_id,
+                    stage="OFFSEASON_DRAFT",
+                    proposal_type=ProposalType.DRAFT_PICK,
+                )
+
+                if not approved:
+                    return None
+
+                # Take the first approved proposal (should only be one per pick)
+                proposal = approved[0]
+                prospect_id = proposal.details.get("prospect_id")
+
+                if not prospect_id:
+                    print(f"[OffseasonHandler] Approved draft proposal missing prospect_id")
+                    return None
+
+                # Mark as executed so it won't be picked up again
+                proposal_api.mark_proposal_executed(
+                    dynasty_id=dynasty_id,
+                    team_id=user_team_id,
+                    proposal_id=proposal.proposal_id,
+                )
+
+                return prospect_id
+
+        except Exception as e:
+            print(f"[OffseasonHandler] Error getting approved draft pick: {e}")
+            return None
+
     def _get_roster_cuts_preview(
         self,
         context: Dict[str, Any],
@@ -1146,6 +1584,49 @@ class OffseasonHandler:
             # Get suggestion player IDs for UI highlighting
             suggested_ids = [p["player_id"] for p in suggestions]
 
+            # Tollgate 10: Generate GM cut proposals
+            gm_proposals = []
+            trust_gm = False
+
+            if cuts_needed > 0:
+                from ..database.owner_directives_api import OwnerDirectivesAPI
+                from ..database.connection import GameCycleDatabase
+
+                db = GameCycleDatabase(db_path)
+                conn = db.get_connection()
+
+                directives_api = OwnerDirectivesAPI(conn, dynasty_id)
+                directives = directives_api.get_directives(dynasty_id, team_id, season + 1)
+
+                if directives:
+                    trust_gm = directives.trust_gm
+
+                    from ..services.proposal_generators.cuts_generator import RosterCutsProposalGenerator
+
+                    generator = RosterCutsProposalGenerator(
+                        db_path=db_path,
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        team_id=team_id,
+                        directives=directives,
+                    )
+
+                    proposals = generator.generate_proposals(roster, cuts_needed)
+
+                    # Persist proposals
+                    from ..database.proposal_api import ProposalAPI
+                    proposal_api = ProposalAPI(conn, dynasty_id)
+
+                    for proposal in proposals:
+                        proposal_api.create_proposal(proposal)
+
+                        if trust_gm:
+                            proposal_api.approve_proposal(
+                                dynasty_id, team_id, proposal.proposal_id
+                            )
+
+                    gm_proposals = [p.to_dict() for p in proposals]
+
             preview = {
                 "stage_name": "Roster Cuts",
                 "description": f"Cut your roster from {roster_count} players down to the 53-man limit.",
@@ -1153,6 +1634,8 @@ class OffseasonHandler:
                 "roster_count": roster_count,
                 "cuts_needed": cuts_needed,
                 "cut_suggestions": suggested_ids,
+                "gm_proposals": gm_proposals,
+                "trust_gm": trust_gm,
                 "is_interactive": True,
             }
             # Add cap data for UI display
@@ -1202,6 +1685,49 @@ class OffseasonHandler:
             user_claims = waiver_service.get_team_claims(team_id)
             claim_player_ids = [c["player_id"] for c in user_claims]
 
+            # Tollgate 11: Generate GM waiver proposals
+            gm_proposals = []
+            trust_gm = False
+
+            if waiver_players:  # Only generate if players available
+                from ..database.owner_directives_api import OwnerDirectivesAPI
+                from ..database.connection import GameCycleDatabase
+
+                db = GameCycleDatabase(db_path)
+                conn = db.get_connection()
+
+                directives_api = OwnerDirectivesAPI(conn, dynasty_id)
+                directives = directives_api.get_directives(dynasty_id, team_id, season + 1)
+
+                if directives:
+                    trust_gm = directives.trust_gm
+
+                    from ..services.proposal_generators.waiver_generator import WaiverProposalGenerator
+
+                    generator = WaiverProposalGenerator(
+                        db_path=db_path,
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        team_id=team_id,
+                        directives=directives,
+                    )
+
+                    proposals = generator.generate_proposals(waiver_players)
+
+                    # Persist proposals
+                    from ..database.proposal_api import ProposalAPI
+                    proposal_api = ProposalAPI(conn, dynasty_id)
+
+                    for proposal in proposals:
+                        proposal_api.create_proposal(proposal)
+
+                        if trust_gm:
+                            proposal_api.approve_proposal(
+                                dynasty_id, team_id, proposal.proposal_id
+                            )
+
+                    gm_proposals = [p.to_dict() for p in proposals]
+
             preview = {
                 "stage_name": "Waiver Wire",
                 "description": f"Submit waiver claims for cut players. Your priority: #{user_priority}",
@@ -1209,6 +1735,8 @@ class OffseasonHandler:
                 "user_priority": user_priority,
                 "user_claims": claim_player_ids,
                 "total_on_waivers": len(waiver_players),
+                "gm_proposals": gm_proposals,
+                "trust_gm": trust_gm,
                 "is_interactive": True,
             }
             # Add cap data for UI display
@@ -1357,42 +1885,102 @@ class OffseasonHandler:
             total_dead_money = 0
             total_cap_savings = 0
 
-            # 1. Process USER team cuts
-            # Support both formats: list of IDs (legacy) or list of dicts with use_june_1
-            for cut_item in user_cuts:
-                # Handle both formats: int/str player_id or dict with player_id and use_june_1
-                if isinstance(cut_item, dict):
-                    player_id = cut_item.get("player_id")
-                    use_june_1 = cut_item.get("use_june_1", False)
-                else:
-                    player_id = cut_item
-                    use_june_1 = False
+            # Tollgate 10: Execute approved GM proposals first
+            from ..database.proposal_api import ProposalAPI
+            from ..database.connection import GameCycleDatabase
+            from ..models.proposal_enums import ProposalType
 
-                if isinstance(player_id, str):
-                    player_id = int(player_id)
+            db = GameCycleDatabase(db_path)
+            conn = db.get_connection()
+            proposal_api = ProposalAPI(conn, dynasty_id)
 
-                result = cuts_service.cut_player(
-                    player_id, user_team_id, add_to_waivers=True, use_june_1=use_june_1
-                )
-                if result["success"]:
-                    user_cut_results.append(result)
-                    total_dead_money += result.get("dead_money", 0)
-                    total_cap_savings += result.get("cap_savings", 0)
+            approved = proposal_api.get_approved_proposals(
+                dynasty_id=dynasty_id,
+                team_id=user_team_id,
+                stage="OFFSEASON_ROSTER_CUTS",
+                proposal_type=ProposalType.CUT,
+            )
 
-                    # Show cut type in event message
-                    cut_type_str = " (June 1)" if use_june_1 else ""
-                    next_yr_str = ""
-                    if result.get("dead_money_next_year", 0) > 0:
-                        next_yr_str = f", Next yr: ${result['dead_money_next_year']:,}"
-                    events.append(
-                        f"Cut {result['player_name']}{cut_type_str} (Dead $: ${result['dead_money']:,}{next_yr_str})"
+            if approved:
+                # Execute approved GM proposals
+                for proposal in approved:
+                    player_id = proposal.details.get("player_id")
+                    use_june_1 = proposal.details.get("use_june_1", False)
+
+                    if not player_id:
+                        continue
+
+                    result = cuts_service.cut_player(
+                        player_id=player_id,
+                        team_id=user_team_id,
+                        add_to_waivers=True,
+                        use_june_1=use_june_1,
                     )
 
-            if user_cut_results:
-                events.append(
-                    f"Your roster cuts complete: {len(user_cut_results)} players, "
-                    f"${total_cap_savings:,} cap savings, ${total_dead_money:,} dead money"
-                )
+                    if result.get("success"):
+                        user_cut_results.append(result)
+                        total_dead_money += result.get("dead_money", 0)
+                        total_cap_savings += result.get("cap_savings", 0)
+
+                        # Show GM recommendation in event message
+                        cut_type_str = " (June 1)" if use_june_1 else ""
+                        next_yr_str = ""
+                        if result.get("dead_money_next_year", 0) > 0:
+                            next_yr_str = f", Next yr: ${result['dead_money_next_year']:,}"
+                        events.append(
+                            f"Cut {result['player_name']}{cut_type_str} - "
+                            f"${result['cap_savings']/1_000_000:.1f}M saved, "
+                            f"${result['dead_money']/1_000_000:.1f}M dead (GM recommendation)"
+                        )
+
+                    # Mark executed
+                    proposal_api.mark_proposal_executed(
+                        dynasty_id, user_team_id, proposal.proposal_id
+                    )
+
+                if user_cut_results:
+                    events.append(
+                        f"GM-recommended cuts complete: {len(user_cut_results)} players, "
+                        f"${total_cap_savings:,} cap savings, ${total_dead_money:,} dead money"
+                    )
+
+            # 1. Process manual USER team cuts (if provided, overrides/supplements GM proposals)
+            elif user_cuts:
+                # Support both formats: list of IDs (legacy) or list of dicts with use_june_1
+                for cut_item in user_cuts:
+                    # Handle both formats: int/str player_id or dict with player_id and use_june_1
+                    if isinstance(cut_item, dict):
+                        player_id = cut_item.get("player_id")
+                        use_june_1 = cut_item.get("use_june_1", False)
+                    else:
+                        player_id = cut_item
+                        use_june_1 = False
+
+                    if isinstance(player_id, str):
+                        player_id = int(player_id)
+
+                    result = cuts_service.cut_player(
+                        player_id, user_team_id, add_to_waivers=True, use_june_1=use_june_1
+                    )
+                    if result["success"]:
+                        user_cut_results.append(result)
+                        total_dead_money += result.get("dead_money", 0)
+                        total_cap_savings += result.get("cap_savings", 0)
+
+                        # Show cut type in event message
+                        cut_type_str = " (June 1)" if use_june_1 else ""
+                        next_yr_str = ""
+                        if result.get("dead_money_next_year", 0) > 0:
+                            next_yr_str = f", Next yr: ${result['dead_money_next_year']:,}"
+                        events.append(
+                            f"Cut {result['player_name']}{cut_type_str} (Dead $: ${result['dead_money']:,}{next_yr_str})"
+                        )
+
+                if user_cut_results:
+                    events.append(
+                        f"Your roster cuts complete: {len(user_cut_results)} players, "
+                        f"${total_cap_savings:,} cap savings, ${total_dead_money:,} dead money"
+                    )
 
             # 2. Process AI team cuts
             ai_result = cuts_service.process_ai_cuts(user_team_id)
@@ -1450,16 +2038,61 @@ class OffseasonHandler:
         try:
             waiver_service = WaiverService(db_path, dynasty_id, season)
 
-            # 1. Submit user's claims
-            user_claims_submitted = []
-            for player_id in user_claims:
-                if isinstance(player_id, str):
-                    player_id = int(player_id)
+            # Tollgate 11: Execute approved GM proposals first
+            from ..database.proposal_api import ProposalAPI
+            from ..database.connection import GameCycleDatabase
+            from ..models.proposal_enums import ProposalType
 
-                result = waiver_service.submit_claim(user_team_id, player_id)
-                if result["success"]:
-                    user_claims_submitted.append(result)
-                    events.append(f"Submitted waiver claim for player {player_id}")
+            db = GameCycleDatabase(db_path)
+            conn = db.get_connection()
+            proposal_api = ProposalAPI(conn, dynasty_id)
+
+            approved = proposal_api.get_approved_proposals(
+                dynasty_id=dynasty_id,
+                team_id=user_team_id,
+                stage="OFFSEASON_WAIVER_WIRE",
+                proposal_type=ProposalType.WAIVER_CLAIM,
+            )
+
+            gm_claims_submitted = []
+            if approved:
+                # Execute approved GM proposals
+                for proposal in approved:
+                    player_id = proposal.details.get("player_id")
+
+                    if not player_id:
+                        continue
+
+                    result = waiver_service.submit_claim(user_team_id, player_id)
+
+                    if result.get("success"):
+                        gm_claims_submitted.append(result)
+                        events.append(
+                            f"Submitted claim for {proposal.details.get('player_name', f'player {player_id}')} "
+                            f"(GM recommendation)"
+                        )
+
+                    # Mark executed
+                    proposal_api.mark_proposal_executed(
+                        dynasty_id, user_team_id, proposal.proposal_id
+                    )
+
+                if gm_claims_submitted:
+                    events.append(
+                        f"GM-recommended claims: {len(gm_claims_submitted)} submitted"
+                    )
+
+            # 1. Submit manual user's claims (supplements GM proposals)
+            user_claims_submitted = []
+            if user_claims:
+                for player_id in user_claims:
+                    if isinstance(player_id, str):
+                        player_id = int(player_id)
+
+                    result = waiver_service.submit_claim(user_team_id, player_id)
+                    if result["success"]:
+                        user_claims_submitted.append(result)
+                        events.append(f"Submitted waiver claim for player {player_id}")
 
             # 2. AI teams submit claims
             ai_claims_result = waiver_service.process_ai_claims(user_team_id)
@@ -1574,6 +2207,64 @@ class OffseasonHandler:
             next_cap_helper = CapHelper(db_path, dynasty_id, season + 1)
             preview["projected_cap_data"] = next_cap_helper.get_cap_summary(team_id)
 
+            # Generate GM proposal if directives exist and tag not used
+            gm_proposal = None
+            trust_gm = False
+
+            if not tag_used:
+                try:
+                    from ..database.owner_directives_api import OwnerDirectivesAPI
+                    from ..database.proposal_api import ProposalAPI
+                    from ..database.connection import GameCycleDatabase
+                    from ..services.proposal_generators import FranchiseTagProposalGenerator
+
+                    # Load owner directives
+                    # Note: Directives are saved for "next season" during Owner Review,
+                    # so we need to load season + 1 during offseason stages
+                    db = GameCycleDatabase(db_path)
+                    directives_api = OwnerDirectivesAPI(db)
+                    directives = directives_api.get_directives(dynasty_id, team_id, season + 1)
+
+                    if directives:
+                        trust_gm = directives.trust_gm
+
+                        # Generate proposal
+                        generator = FranchiseTagProposalGenerator(
+                            db_path=db_path,
+                            dynasty_id=dynasty_id,
+                            season=season,
+                            team_id=team_id,
+                            directives=directives,
+                        )
+                        proposal = generator.generate_proposal()
+
+                        if proposal:
+                            # Persist proposal to database
+                            proposal_api = ProposalAPI(db)
+                            proposal_api.create_proposal(proposal)
+
+                            gm_proposal = proposal.to_dict()
+
+                            # Handle Trust GM mode - auto-approve
+                            if trust_gm:
+                                proposal_api.approve_proposal(
+                                    dynasty_id=dynasty_id,
+                                    team_id=team_id,
+                                    proposal_id=proposal.proposal_id,
+                                    notes="Auto-approved (Trust GM mode)",
+                                )
+                                gm_proposal["auto_approved"] = True
+                            else:
+                                gm_proposal["auto_approved"] = False
+
+                except Exception as prop_error:
+                    print(f"[OffseasonHandler] Error generating tag proposal: {prop_error}")
+                    import traceback
+                    traceback.print_exc()
+
+            preview["gm_proposal"] = gm_proposal
+            preview["trust_gm"] = trust_gm
+
             return preview
 
         except Exception as e:
@@ -1587,6 +2278,8 @@ class OffseasonHandler:
                 "tag_used": False,
                 "total_taggable": 0,
                 "is_interactive": True,
+                "gm_proposal": None,
+                "trust_gm": False,
             }
 
     def _execute_honors(
@@ -1837,18 +2530,20 @@ class OffseasonHandler:
         Execute franchise tag phase for all teams.
 
         Processes:
-        1. User team tag decision (from context["tag_decision"])
+        1. User team tag decision (from approved_proposal or tag_decision)
         2. AI team tag decisions for all 31 other teams
 
         Context keys:
-            - tag_decision: {"player_id": int, "tag_type": "franchise"|"transition"} or None
+            - approved_proposal: Dict from approved PersistentGMProposal (Tollgate 5)
+            - tag_decision: {"player_id": int, "tag_type": "franchise"|"transition"} (legacy)
         """
         from ..services.franchise_tag_service import FranchiseTagService
 
         dynasty_id = context.get("dynasty_id")
         season = context.get("season", 2025)
         user_team_id = context.get("user_team_id", 1)
-        tag_decision = context.get("tag_decision")  # {"player_id": X, "tag_type": "franchise"|"transition"}
+        approved_proposal = context.get("approved_proposal")  # New: from proposal system
+        tag_decision = context.get("tag_decision")  # Legacy: direct decision
         db_path = context.get("db_path", self._database_path)
 
         events = []
@@ -1858,10 +2553,28 @@ class OffseasonHandler:
             tag_service = FranchiseTagService(db_path, dynasty_id, season)
 
             # 1. Process USER team tag decision
-            if tag_decision and tag_decision.get("player_id"):
+            # Priority: approved_proposal > tag_decision
+            player_id = None
+            tag_type = None
+
+            if approved_proposal:
+                # Extract from approved GM proposal
+                player_id = approved_proposal.get("subject_player_id")
+                if player_id:
+                    player_id = int(player_id)
+                details = approved_proposal.get("details", {})
+                proposal_tag_type = details.get("tag_type", "non_exclusive")
+                # Map proposal tag_type to service tag_type
+                tag_type = "franchise" if proposal_tag_type in ["exclusive", "non_exclusive"] else "transition"
+                events.append("Processing approved GM franchise tag proposal")
+
+            elif tag_decision and tag_decision.get("player_id"):
+                # Legacy direct decision path
                 player_id = tag_decision["player_id"]
                 tag_type = tag_decision.get("tag_type", "franchise")
 
+            # Execute the tag if we have a decision
+            if player_id:
                 if tag_type == "franchise":
                     result = tag_service.apply_franchise_tag(player_id, user_team_id)
                 else:
@@ -2021,6 +2734,70 @@ class OffseasonHandler:
             }
             # Add cap data for UI display
             preview["cap_data"] = self._get_cap_data(context, user_team_id)
+
+            # Generate GM trade proposals (Tollgate 8)
+            gm_proposals = []
+            trust_gm = False
+
+            try:
+                from ..database.owner_directives_api import OwnerDirectivesAPI
+                from ..database.proposal_api import ProposalAPI
+                from ..database.connection import GameCycleDatabase
+                from ..services.proposal_generators import TradeProposalGenerator
+
+                # Load owner directives (saved for season + 1 during Owner Review)
+                db = GameCycleDatabase(db_path)
+                directives_api = OwnerDirectivesAPI(db)
+                directives = directives_api.get_directives(
+                    dynasty_id, user_team_id, season + 1
+                )
+
+                if directives:
+                    trust_gm = directives.trust_gm
+
+                    # Generate trade proposals
+                    generator = TradeProposalGenerator(
+                        db_path=db_path,
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        team_id=user_team_id,
+                        directives=directives,
+                    )
+                    proposals = generator.generate_proposals()
+
+                    if proposals:
+                        # Persist proposals to database
+                        proposal_api = ProposalAPI(db)
+                        for proposal in proposals:
+                            proposal_api.create_proposal(proposal)
+
+                        # Handle Trust GM mode - auto-approve all
+                        if trust_gm:
+                            for proposal in proposals:
+                                proposal_api.approve_proposal(
+                                    dynasty_id=dynasty_id,
+                                    team_id=user_team_id,
+                                    proposal_id=proposal.proposal_id,
+                                    notes="Auto-approved (Trust GM mode)",
+                                )
+                            gm_proposals = [
+                                p.to_dict() | {"auto_approved": True}
+                                for p in proposals
+                            ]
+                        else:
+                            gm_proposals = [
+                                p.to_dict() | {"auto_approved": False}
+                                for p in proposals
+                            ]
+
+            except Exception as prop_error:
+                print(f"[OffseasonHandler] Error generating trade proposals: {prop_error}")
+                import traceback
+                traceback.print_exc()
+
+            preview["gm_proposals"] = gm_proposals
+            preview["trust_gm"] = trust_gm
+
             return preview
 
         except Exception as e:
@@ -2077,7 +2854,16 @@ class OffseasonHandler:
             # Ensure draft pick ownership initialized
             trade_service.initialize_pick_ownership()
 
-            # 1. Process USER trade proposals
+            # 0. Execute approved GM trade proposals (Tollgate 8)
+            approved_results = self._execute_approved_trade_proposals(
+                context=context,
+                user_team_id=user_team_id,
+                trade_service=trade_service,
+            )
+            executed_trades.extend(approved_results.get("trades", []))
+            events.extend(approved_results.get("events", []))
+
+            # 1. Process USER trade proposals (manual proposals from UI)
             for prop_data in user_proposals:
                 team2_id = prop_data.get("team2_id")
                 team1_player_ids = prop_data.get("team1_player_ids", [])
@@ -2157,6 +2943,107 @@ class OffseasonHandler:
                 "executed_trades": [],
                 "total_trades": 0,
             }
+
+    def _execute_approved_trade_proposals(
+        self,
+        context: Dict[str, Any],
+        user_team_id: int,
+        trade_service,
+    ) -> Dict[str, Any]:
+        """
+        Execute trades from approved GM proposals (Tollgate 8).
+
+        Retrieves approved TRADE proposals from ProposalAPI and executes
+        them via TradeService.
+
+        Args:
+            context: Execution context with dynasty_id, db_path
+            user_team_id: User's team ID
+            trade_service: TradeService instance
+
+        Returns:
+            Dict with trades list and events list
+        """
+        from ..database.proposal_api import ProposalAPI
+        from ..database.connection import GameCycleDatabase
+        from ..models.proposal_enums import ProposalType
+
+        events = []
+        executed_trades = []
+
+        dynasty_id = context.get("dynasty_id")
+        db_path = context.get("db_path", self._database_path)
+
+        try:
+            db = GameCycleDatabase(db_path)
+            proposal_api = ProposalAPI(db)
+
+            # Get approved trade proposals
+            approved = proposal_api.get_approved_proposals(
+                dynasty_id=dynasty_id,
+                team_id=user_team_id,
+                stage="OFFSEASON_TRADING",
+                proposal_type=ProposalType.TRADE,
+            )
+
+            if not approved:
+                return {"trades": [], "events": []}
+
+            for proposal in approved:
+                details = proposal.details
+
+                # Extract execution fields
+                trade_partner_id = details.get("trade_partner_id")
+                sending_player_ids = details.get("sending_player_ids", [])
+                sending_pick_ids = details.get("sending_pick_ids", [])
+                receiving_player_ids = details.get("receiving_player_ids", [])
+                receiving_pick_ids = details.get("receiving_pick_ids", [])
+
+                if not trade_partner_id:
+                    events.append(
+                        f"Skipped proposal {proposal.proposal_id}: missing partner ID"
+                    )
+                    continue
+
+                try:
+                    # Reconstruct and execute the trade
+                    trade_proposal = trade_service.propose_trade(
+                        team1_id=user_team_id,
+                        team1_player_ids=sending_player_ids,
+                        team2_id=trade_partner_id,
+                        team2_player_ids=receiving_player_ids,
+                        team1_pick_ids=sending_pick_ids,
+                        team2_pick_ids=receiving_pick_ids,
+                    )
+
+                    # Execute without re-evaluating (already approved)
+                    result = trade_service.execute_trade(trade_proposal)
+                    executed_trades.append(result)
+
+                    partner_name = details.get("trade_partner", f"Team {trade_partner_id}")
+                    events.append(
+                        f"GM trade executed with {partner_name} "
+                        f"(Trade #{result.get('trade_id', '?')})"
+                    )
+
+                    # Mark proposal as executed
+                    proposal_api.mark_proposal_executed(
+                        dynasty_id=dynasty_id,
+                        team_id=user_team_id,
+                        proposal_id=proposal.proposal_id,
+                    )
+
+                except Exception as trade_error:
+                    events.append(
+                        f"Failed to execute GM trade proposal: {str(trade_error)}"
+                    )
+
+        except Exception as e:
+            print(f"[OffseasonHandler] Error executing approved trade proposals: {e}")
+            import traceback
+            traceback.print_exc()
+
+        return {"trades": executed_trades, "events": events}
 
     def _process_ai_trades(
         self,
