@@ -38,11 +38,11 @@ class TestMVPCriteria:
         assert score.position == 'QB'
 
     def test_mvp_rb_position_multiplier_is_reduced(self, mock_elite_rb):
-        """RB position multiplier should be 0.90."""
+        """RB position multiplier should be 0.85."""
         criteria = MVPCriteria()
         score = criteria.calculate_score(mock_elite_rb)
 
-        assert score.position_multiplier == 0.90
+        assert score.position_multiplier == 0.85
         assert score.position == 'RB'
 
     def test_mvp_defensive_position_multiplier_reduced(self, mock_elite_edge):

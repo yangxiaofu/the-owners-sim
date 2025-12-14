@@ -1392,8 +1392,9 @@ class AwardsService:
                         pgs.team_id,
                         pgs.position,
                         CASE
-                            WHEN SUM(pgs.passing_attempts) >= 100 THEN
+                            WHEN SUM(pgs.passing_attempts) >= 250 THEN
                                 -- NFL passer rating formula approximation (using SQLite MIN/MAX)
+                                -- Minimum 250 attempts = 13.9 att/game in 18-game season (NFL standard: 14 att/game)
                                 (
                                     (MIN(2.375, MAX(0, (SUM(pgs.passing_completions) * 1.0 / SUM(pgs.passing_attempts) - 0.3) * 5))) +
                                     (MIN(2.375, MAX(0, (SUM(pgs.passing_yards) * 1.0 / SUM(pgs.passing_attempts) - 3) * 0.25))) +
@@ -1409,7 +1410,7 @@ class AwardsService:
                         AND pgs.season_type = 'regular_season'
                         AND pgs.position = 'quarterback'
                     GROUP BY pgs.player_id, pgs.player_name, pgs.team_id, pgs.position
-                    HAVING SUM(pgs.passing_attempts) >= 100
+                    HAVING SUM(pgs.passing_attempts) >= 250
                     ORDER BY stat_value DESC
                     LIMIT 50
                 """

@@ -154,6 +154,10 @@ class EligibilityChecker:
         grade_data = self._get_player_grades(player_id)
         total_snaps = grade_data.get('total_snaps', 0) if grade_data else 0
 
+        # Enforce minimum snap count requirement
+        if total_snaps < MINIMUM_SNAPS:
+            reasons.append(f"Played {total_snaps} snaps (minimum {MINIMUM_SNAPS})")
+
         # Check position eligibility based on award type
         position_eligible = self._check_position_eligibility(
             position_group, award_type

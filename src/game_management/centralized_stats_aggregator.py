@@ -456,21 +456,27 @@ class CentralizedStatsAggregator:
         if play_result.achieved_first_down:
             offensive_stats.first_downs += 1
             # Track by type if available from play_result
-            if hasattr(play_result, 'play_type'):
-                if play_result.play_type in ['pass', 'pass_completion']:
+            if hasattr(play_result, 'outcome'):
+                outcome_str = str(play_result.outcome).lower()
+                # Pass outcomes: completion, incomplete, sack, scramble, interception, deflected_incomplete
+                PASS_OUTCOMES = {'completion', 'incomplete', 'sack', 'scramble', 'interception', 'deflected_incomplete'}
+                if outcome_str in PASS_OUTCOMES:
                     offensive_stats.first_downs_passing += 1
-                elif play_result.play_type in ['run', 'rush']:
+                elif 'run' in outcome_str:
                     offensive_stats.first_downs_rushing += 1
 
         # === Yards/Attempts (per-team) ===
         offensive_stats.total_yards += play_result.yards
-        if hasattr(play_result, 'play_type'):
-            if play_result.play_type in ['pass', 'pass_completion']:
+        if hasattr(play_result, 'outcome'):
+            outcome_str = str(play_result.outcome).lower()
+            # Pass outcomes: completion, incomplete, sack, scramble, interception, deflected_incomplete
+            PASS_OUTCOMES = {'completion', 'incomplete', 'sack', 'scramble', 'interception', 'deflected_incomplete'}
+            if outcome_str in PASS_OUTCOMES:
                 offensive_stats.passing_yards += play_result.yards
                 offensive_stats.passing_attempts += 1
-                if play_result.yards > 0 and not getattr(play_result, 'is_incomplete', False):
+                if outcome_str == 'completion':
                     offensive_stats.passing_completions += 1
-            elif play_result.play_type in ['run', 'rush']:
+            elif 'run' in outcome_str:
                 offensive_stats.rushing_yards += play_result.yards
                 offensive_stats.rushing_attempts += 1
     
@@ -616,10 +622,10 @@ class CentralizedStatsAggregator:
                 "double_team_blocks": player_stats.double_team_blocks,
                 "chip_blocks": player_stats.chip_blocks,
 
-                # Snap counts (now properly tracked!)
-                "offensive_snaps": player_stats.offensive_snaps,
-                "defensive_snaps": player_stats.defensive_snaps,
-                "special_teams_snaps": player_stats.special_teams_snaps,
+                # Snap counts - match database column names
+                "snap_counts_offense": player_stats.offensive_snaps,
+                "snap_counts_defense": player_stats.defensive_snaps,
+                "snap_counts_special_teams": player_stats.special_teams_snaps,
 
                 # Legacy compatibility
                 "pass_deflections": player_stats.passes_defended,

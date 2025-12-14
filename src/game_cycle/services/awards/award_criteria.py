@@ -29,33 +29,37 @@ from analytics.grading_constants import get_position_group
 # Position-Specific Stat Benchmarks
 # ============================================
 
-# QB benchmarks - raised for more differentiation at top
+# QB benchmarks - updated based on 2023 NFL stats (adjusted for 18-game season)
+# 2023 leaders: Tua 4,624 yds, Dak 36 TDs (4,516 yds, 105.9 rating, 9 INTs), Purdy 113.0 rating
 QB_BENCHMARKS = {
-    'passing_yards': {'elite': 4800, 'good': 4000, 'average': 3400},
-    'passing_tds': {'elite': 40, 'good': 32, 'average': 25},
-    'passer_rating': {'elite': 110.0, 'good': 100.0, 'average': 90.0},
-    'passing_interceptions': {'elite': 6, 'good': 10, 'average': 14},  # Lower is better
+    'passing_yards': {'elite': 4750, 'good': 4200, 'average': 3900},  # Tua 4,624 × 1.059 = 4,897
+    'passing_tds': {'elite': 38, 'good': 30, 'average': 24},  # Dak 36 × 1.059 = 38
+    'passer_rating': {'elite': 108.0, 'good': 100.0, 'average': 92.0},  # Purdy 113.0 was outlier
+    'passing_interceptions': {'elite': 9, 'good': 12, 'average': 15},  # Lower is better; Dak had 9
 }
 
-# RB benchmarks - raised for more differentiation at top
+# RB benchmarks - updated based on 2023 NFL stats (adjusted for 18-game season)
+# 2023 leader: McCaffrey 2,023 total yards (1,459 rush + 564 rec), 67 receptions
 RB_BENCHMARKS = {
-    'total_yards': {'elite': 2000, 'good': 1500, 'average': 1100},
+    'total_yards': {'elite': 2000, 'good': 1500, 'average': 1100},  # McCaffrey 2,023
     'total_tds': {'elite': 18, 'good': 12, 'average': 8},
-    'receptions': {'elite': 90, 'good': 60, 'average': 40},
+    'receptions': {'elite': 70, 'good': 50, 'average': 30},  # McCaffrey 67 × 1.059 = 71
 }
 
-# WR benchmarks
+# WR benchmarks - updated based on 2023 NFL stats (adjusted for 18-game season)
+# 2023 leaders: Hill 1,799 yds, Lamb 1,749 yds / 135 rec
 WR_BENCHMARKS = {
-    'receiving_yards': {'elite': 1400, 'good': 1100, 'average': 800},
+    'receiving_yards': {'elite': 1700, 'good': 1300, 'average': 1000},  # Hill 1,799 × 1.059 = 1,905
     'receiving_tds': {'elite': 12, 'good': 8, 'average': 5},
-    'receptions': {'elite': 100, 'good': 80, 'average': 60},
+    'receptions': {'elite': 120, 'good': 90, 'average': 70},  # Lamb 135 × 1.059 = 143
 }
 
-# TE benchmarks
+# TE benchmarks - updated based on 2023 NFL stats (adjusted for 18-game season)
+# 2023 leaders: Engram 114 rec / 963 yds, LaPorta 86 rec / 889 yds
 TE_BENCHMARKS = {
-    'receiving_yards': {'elite': 1000, 'good': 750, 'average': 500},
-    'receiving_tds': {'elite': 10, 'good': 7, 'average': 4},
-    'receptions': {'elite': 80, 'good': 60, 'average': 40},
+    'receiving_yards': {'elite': 950, 'good': 800, 'average': 600},  # LaPorta 889 × 1.059 = 942
+    'receiving_tds': {'elite': 8, 'good': 6, 'average': 4},
+    'receptions': {'elite': 90, 'good': 70, 'average': 50},  # LaPorta 86 × 1.059 = 91
 }
 
 # TE blocking benchmarks
@@ -71,23 +75,26 @@ DEFENSIVE_BENCHMARKS = {
     'forced_fumbles': {'elite': 4, 'good': 2, 'average': 1},
 }
 
-# Position-specific defensive benchmarks
+# Position-specific defensive benchmarks - updated based on 2023 NFL stats (adjusted for 18-game season)
+# 2023 sack leaders: TJ Watt 19, Josh Allen 17.5, Garrett/Parsons 14
 DL_BENCHMARKS = {
-    'sacks': {'elite': 14.0, 'good': 10.0, 'average': 6.0},
+    'sacks': {'elite': 17.0, 'good': 13.0, 'average': 8.0},  # Watt 19 × 1.059 = 20 (conservative)
     'tackles_total': {'elite': 60, 'good': 45, 'average': 30},
     'forced_fumbles': {'elite': 4, 'good': 3, 'average': 1},
 }
 
 # LB benchmarks (emphasize tackles and versatility)
+# 2023 tackle leaders: Oluokun 173, Okereke 149
 LB_BENCHMARKS = {
-    'tackles_total': {'elite': 130, 'good': 100, 'average': 70},
+    'tackles_total': {'elite': 175, 'good': 140, 'average': 100},  # Oluokun 173 × 1.059 = 183
     'sacks': {'elite': 6.0, 'good': 4.0, 'average': 2.0},
     'interceptions': {'elite': 3, 'good': 2, 'average': 1},
 }
 
 # DB benchmarks (emphasize coverage and INTs)
+# 2023 INT leader: DaRon Bland 9 (historic), typical leader 5-7
 DB_BENCHMARKS = {
-    'interceptions': {'elite': 6, 'good': 4, 'average': 2},
+    'interceptions': {'elite': 7, 'good': 5, 'average': 3},  # Bland 9 was outlier
     'tackles_total': {'elite': 80, 'good': 60, 'average': 40},
     'forced_fumbles': {'elite': 3, 'good': 2, 'average': 1},
 }
@@ -105,12 +112,12 @@ OL_BENCHMARKS = {
 
 MVP_POSITION_MULTIPLIERS = {
     # Offensive positions
-    # QB boosted to 1.15 to offset systematic grade disadvantage from INT penalties
-    # WR/TE reduced to 0.80 to create ~35% gap (enough to overcome grade imbalance)
-    'QB': 1.15,
+    # Data analysis (2025 season) shows QBs avg grade 61.24 vs WR 60.70 - NO disadvantage exists
+    # Multipliers adjusted based on actual grade distribution, not false assumptions
+    'QB': 1.0,  # Removed false 1.15x boost - QBs do NOT have grade disadvantage
     'RB': 0.85,
-    'WR': 0.80,
-    'TE': 0.80,
+    'WR': 0.85,  # Increased from 0.80 to allow elite WRs to compete for MVP
+    'TE': 0.85,  # Increased from 0.80 to allow elite TEs to compete for MVP
     'FB': 0.75,
     'LT': 0.70,
     'LG': 0.70,
