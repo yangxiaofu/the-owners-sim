@@ -584,6 +584,7 @@ class CentralizedStatsAggregator:
                 "targets": getattr(player_stats, 'targets', 0),
                 "drops": getattr(player_stats, 'drops', 0),
                 "yac": getattr(player_stats, 'yac', 0),
+                "receiving_long": getattr(player_stats, 'receiving_long', 0),
 
                 # Defensive stats (complete)
                 "tackles": player_stats.tackles,

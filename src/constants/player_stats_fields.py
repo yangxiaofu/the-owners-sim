@@ -103,9 +103,10 @@ class PlayerStatField(Enum):
     RECEPTIONS = StatFieldMetadata("receptions", "receptions", 0, int, persistable=True)
     TARGETS = StatFieldMetadata("targets", "targets", 0, int, persistable=True)
 
-    # Advanced receiving stats (not yet in database schema)
-    DROPS = StatFieldMetadata("drops", "drops", 0, int, persistable=False)
+    # Advanced receiving stats
+    DROPS = StatFieldMetadata("drops", "receiving_drops", 0, int, persistable=True)
     YAC = StatFieldMetadata("yac", "yac", 0, int, persistable=False)
+    RECEIVING_LONG = StatFieldMetadata("receiving_long", "receiving_long", 0, int, persistable=True)
 
     # ============================================================
     # DEFENSIVE STATS - Columns 19-21 in player_game_stats

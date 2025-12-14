@@ -14,12 +14,23 @@ from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
     QTableWidget, QTableWidgetItem, QHeaderView, QPushButton,
     QWidget, QSplitter, QTabWidget, QTreeWidget, QTreeWidgetItem,
-    QScrollArea, QFileDialog, QMessageBox, QMenu
+    QScrollArea, QFileDialog, QMessageBox, QMenu, QSizePolicy
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QAction
 
 from database.unified_api import UnifiedDatabaseAPI
+from game_cycle_ui.theme import (
+    Colors,
+    TAB_STYLE,
+    PRIMARY_BUTTON_STYLE,
+    SECONDARY_BUTTON_STYLE,
+    NEUTRAL_BUTTON_STYLE,
+    Typography,
+    FontSizes,
+    TextColors,
+    apply_table_style,
+)
 
 
 class BoxScoreDialog(QDialog):
@@ -99,7 +110,7 @@ class BoxScoreDialog(QDialog):
         away_abbr = away_team.get('abbr', 'AWAY')
         home_abbr = home_team.get('abbr', 'HOME')
         self.setWindowTitle(f"Box Score: {away_abbr} {away_score} @ {home_abbr} {home_score}")
-        self.setMinimumSize(900, 580)
+        self.setMinimumSize(1000, 800)
         self.setModal(True)
 
         self._setup_ui()
@@ -116,12 +127,17 @@ class BoxScoreDialog(QDialog):
 
         # Create tab widget to hold different views
         tab_widget = QTabWidget()
+        tab_widget.setStyleSheet(TAB_STYLE)
 
-        # Tab 1: Player Stats (existing functionality)
-        stats_tab = self._create_stats_tab()
-        tab_widget.addTab(stats_tab, "Player Stats")
+        # Tab 1: Team Stats (side-by-side comparison)
+        team_stats_tab = self._create_team_stats_tab()
+        tab_widget.addTab(team_stats_tab, "Team Stats")
 
-        # Tab 2: Play-by-Play
+        # Tab 2: Player Stats (offense/defense tables)
+        player_stats_tab = self._create_player_stats_tab()
+        tab_widget.addTab(player_stats_tab, "Player Stats")
+
+        # Tab 3: Play-by-Play
         # Priority: 1. In-memory game result, 2. Database, 3. Placeholder
         if self._game_result and hasattr(self._game_result, 'drives') and self._game_result.drives:
             plays_tab = self._create_plays_tab()
@@ -145,9 +161,8 @@ class BoxScoreDialog(QDialog):
         # Export button with dropdown menu
         export_btn = QPushButton("Export")
         export_btn.setStyleSheet(
-            "QPushButton { background-color: #1976D2; color: white; "
-            "border-radius: 3px; padding: 8px 24px; }"
-            "QPushButton:hover { background-color: #1565C0; }"
+            SECONDARY_BUTTON_STYLE +
+            "QPushButton { padding: 8px 24px; }"
             "QPushButton::menu-indicator { width: 0; height: 0; }"
         )
         export_menu = QMenu(self)
@@ -161,26 +176,37 @@ class BoxScoreDialog(QDialog):
         # Close button
         close_btn = QPushButton("Close")
         close_btn.setStyleSheet(
-            "QPushButton { background-color: #666; color: white; "
-            "border-radius: 3px; padding: 8px 24px; }"
-            "QPushButton:hover { background-color: #555; }"
+            NEUTRAL_BUTTON_STYLE +
+            "QPushButton { padding: 8px 24px; }"
         )
         close_btn.clicked.connect(self.accept)
         btn_layout.addWidget(close_btn)
 
         layout.addLayout(btn_layout)
 
-    def _create_stats_tab(self) -> QWidget:
-        """Create the player stats tab (existing functionality)."""
+    def _create_team_stats_tab(self) -> QWidget:
+        """Create the Team Stats tab with side-by-side comparison."""
         tab = QWidget()
         tab_layout = QVBoxLayout(tab)
         tab_layout.setSpacing(10)
         tab_layout.setContentsMargins(8, 8, 8, 8)
 
-        # Team stats comparison (ESPN-style side-by-side)
+        # Team stats comparison table (all 14 stats)
         self._create_team_stats_section(tab_layout)
 
-        # Team toggle buttons (for player stats below)
+        # Add stretch to center content vertically
+        tab_layout.addStretch()
+
+        return tab
+
+    def _create_player_stats_tab(self) -> QWidget:
+        """Create the Player Stats tab with offense/defense tables."""
+        tab = QWidget()
+        tab_layout = QVBoxLayout(tab)
+        tab_layout.setSpacing(10)
+        tab_layout.setContentsMargins(8, 8, 8, 8)
+
+        # Team toggle buttons
         self._create_team_toggle(tab_layout)
 
         # Two-column content: Offense | Defense
@@ -196,7 +222,7 @@ class BoxScoreDialog(QDialog):
 
         header_text = f"{away_name} {self._away_score}  @  {home_name} {self._home_score}"
         header = QLabel(header_text)
-        header.setFont(QFont("Arial", 16, QFont.Bold))
+        header.setFont(Typography.H4)
         header.setAlignment(Qt.AlignCenter)
         parent_layout.addWidget(header)
 
@@ -204,8 +230,8 @@ class BoxScoreDialog(QDialog):
         """Create ESPN-style side-by-side team stats comparison table."""
         # Section header
         section_header = QLabel("TEAM STATS")
-        section_header.setFont(QFont("Arial", 11, QFont.Bold))
-        section_header.setStyleSheet("color: #888; margin-top: 8px;")
+        section_header.setFont(Typography.BODY_SMALL_BOLD)
+        section_header.setStyleSheet(f"color: {Colors.MUTED}; margin-top: 8px;")
         parent_layout.addWidget(section_header)
 
         # Get team abbreviations for column headers
@@ -216,26 +242,19 @@ class BoxScoreDialog(QDialog):
         self._team_stats_table = QTableWidget()
         self._team_stats_table.setColumnCount(3)
         self._team_stats_table.setHorizontalHeaderLabels(["", away_abbr, home_abbr])
-        self._team_stats_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._team_stats_table.setSelectionMode(QTableWidget.NoSelection)
-        self._team_stats_table.verticalHeader().setVisible(False)
         self._team_stats_table.setMaximumHeight(380)  # Increased for 14 stat rows
-        self._team_stats_table.setAlternatingRowColors(True)
 
-        # Header styling
+        # Apply standard table styling
+        apply_table_style(self._team_stats_table)
+
+        # Column resize modes
         header = self._team_stats_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Stretch)
         header.setSectionResizeMode(1, QHeaderView.Fixed)
         header.setSectionResizeMode(2, QHeaderView.Fixed)
         self._team_stats_table.setColumnWidth(1, 80)
         self._team_stats_table.setColumnWidth(2, 80)
-
-        # Style header with team colors/bold
-        header.setStyleSheet(
-            "QHeaderView::section { "
-            "background-color: #444; color: white; font-weight: bold; "
-            "padding: 6px; border: 1px solid #333; }"
-        )
 
         parent_layout.addWidget(self._team_stats_table)
 
@@ -363,18 +382,18 @@ class BoxScoreDialog(QDialog):
 
             # Stat label
             label_item = QTableWidgetItem(label)
-            label_item.setFont(QFont("Arial", 10))
+            label_item.setFont(Typography.SMALL)
             self._team_stats_table.setItem(row_idx, 0, label_item)
 
             # Away value
             away_item = QTableWidgetItem(str(away_val))
             away_item.setTextAlignment(Qt.AlignCenter)
-            away_item.setFont(QFont("Arial", 10, QFont.Bold))
+            away_item.setFont(Typography.SMALL_BOLD)
 
             # Home value
             home_item = QTableWidgetItem(str(home_val))
             home_item.setTextAlignment(Qt.AlignCenter)
-            home_item.setFont(QFont("Arial", 10, QFont.Bold))
+            home_item.setFont(Typography.SMALL_BOLD)
 
             # Highlight winner (green for better stat)
             if not is_string:
@@ -415,14 +434,14 @@ class BoxScoreDialog(QDialog):
         # Away team button (listed first for @ convention)
         away_name = self._away_team.get('name', 'Away')
         self._away_btn = QPushButton(f"{away_name}")
-        self._away_btn.setFont(QFont("Arial", 11))
+        self._away_btn.setFont(Typography.BODY_SMALL)
         self._away_btn.setCursor(Qt.PointingHandCursor)
         self._away_btn.clicked.connect(lambda: self._show_team('away'))
 
         # Home team button
         home_name = self._home_team.get('name', 'Home')
         self._home_btn = QPushButton(f"{home_name}")
-        self._home_btn.setFont(QFont("Arial", 11))
+        self._home_btn.setFont(Typography.BODY_SMALL)
         self._home_btn.setCursor(Qt.PointingHandCursor)
         self._home_btn.clicked.connect(lambda: self._show_team('home'))
 
@@ -451,7 +470,7 @@ class BoxScoreDialog(QDialog):
 
         # Offense header
         offense_header = QLabel("OFFENSE")
-        offense_header.setFont(QFont("Arial", 12, QFont.Bold))
+        offense_header.setFont(Typography.H6)
         offense_header.setStyleSheet("color: #2196F3; padding: 4px 0;")
         offense_layout.addWidget(offense_header)
 
@@ -459,24 +478,22 @@ class BoxScoreDialog(QDialog):
         self._tables['passing'] = self._create_stat_table(
             offense_layout, "PASSING",
             ["Player", "CMP/ATT", "YDS", "TD", "INT", "RTG"],
-            max_height=110
+            max_height=150
         )
 
         # Rushing table (added FUM column)
         self._tables['rushing'] = self._create_stat_table(
             offense_layout, "RUSHING",
             ["Player", "ATT", "YDS", "AVG", "TD", "LNG", "FUM"],
-            max_height=110
+            max_height=150
         )
 
-        # Receiving table (added LNG column)
+        # Receiving table (added LNG and DRP columns)
         self._tables['receiving'] = self._create_stat_table(
             offense_layout, "RECEIVING",
-            ["Player", "REC", "TGT", "YDS", "AVG", "TD", "LNG"],
-            max_height=140
+            ["Player", "REC", "TGT", "YDS", "AVG", "TD", "LNG", "DRP"],
+            max_height=200
         )
-
-        offense_layout.addStretch()
 
         # RIGHT COLUMN: Defense
         defense_widget = QWidget()
@@ -486,7 +503,7 @@ class BoxScoreDialog(QDialog):
 
         # Defense header
         defense_header = QLabel("DEFENSE")
-        defense_header.setFont(QFont("Arial", 12, QFont.Bold))
+        defense_header.setFont(Typography.H6)
         defense_header.setStyleSheet("color: #F44336; padding: 4px 0;")
         defense_layout.addWidget(defense_header)
 
@@ -494,12 +511,12 @@ class BoxScoreDialog(QDialog):
         self._tables['defense'] = self._create_stat_table(
             defense_layout, "DEFENSE",
             ["Player", "SOLO", "AST", "TKL", "SACK", "INT", "PD", "FF", "FR"],
-            max_height=200
+            max_height=280
         )
 
         # Special Teams header
         st_header = QLabel("SPECIAL TEAMS")
-        st_header.setFont(QFont("Arial", 12, QFont.Bold))
+        st_header.setFont(Typography.H6)
         st_header.setStyleSheet("color: #FF9800; padding: 4px 0; margin-top: 8px;")
         defense_layout.addWidget(st_header)
 
@@ -507,17 +524,15 @@ class BoxScoreDialog(QDialog):
         self._tables['kicking'] = self._create_stat_table(
             defense_layout, "KICKING",
             ["Player", "FGM", "FGA", "FG%", "XPM", "XPA", "XP%"],
-            max_height=60
+            max_height=80
         )
 
         # Punting table
         self._tables['punting'] = self._create_stat_table(
             defense_layout, "PUNTING",
             ["Player", "PUNTS", "YDS", "AVG", "LNG", "IN20"],
-            max_height=60
+            max_height=80
         )
-
-        defense_layout.addStretch()
 
         # Add columns with equal stretch
         main_layout.addWidget(offense_widget, stretch=1)
@@ -542,21 +557,20 @@ class BoxScoreDialog(QDialog):
         """Create a stat table with header."""
         # Category label
         label = QLabel(category)
-        label.setFont(QFont("Arial", 10, QFont.Bold))
-        label.setStyleSheet("color: #888; margin-top: 4px;")
+        label.setFont(Typography.SMALL_BOLD)
+        label.setStyleSheet(f"color: {Colors.MUTED}; margin-top: 4px;")
         parent_layout.addWidget(label)
 
         # Table
         table = QTableWidget()
         table.setColumnCount(len(columns))
         table.setHorizontalHeaderLabels(columns)
-        table.setAlternatingRowColors(True)
-        table.setSelectionBehavior(QTableWidget.SelectRows)
-        table.setEditTriggers(QTableWidget.NoEditTriggers)
-        table.verticalHeader().setVisible(False)
         table.setMaximumHeight(max_height)
 
-        # Header styling
+        # Apply standard table styling
+        apply_table_style(table)
+
+        # Column resize modes
         header = table.horizontalHeader()
         header.setStretchLastSection(True)
         header.setSectionResizeMode(0, QHeaderView.Stretch)
@@ -590,7 +604,7 @@ class BoxScoreDialog(QDialog):
                 elif bs.get('team_id') == away_id:
                     self._away_box_score = bs
 
-            # Populate team stats comparison (both teams shown simultaneously)
+            # Populate team stats comparison table
             self._populate_team_stats()
 
             # Show home team player stats by default
@@ -610,23 +624,12 @@ class BoxScoreDialog(QDialog):
 
     def _update_button_styles(self):
         """Update toggle button styles based on current team."""
-        active_style = (
-            "QPushButton { background-color: #4CAF50; color: white; "
-            "font-weight: bold; border-radius: 4px; padding: 8px 20px; }"
-            "QPushButton:hover { background-color: #45a049; }"
-        )
-        inactive_style = (
-            "QPushButton { background-color: #555; color: #ccc; "
-            "border-radius: 4px; padding: 8px 20px; }"
-            "QPushButton:hover { background-color: #666; }"
-        )
-
         if self._current_team == 'home':
-            self._home_btn.setStyleSheet(active_style)
-            self._away_btn.setStyleSheet(inactive_style)
+            self._home_btn.setStyleSheet(PRIMARY_BUTTON_STYLE)
+            self._away_btn.setStyleSheet(NEUTRAL_BUTTON_STYLE)
         else:
-            self._away_btn.setStyleSheet(active_style)
-            self._home_btn.setStyleSheet(inactive_style)
+            self._away_btn.setStyleSheet(PRIMARY_BUTTON_STYLE)
+            self._home_btn.setStyleSheet(NEUTRAL_BUTTON_STYLE)
 
     def _populate_team_tables(self, stats: List[Dict[str, Any]]):
         """Populate all stat tables for a team."""
@@ -746,6 +749,7 @@ class BoxScoreDialog(QDialog):
             avg = yds / rec if rec > 0 else 0.0
             td = p.get('receiving_tds') or 0
             lng = p.get('receiving_long') or 0
+            drp = p.get('receiving_drops') or 0
 
             table.setItem(row, 0, QTableWidgetItem(name))
             table.setItem(row, 1, self._centered_item(str(rec)))
@@ -754,6 +758,7 @@ class BoxScoreDialog(QDialog):
             table.setItem(row, 4, self._centered_item(f"{avg:.1f}"))
             table.setItem(row, 5, self._centered_item(str(td)))
             table.setItem(row, 6, self._centered_item(str(lng)))
+            table.setItem(row, 7, self._centered_item(str(drp)))
 
     def _populate_defense_table(self, table: QTableWidget, players: List[Dict]):
         """Populate defense stats table."""
@@ -834,14 +839,14 @@ class BoxScoreDialog(QDialog):
 
         # Icon/emoji placeholder
         icon_label = QLabel("📋")
-        icon_label.setFont(QFont("Arial", 48))
+        icon_label.setFont(Typography.ICON_LARGE)
         icon_label.setAlignment(Qt.AlignCenter)
         tab_layout.addWidget(icon_label)
 
         # Main message
         message = QLabel("Play-by-Play Not Available")
-        message.setFont(QFont("Arial", 16, QFont.Bold))
-        message.setStyleSheet("color: white;")
+        message.setFont(Typography.H4)
+        message.setStyleSheet(f"color: {TextColors.ON_DARK};")
         message.setAlignment(Qt.AlignCenter)
         tab_layout.addWidget(message)
 
@@ -850,8 +855,8 @@ class BoxScoreDialog(QDialog):
             "Play-by-play data is only available immediately after simulating a game.\n"
             "Historical games show player stats but not detailed play breakdowns."
         )
-        explanation.setFont(QFont("Arial", 11))
-        explanation.setStyleSheet("color: #888;")
+        explanation.setFont(Typography.BODY_SMALL)
+        explanation.setStyleSheet(f"color: {Colors.MUTED};")
         explanation.setAlignment(Qt.AlignCenter)
         explanation.setWordWrap(True)
         tab_layout.addWidget(explanation)
@@ -901,7 +906,7 @@ class BoxScoreDialog(QDialog):
         header_layout = QHBoxLayout()
 
         info_label = QLabel("Play-by-play breakdown (loaded from history)")
-        info_label.setStyleSheet("color: #888; font-style: italic;")
+        info_label.setStyleSheet(f"color: {Colors.MUTED}; font-style: italic;")
         header_layout.addWidget(info_label)
 
         header_layout.addStretch()
@@ -967,7 +972,7 @@ class BoxScoreDialog(QDialog):
                 current_quarter = quarter
                 quarter_text = f"QUARTER {quarter}" if quarter <= 4 else f"OVERTIME {quarter - 4}"
                 quarter_item = QTreeWidgetItem([quarter_text, "", ""])
-                quarter_item.setFont(0, QFont("Arial", 11, QFont.Bold))
+                quarter_item.setFont(0, Typography.BODY_SMALL_BOLD)
                 quarter_item.setForeground(0, Qt.darkBlue)
                 tree.addTopLevelItem(quarter_item)
                 quarter_item.setExpanded(True)
@@ -989,7 +994,7 @@ class BoxScoreDialog(QDialog):
                 drive_summary = f"{team_abbr} Drive #{drive_number} - {outcome_display} ({total_plays} plays, {total_yards} yds)"
 
                 drive_item = QTreeWidgetItem([drive_summary, "", ""])
-                drive_item.setFont(0, QFont("Arial", 10, QFont.Bold))
+                drive_item.setFont(0, Typography.SMALL_BOLD)
                 if quarter_item:
                     quarter_item.addChild(drive_item)
                 else:
@@ -1045,7 +1050,7 @@ class BoxScoreDialog(QDialog):
 
         # Info label
         info_label = QLabel("Play-by-play breakdown of all drives and plays")
-        info_label.setStyleSheet("color: #888; font-style: italic;")
+        info_label.setStyleSheet(f"color: {Colors.MUTED}; font-style: italic;")
         header_layout.addWidget(info_label)
 
         header_layout.addStretch()
@@ -1053,18 +1058,16 @@ class BoxScoreDialog(QDialog):
         # Export buttons
         export_md_btn = QPushButton("Export as Markdown")
         export_md_btn.setStyleSheet(
-            "QPushButton { background-color: #2196F3; color: white; "
-            "border-radius: 3px; padding: 6px 12px; }"
-            "QPushButton:hover { background-color: #1976D2; }"
+            SECONDARY_BUTTON_STYLE +
+            "QPushButton { padding: 6px 12px; }"
         )
         export_md_btn.clicked.connect(self._export_as_markdown)
         header_layout.addWidget(export_md_btn)
 
         export_json_btn = QPushButton("Export as JSON")
         export_json_btn.setStyleSheet(
-            "QPushButton { background-color: #4CAF50; color: white; "
-            "border-radius: 3px; padding: 6px 12px; }"
-            "QPushButton:hover { background-color: #45a049; }"
+            PRIMARY_BUTTON_STYLE +
+            "QPushButton { padding: 6px 12px; }"
         )
         export_json_btn.clicked.connect(self._export_as_json)
         header_layout.addWidget(export_json_btn)
@@ -1133,7 +1136,7 @@ class BoxScoreDialog(QDialog):
                 current_quarter = drive_quarter
                 quarter_text = f"QUARTER {current_quarter}" if current_quarter <= 4 else f"OVERTIME {current_quarter - 4}"
                 quarter_item = QTreeWidgetItem([quarter_text, "", ""])
-                quarter_item.setFont(0, QFont("Arial", 11, QFont.Bold))
+                quarter_item.setFont(0, Typography.BODY_SMALL_BOLD)
                 quarter_item.setForeground(0, Qt.darkBlue)
                 tree.addTopLevelItem(quarter_item)
                 quarter_item.setExpanded(True)
@@ -1170,7 +1173,7 @@ class BoxScoreDialog(QDialog):
 
             # Create drive item
             drive_item = QTreeWidgetItem([drive_summary, "", ""])
-            drive_item.setFont(0, QFont("Arial", 10, QFont.Bold))
+            drive_item.setFont(0, Typography.SMALL_BOLD)
 
             # Track situational context (use actual starting down state for quarter continuations)
             current_down = getattr(drive, 'starting_down', 1)
@@ -1232,10 +1235,10 @@ class BoxScoreDialog(QDialog):
                 # Color code scoring plays and turnovers
                 if getattr(play, 'is_scoring_play', False):
                     play_item.setForeground(0, Qt.green)
-                    play_item.setFont(0, QFont("Arial", 9, QFont.Bold))
+                    play_item.setFont(0, Typography.TINY_BOLD)
                 elif getattr(play, 'is_turnover', False):
                     play_item.setForeground(0, Qt.red)
-                    play_item.setFont(0, QFont("Arial", 9, QFont.Bold))
+                    play_item.setFont(0, Typography.TINY_BOLD)
 
                 drive_item.addChild(play_item)
 
@@ -1288,7 +1291,7 @@ class BoxScoreDialog(QDialog):
                     f"{pat_yards:+d}" if pat_yards != 0 else "0"
                 ])
                 pat_item.setForeground(0, pat_color)
-                pat_item.setFont(0, QFont("Arial", 9, QFont.Bold))
+                pat_item.setFont(0, Typography.TINY_BOLD)
                 drive_item.addChild(pat_item)
 
             # ✅ FIX: Add drive as child of quarter item instead of top-level
@@ -1317,7 +1320,7 @@ class BoxScoreDialog(QDialog):
                 score_line = f"Score: {away_abbr} {away_score}, {home_abbr} {home_score}"
                 score_item = QTreeWidgetItem([score_line, "", ""])
                 score_item.setForeground(0, Qt.darkGreen)
-                score_item.setFont(0, QFont("Arial", 9, QFont.Bold))
+                score_item.setFont(0, Typography.TINY_BOLD)
                 # ✅ FIX: Add score as child of quarter item
                 if quarter_item:
                     quarter_item.addChild(score_item)

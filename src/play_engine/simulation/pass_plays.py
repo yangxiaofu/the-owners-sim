@@ -35,7 +35,7 @@ class PassPlaySimulator(BasePlaySimulator):
                  weather_condition: str = "clear", crowd_noise_level: int = 0,
                  clutch_factor: float = 0.0, primetime_variance: float = 0.0,
                  is_away_team: bool = False, performance_tracker = None,
-                 field_position: int = 50):
+                 field_position: int = 50, down: int = None):
         """
         Initialize pass play simulator
 
@@ -69,12 +69,19 @@ class PassPlaySimulator(BasePlaySimulator):
         # Environmental modifiers (Tollgate 6: Environmental & Situational Modifiers)
         self.weather_condition = weather_condition
         self.crowd_noise_level = crowd_noise_level
+        self.down = down  # Current down (1-4)
         self.clutch_factor = clutch_factor
         self.primetime_variance = primetime_variance
         self.is_away_team = is_away_team
 
         # Variance & Unpredictability (Tollgate 7)
         self.performance_tracker = performance_tracker  # Hot/cold streak tracking
+
+        # Load balancing configs (Tier 1 refactoring)
+        self.receiver_targeting_config = config.get_receiver_targeting_config()
+        self.environmental_modifiers_config = config.get_environmental_modifiers_config()
+        self.qb_scramble_config = config.get_qb_scramble_config()
+        self.situational_modifiers_config = config.get_situational_modifiers_config()
 
         # Initialize penalty engine
         self.penalty_engine = PenaltyEngine()
@@ -293,12 +300,12 @@ class PassPlaySimulator(BasePlaySimulator):
         very_good_threshold = thresholds.get('very_good', 85)
         below_avg_threshold = thresholds.get('below_average', 60)
         
-        # Find key players
+        # Find key players (using field-limited method to only get on-field players)
         quarterback = self._find_player_by_position(Position.QB)
-        receivers = self._find_players_by_positions([Position.WR, Position.TE])
-        offensive_line = self._find_players_by_positions([Position.LT, Position.LG, Position.C, Position.RG, Position.RT])
-        pass_rushers = self._find_defensive_players_by_positions([Position.DE, Position.DT, Position.OLB])
-        defensive_backs = self._find_defensive_players_by_positions([Position.CB, Position.FS, Position.SS, Position.NCB])
+        receivers = self._get_field_offensive_players_by_positions([Position.WR, Position.TE])
+        offensive_line = self._get_field_offensive_players_by_positions([Position.LT, Position.LG, Position.C, Position.RG, Position.RT])
+        pass_rushers = self._get_field_defensive_players_by_positions([Position.DE, Position.DT, Position.OLB])
+        defensive_backs = self._get_field_defensive_players_by_positions([Position.CB, Position.FS, Position.SS, Position.NCB])
         
         # QB attributes affect completion rate and decision making
         if quarterback and hasattr(quarterback, 'ratings'):
@@ -441,6 +448,12 @@ class PassPlaySimulator(BasePlaySimulator):
             modified_params['sack_rate'] = max(modified_params['sack_rate'], 0.01)
             modified_params['int_rate'] = max(modified_params['int_rate'], 0.005)
 
+        # Apply 3rd down defensive pressure (from config - Tier 1 refactoring)
+        if self.down == 3:
+            third_down_config = self.situational_modifiers_config['third_down']
+            modified_params['pressure_rate'] *= third_down_config['pressure_multiplier']  # +30% pressure on 3rd down
+            modified_params['completion_rate'] *= third_down_config['completion_multiplier']  # -8% completion on 3rd down
+
         # NEW: Apply environmental modifiers (Tollgate 6: Environmental & Situational Modifiers)
         # Applied in order: weather → crowd noise → clutch performance
 
@@ -498,42 +511,51 @@ class PassPlaySimulator(BasePlaySimulator):
 
         modified_params = params.copy()
 
+        # Get environmental modifiers from config (Tier 1 refactoring)
+        env_config = self.environmental_modifiers_config
+
         # Determine if this is a deep pass based on avg_air_yards parameter
         # Deep passes (15+ air yards) are more affected by weather conditions
         avg_air_yards = modified_params.get('avg_air_yards', 8.0)
-        is_deep_pass = avg_air_yards >= 15.0
+        deep_pass_threshold = env_config['deep_pass_threshold']
+        is_deep_pass = avg_air_yards >= deep_pass_threshold
 
         if self.weather_condition == "rain":
             # Wet ball reduces accuracy
-            modified_params['completion_rate'] *= 0.90  # -10% overall
+            rain_config = env_config['rain']
+            modified_params['completion_rate'] *= rain_config['completion_multiplier']
             if is_deep_pass:
-                modified_params['completion_rate'] *= 0.85  # Additional -15% for deep passes
-            modified_params['int_rate'] *= 1.05  # +5% more tipped balls become INTs
+                modified_params['completion_rate'] *= rain_config['deep_completion_multiplier']
+            modified_params['int_rate'] *= rain_config['int_multiplier']
 
         elif self.weather_condition == "snow":
             # Visibility issues + wet ball
-            modified_params['completion_rate'] *= 0.85  # -15% overall
+            snow_config = env_config['snow']
+            modified_params['completion_rate'] *= snow_config['completion_multiplier']
             if is_deep_pass:
-                modified_params['completion_rate'] *= 0.75  # Additional -25% for deep passes
-            modified_params['int_rate'] *= 1.10  # +10% more interceptions
-            modified_params['avg_air_yards'] *= 0.95  # QBs throw shorter in snow
+                modified_params['completion_rate'] *= snow_config['deep_completion_multiplier']
+            modified_params['int_rate'] *= snow_config['int_multiplier']
+            modified_params['avg_air_yards'] *= snow_config['air_yards_multiplier']
 
         elif self.weather_condition == "heavy_wind":
             # Wind affects ball trajectory
+            wind_config = env_config['heavy_wind']
             if is_deep_pass:
-                modified_params['completion_rate'] *= 0.70  # -30% for deep passes
-                modified_params['avg_air_yards'] *= 1.15   # Wind carries ball further (unpredictable)
-            modified_params['int_rate'] *= 1.08  # +8% more interceptions (wind causes errors)
+                modified_params['completion_rate'] *= wind_config['deep_completion_multiplier']
+                modified_params['avg_air_yards'] *= wind_config['air_yards_multiplier']
+            modified_params['int_rate'] *= wind_config['int_multiplier']
 
         # Apply red zone penalty - compressed field makes passing harder
         # NFL red zone completion rate is ~5-8% lower than overall average
         # Defense can play more aggressively with less deep threat
-        if self.field_position >= 80:  # Red zone (within 20 yards of goal)
-            modified_params['completion_rate'] *= 0.92  # 8% reduction in completion rate
-            modified_params['int_rate'] *= 1.15  # 15% more interceptions in tight space
+        red_zone_config = env_config['red_zone']
+        if self.field_position >= red_zone_config['field_position_threshold']:
+            modified_params['completion_rate'] *= red_zone_config['completion_multiplier']
+            modified_params['int_rate'] *= red_zone_config['int_multiplier']
 
         # Clamp completion rate to realistic range (weather can't make it impossible)
-        modified_params['completion_rate'] = max(modified_params['completion_rate'], 0.15)  # Min 15%
+        min_completion = env_config['minimum_completion_rate']
+        modified_params['completion_rate'] = max(modified_params['completion_rate'], min_completion)
 
         return modified_params
 
@@ -659,7 +681,12 @@ class PassPlaySimulator(BasePlaySimulator):
             scramble_chance = self._calculate_scramble_chance()
             # Boost scramble chance if about to be sacked (survival instinct)
             if would_be_sacked:
-                scramble_chance = min(0.70, scramble_chance * 1.5)
+                # Use config for sack escape mechanics (Tier 1 refactoring)
+                scramble_config = self.qb_scramble_config['scramble_chance']
+                scramble_chance = min(
+                    scramble_config['max_sack_escape_chance'],
+                    scramble_chance * scramble_config['sack_escape_multiplier']
+                )
 
             if random.random() < scramble_chance:
                 # QB scrambles instead of staying in pocket or taking sack
@@ -679,9 +706,15 @@ class PassPlaySimulator(BasePlaySimulator):
                 mobility = qb.get_rating('mobility', None)
                 if mobility is None:
                     mobility = qb.get_rating('speed', None) or 70
-                if mobility >= 85:  # Only for truly mobile QBs (Lamar, Josh Allen, etc.)
+
+                # Use config for designed scramble mechanics (Tier 1 refactoring)
+                designed_config = self.qb_scramble_config['scramble_chance']['designed_scramble']
+                if mobility >= designed_config['mobility_threshold']:  # Only for truly mobile QBs (Lamar, Josh Allen, etc.)
                     # 2.5-7.5% chance based on mobility (85=2.5%, 95=7.5%)
-                    designed_scramble_chance = (mobility - 80) / 200
+                    designed_scramble_chance = (
+                        (mobility - designed_config['base_mobility_offset']) /
+                        designed_config['chance_divisor']
+                    )
                     if random.random() < designed_scramble_chance:
                         scrambled = True
                         scramble_yards = self._calculate_scramble_yards()
@@ -715,9 +748,12 @@ class PassPlaySimulator(BasePlaySimulator):
         Returns:
             Float probability (0.05 to 0.50) of QB scrambling when pressured
         """
+        # Get scramble chance config (Tier 1 refactoring)
+        scramble_config = self.qb_scramble_config['scramble_chance']
+
         qb = self._find_player_by_position(Position.QB)
         if not qb:
-            return 0.10  # Base 10% if no QB found
+            return scramble_config['fallback_chance']  # Base 10% if no QB found
 
         # Try mobility first (from archetype), fallback to speed
         # Use None default to enable proper fallback chain (default=50 breaks 'or' logic)
@@ -727,30 +763,31 @@ class PassPlaySimulator(BasePlaySimulator):
 
         composure = qb.get_rating('composure', None) or 75
 
-        # Base scramble chance when pressured
-        base_chance = 0.15  # 15% base
+        # Base scramble chance when pressured (from config)
+        base_chance = scramble_config['base_chance']
 
-        # Mobility modifiers based on archetype ranges
-        if mobility >= 90:      # Elite mobile QB (Lamar Jackson, dual_threat_qb high-end)
-            base_chance += 0.25  # 40% total
-        elif mobility >= 85:    # Very mobile (Jalen Hurts, Josh Allen)
-            base_chance += 0.18  # 33% total
-        elif mobility >= 80:    # Mobile (Kyler Murray, dual_threat_qb mean)
-            base_chance += 0.12  # 27% total
-        elif mobility >= 75:    # Above average
-            base_chance += 0.05  # 20% total
-        elif mobility >= 65:    # Average
-            pass  # Keep at 15%
-        elif mobility < 65:     # Statue (Tom Brady, pocket_passer_qb)
-            base_chance -= 0.08  # 7% total
+        # Mobility modifiers based on archetype ranges (from config)
+        mobility_thresholds = scramble_config['mobility_thresholds']
+        if mobility >= mobility_thresholds['elite_mobile']['min_rating']:  # Elite mobile QB (Lamar Jackson, dual_threat_qb high-end)
+            base_chance += mobility_thresholds['elite_mobile']['bonus']  # 40% total
+        elif mobility >= mobility_thresholds['very_mobile']['min_rating']:  # Very mobile (Jalen Hurts, Josh Allen)
+            base_chance += mobility_thresholds['very_mobile']['bonus']  # 33% total
+        elif mobility >= mobility_thresholds['mobile']['min_rating']:  # Mobile (Kyler Murray, dual_threat_qb mean)
+            base_chance += mobility_thresholds['mobile']['bonus']  # 27% total
+        elif mobility >= mobility_thresholds['above_average']['min_rating']:  # Above average
+            base_chance += mobility_thresholds['above_average']['bonus']  # 20% total
+        elif mobility < mobility_thresholds['statue']['max_rating']:  # Statue (Tom Brady, pocket_passer_qb)
+            base_chance += mobility_thresholds['statue']['penalty']  # 7% total
 
-        # Composure bonus (better decisions under pressure)
-        if composure >= 85:
-            base_chance += 0.05
-        elif composure >= 80:
-            base_chance += 0.02
+        # Composure bonus (better decisions under pressure) (from config)
+        composure_config = scramble_config['composure_bonus']
+        if composure >= composure_config['high_threshold']:
+            base_chance += composure_config['high_bonus']
+        elif composure >= composure_config['medium_threshold']:
+            base_chance += composure_config['medium_bonus']
 
-        return min(0.50, max(0.05, base_chance))  # Clamp 5%-50%
+        # Clamp to min/max range (from config)
+        return min(scramble_config['max_chance'], max(scramble_config['min_chance'], base_chance))
 
     def _calculate_scramble_yards(self) -> int:
         """
@@ -764,34 +801,39 @@ class PassPlaySimulator(BasePlaySimulator):
         Returns:
             Integer yards gained (0 to ~20)
         """
+        # Get scramble yards config (Tier 1 refactoring)
+        yards_config = self.qb_scramble_config['scramble_yards']
+
         qb = self._find_player_by_position(Position.QB)
 
-        # Base scramble yards (Gaussian distribution)
-        base_yards = 4.5
-        variance = 3.0
+        # Base scramble yards (Gaussian distribution) (from config)
+        base_yards = yards_config['base_yards']
+        variance = yards_config['base_variance']
 
         if qb:
             # Use None default to enable proper fallback (default=50 breaks 'or' logic)
             speed = qb.get_rating('speed', None) or 70
             agility = qb.get_rating('agility', None) or 70
 
-            # Speed modifier (+/- 30% yards based on speed)
+            # Speed modifier (+/- 30% yards based on speed) (from config)
             # speed 90 = +0.20 multiplier, speed 50 = -0.20 multiplier
-            speed_mod = (speed - 70) / 100
+            speed_mod = (speed - yards_config['speed_modifier_offset']) / yards_config['speed_modifier_divisor']
             base_yards *= (1 + speed_mod)
 
-            # Agility affects variance (more agile = more big plays)
-            if agility >= 85:
-                variance += 1.5
-            elif agility >= 80:
-                variance += 0.75
+            # Agility affects variance (more agile = more big plays) (from config)
+            agility_thresholds = yards_config['agility_thresholds']
+            if agility >= agility_thresholds['high']['min_rating']:
+                variance += agility_thresholds['high']['variance_bonus']
+            elif agility >= agility_thresholds['medium']['min_rating']:
+                variance += agility_thresholds['medium']['variance_bonus']
 
         yards = max(0, round(random.gauss(base_yards, variance)))
 
-        # 10% chance of big scramble (10-20 yards) for mobile QBs
-        if qb and qb.get_rating('speed') and qb.get_rating('speed') >= 80:
-            if random.random() < 0.10:
-                yards = random.randint(10, 20)
+        # Chance of big scramble (10-20 yards) for mobile QBs (from config)
+        big_scramble_config = yards_config['big_scramble']
+        if qb and qb.get_rating('speed') and qb.get_rating('speed') >= big_scramble_config['speed_threshold']:
+            if random.random() < big_scramble_config['probability']:
+                yards = random.randint(big_scramble_config['min_yards'], big_scramble_config['max_yards'])
 
         return yards
 
@@ -802,34 +844,37 @@ class PassPlaySimulator(BasePlaySimulator):
         Returns:
             Target receiver Player object or None
         """
-        # Find all available pass catchers
-        wr_players = self._find_players_by_positions([Position.WR])
-        te_players = self._find_players_by_positions([Position.TE])
+        # Find all available pass catchers (only those on field based on formation)
+        wr_players = self._get_field_offensive_players_by_positions([Position.WR])
+        te_players = self._get_field_offensive_players_by_positions([Position.TE])
         rb_players = self._find_receiving_backs()
 
         # Create weighted target pool
         target_candidates = []
 
+        # Get targeting weights from config (Tier 1 refactoring)
+        weights_config = self.receiver_targeting_config['depth_chart_weights']
+
         # Add WRs with depth chart position weighting (WR1 > WR2 > WR3+)
         for idx, wr in enumerate(wr_players):
             if idx == 0:
-                depth_weight = 1.5   # WR1: Primary target
+                depth_weight = weights_config['wr1_weight']
             elif idx == 1:
-                depth_weight = 1.0   # WR2: Secondary option
+                depth_weight = weights_config['wr2_weight']
             else:
-                depth_weight = 0.5   # WR3+: Depth receiver
+                depth_weight = weights_config['wr3_plus_weight']
             weight = self._calculate_receiver_weight(wr, base_weight=depth_weight)
             target_candidates.append((wr, weight))
 
         # Add TEs with depth chart weighting (TE1 > TE2+)
         for idx, te in enumerate(te_players):
-            depth_weight = 0.8 if idx == 0 else 0.3  # TE1 vs TE2+
+            depth_weight = weights_config['te1_weight'] if idx == 0 else weights_config['te2_plus_weight']
             weight = self._calculate_receiver_weight(te, base_weight=depth_weight)
             target_candidates.append((te, weight))
 
         # Add receiving RBs with lower weight (check-downs, screens)
         for rb in rb_players:
-            weight = self._calculate_receiver_weight(rb, base_weight=0.4)
+            weight = self._calculate_receiver_weight(rb, base_weight=weights_config['rb_checkdown_weight'])
             target_candidates.append((rb, weight))
 
         if not target_candidates:
@@ -839,13 +884,16 @@ class PassPlaySimulator(BasePlaySimulator):
         return self._weighted_random_selection(target_candidates)
 
     def _find_receiving_backs(self) -> List:
-        """Find running backs who can catch passes"""
-        rb_players = self._find_players_by_positions([Position.RB])
+        """Find running backs who can catch passes (only those on field)"""
+        rb_players = self._get_field_offensive_players_by_positions([Position.RB])
         receiving_backs = []
 
+        # Get receiving back threshold from config (Tier 1 refactoring)
+        receiving_back_threshold = self.receiver_targeting_config['receiving_back_threshold']
+
         for rb in rb_players:
-            # Check if RB has decent hands for receiving (threshold: 65+)
-            if hasattr(rb, 'ratings') and rb.get_rating('hands') >= 65:
+            # Check if RB has decent hands for receiving
+            if hasattr(rb, 'ratings') and rb.get_rating('hands') >= receiving_back_threshold:
                 receiving_backs.append(rb)
             elif hasattr(rb, 'ratings'):  # Include all RBs if hands rating exists
                 receiving_backs.append(rb)
@@ -857,16 +905,24 @@ class PassPlaySimulator(BasePlaySimulator):
         weight = base_weight
 
         if hasattr(player, 'ratings'):
+            # Get rating conversion from config (Tier 1 refactoring)
+            hands_threshold = self.receiver_targeting_config['hands_rating_threshold']
+            conversion_config = self.receiver_targeting_config['rating_to_weight_conversion']
+            base_multiplier = conversion_config['base_multiplier']
+            rating_divisor = conversion_config['rating_divisor']
+
             # Use hands, route running, or overall rating to adjust weight
             hands_rating = player.get_rating('hands')
             overall_rating = player.get_rating('overall')
 
-            # Convert rating to weight multiplier (65-95 rating -> 0.8-1.3 multiplier)
-            primary_rating = hands_rating if hands_rating > 50 else overall_rating
-            rating_multiplier = 0.5 + (primary_rating / 100.0)
+            # Convert rating to weight multiplier
+            primary_rating = hands_rating if hands_rating > hands_threshold else overall_rating
+            rating_multiplier = base_multiplier + (primary_rating / rating_divisor)
             weight *= rating_multiplier
 
-        return max(weight, 0.1)  # Minimum weight to ensure all players can be targeted
+        # Minimum weight to ensure all players can be targeted (from config)
+        min_weight = self.receiver_targeting_config['minimum_target_weight']
+        return max(weight, min_weight)
 
     def _weighted_random_selection(self, candidates: List[Tuple]) -> Optional:
         """Select receiver using weighted random selection"""
@@ -908,12 +964,12 @@ class PassPlaySimulator(BasePlaySimulator):
         if not target_receiver:
             return None
 
-        # Get defensive backs and linebackers who can cover
-        defensive_backs = self._find_defensive_players_by_positions([
+        # Get defensive backs and linebackers who can cover (only on-field players)
+        defensive_backs = self._get_field_defensive_players_by_positions([
             Position.CB, Position.FS, Position.SS, Position.NCB,
             'cornerback', 'free_safety', 'strong_safety', 'safety', 'nickel_cornerback'
         ])
-        linebackers = self._find_defensive_players_by_positions([
+        linebackers = self._get_field_defensive_players_by_positions([
             Position.MIKE, Position.SAM, Position.WILL, Position.ILB, Position.OLB,
             'mike_linebacker', 'sam_linebacker', 'will_linebacker', 'inside_linebacker',
             'outside_linebacker', 'linebacker'
@@ -1261,23 +1317,24 @@ class PassPlaySimulator(BasePlaySimulator):
             List of PlayerStats objects for players who recorded stats
         """
         player_stats = []
-        
-        # Find key players
+
+        # Find key players (using field-limited method to only get on-field players)
         quarterback = self._find_player_by_position(Position.QB)
-        offensive_line = self._find_players_by_positions([Position.LT, Position.LG, Position.C, Position.RG, Position.RT])
+        offensive_line = self._get_field_offensive_players_by_positions([Position.LT, Position.LG, Position.C, Position.RG, Position.RT])
 
         # Include all position variations (specific and generic)
         # Pass rushers now include all D-line AND linebackers (LBs blitz and get sacks)
-        pass_rushers = self._find_defensive_players_by_positions([
+        # IMPORTANT: Use _get_field_defensive_players_by_positions to only include on-field players
+        pass_rushers = self._get_field_defensive_players_by_positions([
             Position.DE, Position.DT, Position.OLB, Position.MIKE, Position.SAM,
             Position.WILL, Position.ILB, "defensive_end", "defensive_tackle",
             "nose_tackle", "mike_linebacker", "sam_linebacker", "will_linebacker",
             "inside_linebacker", "outside_linebacker"
         ])
-        linebackers = self._find_defensive_players_by_positions([
+        linebackers = self._get_field_defensive_players_by_positions([
             Position.MIKE, Position.SAM, Position.WILL, Position.ILB, Position.OLB, "linebacker"
         ])
-        defensive_backs = self._find_defensive_players_by_positions([
+        defensive_backs = self._get_field_defensive_players_by_positions([
             Position.CB, Position.FS, Position.SS, Position.NCB, "cornerback", "safety"
         ])
         
@@ -1323,6 +1380,7 @@ class PassPlaySimulator(BasePlaySimulator):
                 receiver_stats.receptions = 1
                 receiver_stats.receiving_yards = pass_outcome.get('yards', 0)
                 receiver_stats.yac = pass_outcome.get('yac', 0)
+                receiver_stats.receiving_long = pass_outcome.get('yards', 0)
             
             player_stats.append(receiver_stats)
         
@@ -1434,6 +1492,26 @@ class PassPlaySimulator(BasePlaySimulator):
                         coverage_stats = create_player_stats_from_player(coverage_player, team_id=self.defensive_team_id)
                         coverage_stats.passes_defended = 1
                         player_stats.append(coverage_stats)
+                else:
+                    # Remaining 55% - attribute drops based on receiver hands rating
+                    target_receiver = pass_outcome.get('target_receiver')
+                    if target_receiver:
+                        # Calculate drop probability (NFL avg: 4-6% of targets)
+                        # Elite (95 hands) = 2% drops, Poor (50 hands) = 10% drops
+                        hands_rating = getattr(target_receiver, 'hands', 75)
+
+                        # Convert hands rating to drop chance
+                        base_drop_rate = 0.05  # 5% baseline
+                        hands_modifier = (75 - hands_rating) / 500  # ±0.05 adjustment
+                        drop_chance = max(0.02, min(0.15, base_drop_rate + hands_modifier))
+
+                        if random.random() < drop_chance:
+                            # Find and update existing receiver_stats
+                            for stats in player_stats:
+                                if (stats.player_name == target_receiver.name and
+                                    stats.position == target_receiver.primary_position):
+                                    stats.drops = 1
+                                    break
             elif pass_outcome.get('completed'):
                 # Check if this is a touchdown - you can't tackle someone who scored
                 total_yards = pass_outcome.get('yards', 0)

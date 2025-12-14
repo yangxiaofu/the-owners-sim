@@ -51,6 +51,7 @@ class PlayerStats:
     receiving_yards: int = 0
     receiving_tds: int = 0
     drops: int = 0
+    receiving_long: int = 0
     yac: int = 0
     
     # Blocking stats (OL)
@@ -737,7 +738,8 @@ class PlayerStatsAccumulator:
 
     # Fields that use max() instead of sum() when merging
     _MERGE_MAX_FIELDS = frozenset({
-        'longest_field_goal', 'run_blocking_grade', 'pass_blocking_efficiency'
+        'longest_field_goal', 'run_blocking_grade', 'pass_blocking_efficiency',
+        'receiving_long'
     })
 
     # PFF-critical stats to trace for grading audit
