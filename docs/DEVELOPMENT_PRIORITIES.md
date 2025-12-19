@@ -58,6 +58,21 @@
   - Game recap narratives with 4-paragraph body text generation
   - Award race coverage (MVP Watch, Rookie Watch, predictions)
   - ESPN-style UI with scoreboard ticker, breaking news banner, featured headlines
+- ✅ **Milestone 14:** Contract Valuation Engine (All 9 Tollgates Complete, 219 tests)
+  - Multi-factor valuation: stats, scouting grades, market comparables, overall rating, age
+  - GM personality-driven weighting (analytics_heavy, scout_focused, balanced, market_driven)
+  - Owner pressure modifiers (job security affects overpay/discount behavior)
+  - Position-specific market rates calibrated to 2024 NFL contracts
+  - Full audit trail with ValuationResult dataclass for benchmarking
+  - UI Integration: ValuationBreakdownWidget with collapsible factor details
+  - Integrated into GMProposalNotificationDialog, SigningDialog, ContractDetailsDialog
+- ✅ **Milestone 13:** Owner-GM Offseason Flow (All 12 Tollgates Complete, 184+ tests)
+  - Owner Review UI: OffseasonDirectiveDialog for setting philosophy, budget stance, position priorities
+  - GM Proposal System: ProposalAPI, PersistentGMProposal with approval workflow
+  - Full integration across all offseason stages: Franchise Tag, Re-signing, FA, Trading, Draft, Roster Cuts, Waiver Wire
+  - Trust GM mode for auto-approval, batch approval dialogs
+  - Staff management: Fire/hire GM and Head Coach from procedurally generated candidates
+  - Persistent directives database with season-over-season tracking
 
 ## In Progress
 - 🔄 **Free Agency Depth** (Tollgates 1-5 Complete, 165 tests)
@@ -69,7 +84,8 @@
   - Pending: Tollgate 6 (Offer Dialog), Tollgate 7 (Integration Testing)
 
 ## Next Up
-- **Advanced Analytics & PFF Grades**
+
+- **Advanced Analytics & PFF Grades** (Deferred)
   - Per-play grades (0-100 scale) for every player
   - Advanced offensive metrics: EPA, Success Rate, Air Yards, YAC, Pressure Rate
   - Advanced defensive metrics: Pass Rush Win Rate, Coverage Grade, Missed Tackle Rate
@@ -122,12 +138,13 @@
 ### Ownership & Business
 | #  | Milestone                  | Status      | Dependencies              |
 |----|----------------------------|-------------|---------------------------|
-| 25 | Owner Communication Portal | Not Started | None                      |
-| 26 | GM Hiring & Firing         | Not Started | GM Behaviors              |
-| 27 | Coach Hiring & Firing      | Not Started | Head Coaching, Coach AI   |
+| 13 | **Owner-GM Offseason Flow**| ✅ Complete | FA Depth, Trades, Cap (done) |
+| 25 | Owner Communication Portal | Partial*    | None                      |
+| 26 | GM Hiring & Firing         | ✅ Complete*| Owner-GM Flow             |
+| 27 | Coach Hiring & Firing      | ✅ Complete*| Owner-GM Flow             |
 | 28 | Roster Management          | Not Started | Coach AI                  |
-| 29 | Front Office Direction     | Not Started | GM Behaviors              |
-| 30 | Season Goals               | Not Started | GM Behaviors, Coach AI    |
+| 29 | Front Office Direction     | ✅ Complete*| Owner-GM Flow             |
+| 30 | Season Goals               | Partial*    | GM Behaviors, Coach AI    |
 | 31 | Stadium & Pricing          | Not Started | None                      |
 | 32 | Team Finances (P&L)        | Not Started | Stadium, Cap              |
 | 33 | Business Dashboards        | Not Started | Finances, Stadium         |
@@ -135,18 +152,21 @@
 | 35 | Team Valuation             | Not Started | Finances, Stats           |
 | 36 | Marketing & Promotions     | Not Started | Revenue, Social, Media    |
 
+*Addressed by Owner-GM Offseason Flow (Milestone 13) — includes GM/HC firing/hiring, directives, proposal approval workflow
+
 ### Intelligence Layer
 | #  | Milestone                    | Status      | Dependencies                         |
 |----|------------------------------|-------------|--------------------------------------|
 | 37 | GM Behaviors & Team Building | Not Started | Stats, Trades, Progression, Scouting, Analytics |
 | 38 | Coach AI & Game Management   | Not Started | Head Coaching, Game Scenarios        |
 | 39 | Market Dynamics              | Not Started | Stats, GM Behaviors, Media           |
+| 40 | **Contract Valuation Engine**| ✅ Complete | Stats, Owner Review, GM Archetypes   |
 
 ### Tools & Utilities
 | #  | Milestone                   | Status      | Dependencies          |
 |----|-----------------------------|--------------|-----------------------|
-| 40 | CSV Export                  | Not Started | Stats (done)          |
-| 41 | League Settings             | Not Started | None                  |
+| 41 | CSV Export                  | Not Started | Stats (done)          |
+| 42 | League Settings             | Not Started | None                  |
 
 ---
 
@@ -203,6 +223,228 @@
 ---
 
 ## Feature Details
+
+### Owner-GM Offseason Flow (✅ COMPLETE)
+
+A unified system that enables the Owner to set direction, then let the GM automate offseason decisions with approval checkpoints. Combines elements of #25 (Owner Communication Portal), #29 (Front Office Direction), #30 (Season Goals), and #37 (GM Behaviors).
+
+**Design Philosophy:**
+- Owner is **NOT** the GM — you set direction, not execute transactions
+- GM proposes, Owner approves — every significant move requires sign-off
+- Automation with oversight — skip the tedium, keep the control
+
+**Offseason Stage Flow with Owner-GM Interaction:**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        OFFSEASON FLOW                                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  PHASE 1: OWNER REVIEW (One-Time Setup at Offseason Start)                  │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │  Owner sets offseason priorities:                                    │   │
+│  │  • Team Philosophy: Win-Now / Rebuild / Maintain                     │   │
+│  │  • Budget Stance: Aggressive / Moderate / Conservative               │   │
+│  │  • Position Priorities: "We need a WR1" / "Shore up O-line"          │   │
+│  │  • Protected Players: "Don't trade Player X"                         │   │
+│  │  • Expendable Players: "Open to moving Player Y"                     │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                              ↓                                              │
+│  PHASE 2: GM AUTOMATION (Per-Stage with Approval Gates)                     │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                                                                       │   │
+│  │  HONORS ──────────► (Automated, no approval needed)                   │   │
+│  │                                                                       │   │
+│  │  FRANCHISE TAG ───► GM proposes tag candidate ──► Owner approves     │   │
+│  │                                                                       │   │
+│  │  RE-SIGNING ──────► GM proposes extensions ──────► Owner approves    │   │
+│  │                                                                       │   │
+│  │  FREE AGENCY ─────► GM proposes signings ────────► Owner approves    │   │
+│  │                     (Multiple waves, batched proposals)               │   │
+│  │                                                                       │   │
+│  │  TRADING ─────────► GM proposes trades ──────────► Owner approves    │   │
+│  │                                                                       │   │
+│  │  DRAFT ───────────► GM proposes picks ───────────► Owner approves    │   │
+│  │                     (Per-round or per-pick based on preference)       │   │
+│  │                                                                       │   │
+│  │  ROSTER CUTS ─────► GM proposes cuts ────────────► Owner approves    │   │
+│  │                                                                       │   │
+│  │  WAIVER WIRE ─────► GM proposes claims ──────────► Owner approves    │   │
+│  │                                                                       │   │
+│  │  TRAINING CAMP ───► (Automated progression, no approval needed)       │   │
+│  │                                                                       │   │
+│  │  PRESEASON ───────► (Automated games, no approval needed)             │   │
+│  │                                                                       │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Implementation Tollgates:**
+
+| Tollgate | Description | Key Deliverables |
+|----------|-------------|------------------|
+| **T1** | Owner Review UI | OffseasonDirectiveDialog, priority sliders, position needs selector |
+| **T2** | Directive Data Model | `offseason_directives` table, OffseasonDirective dataclass |
+| **T3** | GM Proposal System | GMProposal dataclass, ProposalAPI, proposal generation logic |
+| **T4** | Approval UI | ProposalReviewDialog with Accept/Reject/Modify actions |
+| **T5** | Franchise Tag Integration | GM analyzes roster, proposes tag candidate with reasoning |
+| **T6** | Re-signing Integration | GM prioritizes extensions based on directives, batched proposals |
+| **T7** | Free Agency Integration | GM targets players matching needs, multi-wave proposal batches |
+| **T8** | Trade Integration | GM seeks trade partners, presents packages with analysis |
+| **T9** | Draft Integration | GM builds draft board influenced by directives, pick-by-pick or batch |
+| **T10** | Roster Cuts Integration | GM proposes cuts to reach 53-man roster |
+| **T11** | Waiver Wire Integration | GM claims players fitting team needs |
+| **T12** | End-to-End Testing | Full offseason simulation with approval flow |
+
+**Core Data Structures:**
+
+```python
+@dataclass
+class OffseasonDirective:
+    dynasty_id: str
+    season: int
+    philosophy: TeamPhilosophy  # WIN_NOW, REBUILD, MAINTAIN
+    budget_stance: BudgetStance  # AGGRESSIVE, MODERATE, CONSERVATIVE
+    position_priorities: List[str]  # ["WR", "EDGE", "CB"]
+    protected_player_ids: List[str]
+    expendable_player_ids: List[str]
+    notes: str  # Free-form owner instructions
+
+@dataclass
+class GMProposal:
+    proposal_id: str
+    dynasty_id: str
+    stage: StageType
+    proposal_type: ProposalType  # TAG, EXTENSION, SIGNING, TRADE, DRAFT_PICK, CUT, CLAIM
+    subject_player_id: Optional[str]
+    details: Dict  # Stage-specific details (contract terms, trade package, etc.)
+    gm_reasoning: str  # Why GM is recommending this
+    confidence: float  # 0-1 how strongly GM recommends
+    status: ProposalStatus  # PENDING, APPROVED, REJECTED, MODIFIED
+    owner_notes: Optional[str]  # Owner feedback if modified/rejected
+```
+
+**GM Reasoning Examples:**
+
+| Stage | Proposal | GM Reasoning |
+|-------|----------|--------------|
+| Franchise Tag | Tag WR Marcus Johnson | "Johnson is our top playmaker (1,200 yds, 9 TDs). Tagging preserves negotiation window. Cost: $19.5M. Aligns with your Win-Now directive." |
+| Re-signing | Extend CB Darius Williams, 4yr/$52M | "Williams (28) is a Pro Bowler in his prime. Market value ~$15M/yr. This deal is slightly below market and keeps him through age-31 season." |
+| Free Agency | Sign EDGE Khalil Mack, 2yr/$28M | "You prioritized EDGE rusher. Mack (33) is older but elite. Short deal limits risk. Fills your biggest defensive need." |
+| Trade | Trade Pick 1.24 for WR Tyreek Hill | "Acquiring Hill immediately upgrades your WR room. Fits Win-Now window. Giving up 1st-rounder is aggressive but you marked 'Aggressive' budget." |
+| Draft | Select QB Caleb Williams, Pick 1.01 | "BPA at franchise-need position. Your current QB is 34 and declining. Williams has highest ceiling in class." |
+| Roster Cut | Release RB James Conner | "Conner (30) has $8M cap hit, only $2M dead money. Younger backs on roster. Frees cap space for your FA targets." |
+
+**Owner Actions on Proposals:**
+
+| Action | Effect |
+|--------|--------|
+| **Approve** | GM executes the transaction immediately |
+| **Approve All** | Batch-approve multiple proposals (e.g., all cuts) |
+| **Reject** | GM does not execute; may propose alternative |
+| **Modify** | Owner adjusts terms (e.g., "offer 3 years instead of 4") |
+| **Defer** | Move to next stage; may revisit later |
+| **Ask for Alternatives** | GM generates 2-3 alternative proposals |
+
+**Hands-Off Mode:**
+For owners who want to delegate entirely:
+- Toggle "Trust GM" at Owner Review phase
+- GM executes all decisions without approval gates
+- End-of-offseason summary shows all moves made
+- Can be toggled per-stage or for entire offseason
+
+**Integration with Existing Systems:**
+- Uses existing `fa_wave_service.py` for Free Agency mechanics
+- Uses existing `trade_service.py` for trade evaluation
+- Uses existing `resigning_service.py` for extension logic
+- Uses existing `draft_service.py` for draft board and picks
+- Uses existing `roster_cuts_service.py` for cut decisions
+- Uses existing `waiver_service.py` for waiver claims
+
+**UI Mockup - Owner Review:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  OFFSEASON DIRECTION - 2025                                     │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  TEAM PHILOSOPHY                                                │
+│  ○ Win-Now   ● Maintain   ○ Rebuild                             │
+│                                                                 │
+│  SPENDING APPROACH                                              │
+│  ○ Aggressive   ● Moderate   ○ Conservative                     │
+│                                                                 │
+│  POSITION NEEDS (drag to prioritize)                            │
+│  ┌─────────────────────────────────┐                            │
+│  │ 1. EDGE                         │                            │
+│  │ 2. WR                           │                            │
+│  │ 3. CB                           │                            │
+│  └─────────────────────────────────┘                            │
+│                                                                 │
+│  PROTECTED PLAYERS                                              │
+│  [Patrick Mahomes] [Travis Kelce] [+Add]                        │
+│                                                                 │
+│  EXPENDABLE PLAYERS                                             │
+│  [Clyde Edwards-Helaire] [+Add]                                 │
+│                                                                 │
+│  NOTES TO GM                                                    │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ Focus on young players with upside. Don't overpay for   │   │
+│  │ veterans over 30.                                        │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  [ ] Trust GM (skip approval gates)                             │
+│                                                                 │
+│         [Cancel]                    [Set Direction →]           │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**UI Mockup - Proposal Review:**
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  GM PROPOSAL - FREE AGENCY                                      │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  PROPOSED SIGNING                                               │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  EDGE  Khalil Mack (33)                                  │   │
+│  │  Contract: 2 years, $28M ($14M AAV)                      │   │
+│  │  Guaranteed: $20M                                        │   │
+│  │  Cap Hit Year 1: $12M                                    │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  GM REASONING                                                   │
+│  "You prioritized EDGE rusher. Mack is a proven pass           │
+│  rusher with 87 career sacks. The 2-year deal limits           │
+│  risk given his age. Fills your #1 positional need."           │
+│                                                                 │
+│  GM CONFIDENCE: ████████░░ 80%                                  │
+│                                                                 │
+│  YOUR CAP SITUATION                                             │
+│  Current Space: $32.5M → After Signing: $20.5M                 │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ [Approve] [Reject] [Modify Terms] [See Alternatives]     │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  PENDING PROPOSALS: 3 more                                      │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Dependencies:**
+- Builds on completed: Salary Cap, Trades, FA Depth, Player Personas
+- Minimal new infrastructure: Directive storage, Proposal workflow
+- Reuses existing GM decision logic, just adds approval layer
+
+**Why This Approach:**
+1. **Delivers the Owner fantasy** — You're not doing paperwork, you're directing strategy
+2. **Keeps the game moving** — No manual transaction-by-transaction tedium
+3. **Adds meaningful decisions** — Approve/reject creates tension and consequences
+4. **Scales to hands-off** — Trust GM mode for experienced players who want speed
+
+---
 
 ### Advanced Analytics & PFF Grades (#3)
 

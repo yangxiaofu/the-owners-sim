@@ -18,7 +18,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | `main.py` | `data/database/nfl_simulation.db` | Calendar-based (day-by-day, legacy) |
 
 **Database Content Split:**
+- This is the primary database. 
 - `game_cycle.db`: Standings, schedule, playoff bracket, box scores, player stats, awards, media headlines, progression history
+
+This database is no longer in use. 
 - `nfl_simulation.db`: Player data, contracts, team rosters, draft picks, transactions (legacy - some data shared via JSON files)
 
 **Do NOT mix `src/game_cycle/` code with the calendar-based season cycle scheduler in `src/season/`.**
@@ -52,10 +55,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Current Status:** See `docs/DEVELOPMENT_PRIORITIES.md` for complete roadmap and milestone status.
 
-**Completed Milestones (9 of 41):**
-1. Game Cycle, 2. Salary Cap & Contracts, 3. Player Progression, 4. Statistics, 5. Injuries & IR, 6. Trade System, 7. Player Personas, 8. Team Statistics, 9. Realistic Game Scenarios
+**Completed Milestones (14 of 41):**
+1. Game Cycle, 2. Salary Cap & Contracts, 3. Player Progression, 4. Statistics, 5. Injuries & IR, 6. Trade System, 7. Player Personas, 8. Team Statistics, 9. Realistic Game Scenarios, 10. Awards System, 11. Schedule & Rivalries, 12. Media Coverage, 13. Owner-GM Offseason Flow, 14. Contract Valuation Engine
 
-**In Progress:** Milestone 10 (Awards System), Milestone 12 (Media Coverage)
+**In Progress:** Free Agency Depth (Tollgates 1-5 Complete)
 
 **Stable Systems:** Play engine, game simulation, coaching staff, playoff system, database persistence
 
@@ -137,7 +140,7 @@ REGULAR SEASON (18 weeks)
 - `src/game_cycle/stage_definitions.py` - `StageType` enum, `Stage` dataclass
 - `src/game_cycle/stage_controller.py` - Main orchestrator (`StageController`)
 - `src/game_cycle/handlers/` - Phase handlers (regular_season.py, playoffs.py, offseason.py)
-- `src/game_cycle/services/` - Business logic (30+ services):
+- `src/game_cycle/services/` - Business logic (35+ services):
   - `draft_service.py` - NFL Draft with AI GM picks
   - `free_agency_service.py`, `fa_wave_service.py`, `fa_wave_executor.py` - Multi-wave FA market
   - `resigning_service.py` - Contract extensions
@@ -151,7 +154,16 @@ REGULAR SEASON (18 weeks)
   - `rivalry_service.py` - Division/historical rivalries
   - `awards_service.py` - MVP, All-Pro, weekly awards
   - `game_simulator_service.py` - Game simulation orchestration
-- `src/game_cycle/database/` - Schema and dedicated API classes (19+ APIs):
+  - `owner_service.py` - Staff management (GM/HC firing/hiring)
+  - `valuation_service.py` - Contract valuation engine
+  - `gm_fa_proposal_engine.py` - GM proposal generation for FA signings
+  - `directive_loader.py` - Load owner offseason directives
+  - `proposal_generators/` - Stage-specific proposal generators (franchise_tag, resigning, fa_signing, trade, draft, cuts, waiver)
+- `src/contract_valuation/` - Multi-factor contract valuation system:
+  - `valuation_engine.py` - Core valuation logic with factor weighting
+  - `market_rates.py` - Position-specific market rates (2024 NFL calibrated)
+  - `gm_personality.py` - GM archetype-driven valuation adjustments
+- `src/game_cycle/database/` - Schema and dedicated API classes (22+ APIs):
   - `schema.sql`, `full_schema.sql` - Complete game cycle schemas
   - `connection.py` - Database connection management
   - `standings_api.py`, `box_scores_api.py`, `team_stats_api.py` - Core stats
@@ -160,6 +172,12 @@ REGULAR SEASON (18 weeks)
   - `rivalry_api.py`, `head_to_head_api.py`, `team_history_api.py` - History
   - `awards_api.py`, `analytics_api.py` - Awards and analytics
   - `schedule_api.py`, `schedule_rotation_api.py`, `game_slots_api.py`, `bye_week_api.py` - Schedule
+  - `proposal_api.py` - GM proposal persistence and workflow
+  - `staff_api.py` - GM and Head Coach staff records
+- `src/game_cycle/models/` - Data models for game cycle:
+  - `fa_guidance.py` - Owner FA guidance/directives
+  - `gm_proposal.py`, `persistent_gm_proposal.py` - GM proposal dataclasses
+  - `proposal_enums.py` - ProposalType, ProposalStatus enums
 - `game_cycle_ui/` - Stage-based UI views
 
 ### Calendar-Based Architecture (main.py) - Legacy
