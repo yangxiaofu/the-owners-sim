@@ -73,15 +73,26 @@
   - Trust GM mode for auto-approval, batch approval dialogs
   - Staff management: Fire/hire GM and Head Coach from procedurally generated candidates
   - Persistent directives database with season-over-season tracking
-
-## In Progress
-- 🔄 **Free Agency Depth** (Tollgates 1-5 Complete, 165 tests)
+- ✅ **Milestone 15:** Free Agency Depth (All 7 Tollgates Complete, 186 tests)
   - 5-wave system: Legal Tampering → Elite → Quality → Depth → Post-Draft
   - Database schema: pending_offers, fa_wave_state tables
   - FAWaveService with wave progression and offer lifecycle
   - FAWaveExecutor orchestrator with result dataclasses
-  - UI wave display with status indicators
-  - Pending: Tollgate 6 (Offer Dialog), Tollgate 7 (Integration Testing)
+  - Contract Modification Dialog: Owner modifies GM's proposed terms before approval
+  - Integration tests: 21 end-to-end test scenarios
+- ✅ **Milestone 17:** Player Retirements (All 7 Tollgates Complete)
+  - Retirement decision engine: Age, decline, injury, championship, contract triggers
+  - Career summary generation with Hall of Fame scoring (0-100 scale)
+  - OFFSEASON_HONORS → Season Recap view with tabs: Super Bowl, Awards, Retirements
+  - RetirementDetailDialog: Career retrospective with stats, timeline, awards, HOF projection
+  - One-day contract ceremony support
+  - Integration tests: 14 end-to-end scenarios
+
+## In Progress
+- 🔄 **Hall of Fame** (Not Started)
+  - Annual HOF voting for retired players
+  - Eligibility tracking (5+ seasons post-retirement)
+  - Induction ceremony and speech generation
 
 ## Next Up
 
@@ -104,7 +115,7 @@
 | 4 | Injuries & IR System | ✅ Complete | Stats |
 | 5 | Trade System | ✅ Complete | Cap (done), Stats (done) |
 | 6 | Player Personas & Preferences | ✅ Complete | None |
-| 7 | Free Agency Depth | 🔄 In Progress (T1-5) | Player Personas, Cap (done) |
+| 7 | Free Agency Depth | ✅ Complete | Player Personas, Cap (done) |
 | 8 | Team Statistics | ✅ Complete | Stats (done), Game Engine |
 
 ### Simulation Realism
@@ -122,7 +133,7 @@
 ### Legacy & History
 | #  | Milestone                   | Status      | Dependencies          |
 |----|-----------------------------|--------------|-----------------------|
-| 17 | Player Retirements          | Not Started | Stats, Progression    |
+| 17 | Player Retirements          | ✅ Complete | Stats, Progression    |
 | 18 | Hall of Fame                | Not Started | Retirements, Awards   |
 | 19 | Team History & Records      | Not Started | Stats                 |
 | 20 | NFL Records                 | Not Started | Stats                 |
@@ -190,11 +201,11 @@
         │          ▼                    ▼                                     │
         │  1. Progression ✅ ──► 9. Game Scenarios ✅ ──► 21. Head Coaching     │
         │  2. Statistics ✅ ──► 3. Analytics ──► 10. Awards ✅ ──► 15. Popularity │
-        │       │         ──► 17. Retirements ──► 18. Hall of Fame    │       │
+        │       │         ──► 17. Retirements ✅ ──► 18. Hall of Fame   │       │
         │       └─────────────► 19. Team History    20. NFL Records   ▼       │
         │  4. Injuries ✅ ──► 13. Draft Class ──► 24. Scouting   14. Social   │
         │  5. Trades ✅         │                │                            │
-        │  6. Personas ✅ ──► 7. FA Depth        │                            │
+        │  6. Personas ✅ ──► 7. FA Depth ✅      │                            │
         │ 11. Schedule ✅       │  12. Media ✅ + 37/38 AI ──► 16. Press Conf  │
         │                       └────────────────┴──► 37. GM Behaviors        │
         │                                           39. Market Dynamics       │
