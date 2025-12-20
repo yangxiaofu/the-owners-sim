@@ -4727,7 +4727,7 @@ class OffseasonHandler:
             generator.generate_and_save(events, dynasty_id, season, week=23)
 
         except Exception as e:
-            self._logger.error(f"Failed to generate awards headlines: {e}", exc_info=True)
+            logger.error(f"Failed to generate awards headlines: {e}", exc_info=True)
 
     def _generate_awards_social_posts(
         self,
@@ -4941,7 +4941,7 @@ class OffseasonHandler:
                 generator.generate_and_save(events, dynasty_id, season, week=27)
 
         except Exception as e:
-            self._logger.error(f"Failed to generate draft headlines: {e}", exc_info=True)
+            logger.error(f"Failed to generate draft headlines: {e}", exc_info=True)
 
     def _generate_fa_headlines(
         self,
@@ -5007,7 +5007,7 @@ class OffseasonHandler:
             )
 
         except Exception as e:
-            self._logger.error(f"Failed to generate FA headlines: {e}", exc_info=True)
+            logger.error(f"Failed to generate FA headlines: {e}", exc_info=True)
 
     def _generate_fa_social_posts(
         self,
@@ -5152,6 +5152,8 @@ class OffseasonHandler:
                 }
 
                 event = TransactionEvent.from_trade(
+                    trade_data=trade_data,
+                    dynasty_id=dynasty_id,
                     season=season,
                     team_name=team1_name,
                     other_team_name=team2_name,
@@ -5164,7 +5166,7 @@ class OffseasonHandler:
             generator.generate_and_save(events, dynasty_id, season, week=26)
 
         except Exception as e:
-            self._logger.error(f"Failed to generate trade headlines: {e}", exc_info=True)
+            logger.error(f"Failed to generate trade headlines: {e}", exc_info=True)
 
     def _generate_trade_social_posts(
         self,
@@ -5369,7 +5371,7 @@ class OffseasonHandler:
                 )
 
         except Exception as e:
-            self._logger.error(f"Failed to generate roster cuts headlines: {e}", exc_info=True)
+            logger.error(f"Failed to generate roster cuts headlines: {e}", exc_info=True)
 
     def _generate_resigning_headlines(
         self,
@@ -5469,7 +5471,7 @@ class OffseasonHandler:
             )
 
         except Exception as e:
-            self._logger.error(f"Failed to generate resigning headlines: {e}", exc_info=True)
+            logger.error(f"Failed to generate resigning headlines: {e}", exc_info=True)
 
     def _generate_waiver_wire_headlines(
         self,
@@ -5550,7 +5552,7 @@ class OffseasonHandler:
             )
 
         except Exception as e:
-            self._logger.error(f"Failed to generate waiver wire headlines: {e}", exc_info=True)
+            logger.error(f"Failed to generate waiver wire headlines: {e}", exc_info=True)
 
     def _get_gm_archetype_for_team(self, team_id: int) -> "GMArchetype":
         """
