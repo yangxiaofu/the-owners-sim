@@ -6,12 +6,14 @@ Madden-style simplified offseason flow.
 """
 
 # Standard library
+from contextlib import contextmanager
+from dataclasses import dataclass
 import json
 import logging
 import random
 import sqlite3
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 # Game cycle - local (relative imports from ..)
 from ..database.analytics_api import AnalyticsAPI
@@ -79,6 +81,17 @@ logger = logging.getLogger(__name__)
 # - team_management.teams.team_loader.TeamDataLoader
 
 
+@dataclass
+class StagePreviewConfig:
+    """Configuration for stage preview generation."""
+    stage_name: str
+    description: str
+    is_interactive: bool = True
+    include_cap_data: bool = True
+    include_team_needs: bool = False
+    include_roster_data: bool = False
+
+
 class OffseasonHandler:
     """
     Handler for offseason stages (Madden-style).
@@ -111,6 +124,47 @@ class OffseasonHandler:
         # Cache loaded directives by (dynasty_id, team_id, season) to avoid duplicate queries
         self._directives_cache: Dict[tuple, Optional[OwnerDirectives]] = {}
 
+    @contextmanager
+    def _safe_headline_generation(self, operation_name: str):
+        """
+        Context manager for safe headline generation with logging.
+
+        Usage:
+            with self._safe_headline_generation("awards"):
+                # generate headlines
+        """
+        try:
+            yield
+        except Exception as e:
+            logger.error(f"[{operation_name}] Failed: {e}", exc_info=True)
+
+    def _safe_preview_fallback(
+        self,
+        stage_name: str,
+        description: str,
+        error: Exception
+    ) -> Dict[str, Any]:
+        """
+        Create a safe fallback preview response when preview generation fails.
+
+        Args:
+            stage_name: Display name for the stage
+            description: Description of the stage
+            error: The exception that occurred
+
+        Returns:
+            Minimal preview dict that won't crash the UI
+        """
+        logger.error(f"[{stage_name}] Preview generation failed: {error}", exc_info=True)
+        return {
+            "stage_name": stage_name,
+            "description": description,
+            "is_interactive": True,
+            "error": str(error),
+            "gm_proposals": [],
+            "trust_gm": False,
+        }
+
     def _get_team_name(self, team_id: int) -> str:
         """
         Get display name for a team.
@@ -123,6 +177,35 @@ class OffseasonHandler:
         """
         team = self._team_loader.get_team_by_id(team_id)
         return team.full_name if team else f"Team {team_id}"
+
+    def _enrich_with_team_names(
+        self,
+        items: List[Dict[str, Any]],
+        team_id_key: str = "team_id",
+        team_name_key: str = "team_name"
+    ) -> None:
+        """
+        Add team_name field to items in-place.
+
+        Iterates through items and adds team name based on team_id field.
+        Modifies items in-place for efficiency.
+
+        Args:
+            items: List of dicts to enrich
+            team_id_key: Key to read team ID from (default: "team_id")
+            team_name_key: Key to write team name to (default: "team_name")
+        """
+        for item in items:
+            if tid := item.get(team_id_key):
+                item[team_name_key] = self._get_team_name(tid)
+
+    def _enrich_trade_with_team_names(self, trades: List[Dict[str, Any]]) -> None:
+        """Add team names for both parties in trades."""
+        for trade in trades:
+            if tid1 := trade.get("team1_id"):
+                trade["team1_name"] = self._get_team_name(tid1)
+            if tid2 := trade.get("team2_id"):
+                trade["team2_name"] = self._get_team_name(tid2)
 
     def _extract_context(
         self,
@@ -162,6 +245,34 @@ class OffseasonHandler:
             result['user_team_id'] = context.get("user_team_id", 1)
 
         return result
+
+    def _extract_execute_context(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Extract all common fields for execute methods.
+
+        Extends _extract_context with fields commonly needed in execute handlers:
+        user_decisions, approved_proposals, roster_cut_decisions, fa_wave_actions, etc.
+
+        Args:
+            context: The execution context dictionary
+
+        Returns:
+            Dictionary containing all base context fields plus:
+                - user_decisions: dict - User decisions/input (default: {})
+                - approved_proposals: list - Approved GM proposals (default: [])
+                - roster_cut_decisions: list - Roster cut decisions (default: [])
+                - fa_wave_actions: dict - Free agency wave actions (default: {})
+                - wave_control: dict - Wave control settings (default: {})
+                - draft_decisions: dict - Draft pick decisions (default: {})
+        """
+        base = self._extract_context(context, include_season=True, include_user_team_id=True)
+        base['user_decisions'] = context.get("user_decisions", {})
+        base['approved_proposals'] = context.get("approved_proposals", [])
+        base['roster_cut_decisions'] = context.get("roster_cut_decisions", [])
+        base['fa_wave_actions'] = context.get("fa_wave_actions", {})
+        base['wave_control'] = context.get("wave_control", {})
+        base['draft_decisions'] = context.get("draft_decisions", {})
+        return base
 
     def _load_owner_directives(
         self,
@@ -239,6 +350,172 @@ class OffseasonHandler:
             # Cache None result to avoid repeated failed queries
             self._directives_cache[cache_key] = None
             return None
+
+    def _build_preview_base(
+        self,
+        context: Dict[str, Any],
+        team_id: int,
+        config: StagePreviewConfig,
+        stage_specific_data: Dict[str, Any] = None
+    ) -> Dict[str, Any]:
+        """
+        Build base preview structure with common fields.
+
+        This is the foundation for all preview methods, providing:
+        - Stage metadata (name, description, is_interactive)
+        - Cap data (if configured)
+        - Team needs (if configured)
+        - Roster data (if configured)
+        - Merge with stage-specific data
+
+        Args:
+            context: Execution context
+            team_id: User's team ID
+            config: Preview configuration
+            stage_specific_data: Additional data specific to the stage
+
+        Returns:
+            Preview dict ready for GM proposal enrichment
+        """
+        preview = {
+            "stage_name": config.stage_name,
+            "description": config.description,
+            "is_interactive": config.is_interactive,
+        }
+
+        # Add cap data if configured
+        if config.include_cap_data:
+            preview["cap_data"] = self._get_cap_data(context, team_id)
+
+        # Add team needs if configured
+        if config.include_team_needs:
+            preview["team_needs"] = self._calculate_team_needs(context, team_id)
+
+        # Add roster data if configured (for RosterHealthWidget)
+        if config.include_roster_data:
+            preview["roster_players"] = self._get_team_roster_for_widget(context, team_id)
+            preview["expiring_player_ids"] = self._get_expiring_player_ids(context, team_id)
+
+        # Merge stage-specific data
+        if stage_specific_data:
+            preview.update(stage_specific_data)
+
+        return preview
+
+    def _enrich_preview_with_proposals(
+        self,
+        preview: Dict[str, Any],
+        context: Dict[str, Any],
+        team_id: int,
+        proposal_generator: Optional[Callable] = None,
+        **generator_kwargs
+    ) -> Dict[str, Any]:
+        """
+        Enrich preview with GM proposals if directives exist.
+
+        Args:
+            preview: Base preview dict to enrich
+            context: Execution context
+            team_id: User's team ID
+            proposal_generator: Optional function that generates proposals
+            **generator_kwargs: Additional args for the proposal generator
+
+        Returns:
+            Preview enriched with gm_proposals, trust_gm, owner_directives
+        """
+        ctx = self._extract_context(context)
+        dynasty_id = ctx['dynasty_id']
+        season = ctx['season']
+        db_path = ctx['db_path']
+
+        gm_proposals = []
+        trust_gm = False
+        owner_directives_dict = None
+
+        # Load owner directives
+        directives = self._load_owner_directives(dynasty_id, team_id, season, db_path)
+
+        if directives:
+            trust_gm = directives.trust_gm
+            owner_directives_dict = directives.to_dict()
+
+            # Generate proposals if generator provided
+            if proposal_generator:
+                try:
+                    proposals = proposal_generator(directives=directives, **generator_kwargs)
+                    gm_proposals = self._persist_gm_proposals(
+                        proposals=proposals,
+                        dynasty_id=dynasty_id,
+                        team_id=team_id,
+                        db_path=db_path,
+                        trust_gm=trust_gm
+                    )
+                except Exception as e:
+                    logger.warning(f"Proposal generation failed: {e}")
+
+        preview["gm_proposals"] = gm_proposals
+        preview["trust_gm"] = trust_gm
+        preview["owner_directives"] = owner_directives_dict
+
+        return preview
+
+    def _persist_gm_proposals(
+        self,
+        proposals: List[Any],
+        dynasty_id: str,
+        team_id: int,
+        db_path: str,
+        trust_gm: bool
+    ) -> List[Dict[str, Any]]:
+        """
+        Persist GM proposals to database and return serialized list.
+
+        Args:
+            proposals: List of PersistentGMProposal objects
+            dynasty_id: Dynasty identifier
+            team_id: Team ID
+            db_path: Database path
+            trust_gm: Whether to auto-approve proposals
+
+        Returns:
+            List of proposal dicts with auto_approved flag
+        """
+        if not proposals:
+            return []
+
+        gm_proposals = []
+
+        try:
+            db = GameCycleDatabase(db_path)
+            proposal_api = ProposalAPI(db)
+
+            for proposal in proposals:
+                proposal_api.create_proposal(proposal)
+
+            # Handle Trust GM mode - auto-approve all
+            if trust_gm:
+                for proposal in proposals:
+                    proposal_api.approve_proposal(
+                        dynasty_id=dynasty_id,
+                        team_id=team_id,
+                        proposal_id=proposal.proposal_id,
+                        notes="Auto-approved (Trust GM mode)",
+                    )
+                gm_proposals = [
+                    p.to_dict() | {"auto_approved": True}
+                    for p in proposals
+                ]
+            else:
+                gm_proposals = [
+                    p.to_dict() | {"auto_approved": False}
+                    for p in proposals
+                ]
+
+        except Exception as e:
+            logger.error(f"Error persisting GM proposals: {e}")
+            traceback.print_exc()
+
+        return gm_proposals
 
     def execute(self, stage: Stage, context: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -637,16 +914,24 @@ class OffseasonHandler:
         Returns:
             Dictionary with expiring players, cap data, and GM proposals
         """
+        ctx = self._extract_context(context)
+        dynasty_id = ctx['dynasty_id']
+        season = ctx['season']
+        db_path = ctx['db_path']
+
         expiring_players = self._get_expiring_contracts(context, team_id)
+        cap_data = self._get_cap_data(context, team_id)
 
         preview = {
             "stage_name": "Re-signing Period",
             "description": "Re-sign your team's expiring contract players before they hit free agency.",
             "expiring_players": expiring_players,
             "is_interactive": True,
+            "cap_data": cap_data,
+            "team_needs": self._calculate_team_needs(context, team_id),
+            "roster_players": self._get_team_roster_for_widget(context, team_id),
+            "expiring_player_ids": self._get_expiring_player_ids(context, team_id),
         }
-        # Add cap data for UI display
-        preview["cap_data"] = self._get_cap_data(context, team_id)
 
         # Generate GM proposals if directives exist (Tollgate 6)
         gm_proposals = []
@@ -654,89 +939,41 @@ class OffseasonHandler:
         trust_gm = False
 
         if expiring_players:
-            try:
+            directives = self._load_owner_directives(dynasty_id, team_id, season, db_path)
+            if directives:
+                trust_gm = directives.trust_gm
+                cap_space = cap_data.get("available_space", 0)
+                gm_archetype = self._get_gm_archetype_for_resigning(team_id)
 
-                ctx = self._extract_context(context)
-                dynasty_id = ctx['dynasty_id']
-                season = ctx['season']
-                db_path = ctx['db_path']
+                generator = ResigningProposalGenerator(
+                    db_path=db_path,
+                    dynasty_id=dynasty_id,
+                    season=season,
+                    team_id=team_id,
+                    directives=directives,
+                    cap_space=cap_space,
+                    gm_archetype=gm_archetype,
+                )
 
-                # Load owner directives using DirectiveLoader
-                directives = self._load_owner_directives(dynasty_id, team_id, season, db_path)
+                # Get unified recommendations for UI
+                all_player_recommendations = generator.generate_all_player_recommendations(
+                    expiring_players
+                )
 
-                if directives:
-                    trust_gm = directives.trust_gm
-
-                    # Get cap space for cap-aware recommendations
-                    cap_data = preview.get("cap_data", {})
-                    cap_space = cap_data.get("available_space", 0)
-
-                    # Get GM archetype for personality-driven recommendations
-                    gm_archetype = self._get_gm_archetype_for_resigning(team_id)
-
-                    # Generate proposals with cap awareness
-                    generator = ResigningProposalGenerator(
-                        db_path=db_path,
+                # Generate and persist proposals
+                proposals = generator.generate_proposals(expiring_players)
+                if proposals:
+                    gm_proposals = self._persist_gm_proposals(
+                        proposals=proposals,
                         dynasty_id=dynasty_id,
-                        season=season,
                         team_id=team_id,
-                        directives=directives,
-                        cap_space=cap_space,
-                        gm_archetype=gm_archetype,
+                        db_path=db_path,
+                        trust_gm=trust_gm
                     )
-
-                    # Get ALL player recommendations (unified list for UI)
-                    all_player_recommendations = generator.generate_all_player_recommendations(
-                        expiring_players
-                    )
-
-                    # Also generate PersistentGMProposal objects for approved players
-                    # (needed for Trust GM mode and proposal persistence)
-                    proposals = generator.generate_proposals(expiring_players)
-
-                    if proposals:
-                        # Persist proposals to database
-                        db = GameCycleDatabase(db_path)
-                        proposal_api = ProposalAPI(db)
-                        for proposal in proposals:
-                            proposal_api.create_proposal(proposal)
-
-                        # Handle Trust GM mode - auto-approve all
-                        if trust_gm:
-                            for proposal in proposals:
-                                proposal_api.approve_proposal(
-                                    dynasty_id=dynasty_id,
-                                    team_id=team_id,
-                                    proposal_id=proposal.proposal_id,
-                                    notes="Auto-approved (Trust GM mode)",
-                                )
-                            gm_proposals = [
-                                p.to_dict() | {"auto_approved": True}
-                                for p in proposals
-                            ]
-                        else:
-                            gm_proposals = [
-                                p.to_dict() | {"auto_approved": False}
-                                for p in proposals
-                            ]
-
-            except Exception as prop_error:
-                print(f"[OffseasonHandler] Error generating resigning proposals: {prop_error}")
-                traceback.print_exc()
 
         preview["gm_proposals"] = gm_proposals
         preview["all_player_recommendations"] = all_player_recommendations
         preview["trust_gm"] = trust_gm
-
-        # Calculate team needs for UI display (legacy text-based)
-        team_needs = self._calculate_team_needs(context, team_id)
-        preview["team_needs"] = team_needs
-
-        # Add roster data for RosterHealthWidget
-        roster_players = self._get_team_roster_for_widget(context, team_id)
-        expiring_player_ids = self._get_expiring_player_ids(context, team_id)
-        preview["roster_players"] = roster_players
-        preview["expiring_player_ids"] = expiring_player_ids
 
         return preview
 
@@ -1094,16 +1331,16 @@ class OffseasonHandler:
             return preview
 
         except Exception as e:
-            print(f"[OffseasonHandler] Error getting free agency preview: {e}")
-            traceback.print_exc()
-            # Fallback to basic preview
-            return {
-                "stage_name": "Free Agency",
-                "description": "Sign available free agents to fill roster needs.",
-                "free_agents": self._get_free_agents(context),
-                "wave_state": None,
-                "is_interactive": True,
-            }
+            # Fallback to basic preview using helper
+            fallback = self._safe_preview_fallback(
+                stage_name="Free Agency",
+                description="Sign available free agents to fill roster needs.",
+                error=e
+            )
+            # Add free agents list to fallback
+            fallback["free_agents"] = self._get_free_agents(context)
+            fallback["wave_state"] = None
+            return fallback
 
     def _get_draft_preview(
         self,
@@ -1238,12 +1475,14 @@ class OffseasonHandler:
         3. AI team re-signing decisions
         """
 
-        dynasty_id = context.get("dynasty_id")
-        season = context.get("season", 2025)
-        user_team_id = context.get("user_team_id", 1)
-        user_decisions = context.get("user_decisions", {})  # {player_id: "resign"|"release"}
-        approved_proposals = context.get("approved_proposals", [])  # Tollgate 6
-        db_path = context.get("db_path", self._database_path)
+
+        ctx = self._extract_execute_context(context)
+        dynasty_id = ctx['dynasty_id']
+        season = ctx['season']
+        user_team_id = ctx['user_team_id']
+        user_decisions = ctx['user_decisions']
+        approved_proposals = ctx['approved_proposals']
+        db_path = ctx['db_path']
 
         service = ResigningService(db_path, dynasty_id, season)
 
@@ -1357,7 +1596,7 @@ class OffseasonHandler:
                 "enable_post_draft": bool
             }
         """
-        ctx = self._extract_context(context, include_user_team_id=True)
+        ctx = self._extract_execute_context(context)
         dynasty_id = ctx['dynasty_id']
         season = ctx['season']
         user_team_id = ctx['user_team_id']
@@ -1658,6 +1897,7 @@ class OffseasonHandler:
         if all_signings:
             current_wave = fresh_wave_state.get("current_wave", 0)
             self._generate_fa_headlines(context, all_signings, current_wave)
+            self._generate_fa_social_posts(context, all_signings, current_wave)
 
         return {
             "games_played": [],
@@ -1788,12 +2028,12 @@ class OffseasonHandler:
         print("[OffseasonHandler] _execute_draft() CALLED")
         print("=" * 60)
 
-        ctx = self._extract_context(context, include_user_team_id=True)
+        ctx = self._extract_execute_context(context)
         dynasty_id = ctx['dynasty_id']
         season = ctx['season']
         user_team_id = ctx['user_team_id']
         db_path = ctx['db_path']
-        draft_decisions = context.get("draft_decisions", {})  # {pick_num: prospect_id}
+        draft_decisions = ctx['draft_decisions']  # {pick_num: prospect_id}
         auto_complete = context.get("auto_complete", False)
         print(f"[OffseasonHandler] auto_complete={auto_complete}, draft_decisions={draft_decisions}")
         sim_to_user_pick = context.get("sim_to_user_pick", False)
@@ -2402,34 +2642,25 @@ class OffseasonHandler:
             Dictionary with waiver players and user's priority
         """
         try:
-
             ctx = self._extract_context(context)
             dynasty_id = ctx['dynasty_id']
             season = ctx['season']
             db_path = ctx['db_path']
 
             waiver_service = WaiverService(db_path, dynasty_id, season)
-
             waiver_players = waiver_service.get_available_players()
             user_priority = waiver_service.get_team_priority(team_id)
             user_claims = waiver_service.get_team_claims(team_id)
             claim_player_ids = [c["player_id"] for c in user_claims]
 
-            # Tollgate 11: Generate GM waiver proposals
+            # Generate GM waiver proposals (Tollgate 11)
             gm_proposals = []
             trust_gm = False
 
-            if waiver_players:  # Only generate if players available
-
-                db = GameCycleDatabase(db_path)
-
-                directives_api = OwnerDirectivesAPI(db)
-                directives = directives_api.get_directives(dynasty_id, team_id, season + 1)
-
+            if waiver_players:
+                directives = self._load_owner_directives(dynasty_id, team_id, season, db_path)
                 if directives:
                     trust_gm = directives.trust_gm
-
-
                     generator = WaiverProposalGenerator(
                         db_path=db_path,
                         dynasty_id=dynasty_id,
@@ -2437,34 +2668,27 @@ class OffseasonHandler:
                         team_id=team_id,
                         directives=directives,
                     )
-
                     proposals = generator.generate_proposals(waiver_players)
+                    if proposals:
+                        gm_proposals = self._persist_gm_proposals(
+                            proposals=proposals,
+                            dynasty_id=dynasty_id,
+                            team_id=team_id,
+                            db_path=db_path,
+                            trust_gm=trust_gm
+                        )
 
-                    # Persist proposals
-                    proposal_api = ProposalAPI(db)
-
-                    for proposal in proposals:
-                        proposal_api.create_proposal(proposal)
-
-                        if trust_gm:
-                            proposal_api.approve_proposal(
-                                dynasty_id, team_id, proposal.proposal_id
-                            )
-
-                    gm_proposals = [p.to_dict() for p in proposals]
-
-            # Get user's roster for the health widget
+            # Get roster and expiring contract data for health widget
             from database.player_roster_api import PlayerRosterAPI
             from salary_cap.cap_database_api import CapDatabaseAPI
 
             roster_api = PlayerRosterAPI(db_path)
             user_roster = roster_api.get_team_roster(dynasty_id, team_id)
 
-            # Get expiring contracts (players in last year of contract)
             cap_api = CapDatabaseAPI(db_path)
             expiring_contracts = cap_api.get_pending_free_agents(
                 team_id=team_id,
-                season=season + 1,  # Next season's FAs
+                season=season + 1,
                 dynasty_id=dynasty_id
             )
             expiring_ids = [p.get('player_id') for p in expiring_contracts if p.get('player_id')]
@@ -2481,23 +2705,16 @@ class OffseasonHandler:
                 "is_interactive": True,
                 "roster_players": user_roster,
                 "expiring_player_ids": expiring_ids,
+                "cap_data": self._get_cap_data(context, team_id),
             }
-            # Add cap data for UI display
-            preview["cap_data"] = self._get_cap_data(context, team_id)
             return preview
 
         except Exception as e:
-            print(f"[OffseasonHandler] Error getting waiver wire preview: {e}")
-            traceback.print_exc()
-            return {
-                "stage_name": "Waiver Wire",
-                "description": "Submit waiver claims for cut players.",
-                "waiver_players": [],
-                "user_priority": 16,
-                "user_claims": [],
-                "total_on_waivers": 0,
-                "is_interactive": True,
-            }
+            return self._safe_preview_fallback(
+                stage_name="Waiver Wire",
+                description="Submit waiver claims for cut players.",
+                error=e
+            ) | {"waiver_players": [], "user_priority": 16, "user_claims": [], "total_on_waivers": 0}
 
     def _get_training_camp_preview(
         self,
@@ -2582,6 +2799,34 @@ class OffseasonHandler:
             except Exception as e:
                 logging.getLogger(__name__).warning(f"Failed to generate preseason schedule: {e}")
 
+            # Initialize the upcoming season (generates regular season schedule)
+            # This was previously done in PreseasonHandler but moved here after restructuring
+            regular_season_games = 0
+            init_results = []
+            try:
+                init_service = SeasonInitializationService(
+                    db_path=db_path,
+                    dynasty_id=dynasty_id,
+                    from_season=season - 1,  # Previous season (for archiving stats/awards)
+                    to_season=season         # Current season to initialize
+                )
+                init_results = init_service.run_all()
+
+                # Extract schedule generation result
+                for step_result in init_results:
+                    if step_result.step_name == "Generate Schedule":
+                        # Parse "Created X games" message
+                        import re
+                        match = re.search(r'Created (\d+) games', step_result.message)
+                        if match:
+                            regular_season_games = int(match.group(1))
+                        break
+
+                print(f"[OffseasonHandler] Season {season} initialized: {len(init_results)} steps, {regular_season_games} regular season games")
+            except Exception as e:
+                logger.error(f"Failed to initialize season {season}: {e}")
+                traceback.print_exc()
+
             description = (
                 f"Training camp processed {summary.get('total_players', 0)} players. "
                 f"{summary.get('improved_count', 0)} improved, "
@@ -2591,12 +2836,19 @@ class OffseasonHandler:
             )
             if preseason_games > 0:
                 description += f" Preseason schedule generated: {preseason_games} games."
+            if regular_season_games > 0:
+                description += f" Regular season schedule generated: {regular_season_games} games."
 
             return {
                 "stage_name": "Training Camp - Complete",
                 "description": description,
                 "training_camp_results": result,
                 "preseason_games_scheduled": preseason_games,
+                "regular_season_games_scheduled": regular_season_games,
+                "initialization_results": [
+                    {"step": r.step_name, "status": r.status.value, "message": r.message}
+                    for r in init_results
+                ] if init_results else [],
                 "user_team_id": user_team_id,
                 "is_interactive": False,
             }
@@ -2626,11 +2878,13 @@ class OffseasonHandler:
         3. Cut players added to waiver wire
         """
 
-        dynasty_id = context.get("dynasty_id")
-        season = context.get("season", 2025)
-        user_team_id = context.get("user_team_id", 1)
-        user_cuts = context.get("roster_cut_decisions", [])  # List of player IDs or dicts with cut type
-        db_path = context.get("db_path", self._database_path)
+
+        ctx = self._extract_execute_context(context)
+        dynasty_id = ctx['dynasty_id']
+        season = ctx['season']
+        user_team_id = ctx['user_team_id']
+        user_cuts = ctx['roster_cut_decisions']
+        db_path = ctx['db_path']
 
         events = []
 
@@ -3355,20 +3609,16 @@ class OffseasonHandler:
             Dictionary with taggable players and tag status
         """
         try:
-
             ctx = self._extract_context(context)
             dynasty_id = ctx['dynasty_id']
             season = ctx['season']
             db_path = ctx['db_path']
 
             tag_service = FranchiseTagService(db_path, dynasty_id, season)
-
-            # Get taggable players (expiring contracts)
             taggable_players = tag_service.get_taggable_players(team_id)
-
-            # Check if team has already used tag
             tag_used = tag_service.has_team_used_tag(team_id)
 
+            # Build preview with stage-specific data
             preview = {
                 "stage_name": "Franchise Tag Window",
                 "description": (
@@ -3383,80 +3633,48 @@ class OffseasonHandler:
                 "current_season": season,
                 "next_season": season + 1,
             }
-            # Add current season cap data for UI display (the season being completed)
+
+            # Add cap data for current and projected next year
             current_cap_helper = CapHelper(db_path, dynasty_id, season)
             preview["cap_data"] = current_cap_helper.get_cap_summary(team_id)
-
-            # Add PROJECTED next-year cap (where tag salary will count)
             next_cap_helper = CapHelper(db_path, dynasty_id, season + 1)
             preview["projected_cap_data"] = next_cap_helper.get_cap_summary(team_id)
 
-            # Generate GM proposal if directives exist and tag not used
-            gm_proposal = None
+            # Generate GM proposal if tag not already used
+            gm_proposals = []
             trust_gm = False
 
             if not tag_used:
-                try:
-
-                    # Load owner directives using DirectiveLoader
-                    directives = self._load_owner_directives(dynasty_id, team_id, season, db_path)
-
-                    if directives:
-                        # Get db instance for ProposalAPI later
-                        db = GameCycleDatabase(db_path)
-                        trust_gm = directives.trust_gm
-
-                        # Generate proposal
-                        generator = FranchiseTagProposalGenerator(
-                            db_path=db_path,
+                directives = self._load_owner_directives(dynasty_id, team_id, season, db_path)
+                if directives:
+                    trust_gm = directives.trust_gm
+                    generator = FranchiseTagProposalGenerator(
+                        db_path=db_path,
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        team_id=team_id,
+                        directives=directives,
+                    )
+                    proposal = generator.generate_proposal()
+                    if proposal:
+                        gm_proposals = self._persist_gm_proposals(
+                            proposals=[proposal],
                             dynasty_id=dynasty_id,
-                            season=season,
                             team_id=team_id,
-                            directives=directives,
+                            db_path=db_path,
+                            trust_gm=trust_gm
                         )
-                        proposal = generator.generate_proposal()
 
-                        if proposal:
-                            # Persist proposal to database
-                            proposal_api = ProposalAPI(db)
-                            proposal_api.create_proposal(proposal)
-
-                            gm_proposal = proposal.to_dict()
-
-                            # Handle Trust GM mode - auto-approve
-                            if trust_gm:
-                                proposal_api.approve_proposal(
-                                    dynasty_id=dynasty_id,
-                                    team_id=team_id,
-                                    proposal_id=proposal.proposal_id,
-                                    notes="Auto-approved (Trust GM mode)",
-                                )
-                                gm_proposal["auto_approved"] = True
-                            else:
-                                gm_proposal["auto_approved"] = False
-
-                except Exception as prop_error:
-                    print(f"[OffseasonHandler] Error generating tag proposal: {prop_error}")
-                    traceback.print_exc()
-
-            preview["gm_proposals"] = [gm_proposal] if gm_proposal else []
+            preview["gm_proposals"] = gm_proposals
             preview["trust_gm"] = trust_gm
-
             return preview
 
         except Exception as e:
-            print(f"[OffseasonHandler] Error getting franchise tag preview: {e}")
-            traceback.print_exc()
-            return {
-                "stage_name": "Franchise Tag Window",
-                "description": "Apply a franchise or transition tag to one expiring contract player.",
-                "taggable_players": [],
-                "tag_used": False,
-                "total_taggable": 0,
-                "is_interactive": True,
-                "gm_proposal": None,
-                "trust_gm": False,
-            }
+            return self._safe_preview_fallback(
+                stage_name="Franchise Tag Window",
+                description="Apply a franchise or transition tag to one expiring contract player.",
+                error=e
+            ) | {"taggable_players": [], "tag_used": False, "total_taggable": 0}
 
     def _execute_honors(
         self,
@@ -3585,6 +3803,9 @@ class OffseasonHandler:
             self._generate_awards_headlines(
                 context, awards_calculated, all_pro, pro_bowl
             )
+            self._generate_awards_social_posts(
+                context, awards_calculated, all_pro, pro_bowl
+            )
 
             # ===== RETIREMENT PROCESSING (Milestone 17) =====
             retirement_results = {}
@@ -3697,7 +3918,7 @@ class OffseasonHandler:
             - events_processed: List of event strings
         """
 
-        ctx = self._extract_context(context, include_user_team_id=True)
+        ctx = self._extract_execute_context(context)
         dynasty_id = ctx['dynasty_id']
         season = ctx['season']
         user_team_id = ctx['user_team_id']
@@ -3871,30 +4092,19 @@ class OffseasonHandler:
             db_path = ctx['db_path']
 
             trade_service = TradeService(db_path, dynasty_id, season)
-
-            # Ensure draft pick ownership exists for trades
             trade_service.initialize_pick_ownership()
 
-            # Get user's tradeable players
+            # Get tradeable assets and history
             user_players = trade_service.get_tradeable_players(user_team_id)
-
-            # Get user's tradeable draft picks
             user_picks = trade_service.get_tradeable_picks(user_team_id)
-
-            # Get recent trade history (this season, all teams)
             trade_history = trade_service.get_trade_history(season=season)
 
-            # Get all teams for trade partner selection
-            teams = []
-            for team_id in range(1, 33):
-                if team_id != user_team_id:
-                    team = self._team_loader.get_team_by_id(team_id)
-                    if team:
-                        teams.append({
-                            "team_id": team_id,
-                            "name": team.full_name,
-                            "abbreviation": team.abbreviation,
-                        })
+            # Build list of trade partner teams
+            teams = [
+                {"team_id": tid, "name": t.full_name, "abbreviation": t.abbreviation}
+                for tid in range(1, 33)
+                if tid != user_team_id and (t := self._team_loader.get_team_by_id(tid))
+            ]
 
             preview = {
                 "stage_name": "Trading Period",
@@ -3905,85 +4115,47 @@ class OffseasonHandler:
                 ),
                 "user_players": user_players,
                 "user_picks": user_picks,
-                "trade_history": trade_history[:10],  # Limit to recent 10
+                "trade_history": trade_history[:10],
                 "available_teams": teams,
                 "trade_count_this_season": len(trade_history),
                 "is_interactive": True,
+                "cap_data": self._get_cap_data(context, user_team_id),
             }
-            # Add cap data for UI display
-            preview["cap_data"] = self._get_cap_data(context, user_team_id)
 
             # Generate GM trade proposals (Tollgate 8)
             gm_proposals = []
             trust_gm = False
 
-            try:
-
-                # Load owner directives using DirectiveLoader
-                directives = self._load_owner_directives(dynasty_id, user_team_id, season, db_path)
-
-                if directives:
-                    # Get db instance for ProposalAPI later
-                    db = GameCycleDatabase(db_path)
-                    trust_gm = directives.trust_gm
-
-                    # Generate trade proposals
-                    generator = TradeProposalGenerator(
-                        db_path=db_path,
+            directives = self._load_owner_directives(dynasty_id, user_team_id, season, db_path)
+            if directives:
+                trust_gm = directives.trust_gm
+                generator = TradeProposalGenerator(
+                    db_path=db_path,
+                    dynasty_id=dynasty_id,
+                    season=season,
+                    team_id=user_team_id,
+                    directives=directives,
+                )
+                proposals = generator.generate_proposals()
+                if proposals:
+                    gm_proposals = self._persist_gm_proposals(
+                        proposals=proposals,
                         dynasty_id=dynasty_id,
-                        season=season,
                         team_id=user_team_id,
-                        directives=directives,
+                        db_path=db_path,
+                        trust_gm=trust_gm
                     )
-                    proposals = generator.generate_proposals()
-
-                    if proposals:
-                        # Persist proposals to database
-                        proposal_api = ProposalAPI(db)
-                        for proposal in proposals:
-                            proposal_api.create_proposal(proposal)
-
-                        # Handle Trust GM mode - auto-approve all
-                        if trust_gm:
-                            for proposal in proposals:
-                                proposal_api.approve_proposal(
-                                    dynasty_id=dynasty_id,
-                                    team_id=user_team_id,
-                                    proposal_id=proposal.proposal_id,
-                                    notes="Auto-approved (Trust GM mode)",
-                                )
-                            gm_proposals = [
-                                p.to_dict() | {"auto_approved": True}
-                                for p in proposals
-                            ]
-                        else:
-                            gm_proposals = [
-                                p.to_dict() | {"auto_approved": False}
-                                for p in proposals
-                            ]
-
-            except Exception as prop_error:
-                print(f"[OffseasonHandler] Error generating trade proposals: {prop_error}")
-                traceback.print_exc()
 
             preview["gm_proposals"] = gm_proposals
             preview["trust_gm"] = trust_gm
-
             return preview
 
         except Exception as e:
-            print(f"[OffseasonHandler] Error getting trading preview: {e}")
-            traceback.print_exc()
-            return {
-                "stage_name": "Trading Period",
-                "description": "Trade players and draft picks with other teams.",
-                "user_players": [],
-                "user_picks": [],
-                "trade_history": [],
-                "available_teams": [],
-                "trade_count_this_season": 0,
-                "is_interactive": True,
-            }
+            return self._safe_preview_fallback(
+                stage_name="Trading Period",
+                description="Trade players and draft picks with other teams.",
+                error=e
+            ) | {"user_players": [], "user_picks": [], "trade_history": [], "available_teams": [], "trade_count_this_season": 0}
 
     def _execute_trading(
         self,
@@ -4093,6 +4265,7 @@ class OffseasonHandler:
             # Generate trade headlines
             if executed_trades:
                 self._generate_trade_headlines(context, executed_trades)
+                self._generate_trade_social_posts(context, executed_trades)
 
             return {
                 "games_played": [],
@@ -4410,6 +4583,69 @@ class OffseasonHandler:
     # Media Coverage Headline Generation
     # =========================================================================
 
+    def _generate_headlines_from_items(
+        self,
+        context: Dict[str, Any],
+        items: List[Dict[str, Any]],
+        transaction_type: TransactionType,
+        generator_class: type,
+        item_converter: Callable[[Dict[str, Any], str, int, 'ProminenceCalculator'], 'TransactionEvent'],
+        week: int = 0,
+        log_prefix: str = "headlines"
+    ) -> None:
+        """
+        Unified headline generation for all offseason stages.
+
+        Consolidates the common pattern across all _generate_*_headlines methods:
+        - Context extraction
+        - ProminenceCalculator creation
+        - Item-to-TransactionEvent conversion
+        - Generator instantiation and execution
+        - Error handling
+
+        Args:
+            context: Execution context with dynasty_id, season, db_path
+            items: List of dicts representing transactions/events
+            transaction_type: Type of transaction for event creation
+            generator_class: Headline generator class (e.g., AwardsGenerator)
+            item_converter: Function to convert dict item to TransactionEvent
+            week: Week number for headline (default 0 for offseason)
+            log_prefix: Prefix for log messages
+        """
+        if not items:
+            return
+
+        try:
+            ctx = self._extract_context(context)
+            dynasty_id = ctx['dynasty_id']
+            season = ctx['season']
+            db_path = ctx['db_path']
+
+            # Create prominence calculator for all generators
+            prominence_calc = ProminenceCalculator()
+
+            # Convert items to transaction events
+            events = []
+            for item in items:
+                try:
+                    event = item_converter(item, dynasty_id, season, prominence_calc)
+                    if event:
+                        events.append(event)
+                except Exception as e:
+                    logger.warning(f"[{log_prefix}] Failed to convert item: {e}")
+
+            if not events:
+                return
+
+            # Create generator and generate headlines
+            generator = generator_class(db_path, prominence_calc)
+            generator.generate_and_save(events, dynasty_id, season, week)
+
+            logger.info(f"[{log_prefix}] Generated {len(events)} headlines for {dynasty_id}")
+
+        except Exception as e:
+            logger.error(f"[{log_prefix}] Failed: {e}", exc_info=True)
+
     def _generate_awards_headlines(
         self,
         context: Dict[str, Any],
@@ -4438,12 +4674,20 @@ class OffseasonHandler:
             # Initialize prominence calculator for unified star detection
             prominence_calc = ProminenceCalculator()
 
+            # Enrich awards with team names in batch
+            for award in awards_calculated:
+                team_id = award.get("team_id", 0)
+                if team_id:
+                    award["team_name"] = self._get_team_name(team_id)
+                else:
+                    award["team_name"] = ""
+
             # Convert award results to TransactionEvents
             events = []
             for award in awards_calculated:
-                # Get team name if team_id is available
+                # Get team name from enriched data
                 team_id = award.get("team_id", 0)
-                team_name = self._get_team_name(team_id) if team_id else ""
+                team_name = award.get("team_name", "")
 
                 # Build award data in expected format for from_award
                 award_data = {
@@ -4484,6 +4728,98 @@ class OffseasonHandler:
 
         except Exception as e:
             self._logger.error(f"Failed to generate awards headlines: {e}", exc_info=True)
+
+    def _generate_awards_social_posts(
+        self,
+        context: Dict[str, Any],
+        awards_calculated: List[Dict],
+        all_pro: Any,
+        pro_bowl: Any
+    ) -> None:
+        """
+        Generate and persist social media posts for award announcements.
+
+        Integrates SocialPostGenerator with awards announcement flow.
+        Posts are persisted to social_posts table for display in Social Feed UI.
+
+        Non-critical: Errors are logged but do not fail stage execution.
+
+        Args:
+            context: Execution context with dynasty_id, season, db_path
+            awards_calculated: List of award results (MVP, OPOY, etc.)
+            all_pro: All-Pro team selections
+            pro_bowl: Pro Bowl roster selections
+        """
+        try:
+            from ..services.social_post_generator import SocialPostGenerator
+            from ..database.social_posts_api import SocialPostsAPI
+            from ..database.connection import GameCycleDatabase
+
+            ctx = self._extract_context(context)
+            dynasty_id = ctx['dynasty_id']
+            season = ctx['season']
+            db_path = ctx['db_path']
+
+            # Generate posts using SocialPostGenerator
+            post_generator = SocialPostGenerator(GameCycleDatabase(db_path), dynasty_id)
+
+            all_posts = []
+
+            # Generate posts for major awards (MVP, OPOY, DPOY, etc.)
+            award_magnitude_map = {
+                'mvp': 100,
+                'opoy': 90,
+                'dpoy': 90,
+                'oroy': 80,
+                'droy': 80,
+                'cpoy': 75,
+            }
+
+            for award_dict in awards_calculated:
+                award_id = award_dict.get('award_id', '')
+                winner = award_dict.get('winner')
+
+                if not winner:
+                    continue
+
+                magnitude = award_magnitude_map.get(award_id, 70)
+
+                posts = post_generator.generate_award_posts(
+                    season=season,
+                    week=23,  # Awards occur in week 23 (offseason)
+                    award_name=award_id.upper(),
+                    player_name=winner.player_name,
+                    team_id=winner.team_id,
+                    player_stats=f"{magnitude} award points"  # Placeholder stats
+                )
+                all_posts.extend(posts)
+
+            if not all_posts:
+                return
+
+            # Persist to database
+            gc_db = GameCycleDatabase(db_path)
+            try:
+                posts_api = SocialPostsAPI(gc_db)
+                for post in all_posts:
+                    posts_api.create_post(
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        week=23,
+                        personality_id=post.personality_id,
+                        post_text=post.post_text,
+                        sentiment=post.sentiment,
+                        likes=post.likes,
+                        retweets=post.retweets,
+                        event_type='AWARD',
+                        event_metadata=post.event_metadata
+                    )
+                logger.info("Generated %d social posts for %d awards", len(all_posts), len(awards_calculated))
+            finally:
+                gc_db.close()
+
+        except Exception as e:
+            logger.warning("Failed to generate award social posts: %s", e)
 
     def _get_super_bowl_winner_team_id(
         self,
@@ -4539,6 +4875,31 @@ class OffseasonHandler:
             picks: List of draft pick results
             is_complete: Whether draft is finished
         """
+        def convert_pick(pick: Dict, dynasty_id: str, season: int, prom_calc) -> TransactionEvent:
+            """Convert pick dict to TransactionEvent."""
+            # Enrich with team name first
+            pick["team_name"] = self._get_team_name(pick.get("team_id", 0))
+
+            # Build pick data in expected format for from_draft_pick
+            pick_data = {
+                "team_id": pick.get("team_id"),
+                "player_id": pick.get("player_id"),
+                "player_name": pick.get("player_name", ""),
+                "position": pick.get("position", ""),
+                "overall": pick.get("overall", 0),
+                "round": pick.get("round", 1),
+                "pick": pick.get("overall_pick", 0),
+                "overall_pick": pick.get("overall_pick", 0),
+            }
+
+            return TransactionEvent.from_draft_pick(
+                pick_data=pick_data,
+                dynasty_id=dynasty_id,
+                season=season,
+                team_name=pick.get("team_name", ""),
+                prominence_calc=prom_calc
+            )
+
         if not picks:
             return
 
@@ -4548,37 +4909,23 @@ class OffseasonHandler:
             season = ctx['season']
             db_path = ctx['db_path']
 
-            # Initialize prominence calculator for unified star detection
+            # Create prominence calculator
             prominence_calc = ProminenceCalculator()
 
-            # Convert raw pick dicts to TransactionEvents
+            # Convert picks to events
             events = []
             for pick in picks:
-                team_id = pick.get("team_id")
-                team_name = self._get_team_name(team_id)
+                try:
+                    event = convert_pick(pick, dynasty_id, season, prominence_calc)
+                    if event:
+                        events.append(event)
+                except Exception as e:
+                    logger.warning(f"[Draft] Failed to convert pick: {e}")
 
-                # Build pick data in expected format for from_draft_pick
-                pick_data = {
-                    "team_id": team_id,
-                    "player_id": pick.get("player_id"),
-                    "player_name": pick.get("player_name", ""),
-                    "position": pick.get("position", ""),
-                    "overall": pick.get("overall", 0),
-                    "round": pick.get("round", 1),
-                    "pick": pick.get("overall_pick", 0),
-                    "overall_pick": pick.get("overall_pick", 0),
-                }
+            if not events:
+                return
 
-                event = TransactionEvent.from_draft_pick(
-                    pick_data=pick_data,
-                    dynasty_id=dynasty_id,
-                    season=season,
-                    team_name=team_name,
-                    prominence_calc=prominence_calc
-                )
-                events.append(event)
-
-            # Use DraftGenerator to generate and persist headlines
+            # Create generator and generate headlines
             generator = DraftGenerator(db_path, prominence_calc)
 
             if is_complete:
@@ -4627,11 +4974,14 @@ class OffseasonHandler:
             # Initialize prominence calculator for unified star detection
             prominence_calc = ProminenceCalculator()
 
+            # Enrich signings with team names in batch
+            self._enrich_with_team_names(signings)
+
             # Convert raw signing dicts to TransactionEvents
             events = []
             for signing in signings:
                 team_id = signing.get("team_id")
-                team_name = self._get_team_name(team_id)
+                team_name = signing.get("team_name", "")
 
                 # Add wave info to signing data for generator
                 signing_with_wave = signing.copy()
@@ -4659,6 +5009,89 @@ class OffseasonHandler:
         except Exception as e:
             self._logger.error(f"Failed to generate FA headlines: {e}", exc_info=True)
 
+    def _generate_fa_social_posts(
+        self,
+        context: Dict[str, Any],
+        signings: List[Dict],
+        wave: int
+    ) -> None:
+        """
+        Generate and persist social media posts for free agency signings.
+
+        Integrates SocialPostGenerator with free agency flow.
+        Posts are persisted to social_posts table for display in Social Feed UI.
+
+        Non-critical: Errors are logged but do not fail stage execution.
+
+        Args:
+            context: Execution context with dynasty_id, season, db_path
+            signings: List of signing dicts with player_name, team_id, contract_value
+            wave: Current FA wave number
+        """
+        try:
+            from ..services.social_post_generator import SocialPostGenerator
+            from ..database.social_posts_api import SocialPostsAPI
+            from ..database.connection import GameCycleDatabase
+
+            ctx = self._extract_context(context)
+            dynasty_id = ctx['dynasty_id']
+            season = ctx['season']
+            db_path = ctx['db_path']
+
+            # Filter for notable signings (contract value > $1M)
+            notable_signings = [s for s in signings if s.get('contract_value', 0) > 1_000_000]
+
+            if not notable_signings:
+                return
+
+            # Generate social posts using SocialPostGenerator
+            post_generator = SocialPostGenerator(GameCycleDatabase(db_path), dynasty_id)
+
+            all_posts = []
+            for signing in notable_signings:
+                posts = post_generator.generate_transaction_posts(
+                    season=season,
+                    week=25,  # FA occurs in week 25 (offseason)
+                    event_type='SIGNING',
+                    team_id=signing['team_id'],
+                    player_name=signing.get('player_name', 'Unknown Player'),
+                    transaction_details={
+                        'contract_value': signing.get('contract_value', 0),
+                        'contract_years': signing.get('contract_years', 1),
+                        'wave': wave,
+                        'magnitude': min(100, int(signing.get('contract_value', 0) / 100_000))
+                    }
+                )
+                all_posts.extend(posts)
+
+            if not all_posts:
+                return
+
+            # Persist to database
+            gc_db = GameCycleDatabase(db_path)
+            try:
+                posts_api = SocialPostsAPI(gc_db)
+                for post in all_posts:
+                    posts_api.create_post(
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        week=25,
+                        personality_id=post.personality_id,
+                        post_text=post.post_text,
+                        sentiment=post.sentiment,
+                        likes=post.likes,
+                        retweets=post.retweets,
+                        event_type='SIGNING',
+                        event_metadata=post.event_metadata
+                    )
+                logger.info("Generated %d social posts for %d FA signings (wave %d)",
+                          len(all_posts), len(notable_signings), wave)
+            finally:
+                gc_db.close()
+
+        except Exception as e:
+            logger.warning("Failed to generate FA social posts: %s", e)
+
     def _generate_trade_headlines(
         self,
         context: Dict[str, Any],
@@ -4683,14 +5116,17 @@ class OffseasonHandler:
             # Initialize prominence calculator for unified star detection
             prominence_calc = ProminenceCalculator()
 
+            # Enrich trades with team names in batch (both teams)
+            self._enrich_trade_with_team_names(executed_trades)
+
             # Convert raw trade dicts to TransactionEvents
             events = []
             for trade in executed_trades:
                 team1_id = trade.get("team1_id")
                 team2_id = trade.get("team2_id")
 
-                team1_name = self._get_team_name(team1_id)
-                team2_name = self._get_team_name(team2_id)
+                team1_name = trade.get("team1_name", "")
+                team2_name = trade.get("team2_name", "")
 
                 # Transform to expected format for from_trade factory
                 # Outgoing = players going FROM team1 TO team2
@@ -4716,8 +5152,6 @@ class OffseasonHandler:
                 }
 
                 event = TransactionEvent.from_trade(
-                    trade_data=trade_data,
-                    dynasty_id=dynasty_id,
                     season=season,
                     team_name=team1_name,
                     other_team_name=team2_name,
@@ -4732,6 +5166,100 @@ class OffseasonHandler:
         except Exception as e:
             self._logger.error(f"Failed to generate trade headlines: {e}", exc_info=True)
 
+    def _generate_trade_social_posts(
+        self,
+        context: Dict[str, Any],
+        executed_trades: List[Dict]
+    ) -> None:
+        """
+        Generate and persist social media posts for completed trades.
+
+        Integrates SocialPostGenerator with trade flow.
+        Posts are persisted to social_posts table for display in Social Feed UI.
+
+        Non-critical: Errors are logged but do not fail stage execution.
+
+        Args:
+            context: Execution context with dynasty_id, season, db_path
+            executed_trades: List of executed trade results
+        """
+        try:
+            from ..services.social_post_generator import SocialPostGenerator
+            from ..database.social_posts_api import SocialPostsAPI
+            from ..database.connection import GameCycleDatabase
+
+            ctx = self._extract_context(context)
+            dynasty_id = ctx['dynasty_id']
+            season = ctx['season']
+            db_path = ctx['db_path']
+
+            # Generate posts for each trade
+            post_generator = SocialPostGenerator(GameCycleDatabase(db_path), dynasty_id)
+
+            all_posts = []
+            for trade in executed_trades:
+                # Extract trade details
+                team1_id = trade.get('team1_id')
+                team2_id = trade.get('team2_id')
+
+                # Get key player involved (most prominent)
+                team1_players = trade.get('team1_players', [])
+                team2_players = trade.get('team2_players', [])
+                all_players = team1_players + team2_players
+
+                if not all_players:
+                    continue
+
+                # Use first player as the main subject
+                main_player = all_players[0]
+
+                # Calculate trade magnitude based on number of assets
+                picks_count = len(trade.get('team1_picks', [])) + len(trade.get('team2_picks', []))
+                magnitude = min(100, (len(all_players) * 30) + (picks_count * 10))
+
+                # Generate posts for both teams involved
+                posts = post_generator.generate_transaction_posts(
+                    season=season,
+                    week=26,  # Trades occur in week 26 (offseason)
+                    event_type='TRADE',
+                    team_id=team1_id,
+                    player_name=main_player.get('player_name', 'Unknown Player'),
+                    transaction_details={
+                        'other_team': team2_id,
+                        'picks': f"{picks_count} draft picks" if picks_count > 0 else "no picks",
+                        'magnitude': magnitude,
+                        'player_count': len(all_players)
+                    }
+                )
+                all_posts.extend(posts)
+
+            if not all_posts:
+                return
+
+            # Persist to database
+            gc_db = GameCycleDatabase(db_path)
+            try:
+                posts_api = SocialPostsAPI(gc_db)
+                for post in all_posts:
+                    posts_api.create_post(
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        week=26,
+                        personality_id=post.personality_id,
+                        post_text=post.post_text,
+                        sentiment=post.sentiment,
+                        likes=post.likes,
+                        retweets=post.retweets,
+                        event_type='TRADE',
+                        event_metadata=post.event_metadata
+                    )
+                logger.info("Generated %d social posts for %d trades", len(all_posts), len(executed_trades))
+            finally:
+                gc_db.close()
+
+        except Exception as e:
+            logger.warning("Failed to generate trade social posts: %s", e)
+
     def _generate_franchise_tag_headlines(
         self,
         context: Dict[str, Any],
@@ -4744,39 +5272,29 @@ class OffseasonHandler:
             context: Execution context with dynasty_id, season, db_path
             tags_applied: List of tag application results
         """
-        if not tags_applied:
-            return
+        def convert_tag(tag: Dict, dynasty_id: str, season: int, prom_calc) -> TransactionEvent:
+            """Convert tag dict to TransactionEvent."""
+            # Enrich with team name first
+            tag["team_name"] = self._get_team_name(tag.get("team_id", 0))
 
-        try:
-            ctx = self._extract_context(context)
-            dynasty_id = ctx['dynasty_id']
-            season = ctx['season']
-            db_path = ctx['db_path']
+            return TransactionEvent.from_franchise_tag(
+                tag_data=tag,
+                dynasty_id=dynasty_id,
+                season=season,
+                team_name=tag.get("team_name", ""),
+                prominence_calc=prom_calc
+            )
 
-            # Initialize prominence calculator for unified star detection
-            prominence_calc = ProminenceCalculator()
-
-            # Convert raw tag dicts to TransactionEvents
-            events = []
-            for tag in tags_applied:
-                team_id = tag.get("team_id")
-                team_name = self._get_team_name(team_id)
-
-                event = TransactionEvent.from_franchise_tag(
-                    tag_data=tag,
-                    dynasty_id=dynasty_id,
-                    season=season,
-                    team_name=team_name,
-                    prominence_calc=prominence_calc
-                )
-                events.append(event)
-
-            # Use FranchiseTagGenerator to generate and persist headlines
-            generator = FranchiseTagGenerator(db_path, prominence_calc)
-            generator.generate_and_save(events, dynasty_id, season, week=24)
-
-        except Exception as e:
-            self._logger.error(f"Failed to generate franchise tag headlines: {e}", exc_info=True)
+        with self._safe_headline_generation("franchise_tag"):
+            self._generate_headlines_from_items(
+                context=context,
+                items=tags_applied,
+                transaction_type=TransactionType.FRANCHISE_TAG,
+                generator_class=FranchiseTagGenerator,
+                item_converter=convert_tag,
+                week=24,
+                log_prefix="Franchise Tag"
+            )
 
     def _generate_roster_cuts_headlines(
         self,
@@ -4812,11 +5330,14 @@ class OffseasonHandler:
             # Initialize prominence calculator for unified star detection
             prominence_calc = ProminenceCalculator()
 
+            # Enrich cuts with team names in batch
+            self._enrich_with_team_names(all_cuts)
+
             # Convert raw cut dicts to TransactionEvents
             events = []
             for cut in all_cuts:
                 team_id = cut.get("team_id")
-                team_name = self._get_team_name(team_id)
+                team_name = cut.get("team_name", "")
 
                 event = TransactionEvent.from_cut(
                     cut_data=cut,
@@ -4876,11 +5397,14 @@ class OffseasonHandler:
             # Initialize prominence calculator for unified star detection
             prominence_calc = ProminenceCalculator()
 
+            # Enrich resigned players with team names in batch
+            self._enrich_with_team_names(resigned_players)
+
             # Convert resigned players to TransactionEvents
             resigning_events = []
             for player in resigned_players:
                 team_id = player.get("team_id")
-                team_name = self._get_team_name(team_id)
+                team_name = player.get("team_name", "")
 
                 # Build player data from contract_details and player info
                 contract = player.get("contract_details", {})
@@ -4905,11 +5429,14 @@ class OffseasonHandler:
                 )
                 resigning_events.append(event)
 
+            # Enrich released players with team names in batch
+            self._enrich_with_team_names(released_players)
+
             # Convert released players to TransactionEvents (departures)
             departure_events = []
             for player in released_players:
                 team_id = player.get("team_id")
-                team_name = self._get_team_name(team_id)
+                team_name = player.get("team_name", "")
 
                 player_data = {
                     "player_id": player.get("player_id"),
@@ -4958,6 +5485,35 @@ class OffseasonHandler:
             claims_awarded: List of successful waiver claims
             cleared_to_fa: List of players who cleared waivers to free agency
         """
+        def convert_claim(claim: Dict, dynasty_id: str, season: int, prom_calc) -> TransactionEvent:
+            """Convert claim dict to TransactionEvent."""
+            # Enrich with team names (both claiming and former)
+            claim["claiming_team_name"] = self._get_team_name(claim.get("team_id", 0))
+            if former_tid := claim.get("former_team_id"):
+                claim["former_team_name"] = self._get_team_name(former_tid)
+            else:
+                claim["former_team_name"] = "Unknown"
+
+            # Build claim data in expected format for from_waiver_claim
+            claim_data = {
+                "claiming_team_id": claim.get("team_id"),
+                "former_team_id": claim.get("former_team_id"),
+                "player_id": claim.get("player_id"),
+                "player_name": claim.get("player_name", ""),
+                "position": claim.get("position", ""),
+                "overall": claim.get("overall", 0),
+                "age": claim.get("age", 0),
+            }
+
+            return TransactionEvent.from_waiver_claim(
+                claim_data=claim_data,
+                dynasty_id=dynasty_id,
+                season=season,
+                claiming_team_name=claim.get("claiming_team_name", ""),
+                former_team_name=claim.get("former_team_name", "Unknown"),
+                prominence_calc=prom_calc
+            )
+
         if not claims_awarded:
             return
 
@@ -4967,40 +5523,23 @@ class OffseasonHandler:
             season = ctx['season']
             db_path = ctx['db_path']
 
-            # Initialize prominence calculator for unified star detection
+            # Create prominence calculator
             prominence_calc = ProminenceCalculator()
 
-            # Convert raw claim dicts to TransactionEvents
+            # Convert claims to events
             events = []
             for claim in claims_awarded:
-                claiming_team_id = claim.get("team_id")
-                former_team_id = claim.get("former_team_id")
+                try:
+                    event = convert_claim(claim, dynasty_id, season, prominence_calc)
+                    if event:
+                        events.append(event)
+                except Exception as e:
+                    logger.warning(f"[Waiver Wire] Failed to convert claim: {e}")
 
-                claiming_team_name = self._get_team_name(claiming_team_id)
-                former_team_name = self._get_team_name(former_team_id) if former_team_id else "Unknown"
+            if not events:
+                return
 
-                # Build claim data in expected format for from_waiver_claim
-                claim_data = {
-                    "claiming_team_id": claiming_team_id,
-                    "former_team_id": former_team_id,
-                    "player_id": claim.get("player_id"),
-                    "player_name": claim.get("player_name", ""),
-                    "position": claim.get("position", ""),
-                    "overall": claim.get("overall", 0),
-                    "age": claim.get("age", 0),
-                }
-
-                event = TransactionEvent.from_waiver_claim(
-                    claim_data=claim_data,
-                    dynasty_id=dynasty_id,
-                    season=season,
-                    claiming_team_name=claiming_team_name,
-                    former_team_name=former_team_name,
-                    prominence_calc=prominence_calc
-                )
-                events.append(event)
-
-            # Use WaiverGenerator to generate and persist headlines
+            # Create generator and generate headlines with clearance info
             generator = WaiverGenerator(db_path, prominence_calc)
             generator.generate_with_clearances(
                 events=events,
