@@ -201,6 +201,112 @@ class StandingsAPI:
             (dynasty_id, season, season_type)
         )
 
+    def initialize_season_standings(
+        self,
+        dynasty_id: str,
+        season: int,
+        placeholder: bool = False,
+        season_type: str = 'regular_season'
+    ) -> int:
+        """
+        Initialize standings for all 32 teams for a season.
+
+        Args:
+            dynasty_id: Dynasty identifier
+            season: Season year
+            placeholder: If True, generates random win/loss records. If False, all 0-0.
+            season_type: 'regular_season' or 'preseason'
+
+        Returns:
+            Number of team standings created
+        """
+        import random
+
+        # Check if standings already exist for this dynasty/season
+        existing = self.db.query_one(
+            """SELECT COUNT(*) as count FROM standings
+               WHERE dynasty_id = ? AND season = ? AND season_type = ?""",
+            (dynasty_id, season, season_type)
+        )
+
+        if existing and existing['count'] > 0:
+            # Standings already exist, don't recreate
+            return 0
+
+        created_count = 0
+
+        # Insert standings for all 32 teams (team_ids 1-32)
+        for team_id in range(1, 33):
+            if placeholder:
+                # Generate random record for placeholder data
+                # NFL regular season is 17 games, so wins + losses should equal 17
+                wins = random.randint(0, 17)
+                losses = 17 - wins
+                ties = 0  # Ties are rare, omit for simplicity in placeholders
+
+                # Generate realistic point totals
+                # NFL teams typically score 300-500 points per season
+                points_for = random.randint(250, 500)
+                points_against = random.randint(250, 500)
+
+                # Generate divisional/conference records proportionally
+                # Assume 6 divisional games, 10 conference games (including divisional)
+                div_games = 6
+                div_wins = random.randint(0, min(wins, div_games))
+                div_losses = min(div_games - div_wins, losses)
+
+                conf_games = 10
+                conf_wins = random.randint(div_wins, min(wins, conf_games))
+                conf_losses = min(conf_games - conf_wins, losses)
+
+                # Split home/away roughly evenly (8-9 home, 8-9 away)
+                home_games = 9 if team_id % 2 == 0 else 8
+                home_wins = random.randint(0, min(wins, home_games))
+                home_losses = min(home_games - home_wins, losses)
+
+                away_wins = wins - home_wins
+                away_losses = losses - home_losses
+            else:
+                # Create fresh 0-0 records
+                wins = losses = ties = 0
+                points_for = points_against = 0
+                div_wins = div_losses = 0
+                conf_wins = conf_losses = 0
+                home_wins = home_losses = 0
+                away_wins = away_losses = 0
+
+            # Insert the standing record
+            self.db.execute(
+                """INSERT INTO standings (
+                    dynasty_id, team_id, season, season_type,
+                    wins, losses, ties,
+                    points_for, points_against,
+                    division_wins, division_losses, division_ties,
+                    conference_wins, conference_losses, conference_ties,
+                    home_wins, home_losses, home_ties,
+                    away_wins, away_losses, away_ties,
+                    playoff_seed, point_differential,
+                    made_playoffs, made_wild_card, won_wild_card,
+                    won_division_round, won_conference, won_super_bowl
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    dynasty_id, team_id, season, season_type,
+                    wins, losses, ties,
+                    points_for, points_against,
+                    div_wins, div_losses, 0,  # division_ties
+                    conf_wins, conf_losses, 0,  # conference_ties
+                    home_wins, home_losses, 0,  # home_ties
+                    away_wins, away_losses, 0,  # away_ties
+                    None,  # playoff_seed
+                    points_for - points_against,  # point_differential
+                    False, False, False,  # made_playoffs, made_wild_card, won_wild_card
+                    False, False, False   # won_division_round, won_conference, won_super_bowl
+                )
+            )
+            created_count += 1
+
+        return created_count
+
     # -------------------- Private Methods --------------------
 
     def _record_win(

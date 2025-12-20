@@ -8,13 +8,28 @@ Dynasty-First Architecture:
 - Shares database with main.py (nfl_simulation.db)
 """
 
+import logging
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Any, Protocol
+from typing import Dict, List, Optional, Any, Protocol, TypedDict
 
-from .stage_definitions import Stage, StageType, SeasonPhase
+logger = logging.getLogger(__name__)
+
+from .stage_definitions import Stage, StageType, SeasonPhase, OFFSEASON_STAGES
 from .handlers.regular_season import RegularSeasonHandler
 from .handlers.playoffs import PlayoffHandler
 from .handlers.offseason import OffseasonHandler
+from .handlers.preseason import PreseasonHandler
+
+
+class StageContext(TypedDict):
+    """Type definition for stage execution context."""
+    dynasty_id: str
+    season: int
+    db_path: str
+    unified_api: Any  # UnifiedDatabaseAPI
+    dynasty_state_api: Any  # DynastyStateAPI
+    user_team_id: int
+    simulation_mode: str
 
 
 class StageHandler(Protocol):
@@ -141,10 +156,12 @@ class StageController:
         self._regular_season_handler = RegularSeasonHandler()
         self._playoff_handler = PlayoffHandler()
         self._offseason_handler = OffseasonHandler(db_path)
+        self._preseason_handler = PreseasonHandler()
 
         self._current_stage: Optional[Stage] = None
         self._initialized = False
         self._simulation_mode: str = "full"  # Default to full sim ("instant" or "full")
+        self._progress_callback: Optional[callable] = None  # For UI progress updates
 
     @property
     def dynasty_id(self) -> str:
@@ -161,7 +178,18 @@ class StageController:
         if mode not in ("instant", "full"):
             raise ValueError(f"Invalid simulation mode: {mode}. Use 'instant' or 'full'.")
         self._simulation_mode = mode
-        print(f"[StageController] Simulation mode set to: {mode}")
+        logger.info(f"Simulation mode set to: {mode}")
+
+    def set_progress_callback(self, callback: Optional[callable]) -> None:
+        """
+        Set callback for progress updates during stage execution.
+
+        Used by UI to show progress dialog during week/playoff simulation.
+
+        Args:
+            callback: Function(current: int, total: int, message: str) or None to clear
+        """
+        self._progress_callback = callback
 
     @property
     def season(self) -> int:
@@ -195,7 +223,9 @@ class StageController:
         if skip_preseason:
             starting_stage = StageType.REGULAR_WEEK_1
         else:
-            starting_stage = StageType.PRESEASON_WEEK_1
+            # Start at training camp to go through preseason weeks
+            # (OFFSEASON_PRESEASON_W1/W2/W3 are part of offseason flow now)
+            starting_stage = StageType.OFFSEASON_TRAINING_CAMP
 
         # Create the starting stage
         self._current_stage = Stage(
@@ -237,12 +267,12 @@ class StageController:
             StageResult with execution details
         """
         # DEBUG: Log execution start
-        print(f"[DEBUG StageController] execute_current_stage() called")
-        print(f"[DEBUG StageController] dynasty_id={self._dynasty_id}, season={self._season}")
-        print(f"[DEBUG StageController] db_path={self._db_path}")
+        logger.debug("execute_current_stage() called")
+        logger.debug(f"dynasty_id={self._dynasty_id}, season={self._season}")
+        logger.debug(f"db_path={self._db_path}")
 
         stage = self.current_stage
-        print(f"[DEBUG StageController] current_stage={stage}")
+        logger.debug(f"current_stage={stage}")
 
         if stage is None:
             return StageResult(
@@ -326,6 +356,7 @@ class StageController:
             return None
 
         self._current_stage = next_stage
+        self._season = next_stage.season_year  # Keep season in sync with stage
         self._save_current_stage(next_stage)
 
         # Pre-seed playoff bracket when entering a playoff stage
@@ -349,12 +380,12 @@ class StageController:
         try:
             result = self._playoff_handler.seed_bracket(stage, context)
             if result.get("already_seeded"):
-                print(f"[StageController] Playoff bracket already seeded for {stage.display_name}")
+                logger.info(f"Playoff bracket already seeded for {stage.display_name}")
             else:
                 matchups = result.get("matchups", [])
-                print(f"[StageController] Seeded playoff bracket: {len(matchups)} matchups for {stage.display_name}")
+                logger.info(f"Seeded playoff bracket: {len(matchups)} matchups for {stage.display_name}")
         except Exception as e:
-            print(f"[StageController] Warning: Failed to seed playoff bracket: {e}")
+            logger.warning(f"Failed to seed playoff bracket: {e}")
             # Don't fail the stage transition - the legacy code path will still work
 
     def _generate_placeholder_standings(self, season_year: int) -> None:
@@ -368,46 +399,29 @@ class StageController:
         Args:
             season_year: The season year to generate standings for
         """
-        import random
+        from .database.connection import GameCycleDatabase
+        from .database.standings_api import StandingsAPI
 
-        with self._get_connection() as conn:
-            # Check if standings already exist
-            existing = conn.execute(
-                "SELECT COUNT(*) FROM standings WHERE dynasty_id = ? AND season = ?",
-                (self._dynasty_id, season_year)
-            ).fetchone()[0]
+        gc_db = GameCycleDatabase(self._db_path)
+        standings_api = StandingsAPI(gc_db)
 
-            if existing > 0:
-                print(f"[StageController] Standings already exist for {season_year}, skipping placeholder generation")
-                return
+        created = standings_api.initialize_season_standings(
+            dynasty_id=self._dynasty_id,
+            season=season_year,
+            placeholder=True
+        )
 
-            # Generate random standings for all 32 teams
-            teams = list(range(1, 33))
-            random.shuffle(teams)
+        if created == 0:
+            logger.info(f"Standings already exist for {season_year}, skipping placeholder generation")
+            return
 
-            for i, team_id in enumerate(teams):
-                # Distribute wins: top teams get more wins, with some randomness
-                wins = max(0, 17 - (i // 2) - random.randint(0, 3))
-                losses = 17 - wins
+        # Also clear any existing injuries for a fresh start
+        gc_db.execute(
+            "DELETE FROM player_injuries WHERE dynasty_id = ? AND season = ?",
+            (self._dynasty_id, season_year)
+        )
 
-                conn.execute("""
-                    INSERT OR REPLACE INTO standings
-                    (dynasty_id, season, team_id, wins, losses, ties,
-                     division_wins, division_losses, conference_wins, conference_losses)
-                    VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
-                """, (
-                    self._dynasty_id, season_year, team_id, wins, losses,
-                    wins // 3, losses // 3, wins // 2, losses // 2
-                ))
-
-            # Also clear any existing injuries for a fresh start
-            conn.execute(
-                "DELETE FROM player_injuries WHERE dynasty_id = ? AND season = ?",
-                (self._dynasty_id, season_year)
-            )
-
-            conn.commit()
-            print(f"[StageController] Generated placeholder standings for {season_year} season (32 teams, injuries cleared)")
+        logger.info(f"Generated placeholder standings for {season_year} season (32 teams, injuries cleared)")
 
     def _generate_minimal_standings(self, season_year: int) -> None:
         """
@@ -419,47 +433,29 @@ class StageController:
         Args:
             season_year: The season year to generate standings for
         """
-        with self._get_connection() as conn:
-            # Check if standings already exist
-            existing = conn.execute(
-                "SELECT COUNT(*) FROM standings WHERE dynasty_id = ? AND season = ?",
-                (self._dynasty_id, season_year)
-            ).fetchone()[0]
+        from .database.connection import GameCycleDatabase
+        from .database.standings_api import StandingsAPI
 
-            if existing > 0:
-                print(
-                    f"[StageController] Standings already exist for {season_year}, "
-                    f"skipping minimal generation"
-                )
-                return
+        gc_db = GameCycleDatabase(self._db_path)
+        standings_api = StandingsAPI(gc_db)
 
-            # Insert minimal standings for all 32 teams
-            for team_id in range(1, 33):
-                conn.execute("""
-                    INSERT INTO standings (
-                        dynasty_id, team_id, season, season_type,
-                        wins, losses, ties,
-                        made_playoffs, won_wild_card, won_division_round,
-                        won_conference, won_super_bowl,
-                        division_wins, division_losses,
-                        conference_wins, conference_losses,
-                        home_wins, home_losses, away_wins, away_losses,
-                        points_for, points_against
-                    ) VALUES (
-                        ?, ?, ?, 'regular_season',
-                        0, 0, 0,
-                        0, 0, 0, 0, 0,
-                        0, 0, 0, 0,
-                        0, 0, 0, 0,
-                        0, 0
-                    )
-                """, (self._dynasty_id, team_id, season_year))
+        created = standings_api.initialize_season_standings(
+            dynasty_id=self._dynasty_id,
+            season=season_year,
+            placeholder=False
+        )
 
-            conn.commit()
-            print(
-                f"[StageController] Generated minimal standings for {season_year} season "
-                f"(32 teams, all 0-0 records)"
+        if created == 0:
+            logger.info(
+                f"Standings already exist for {season_year}, "
+                f"skipping minimal generation"
             )
+            return
+
+        logger.info(
+            f"Generated minimal standings for {season_year} season "
+            f"(32 teams, all 0-0 records)"
+        )
 
     def jump_to_offseason(self) -> Stage:
         """
@@ -498,8 +494,8 @@ class StageController:
         # Save to database
         self._save_current_stage(new_stage)
 
-        print(
-            f"[StageController] Jumped directly to offseason for {season_year} season "
+        logger.info(
+            f"Jumped directly to offseason for {season_year} season "
             f"(no games simulated)"
         )
 
@@ -677,7 +673,7 @@ class StageController:
 
         return result
 
-    def _build_context(self) -> Dict[str, Any]:
+    def _build_context(self) -> StageContext:
         """Build execution context for handlers."""
         # Use current stage's season year (single source of truth)
         stage = self.current_stage
@@ -696,6 +692,7 @@ class StageController:
             "dynasty_state_api": self._dynasty_state_api,
             "user_team_id": user_team_id,
             "simulation_mode": self._simulation_mode,
+            "progress_callback": self._progress_callback,  # For UI progress updates
         }
 
     def _get_handler(self, phase: SeasonPhase) -> Optional[StageHandler]:
@@ -706,18 +703,23 @@ class StageController:
             return self._playoff_handler
         elif phase == SeasonPhase.OFFSEASON:
             return self._offseason_handler
-        # Preseason handler not implemented yet
+        elif phase == SeasonPhase.PRESEASON:
+            return self._preseason_handler
         return None
 
     def _load_current_stage(self) -> Optional[Stage]:
         """Load current stage from dynasty_state."""
-        state = self._dynasty_state_api.get_current_state(
-            dynasty_id=self._dynasty_id,
-            season=self._season
+        # Use get_latest_state() to get most recent season (SSOT for season)
+        state = self._dynasty_state_api.get_latest_state(
+            dynasty_id=self._dynasty_id
         )
 
         if state is None:
             return None
+
+        # Update self._season from loaded state (fixes player aging bug)
+        loaded_season = state.get('season', self._season)
+        self._season = loaded_season
 
         # Map phase string to SeasonPhase
         phase_str = state.get('current_phase', 'regular_season')
@@ -725,7 +727,14 @@ class StageController:
 
         # Determine stage type from phase and week
         if phase_str == 'preseason':
-            stage_type = StageType[f"PRESEASON_WEEK_{week}"]
+            # Map legacy 'preseason' phase to modern offseason preseason stages
+            preseason_stages = [
+                StageType.OFFSEASON_PRESEASON_W1,
+                StageType.OFFSEASON_PRESEASON_W2,
+                StageType.OFFSEASON_PRESEASON_W3
+            ]
+            stage_idx = min(week - 1, len(preseason_stages) - 1)
+            stage_type = preseason_stages[stage_idx]
         elif phase_str == 'regular_season':
             stage_type = StageType[f"REGULAR_WEEK_{week}"]
         elif phase_str == 'playoffs':
@@ -739,25 +748,17 @@ class StageController:
             stage_idx = min(week - 1, len(playoff_stages) - 1)
             stage_type = playoff_stages[stage_idx]
         elif phase_str == 'offseason':
-            # Map offseason week to stage type
-            offseason_stages = [
-                StageType.OFFSEASON_RESIGNING,
-                StageType.OFFSEASON_FREE_AGENCY,
-                StageType.OFFSEASON_DRAFT,
-                StageType.OFFSEASON_ROSTER_CUTS,
-                StageType.OFFSEASON_WAIVER_WIRE,
-                StageType.OFFSEASON_TRAINING_CAMP,
-                StageType.OFFSEASON_PRESEASON
-            ]
-            stage_idx = min(week - 1, len(offseason_stages) - 1)
-            stage_type = offseason_stages[stage_idx]
+            # Use canonical OFFSEASON_STAGES from stage_definitions
+            # This ensures consistency with week_number property mapping
+            stage_idx = min(week - 1, len(OFFSEASON_STAGES) - 1)
+            stage_type = OFFSEASON_STAGES[stage_idx]
         else:
             # Default to Week 1
             stage_type = StageType.REGULAR_WEEK_1
 
         return Stage(
             stage_type=stage_type,
-            season_year=self._season,
+            season_year=loaded_season,  # Use loaded season from DB state
             completed=False
         )
 
@@ -768,26 +769,22 @@ class StageController:
         week = stage.week_number or 1
 
         # Get current date from state or generate one
+        # Use stage.season_year to ensure correct season is queried/saved
         state = self._dynasty_state_api.get_current_state(
             dynasty_id=self._dynasty_id,
-            season=self._season
+            season=stage.season_year
         )
 
-        current_date = state.get('current_date') if state else f"{self._season}-09-01"
+        current_date = state.get('current_date') if state else f"{stage.season_year}-09-01"
 
         # Update dynasty state
         self._dynasty_state_api.update_state(
             dynasty_id=self._dynasty_id,
-            season=self._season,
+            season=stage.season_year,
             current_date=current_date,
             current_phase=phase_name,
             current_week=week
         )
-
-    def _get_connection(self):
-        """Get database connection for direct SQL access."""
-        import sqlite3
-        return sqlite3.connect(self._db_path)
 
     def get_current_stage(self) -> Optional[Stage]:
         """Public API to get current stage (used by jump_to_offseason)."""
