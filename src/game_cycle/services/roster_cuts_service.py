@@ -53,21 +53,34 @@ class RosterCutsService:
         'punter': 0.8,
     }
 
-    # NFL minimum position requirements
+    # NFL minimum position requirements (per team)
     POSITION_MINIMUMS = {
-        'quarterback': 1,
-        'offensive_line': 5,  # Any OL position
-        'defensive_line': 4,  # Any DL position
+        'quarterback': 2,
+        'running_back': 2,       # RBs are essential for run plays
+        'wide_receiver': 3,      # Need depth at WR
+        'tight_end': 1,          # At least one TE
+        'offensive_line': 5,     # Any OL position
+        'defensive_line': 4,     # Any DL position
         'linebacker': 3,
-        'defensive_back': 3,  # Any DB position
+        'defensive_back': 4,     # Need DB depth
         'kicker': 1,
         'punter': 1
     }
 
-    # Position groupings
-    OL_POSITIONS = {'left_tackle', 'right_tackle', 'left_guard', 'right_guard', 'center'}
-    DL_POSITIONS = {'defensive_end', 'defensive_tackle'}
-    DB_POSITIONS = {'cornerback', 'safety'}
+    # Position groupings - include all variants from database
+    OL_POSITIONS = {
+        'left_tackle', 'right_tackle', 'left_guard', 'right_guard', 'center',
+        'offensive_tackle', 'offensive_guard', 'tackle', 'guard'
+    }
+    DL_POSITIONS = {'defensive_end', 'defensive_tackle', 'edge', 'nose_tackle'}
+    DB_POSITIONS = {'cornerback', 'safety', 'free_safety', 'strong_safety'}
+    LB_POSITIONS = {
+        'linebacker', 'outside_linebacker', 'inside_linebacker',
+        'mike_linebacker', 'will_linebacker', 'middle_linebacker'
+    }
+    RB_POSITIONS = {'running_back', 'fullback'}
+    WR_POSITIONS = {'wide_receiver'}
+    TE_POSITIONS = {'tight_end'}
 
     ROSTER_LIMIT = 53
 
@@ -293,20 +306,21 @@ class RosterCutsService:
         roster_api = PlayerRosterAPI(self._db_path)
         return roster_api.get_roster_count(self._dynasty_id, team_id)
 
-    def get_cuts_needed(self, team_id: int) -> int:
+    def get_cuts_needed(self, team_id: int, target_size: int = 53) -> int:
         """
-        Get number of players that need to be cut to reach 53.
+        Get number of players that need to be cut to reach target roster size.
 
         Args:
             team_id: Team ID
+            target_size: Target roster size (default 53 for regular roster limit)
 
         Returns:
-            Number of cuts needed (0 if already at/below 53)
+            Number of cuts needed (0 if already at/below target)
         """
         roster_count = self.get_roster_count(team_id)
-        return max(0, roster_count - self.ROSTER_LIMIT)
+        return max(0, roster_count - target_size)
 
-    def get_ai_cut_suggestions(self, team_id: int, count: Optional[int] = None) -> List[Dict[str, Any]]:
+    def get_ai_cut_suggestions(self, team_id: int, count: Optional[int] = None, target_size: int = 53) -> List[Dict[str, Any]]:
         """
         Get AI suggestions for which players to cut.
 
@@ -315,13 +329,14 @@ class RosterCutsService:
 
         Args:
             team_id: Team ID
-            count: Number of suggestions needed (defaults to cuts_needed)
+            count: Number of suggestions needed (defaults to cuts_needed based on target_size)
+            target_size: Target roster size (default 53 for regular roster limit)
 
         Returns:
             List of player dicts to suggest cutting, sorted by priority
         """
         if count is None:
-            count = self.get_cuts_needed(team_id)
+            count = self.get_cuts_needed(team_id, target_size)
 
         if count <= 0:
             return []
@@ -474,7 +489,7 @@ class RosterCutsService:
                 "error_message": str(e),
             }
 
-    def process_ai_cuts(self, user_team_id: int) -> Dict[str, Any]:
+    def process_ai_cuts(self, user_team_id: int, target_size: int = 53) -> Dict[str, Any]:
         """
         Process roster cuts for all AI teams.
 
@@ -486,6 +501,7 @@ class RosterCutsService:
 
         Args:
             user_team_id: User's team ID (to skip)
+            target_size: Target roster size (default 53 for regular roster limit)
 
         Returns:
             Dict with:
@@ -508,13 +524,13 @@ class RosterCutsService:
             if team_id == user_team_id:
                 continue
 
-            cuts_needed = self.get_cuts_needed(team_id)
+            cuts_needed = self.get_cuts_needed(team_id, target_size)
 
             if cuts_needed <= 0:
                 continue
 
             # Get AI suggestions
-            suggestions = self.get_ai_cut_suggestions(team_id, cuts_needed)
+            suggestions = self.get_ai_cut_suggestions(team_id, cuts_needed, target_size)
 
             team_cuts = []
             for player in suggestions:
@@ -646,6 +662,9 @@ class RosterCutsService:
         # Count players by position group
         position_groups = {
             'quarterback': [],
+            'running_back': [],
+            'wide_receiver': [],
+            'tight_end': [],
             'offensive_line': [],
             'defensive_line': [],
             'linebacker': [],
@@ -661,11 +680,17 @@ class RosterCutsService:
 
             if pos == 'quarterback':
                 position_groups['quarterback'].append((player_id, value))
+            elif pos in self.RB_POSITIONS:
+                position_groups['running_back'].append((player_id, value))
+            elif pos in self.WR_POSITIONS:
+                position_groups['wide_receiver'].append((player_id, value))
+            elif pos in self.TE_POSITIONS:
+                position_groups['tight_end'].append((player_id, value))
             elif pos in self.OL_POSITIONS:
                 position_groups['offensive_line'].append((player_id, value))
             elif pos in self.DL_POSITIONS:
                 position_groups['defensive_line'].append((player_id, value))
-            elif pos == 'linebacker':
+            elif pos in self.LB_POSITIONS:
                 position_groups['linebacker'].append((player_id, value))
             elif pos in self.DB_POSITIONS:
                 position_groups['defensive_back'].append((player_id, value))

@@ -114,6 +114,18 @@ class SeasonInitializationService:
                 handler=self._apply_cap_rollover,
                 required=True
             ),
+            InitStep(
+                name="Fill Roster Holes",
+                description="GMs sign free agents to fill critical position gaps",
+                handler=self._fill_roster_holes,
+                required=True
+            ),
+            InitStep(
+                name="Reinitialize Depth Charts",
+                description="Reordering rosters by overall rating after offseason changes",
+                handler=self._reinitialize_depth_charts,
+                required=True
+            ),
             # ============================================================
             # Future steps - uncomment/add as features are implemented:
             # ============================================================
@@ -474,6 +486,201 @@ class SeasonInitializationService:
                 "error": str(e),
                 "message": f"Awards calculation failed for {self._from_season}: {e}"
             }
+
+    def _fill_roster_holes(self) -> Dict[str, Any]:
+        """
+        Fill critical roster holes by signing free agents.
+
+        When teams are missing essential positions (QB, RB, WR, etc.), the GM
+        automatically signs the best available free agent to fill the gap.
+        This ensures all teams can simulate games without position-related crashes.
+
+        Uses the same position minimums and groupings as RosterCutsService.
+        """
+        import logging
+        from database.player_roster_api import PlayerRosterAPI
+        from .free_agency_service import FreeAgencyService
+        from .roster_cuts_service import RosterCutsService
+
+        logger = logging.getLogger(__name__)
+        logger.info("Checking all teams for roster holes...")
+
+        roster_api = PlayerRosterAPI(self._db_path)
+        fa_service = FreeAgencyService(
+            db_path=self._db_path,
+            dynasty_id=self._dynasty_id,
+            season=self._to_season
+        )
+
+        # Position minimums and groupings from RosterCutsService
+        POSITION_MINIMUMS = RosterCutsService.POSITION_MINIMUMS
+        OL_POSITIONS = RosterCutsService.OL_POSITIONS
+        DL_POSITIONS = RosterCutsService.DL_POSITIONS
+        DB_POSITIONS = RosterCutsService.DB_POSITIONS
+        LB_POSITIONS = RosterCutsService.LB_POSITIONS
+        RB_POSITIONS = RosterCutsService.RB_POSITIONS
+        WR_POSITIONS = RosterCutsService.WR_POSITIONS
+        TE_POSITIONS = RosterCutsService.TE_POSITIONS
+
+        # Position group to free agent search position mapping
+        POSITION_GROUP_TO_SEARCH = {
+            'quarterback': ['quarterback'],
+            'running_back': ['running_back', 'fullback'],
+            'wide_receiver': ['wide_receiver'],
+            'tight_end': ['tight_end'],
+            'offensive_line': ['left_tackle', 'right_tackle', 'left_guard', 'right_guard', 'center'],
+            'defensive_line': ['defensive_end', 'defensive_tackle'],
+            'linebacker': ['linebacker', 'outside_linebacker', 'inside_linebacker'],
+            'defensive_back': ['cornerback', 'safety', 'free_safety', 'strong_safety'],
+            'kicker': ['kicker'],
+            'punter': ['punter']
+        }
+
+        total_signings = 0
+        teams_with_holes = 0
+
+        for team_id in range(1, 33):
+            try:
+                # Get active roster for this team
+                roster = roster_api.get_team_roster(
+                    dynasty_id=self._dynasty_id,
+                    team_id=team_id,
+                    roster_status='active'
+                )
+
+                # Count players by position group
+                position_counts = {group: 0 for group in POSITION_MINIMUMS}
+
+                for player in roster:
+                    positions = player.get("positions", [])
+                    if isinstance(positions, str):
+                        import json
+                        positions = json.loads(positions)
+                    pos = positions[0].lower() if positions else ""
+
+                    if pos == 'quarterback':
+                        position_counts['quarterback'] += 1
+                    elif pos in RB_POSITIONS:
+                        position_counts['running_back'] += 1
+                    elif pos in WR_POSITIONS:
+                        position_counts['wide_receiver'] += 1
+                    elif pos in TE_POSITIONS:
+                        position_counts['tight_end'] += 1
+                    elif pos in OL_POSITIONS:
+                        position_counts['offensive_line'] += 1
+                    elif pos in DL_POSITIONS:
+                        position_counts['defensive_line'] += 1
+                    elif pos in LB_POSITIONS:
+                        position_counts['linebacker'] += 1
+                    elif pos in DB_POSITIONS:
+                        position_counts['defensive_back'] += 1
+                    elif pos == 'kicker':
+                        position_counts['kicker'] += 1
+                    elif pos == 'punter':
+                        position_counts['punter'] += 1
+
+                # Find and fill holes
+                team_signings = 0
+                for group, minimum in POSITION_MINIMUMS.items():
+                    current = position_counts.get(group, 0)
+                    needed = minimum - current
+
+                    if needed > 0:
+                        if team_signings == 0:
+                            teams_with_holes += 1
+                        logger.info(f"  Team {team_id}: Need {needed} {group}(s)")
+
+                        # Get free agents at this position
+                        search_positions = POSITION_GROUP_TO_SEARCH.get(group, [])
+                        for _ in range(needed):
+                            signed = False
+                            for search_pos in search_positions:
+                                free_agents = fa_service.get_free_agents(
+                                    position=search_pos,
+                                    limit=5
+                                )
+
+                                if free_agents:
+                                    # Sign the best available
+                                    best_fa = free_agents[0]
+                                    result = fa_service.sign_free_agent(
+                                        player_id=best_fa['player_id'],
+                                        team_id=team_id,
+                                        player_info=best_fa,
+                                        skip_preference_check=True  # Mandatory fill
+                                    )
+
+                                    if result.get('success'):
+                                        logger.info(
+                                            f"    Signed {best_fa.get('name', 'Unknown')} "
+                                            f"({search_pos}) to team {team_id}"
+                                        )
+                                        team_signings += 1
+                                        total_signings += 1
+                                        signed = True
+                                        break
+
+                            if not signed:
+                                logger.warning(
+                                    f"    No {group} available to sign for team {team_id}"
+                                )
+
+            except Exception as e:
+                logger.error(f"Failed to fill roster holes for team {team_id}: {e}")
+
+        logger.info(
+            f"✅ Roster hole fill complete: {total_signings} signings "
+            f"across {teams_with_holes} teams"
+        )
+
+        return {
+            "success": True,
+            "message": f"Filled {total_signings} roster holes across {teams_with_holes} teams"
+        }
+
+    def _reinitialize_depth_charts(self) -> Dict[str, Any]:
+        """
+        Reinitialize depth charts for all 32 teams based on overall ratings.
+
+        After offseason roster changes (draft, FA, trades, cuts), new players
+        have depth_chart_order=99 (default). This step reorders all position
+        groups by overall rating to ensure valid depth charts for game simulation.
+
+        Uses DepthChartAPI.auto_generate_depth_chart() for each team (DRY).
+        """
+        import logging
+        from depth_chart.depth_chart_api import DepthChartAPI
+
+        logger = logging.getLogger(__name__)
+        logger.info("Reinitializing depth charts after offseason roster changes...")
+
+        depth_chart_api = DepthChartAPI(self._db_path)
+        teams_updated = 0
+        errors = []
+
+        for team_id in range(1, 33):
+            try:
+                success = depth_chart_api.auto_generate_depth_chart(
+                    dynasty_id=self._dynasty_id,
+                    team_id=team_id
+                )
+                if success:
+                    teams_updated += 1
+                else:
+                    errors.append(f"Team {team_id}: auto_generate returned False")
+            except Exception as e:
+                logger.warning(f"Failed to regenerate depth chart for team {team_id}: {e}")
+                errors.append(f"Team {team_id}: {str(e)}")
+
+        logger.info(f"✅ Depth charts reinitialized for {teams_updated}/32 teams")
+
+        if errors:
+            logger.warning(f"Depth chart errors: {errors}")
+
+        return {
+            "success": teams_updated == 32,
+            "message": f"Depth charts reinitialized for {teams_updated}/32 teams"
+        }
 
     # ========================================================================
     # Future Step Handlers (uncomment and implement as needed)

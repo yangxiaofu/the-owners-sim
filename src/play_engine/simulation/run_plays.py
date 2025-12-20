@@ -103,7 +103,11 @@ class RunPlaySimulator(BasePlaySimulator):
 
         # Phase 1B: Check for fumble (before penalties, as fumbles happen during play)
         running_back = self._find_player_by_position(Position.RB)
-        fumble_occurred, defense_recovered = self._check_fumble(running_back)
+        # Skip fumble check if no RB available (can happen after roster cuts)
+        if running_back is None:
+            fumble_occurred, defense_recovered = False, False
+        else:
+            fumble_occurred, defense_recovered = self._check_fumble(running_back)
 
         if fumble_occurred:
             # Fumble occurred - create result (may or may not be a turnover)
@@ -1195,9 +1199,13 @@ class RunPlaySimulator(BasePlaySimulator):
 
         Args:
             player_stats: List of PlayerStats objects to update
-            running_back: The ball carrier who fumbled
+            running_back: The ball carrier who fumbled (can be None if no RB on roster)
             fumble_lost: True if defense recovered the fumble (turnover), False if offense recovered
         """
+        # Guard: No RB to attribute stats to (can happen after roster cuts)
+        if running_back is None:
+            return
+
         # Find or create RB stats and add fumble stats
         rb_stats = None
         for stats in player_stats:
