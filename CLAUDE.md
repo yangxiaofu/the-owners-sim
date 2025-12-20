@@ -18,11 +18,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | `main.py` | `data/database/nfl_simulation.db` | Calendar-based (day-by-day, legacy) |
 
 **Database Content Split:**
-- This is the primary database. 
-- `game_cycle.db`: Standings, schedule, playoff bracket, box scores, player stats, awards, media headlines, progression history
-
-This database is no longer in use. 
-- `nfl_simulation.db`: Player data, contracts, team rosters, draft picks, transactions (legacy - some data shared via JSON files)
+- `game_cycle.db` **(PRIMARY)**: Standings, schedule, playoff bracket, box scores, player stats, awards, media headlines, progression history
+- `nfl_simulation.db` **(LEGACY)**: Player data, contracts, team rosters, draft picks, transactions (some data shared via JSON files)
 
 **Do NOT mix `src/game_cycle/` code with the calendar-based season cycle scheduler in `src/season/`.**
 
@@ -55,10 +52,10 @@ This database is no longer in use.
 
 **Current Status:** See `docs/DEVELOPMENT_PRIORITIES.md` for complete roadmap and milestone status.
 
-**Completed Milestones (14 of 41):**
-1. Game Cycle, 2. Salary Cap & Contracts, 3. Player Progression, 4. Statistics, 5. Injuries & IR, 6. Trade System, 7. Player Personas, 8. Team Statistics, 9. Realistic Game Scenarios, 10. Awards System, 11. Schedule & Rivalries, 12. Media Coverage, 13. Owner-GM Offseason Flow, 14. Contract Valuation Engine
+**Completed Milestones (17 of 41):**
+1. Game Cycle, 2. Salary Cap & Contracts, 3. Player Progression, 4. Statistics, 5. Injuries & IR, 6. Trade System, 7. Player Personas, 8. Team Statistics, 9. Realistic Game Scenarios, 10. Awards System, 11. Schedule & Rivalries, 12. Media Coverage, 13. Owner-GM Offseason Flow, 14. Contract Valuation Engine, 15. Free Agency Depth, 16. Draft Class Variation, 17. Player Retirements
 
-**In Progress:** Free Agency Depth (Tollgates 1-5 Complete)
+**In Progress:** Hall of Fame (T1-T5 Complete: Schema, Eligibility, Scoring, Voting, Induction Services)
 
 **Stable Systems:** Play engine, game simulation, coaching staff, playoff system, database persistence
 
@@ -97,8 +94,12 @@ python -m pytest tests/ -m "integration"                                   # Int
 - `@pytest.mark.integration` - Integration tests (run with `-m "integration"`)
 
 **Key Test Directories:**
-- `tests/game_cycle/` - Game cycle services, handlers, and database tests
-- `tests/calendar/`, `tests/playoff_system/`, `tests/salary_cap/`, `tests/statistics/`
+- `tests/test_game_cycle/` - Game cycle services, handlers, and database tests (PRIMARY)
+  - `tests/test_game_cycle/integration/` - End-to-end integration tests
+  - `tests/test_game_cycle/services/` - Service layer tests
+  - `tests/test_game_cycle/database/` - Database API tests
+- `tests/calendar/`, `tests/playoff_system/`, `tests/salary_cap/`, `tests/statistics/` - Legacy tests
+- `tests/contract_valuation/` - Valuation engine tests
 - `tests/services/` - (10/30 tests fail due to mock paths, production unaffected)
 
 ### Database Inspection
@@ -159,6 +160,7 @@ REGULAR SEASON (18 weeks)
   - `gm_fa_proposal_engine.py` - GM proposal generation for FA signings
   - `directive_loader.py` - Load owner offseason directives
   - `proposal_generators/` - Stage-specific proposal generators (franchise_tag, resigning, fa_signing, trade, draft, cuts, waiver)
+  - `hof_eligibility_service.py`, `hof_scoring_engine.py`, `hof_voting_engine.py`, `hof_induction_service.py` - Hall of Fame system (T1-T5 complete)
 - `src/contract_valuation/` - Multi-factor contract valuation system:
   - `valuation_engine.py` - Core valuation logic with factor weighting
   - `market_rates.py` - Position-specific market rates (2024 NFL calibrated)
@@ -174,6 +176,7 @@ REGULAR SEASON (18 weeks)
   - `schedule_api.py`, `schedule_rotation_api.py`, `game_slots_api.py`, `bye_week_api.py` - Schedule
   - `proposal_api.py` - GM proposal persistence and workflow
   - `staff_api.py` - GM and Head Coach staff records
+  - `hof_api.py` - Hall of Fame inductees and voting history
 - `src/game_cycle/models/` - Data models for game cycle:
   - `fa_guidance.py` - Owner FA guidance/directives
   - `gm_proposal.py`, `persistent_gm_proposal.py` - GM proposal dataclasses
