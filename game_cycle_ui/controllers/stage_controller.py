@@ -238,13 +238,11 @@ class StageUIController(QObject):
         progress.setValue(0)
         progress.show()  # Explicitly show the dialog
         progress.raise_()  # Bring to front
-        print(f"[PROGRESS DIALOG] Showing progress dialog for {stage_label}")  # Debug
         QApplication.processEvents()  # Force initial render
 
         # Set up progress callback that updates dialog and processes events
         def on_progress(current: int, total: int, message: str):
             """Called from backend as games complete."""
-            print(f"[PROGRESS] {current}/{total}: {message}")  # Debug output
             if total > 0:
                 percent = int((current / total) * 100)
                 progress.setValue(percent)
@@ -261,9 +259,7 @@ class StageUIController(QObject):
 
         try:
             # Execute stage in main thread (SQLite requires same-thread access)
-            print(f"[PROGRESS DIALOG] Starting stage execution...")  # Debug
             result = self._backend.execute_current_stage()
-            print(f"[PROGRESS DIALOG] Stage execution complete")  # Debug
 
             # Close progress dialog
             progress.close()

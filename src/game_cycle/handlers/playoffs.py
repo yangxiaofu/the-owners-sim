@@ -138,6 +138,10 @@ class PlayoffHandler:
 
         events_processed.append(f"{round_name.replace('_', ' ').title()}: {len(games_played)} games completed")
 
+        # Update standings with playoff achievement flags
+        if games_played:
+            self._update_standings_playoff_flags(context, round_name, games_played)
+
         # After Super Bowl, calculate MVP and season awards
         super_bowl_result = None
         season_awards = None
@@ -188,7 +192,11 @@ class PlayoffHandler:
         simulation_mode = SimulationMode.FULL if mode_str == "full" else SimulationMode.INSTANT
         game_simulator = GameSimulatorService(db_path, dynasty_id)
 
-        for matchup in matchups:
+        # Extract progress callback for UI updates
+        progress_callback = context.get("progress_callback")
+        total_games = len(matchups)
+
+        for game_num, matchup in enumerate(matchups, start=1):
             home_team_id = matchup['higher_seed']
             away_team_id = matchup['lower_seed']
             conference = matchup['conference']
@@ -291,6 +299,21 @@ class PlayoffHandler:
 
             # Generate media headline for this playoff game
             self._generate_playoff_headline(context, result, round_name, sim_result)
+
+            # Call progress callback if provided (for UI updates)
+            if progress_callback:
+                from team_management.teams.team_loader import get_team_by_id
+                away_team = get_team_by_id(away_team_id)
+                home_team = get_team_by_id(home_team_id)
+                away_abbr = away_team.abbreviation if away_team else f"T{away_team_id}"
+                home_abbr = home_team.abbreviation if home_team else f"T{home_team_id}"
+                round_display = round_name.replace('_', ' ').title()
+                message = f"{round_display}: {away_abbr} {away_score} @ {home_abbr} {home_score}"
+                try:
+                    progress_callback(game_num, total_games, message)
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning("Progress callback failed: %s", e)
 
             games_played.append(result)
 
@@ -1306,11 +1329,15 @@ class PlayoffHandler:
 
         matchups = []
         game_number = 1
+        all_playoff_teams = []
 
         for conference in ["AFC", "NFC"]:
             seeds = self._get_seeds_for_conference(seeding, conference)
 
             if len(seeds) >= 7:
+                # Track all playoff teams (seeds 1-7 for each conference)
+                all_playoff_teams.extend(seeds[:7])
+
                 # #2 vs #7
                 matchup = self._insert_bracket_matchup(
                     context, "wild_card", conference, game_number,
@@ -1337,6 +1364,10 @@ class PlayoffHandler:
                 )
                 matchups.append(matchup)
                 game_number += 1
+
+        # Mark all playoff teams in standings
+        if all_playoff_teams:
+            self._mark_teams_made_playoffs(context, all_playoff_teams)
 
         return matchups
 
@@ -1739,3 +1770,110 @@ class PlayoffHandler:
         except Exception as e:
             print(f"[WARNING PlayoffHandler] Failed to get roster for team {team_id}: {e}")
             return []
+
+    def _update_standings_playoff_flags(
+        self,
+        context: Dict[str, Any],
+        round_name: str,
+        games_played: List[Dict[str, Any]]
+    ) -> None:
+        """
+        Update standings table with playoff achievement flags.
+
+        After each playoff round, updates the standings to reflect which teams:
+        - made_playoffs: All 14 playoff teams (set during Wild Card seeding)
+        - won_wild_card: Teams that won Wild Card round
+        - won_division_round: Teams that won Divisional round
+        - won_conference: Teams that won Conference Championship
+        - won_super_bowl: Super Bowl winner
+
+        Args:
+            context: Execution context with dynasty_id, season, unified_api
+            round_name: The playoff round that was just completed
+            games_played: List of game results with winner information
+        """
+        unified_api = context["unified_api"]
+        dynasty_id = context["dynasty_id"]
+        season = context["season"]
+        db_path = context.get("db_path") or unified_api.database_path
+
+        # Map round names to standing column names
+        round_to_column = {
+            "wild_card": "won_wild_card",
+            "divisional": "won_division_round",
+            "conference": "won_conference",
+            "super_bowl": "won_super_bowl",
+        }
+
+        column = round_to_column.get(round_name)
+        if not column:
+            return
+
+        try:
+            with sqlite3.connect(db_path, timeout=30.0) as conn:
+                cursor = conn.cursor()
+
+                # Collect all winning team IDs from this round
+                winners = []
+                for game in games_played:
+                    # Determine winner from scores
+                    home_score = game.get("home_score", 0)
+                    away_score = game.get("away_score", 0)
+                    home_team = game.get("home_team_id")
+                    away_team = game.get("away_team_id")
+
+                    if home_score > away_score:
+                        winners.append(home_team)
+                    elif away_score > home_score:
+                        winners.append(away_team)
+                    # Ties shouldn't happen in playoffs, but handle gracefully
+
+                # Update standings for each winner
+                for team_id in winners:
+                    cursor.execute(f"""
+                        UPDATE standings
+                        SET {column} = 1
+                        WHERE dynasty_id = ? AND team_id = ? AND season = ?
+                    """, (dynasty_id, team_id, season))
+
+                conn.commit()
+                print(f"[PlayoffHandler] Updated {column} for {len(winners)} teams: {winners}")
+
+        except Exception as e:
+            print(f"[WARNING PlayoffHandler] Failed to update standings playoff flags: {e}")
+
+    def _mark_teams_made_playoffs(
+        self,
+        context: Dict[str, Any],
+        playoff_teams: List[int]
+    ) -> None:
+        """
+        Mark teams as having made the playoffs in standings.
+
+        Called during Wild Card seeding to set made_playoffs=1 for all 14 teams.
+
+        Args:
+            context: Execution context with dynasty_id, season, unified_api
+            playoff_teams: List of team IDs that made playoffs
+        """
+        unified_api = context["unified_api"]
+        dynasty_id = context["dynasty_id"]
+        season = context["season"]
+        db_path = context.get("db_path") or unified_api.database_path
+
+        try:
+            with sqlite3.connect(db_path, timeout=30.0) as conn:
+                cursor = conn.cursor()
+
+                for team_id in playoff_teams:
+                    cursor.execute("""
+                        UPDATE standings
+                        SET made_playoffs = 1
+                        WHERE dynasty_id = ? AND team_id = ? AND season = ?
+                    """, (dynasty_id, team_id, season))
+
+                conn.commit()
+                print(f"[PlayoffHandler] Marked {len(playoff_teams)} teams as made_playoffs")
+
+        except Exception as e:
+            print(f"[WARNING PlayoffHandler] Failed to mark teams made_playoffs: {e}")

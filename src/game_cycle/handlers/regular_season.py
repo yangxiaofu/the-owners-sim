@@ -151,7 +151,10 @@ class RegularSeasonHandler:
         unified_api: Any,
         simulation_mode: SimulationMode,
         dynasty_id: str,
-        db_path: str
+        db_path: str,
+        game_number: int = 0,
+        total_games: int = 0,
+        progress_callback: callable = None
     ) -> Dict[str, Any]:
         """
         Persist a single game result to database.
@@ -172,6 +175,9 @@ class RegularSeasonHandler:
             simulation_mode: For logging purposes
             dynasty_id: Dynasty identifier
             db_path: Database path for services
+            game_number: Current game number (for progress)
+            total_games: Total games to simulate (for progress)
+            progress_callback: Optional callback(current, total, message) for UI updates
 
         Returns:
             Dictionary with game result info for return to caller
@@ -199,16 +205,23 @@ class RegularSeasonHandler:
 
         # Persist player stats from simulation
         try:
-            if sim_result.player_stats:
-                stats_count = unified_api.stats_insert_game_stats(
-                    game_id=ctx.game_id_for_db,
-                    season=ctx.season,
-                    week=ctx.week,
-                    season_type="regular_season",
-                    player_stats=sim_result.player_stats
-                )
-                mode_label = "full sim" if simulation_mode == SimulationMode.FULL else "instant"
-                logger.debug("Inserted %d player stats (%s) for game %s", stats_count, mode_label, ctx.game_id_for_db)
+            if sim_result.player_stats is not None:
+                if len(sim_result.player_stats) == 0:
+                    logger.warning(
+                        "Game %s has empty player_stats list - no stats will be recorded. "
+                        "Check MockStatsGenerator roster queries.",
+                        ctx.game_id_for_db
+                    )
+                else:
+                    stats_count = unified_api.stats_insert_game_stats(
+                        game_id=ctx.game_id_for_db,
+                        season=ctx.season,
+                        week=ctx.week,
+                        season_type="regular_season",
+                        player_stats=sim_result.player_stats
+                    )
+                    mode_label = "full sim" if simulation_mode == SimulationMode.FULL else "instant"
+                    logger.debug("Inserted %d player stats (%s) for game %s", stats_count, mode_label, ctx.game_id_for_db)
         except Exception as e:
             logger.warning("Failed to persist stats for game %s: %s", ctx.game_id_for_db, e)
 
@@ -249,9 +262,12 @@ class RegularSeasonHandler:
         except Exception as e:
             logger.warning("Failed to persist box scores for game %s: %s", ctx.game_id_for_db, e)
 
-        # Update event in events table
+        # Update event in events table (optional - legacy feature)
         if ctx.event_id:
-            unified_api.events_update_game_result(ctx.event_id, home_score, away_score)
+            try:
+                unified_api.events_update_game_result(ctx.event_id, home_score, away_score)
+            except Exception as e:
+                logger.debug(f"Could not update event {ctx.event_id}: {e} (events table optional)")
 
         # Record injuries
         game_injuries = []
@@ -293,8 +309,35 @@ class RegularSeasonHandler:
             sim_result=sim_result
         )
 
+        # Generate social media posts (Milestone 14)
+        self._generate_game_social_posts(
+            db_path=db_path,
+            dynasty_id=dynasty_id,
+            season=ctx.season,
+            week=ctx.week,
+            game_id=ctx.game_id_for_db,
+            home_team_id=ctx.home_team_id,
+            away_team_id=ctx.away_team_id,
+            home_score=home_score,
+            away_score=away_score,
+            sim_result=sim_result
+        )
+
         # Build result for return
         game_result_to_include = sim_result if simulation_mode == SimulationMode.FULL else None
+
+        # Call progress callback if provided (for UI updates)
+        if progress_callback:
+            from team_management.teams.team_loader import get_team_by_id
+            away_team = get_team_by_id(ctx.away_team_id)
+            home_team = get_team_by_id(ctx.home_team_id)
+            away_abbr = away_team.abbreviation if away_team else f"T{ctx.away_team_id}"
+            home_abbr = home_team.abbreviation if home_team else f"T{ctx.home_team_id}"
+            message = f"Week {ctx.week}: {away_abbr} {away_score} @ {home_abbr} {home_score}"
+            try:
+                progress_callback(game_number, total_games, message)
+            except Exception as e:
+                logger.warning("Progress callback failed: %s", e)
 
         return {
             "game_id": ctx.game.get("game_id"),
@@ -461,14 +504,20 @@ class RegularSeasonHandler:
         # - Foreign key constraints (games → player_game_stats → box_scores)
         # - Standings updates modify shared table rows
         persist_start = time.time()
-        for ctx, sim_result in sim_results:
+        total_games = len(sim_results)
+        progress_callback = context.get("progress_callback")
+
+        for game_num, (ctx, sim_result) in enumerate(sim_results, start=1):
             game_result = self._persist_game_result(
                 ctx=ctx,
                 sim_result=sim_result,
                 unified_api=unified_api,
                 simulation_mode=simulation_mode,
                 dynasty_id=dynasty_id,
-                db_path=db_path
+                db_path=db_path,
+                game_number=game_num,
+                total_games=total_games,
+                progress_callback=progress_callback
             )
             games_played.append(game_result)
 
@@ -1447,3 +1496,158 @@ class RegularSeasonHandler:
             # Log but don't fail game simulation for preview errors
             logger.warning("Failed to generate preview headlines for week %d: %s", week, e)
             return 0
+
+    def _generate_game_social_posts(
+        self,
+        db_path: str,
+        dynasty_id: str,
+        season: int,
+        week: int,
+        game_id: str,
+        home_team_id: int,
+        away_team_id: int,
+        home_score: int,
+        away_score: int,
+        sim_result
+    ) -> int:
+        """
+        Generate and persist social media posts for a completed game.
+
+        Integrates SocialPostGenerator with game simulation flow.
+        Posts are persisted to social_posts table for display in Social Feed UI.
+
+        Non-critical: Errors are logged but do not fail game simulation.
+
+        Args:
+            db_path: Database path
+            dynasty_id: Dynasty identifier
+            season: Season year
+            week: Week number
+            game_id: Game identifier
+            home_team_id: Home team ID
+            away_team_id: Away team ID
+            home_score: Home team final score
+            away_score: Away team final score
+            sim_result: SimulationResult with game details
+
+        Returns:
+            Number of posts generated (0 on failure)
+        """
+        try:
+            from ..services.social_post_generator import SocialPostGenerator
+            from ..database.social_posts_api import SocialPostsAPI
+            from ..database.connection import GameCycleDatabase
+
+            # Determine winner/loser
+            if home_score > away_score:
+                winner_id, loser_id = home_team_id, away_team_id
+                winner_score, loser_score = home_score, away_score
+            else:
+                winner_id, loser_id = away_team_id, home_team_id
+                winner_score, loser_score = away_score, home_score
+
+            # Calculate game characteristics
+            score_margin = abs(home_score - away_score)
+            is_blowout = score_margin >= 21
+            is_upset = self._is_upset(dynasty_id, season, winner_id, loser_id)
+
+            # Extract star players from sim result (if available)
+            star_players = {}
+            if hasattr(sim_result, 'player_stats') and sim_result.player_stats:
+                # Find top performer for each team (highest offensive yards)
+                for team_id in [home_team_id, away_team_id]:
+                    team_stats = [p for p in sim_result.player_stats if p.get('team_id') == team_id]
+                    if team_stats:
+                        # Sort by total offense (passing + rushing + receiving yards)
+                        def get_total_yards(p):
+                            return (
+                                (p.get('passing_yards') or 0) +
+                                (p.get('rushing_yards') or 0) +
+                                (p.get('receiving_yards') or 0)
+                            )
+                        top_player = max(team_stats, key=get_total_yards, default=None)
+                        if top_player:
+                            star_players[team_id] = top_player.get('player_name', 'Unknown')
+
+            # Generate posts
+            post_generator = SocialPostGenerator(GameCycleDatabase(db_path), dynasty_id)
+            generated_posts = post_generator.generate_game_posts(
+                season=season,
+                week=week,
+                winning_team_id=winner_id,
+                losing_team_id=loser_id,
+                winning_score=winner_score,
+                losing_score=loser_score,
+                game_id=game_id,
+                is_upset=is_upset,
+                is_blowout=is_blowout,
+                star_players=star_players if star_players else None
+            )
+
+            if not generated_posts:
+                logger.debug("No social posts generated for game %s", game_id)
+                return 0
+
+            # Persist posts to database
+            gc_db = GameCycleDatabase(db_path)
+            try:
+                posts_api = SocialPostsAPI(gc_db)
+                for post in generated_posts:
+                    posts_api.create_post(
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        week=week,
+                        personality_id=post.personality_id,
+                        post_text=post.post_text,
+                        sentiment=post.sentiment,
+                        likes=post.likes,
+                        retweets=post.retweets,
+                        event_type='GAME_RESULT',
+                        event_metadata=post.event_metadata
+                    )
+                logger.info("Generated %d social posts for game %s", len(generated_posts), game_id)
+                return len(generated_posts)
+            finally:
+                gc_db.close()
+
+        except Exception as e:
+            # Log but don't fail game simulation for social post errors
+            logger.warning("Failed to generate social posts for game %s: %s", game_id, e)
+            return 0
+
+    def _is_upset(self, dynasty_id: str, season: int, winner_id: int, loser_id: int) -> bool:
+        """
+        Determine if a game result is an upset based on team records.
+
+        A game is considered an upset if the winning team has a worse win percentage
+        than the losing team (margin of at least 2 games difference in wins).
+
+        Args:
+            dynasty_id: Dynasty identifier
+            season: Season year
+            winner_id: Winning team ID
+            loser_id: Losing team ID
+
+        Returns:
+            True if upset, False otherwise
+        """
+        try:
+            from ..database.connection import GameCycleDatabase
+            from ..database.standings_api import StandingsAPI
+
+            gc_db = GameCycleDatabase()
+            standings_api = StandingsAPI(gc_db)
+            try:
+                standings = standings_api.get_standings(dynasty_id, season)
+                winner_standing = next((s for s in standings if s.team_id == winner_id), None)
+                loser_standing = next((s for s in standings if s.team_id == loser_id), None)
+
+                if not winner_standing or not loser_standing:
+                    return False
+
+                # Upset if winner has 2+ fewer wins than loser
+                return winner_standing.wins < (loser_standing.wins - 1)
+            finally:
+                gc_db.close()
+        except Exception:
+            return False
