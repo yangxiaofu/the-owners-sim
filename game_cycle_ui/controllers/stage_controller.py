@@ -10,11 +10,12 @@ Dynasty-First Architecture:
 
 from typing import Optional, Dict, Any, List
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, QTimer
 from PySide6.QtWidgets import QApplication
 
-from game_cycle import Stage, StageType, SeasonPhase
+from game_cycle import Stage, StageType, SeasonPhase, ROSTER_LIMITS, INTERACTIVE_OFFSEASON_STAGES
 from game_cycle.stage_controller import StageController as BackendStageController
+from .draft_simulation_controller import DraftSimulationController
 
 
 class StageUIController(QObject):
@@ -41,6 +42,7 @@ class StageUIController(QObject):
     awards_calculated = Signal()  # Emitted after OFFSEASON_HONORS - UI should show awards
     owner_stage_ready = Signal()  # Emitted when entering OFFSEASON_OWNER - UI should show owner view
     super_bowl_completed = Signal(dict, dict)  # super_bowl_result, season_awards - show results dialog
+    fa_signing_result = Signal(str, bool, dict)  # proposal_id, success, result_details
 
     def __init__(
         self,
@@ -77,6 +79,10 @@ class StageUIController(QObject):
         # Wave-based Free Agency controller (Milestone 8 - SoC)
         # Created lazily in set_offseason_view() for proper DI
         self._fa_controller = None
+
+        # Draft simulation controller (Enhanced Draft View - Phase 1-5)
+        # Created lazily when entering draft stage
+        self._draft_simulation_controller: Optional[DraftSimulationController] = None
 
     @property
     def dynasty_id(self) -> str:
@@ -134,13 +140,32 @@ class StageUIController(QObject):
 
         if self._view and stage:
             self._view.set_current_stage(stage)
-            preview = self._backend.get_stage_preview()
+            try:
+                preview = self._backend.get_stage_preview()
+            except Exception as e:
+                print(f"[StageUIController] Error in get_stage_preview(): {e}")
+                preview = {"stage_name": stage.display_name, "description": "Error loading preview"}
             self._view.set_preview(preview)
             self._view.set_advance_enabled(True)
 
             # Update standings in view
             standings = self._backend.get_standings()
             self._view.set_standings(standings)
+
+            # Update nested view contexts with current season (fixes player aging bug)
+            self._update_nested_view_contexts(stage)
+
+            # Handle preseason cuts stages (Coach-only proposals)
+            if stage.stage_type == StageType.OFFSEASON_PRESEASON_W1:
+                self._handle_preseason_w1_stage()
+            elif stage.stage_type == StageType.OFFSEASON_PRESEASON_W2:
+                self._handle_preseason_w2_stage()
+            elif stage.stage_type == StageType.OFFSEASON_PRESEASON_W3:
+                self._handle_preseason_w3_stage()
+
+            # Handle resigning stage - load restructure proposals
+            if stage.stage_type == StageType.OFFSEASON_RESIGNING:
+                self._handle_resigning_stage()
 
             # Update week navigation state for regular season and playoffs
             if stage.phase == SeasonPhase.REGULAR_SEASON:
@@ -203,10 +228,25 @@ class StageUIController(QObject):
                     # Emit signal so main window can show owner view tab
                     self.owner_stage_ready.emit()
                     # Don't auto-advance - user must click "Continue" after owner decisions
+                # Interactive offseason stages - don't auto-advance, user must make decisions
+                elif stage.stage_type in (
+                    StageType.OFFSEASON_FRANCHISE_TAG,
+                    StageType.OFFSEASON_RESIGNING,
+                    StageType.OFFSEASON_FREE_AGENCY,
+                    StageType.OFFSEASON_TRADING,
+                    StageType.OFFSEASON_DRAFT,
+                    StageType.OFFSEASON_PRESEASON_W1,
+                    StageType.OFFSEASON_PRESEASON_W2,
+                    StageType.OFFSEASON_PRESEASON_W3,
+                    StageType.OFFSEASON_WAIVER_WIRE,
+                ):
+                    # Don't auto-advance - user interaction required
+                    # User must explicitly click "Confirm" or "Continue" to proceed
+                    pass
                 elif stage.stage_type.name.startswith('REGULAR_SEASON_WEEK'):
                     # Check for IR activations before advancing (regular season only)
                     # Extract week number from stage
-                    week_number = stage.stage_number
+                    week_number = stage.week_number
                     ir_shown = self.check_and_show_ir_activations(week_number)
                     # Note: If IR UI is shown, user must complete it before advancing
                     # The view's signals will hide it and then we can advance
@@ -214,7 +254,7 @@ class StageUIController(QObject):
                         # No IR activations needed, proceed with auto-advance
                         self._advance_to_next()
                 else:
-                    # Not regular season or honors, proceed with normal auto-advance
+                    # Non-interactive stages (e.g., OFFSEASON_TRAINING_CAMP)
                     self._advance_to_next()
 
             self.execution_complete.emit(result_dict)
@@ -848,8 +888,52 @@ class StageUIController(QObject):
         offseason_view.player_signed_fa.connect(self._on_fa_player_signed)
         offseason_view.player_unsigned_fa.connect(self._on_fa_player_unsigned)
 
-        # Connect franchise tag signal
+        # Connect franchise tag signals
         offseason_view.tag_applied.connect(self._on_tag_applied)
+        offseason_view.tag_proposal_approved.connect(self._on_tag_proposal_approved)
+        offseason_view.tag_proposal_rejected.connect(self._on_tag_proposal_rejected)
+
+        # Connect re-signing GM proposals signal (Tollgate 6)
+        offseason_view.resigning_proposals_reviewed.connect(
+            self._on_resigning_proposals_reviewed
+        )
+
+        # Connect cap relief signals from re-signing view
+        offseason_view.resigning_restructure_completed.connect(
+            self._on_resigning_restructure_completed
+        )
+        offseason_view.resigning_early_cut_completed.connect(
+            self._on_resigning_early_cut_completed
+        )
+
+        # Connect restructure proposal signals (GM proposal-based restructures)
+        resigning_view = offseason_view.get_resigning_view()
+        resigning_view.restructure_proposal_approved.connect(
+            self._on_restructure_proposal_approved
+        )
+        resigning_view.restructure_proposal_rejected.connect(
+            self._on_restructure_proposal_rejected
+        )
+        resigning_view.gm_reevaluation_requested.connect(
+            self._on_gm_reevaluation_requested
+        )
+
+        # Connect trading GM proposals signals (Tollgate 8)
+        offseason_view.trade_proposal_approved.connect(self._on_trade_proposal_approved)
+        offseason_view.trade_proposal_rejected.connect(self._on_trade_proposal_rejected)
+
+        # Connect FA GM proposal signals (Tollgate 7)
+        offseason_view.fa_proposal_approved.connect(self._on_fa_proposal_approved)
+        offseason_view.fa_proposal_rejected.connect(self._on_fa_proposal_rejected)
+        offseason_view.fa_proposal_retracted.connect(self._on_fa_proposal_retracted)
+
+        # Connect draft GM proposal signals (Tollgate 9)
+        offseason_view.draft_proposal_approved.connect(self._on_draft_proposal_approved)
+        offseason_view.draft_proposal_rejected.connect(self._on_draft_proposal_rejected)
+        offseason_view.draft_alternative_requested.connect(self._on_draft_alternative_requested)
+
+        # Connect advance stage signal
+        offseason_view.advance_requested.connect(self.advance_stage)
 
         # Connect roster cuts signal
         offseason_view.player_cut.connect(self._on_player_cut)
@@ -868,7 +952,7 @@ class StageUIController(QObject):
 
         # Set team context for draft direction dialog (Phase 2)
         draft_view.set_team_context(
-            season=self._season,
+            season=self.season,  # Use property (gets from current_stage)
             dynasty_id=self._dynasty_id,
             db_path=self._database_path
         )
@@ -877,18 +961,36 @@ class StageUIController(QObject):
         training_camp_view = offseason_view.get_training_camp_view()
         training_camp_view.set_user_team_id(self._user_team_id)
 
+        # Set context for resigning view (needed for Early Cuts and Restructure dialogs)
+        resigning_view = offseason_view.get_resigning_view()
+        resigning_view.set_context(
+            dynasty_id=self._dynasty_id,
+            db_path=self._database_path,
+            season=self.season,  # Use property (gets from current_stage)
+            team_name="",  # Optional, not used by dialogs
+            team_id=self._user_team_id
+        )
+
         # Connect draft history round filter
         draft_view.round_filter_changed.connect(self._on_history_round_filter_changed)
 
         # Connect draft direction signal (Phase 1)
         draft_view.draft_direction_changed.connect(self._on_draft_direction_changed)
 
+        # Connect prospect scouting signal
+        draft_view.prospect_selected_for_scouting.connect(self._on_prospect_selected_for_scouting)
+
+        # Connect enhanced draft signals (Phase 1-5)
+        draft_view.next_pick_requested.connect(self._on_next_pick_requested)
+        draft_view.speed_changed.connect(self._on_draft_speed_changed)
+        draft_view.delegation_changed.connect(self._on_draft_delegation_changed)
+
         # Create and connect wave-based Free Agency controller (Milestone 8 - SoC)
         from .free_agency_controller import FreeAgencyUIController
         self._fa_controller = FreeAgencyUIController(
             backend=self._backend,
             dynasty_id=self._dynasty_id,
-            season=self._season,
+            season=self.season,  # Use property (gets from current_stage)
             user_team_id=self._user_team_id,
             db_path=self._database_path,
             parent=self
@@ -899,6 +1001,46 @@ class StageUIController(QObject):
         # Connect wave button execution signals
         self._fa_controller.execution_complete.connect(self._on_fa_wave_executed)
         self._fa_controller.error_occurred.connect(self._on_fa_wave_error)
+
+        # Generate restructure proposals if we're already in resigning stage
+        # (This handles the case where set_offseason_view is called after set_view)
+        stage = self.current_stage
+        if stage and stage.stage_type == StageType.OFFSEASON_RESIGNING:
+            self._handle_resigning_stage()
+
+    def _update_nested_view_contexts(self, stage: Stage):
+        """
+        Update season context for nested views (inside offseason_view).
+
+        Called from refresh() to ensure nested views have current season.
+        Fixes player aging bug where views retained stale season from init.
+        """
+        if not hasattr(self, "_offseason_view") or not self._offseason_view:
+            return
+
+        current_season = stage.season_year
+
+        # Update resigning view context
+        resigning_view = self._offseason_view.get_resigning_view()
+        resigning_view.set_context(
+            dynasty_id=self._dynasty_id,
+            db_path=self._database_path,
+            season=current_season,
+            team_name="",
+            team_id=self._user_team_id
+        )
+
+        # Update FA controller season
+        if self._fa_controller:
+            self._fa_controller._season = current_season
+
+        # Update draft view context
+        draft_view = self._offseason_view.get_draft_view()
+        draft_view.set_team_context(
+            season=current_season,
+            dynasty_id=self._dynasty_id,
+            db_path=self._database_path
+        )
 
     def _on_player_resigned(self, player_id: int):
         """Track user's re-sign decision and refresh cap display."""
@@ -1064,6 +1206,17 @@ class StageUIController(QObject):
             cap_data = preview.get("cap_data", {})
             if cap_data and hasattr(fa_view, 'set_cap_data'):
                 fa_view.set_cap_data(cap_data)
+
+            # Update owner directives display (Step 8)
+            owner_directives = preview.get("owner_directives")
+            if hasattr(fa_view, 'set_owner_directives'):
+                fa_view.set_owner_directives(owner_directives)
+
+            # Update GM proposals if available (Tollgate 7)
+            gm_proposals = preview.get("gm_proposals", [])
+            trust_gm = preview.get("trust_gm", False)
+            if hasattr(fa_view, 'set_gm_proposals'):
+                fa_view.set_gm_proposals(gm_proposals, trust_gm)
 
         except Exception as e:
             print(f"[StageUIController] Error refreshing FA wave display: {e}")
@@ -1291,11 +1444,743 @@ class StageUIController(QObject):
         if projected_cap_data:
             franchise_tag_view.set_projected_cap_data(projected_cap_data)
 
+        # Update GM proposal if available (Tollgate 5)
+        gm_proposals = preview.get("gm_proposals", [])
+        gm_proposal = gm_proposals[0] if gm_proposals else None
+        franchise_tag_view.set_gm_proposal(gm_proposal)
+
+    def _on_tag_proposal_approved(self, proposal_id: str):
+        """
+        Handle GM's tag proposal approval.
+
+        Tollgate 5: Approves the proposal in the database, then executes
+        the stage with the approved proposal in context.
+        """
+        from game_cycle.database.proposal_api import ProposalAPI
+
+        stage = self.current_stage
+        if stage is None or stage.stage_type != StageType.OFFSEASON_FRANCHISE_TAG:
+            self.error_occurred.emit("Not in franchise tag stage")
+            return
+
+        try:
+            # Approve the proposal in database
+            from game_cycle.database.connection import GameCycleDatabase
+            db = GameCycleDatabase(self._database_path)
+            proposal_api = ProposalAPI(db)
+
+            proposal_api.approve_proposal(self._dynasty_id, self._user_team_id, proposal_id)
+            proposal = proposal_api.get_proposal(self._dynasty_id, self._user_team_id, proposal_id)
+
+            if not proposal:
+                self._show_tag_error("Proposal not found after approval")
+                return
+
+            # Execute with approved proposal in context
+            context = {
+                "dynasty_id": self._dynasty_id,
+                "season": stage.season_year,
+                "user_team_id": self._user_team_id,
+                "db_path": self._database_path,
+                "approved_proposal": proposal.to_dict(),
+            }
+
+            result = self._backend.execute_current_stage(extra_context=context)
+
+            # Show result
+            if self._view:
+                result_dict = {
+                    "stage_name": result.stage.display_name,
+                    "events_processed": result.events_processed,
+                    "success": result.success,
+                }
+                self._view.show_execution_result(result_dict)
+
+            # Refresh view to show updated state
+            self._refresh_franchise_tag_view()
+
+        except Exception as e:
+            error_msg = f"Proposal approval failed: {e}"
+            self.error_occurred.emit(error_msg)
+
+    def _on_tag_proposal_rejected(self, proposal_id: str, notes: str):
+        """
+        Handle GM's tag proposal rejection.
+
+        Tollgate 5: Rejects the proposal in the database. The stage can
+        be processed without any tag action.
+        """
+        from game_cycle.database.proposal_api import ProposalAPI
+
+        stage = self.current_stage
+        if stage is None or stage.stage_type != StageType.OFFSEASON_FRANCHISE_TAG:
+            self.error_occurred.emit("Not in franchise tag stage")
+            return
+
+        try:
+            # Reject the proposal in database
+            from game_cycle.database.connection import GameCycleDatabase
+            db = GameCycleDatabase(self._database_path)
+            proposal_api = ProposalAPI(db)
+
+            proposal_api.reject_proposal(self._dynasty_id, self._user_team_id, proposal_id, notes)
+
+            # Refresh view to show updated state (hides proposal section)
+            self._refresh_franchise_tag_view()
+
+        except Exception as e:
+            error_msg = f"Proposal rejection failed: {e}"
+            self.error_occurred.emit(error_msg)
+
+    def _on_resigning_proposals_reviewed(self, decisions: list):
+        """
+        Handle GM extension proposal decisions from ResigningView.
+
+        Tollgate 6: Processes approval/rejection decisions for extension proposals,
+        then executes the stage with approved proposals in context.
+
+        Args:
+            decisions: List of (proposal_id, approved: bool) tuples
+        """
+        from game_cycle.database.proposal_api import ProposalAPI
+        from game_cycle.database.connection import GameCycleDatabase
+
+        stage = self.current_stage
+        if stage is None or stage.stage_type != StageType.OFFSEASON_RESIGNING:
+            self.error_occurred.emit("Not in re-signing stage")
+            return
+
+        try:
+            db = GameCycleDatabase(self._database_path)
+            proposal_api = ProposalAPI(db)
+
+            approved_proposals = []
+
+            # Process each decision
+            for proposal_id, approved in decisions:
+                if approved:
+                    proposal_api.approve_proposal(self._dynasty_id, self._user_team_id, proposal_id)
+                    proposal = proposal_api.get_proposal(self._dynasty_id, self._user_team_id, proposal_id)
+                    if proposal:
+                        approved_proposals.append(proposal.to_dict())
+                else:
+                    proposal_api.reject_proposal(self._dynasty_id, self._user_team_id, proposal_id, "Owner declined")
+
+            # Execute stage with approved proposals in context
+            context = {
+                "dynasty_id": self._dynasty_id,
+                "season": stage.season_year,
+                "user_team_id": self._user_team_id,
+                "db_path": self._database_path,
+                "approved_proposals": approved_proposals,
+                "user_decisions": self._user_decisions.copy(),
+            }
+
+            result = self._backend.execute_current_stage(extra_context=context)
+
+            # Show result
+            if self._view:
+                result_dict = {
+                    "stage_name": result.stage.display_name,
+                    "events_processed": result.events_processed,
+                    "success": result.success,
+                }
+                self._view.show_execution_result(result_dict)
+
+            # Clear decisions
+            self._user_decisions.clear()
+
+            # Auto-advance if successful
+            if result.can_advance:
+                self._advance_to_next()
+
+        except Exception as e:
+            error_msg = f"Extension processing failed: {e}"
+            self.error_occurred.emit(error_msg)
+
+    def _on_resigning_restructure_completed(self, contract_id: int, cap_savings: int):
+        """
+        Handle contract restructure completion from cap relief dialog.
+
+        Refreshes the cap display after a restructure is applied.
+
+        Args:
+            contract_id: ID of the restructured contract
+            cap_savings: Amount of cap space saved
+        """
+        print(f"[StageController] Contract {contract_id} restructured, saved ${cap_savings:,}")
+
+        # Refresh cap display
+        self._refresh_cap_display_with_pending()
+
+    def _on_resigning_early_cut_completed(
+        self,
+        player_id: int,
+        dead_money: int,
+        cap_savings: int
+    ):
+        """
+        Handle early roster cut completion from cap relief dialog.
+
+        Refreshes the cap display after a player is cut.
+
+        Args:
+            player_id: ID of the cut player
+            dead_money: Dead money incurred
+            cap_savings: Gross cap savings from the cut
+        """
+        net_savings = cap_savings - dead_money
+        print(f"[StageController] Player {player_id} cut, net savings ${net_savings:,}")
+
+        # Refresh cap display
+        self._refresh_cap_display_with_pending()
+
+    def _on_restructure_proposal_approved(self, proposal: dict):
+        """
+        Handle GM restructure proposal approval.
+
+        Shows visual feedback during execution:
+        1. "Processing..." state immediately
+        2. Deferred execution (50ms delay) to allow UI repaint
+        3. "✓ Saved $X" on success (card auto-removes after 1s)
+        4. Re-enables buttons on failure for retry
+
+        Args:
+            proposal: Proposal dict containing contract_id and base_salary_converted
+        """
+        stage = self.current_stage
+        if stage is None or stage.stage_type != StageType.OFFSEASON_RESIGNING:
+            self.error_occurred.emit("Not in re-signing stage")
+            return
+
+        contract_id = proposal.get("contract_id")
+        base_to_convert = proposal.get("base_salary_converted")
+        contract_year = proposal.get("contract_year", 1)
+
+        if not contract_id or not base_to_convert:
+            self.error_occurred.emit("Invalid restructure proposal data")
+            return
+
+        # Get resigning view for visual feedback
+        resigning_view = self._offseason_view.get_resigning_view()
+
+        # Step 1: Show processing state immediately
+        resigning_view.set_card_processing(contract_id)
+
+        # Step 2: Defer execution by 500ms so user can perceive "Processing..." state
+        # Human perception requires ~200-300ms minimum to register visual changes
+        QTimer.singleShot(500, lambda: self._execute_restructure_deferred(
+            contract_id, base_to_convert, contract_year, proposal
+        ))
+
+    def _execute_restructure_deferred(
+        self,
+        contract_id: int,
+        base_to_convert: int,
+        contract_year: int,
+        proposal: dict
+    ):
+        """
+        Execute restructure after UI has repainted.
+
+        This runs 50ms after the "Processing..." state is shown, giving
+        the UI time to render before the database work begins.
+
+        Args:
+            contract_id: Contract ID to restructure
+            base_to_convert: Amount of base salary to convert
+            contract_year: Year of the contract to restructure
+            proposal: Original proposal dict
+        """
+        from salary_cap.contract_manager import ContractManager
+
+        # Get resigning view for visual feedback
+        resigning_view = self._offseason_view.get_resigning_view()
+
+        stage = self.current_stage
+        if stage is None:
+            resigning_view.set_card_failure(contract_id, "Stage not available")
+            return
+
+        try:
+            # Execute the restructure
+            manager = ContractManager(self._database_path)
+            result = manager.restructure_contract(
+                contract_id=contract_id,
+                year_to_restructure=contract_year,
+                amount_to_convert=base_to_convert
+            )
+
+            cap_savings = result.get("cap_savings", 0)
+
+            # Step 3: Show success or failure based on actual cap savings
+            if cap_savings > 0:
+                # SUCCESS: Show success state, card auto-removes after delay
+                # Pass controller reference so view can notify when timer fires
+                resigning_view.set_card_success(
+                    contract_id,
+                    cap_savings,
+                    on_complete=self._refresh_cap_display_with_pending
+                )
+            else:
+                # Silent failure - restructure returned but no savings
+                resigning_view.set_card_failure(contract_id, "No cap savings")
+                print(f"[WARN] Restructure returned 0 cap savings for contract {contract_id}")
+                # Refresh cap display only on failure (success refreshes after timer)
+                self._refresh_cap_display_with_pending()
+
+        except Exception as e:
+            error_msg = f"Restructure execution failed: {e}"
+            self.error_occurred.emit(error_msg)
+            print(f"[ERROR] {error_msg}")
+            # Show failure state, card stays visible for retry
+            resigning_view.set_card_failure(contract_id, str(e))
+
+    def _on_restructure_proposal_rejected(self, proposal: dict):
+        """
+        Handle GM restructure proposal rejection.
+
+        Logs the rejection but takes no action. The contract remains unchanged.
+
+        Args:
+            proposal: Proposal dict containing contract details
+        """
+        player_name = proposal.get("player_name", "Unknown")
+        contract_id = proposal.get("contract_id")
+        print(f"[StageController] Restructure rejected: {player_name} (Contract {contract_id})")
+        # No action needed - just log the rejection
+
+    def _on_gm_reevaluation_requested(self):
+        """
+        Handle GM re-evaluation request from resigning view.
+
+        Regenerates extension recommendations based on current cap space,
+        then updates the view with new recommendations (with animations).
+        """
+        from game_cycle.services.proposal_generators.resigning_generator import ResigningProposalGenerator
+        from game_cycle.services.directive_loader import DirectiveLoader
+        from game_cycle.services.cap_helper import CapHelper
+        from team_management.gm_archetype import GMArchetype
+        from database.unified_api import UnifiedDatabaseAPI
+
+        stage = self.current_stage
+        if stage is None or stage.stage_type != StageType.OFFSEASON_RESIGNING:
+            self.error_occurred.emit("Not in re-signing stage")
+            return
+
+        try:
+            # Get current cap space
+            cap_helper = CapHelper(self._database_path, self._dynasty_id)
+            cap_data = cap_helper.get_cap_summary(self._user_team_id, self._season)
+            current_cap_space = cap_data.get("available_space", 0)
+
+            # Load owner directives
+            loader = DirectiveLoader(self._database_path)
+            directives = loader.load_directives(
+                dynasty_id=self._dynasty_id,
+                team_id=self._user_team_id,
+                season=self._season
+            )
+
+            # Load GM archetype
+            api = UnifiedDatabaseAPI(self._database_path)
+            gm_data = api.get_team_gm(self._user_team_id, self._dynasty_id)
+            gm_archetype = GMArchetype.from_dict(gm_data) if gm_data else GMArchetype.get_default()
+
+            # Get expiring players
+            expiring_players = api.get_expiring_contracts(self._user_team_id, self._season, self._dynasty_id)
+
+            # Generate new recommendations
+            generator = ResigningProposalGenerator(
+                dynasty_id=self._dynasty_id,
+                season=self._season,
+                team_id=self._user_team_id,
+                db_path=self._database_path,
+                cap_space=current_cap_space,
+                gm_archetype=gm_archetype,
+                directives=directives
+            )
+
+            new_recommendations = generator.generate_all_player_recommendations(expiring_players)
+
+            # Update view with new recommendations (with animation)
+            resigning_view = self._offseason_view.get_resigning_view()
+            resigning_view.set_all_players(new_recommendations, is_reevaluation=True)
+
+            print(f"[StageController] GM re-evaluated with ${current_cap_space/1_000_000:.1f}M cap space")
+
+        except Exception as e:
+            error_msg = f"GM re-evaluation failed: {e}"
+            self.error_occurred.emit(error_msg)
+            print(f"[ERROR] {error_msg}")
+
+            # Reset the view's re-evaluate button
+            if hasattr(self, "_offseason_view") and self._offseason_view:
+                resigning_view = self._offseason_view.get_resigning_view()
+                if hasattr(resigning_view, '_cancel_reevaluation'):
+                    resigning_view._cancel_reevaluation()
+
+    def _on_trade_proposal_approved(self, proposal_id: str):
+        """
+        Handle GM trade proposal approval (Tollgate 8).
+
+        Approves the proposal in the database. The trade will be executed
+        when the stage is processed.
+        """
+        from game_cycle.database.proposal_api import ProposalAPI
+        from game_cycle.database.connection import GameCycleDatabase
+
+        stage = self.current_stage
+        if stage is None or stage.stage_type != StageType.OFFSEASON_TRADING:
+            self.error_occurred.emit("Not in trading stage")
+            return
+
+        try:
+            db = GameCycleDatabase(self._database_path)
+            proposal_api = ProposalAPI(db)
+
+            proposal_api.approve_proposal(
+                dynasty_id=self._dynasty_id,
+                team_id=self._user_team_id,
+                proposal_id=proposal_id,
+                notes="Approved by owner"
+            )
+
+            print(f"[StageController] Trade proposal {proposal_id} approved")
+
+        except Exception as e:
+            error_msg = f"Trade proposal approval failed: {e}"
+            self.error_occurred.emit(error_msg)
+
+    def _on_trade_proposal_rejected(self, proposal_id: str):
+        """
+        Handle GM trade proposal rejection (Tollgate 8).
+
+        Rejects the proposal in the database. The trade will not be executed.
+        """
+        from game_cycle.database.proposal_api import ProposalAPI
+        from game_cycle.database.connection import GameCycleDatabase
+
+        stage = self.current_stage
+        if stage is None or stage.stage_type != StageType.OFFSEASON_TRADING:
+            self.error_occurred.emit("Not in trading stage")
+            return
+
+        try:
+            db = GameCycleDatabase(self._database_path)
+            proposal_api = ProposalAPI(db)
+
+            proposal_api.reject_proposal(
+                dynasty_id=self._dynasty_id,
+                team_id=self._user_team_id,
+                proposal_id=proposal_id,
+                notes="Rejected by owner"
+            )
+
+            print(f"[StageController] Trade proposal {proposal_id} rejected")
+
+        except Exception as e:
+            error_msg = f"Trade proposal rejection failed: {e}"
+            self.error_occurred.emit(error_msg)
+
+    def _on_fa_proposal_approved(self, proposal_id: str):
+        """
+        Handle GM FA signing proposal approval (Tollgate 7).
+
+        Approves the proposal in the database and executes the signing.
+        """
+        from game_cycle.database.proposal_api import ProposalAPI
+        from game_cycle.database.connection import GameCycleDatabase
+        from game_cycle.services.free_agency_service import FreeAgencyService
+
+        stage = self.current_stage
+        if stage is None or stage.stage_type != StageType.OFFSEASON_FREE_AGENCY:
+            self.error_occurred.emit("Not in free agency stage")
+            return
+
+        try:
+            db = GameCycleDatabase(self._database_path)
+            proposal_api = ProposalAPI(db)
+
+            # Get the proposal details
+            proposal = proposal_api.get_proposal(
+                dynasty_id=self._dynasty_id,
+                team_id=self._user_team_id,
+                proposal_id=proposal_id
+            )
+            if not proposal:
+                print(f"[ERROR] Proposal {proposal_id} not found")
+                return
+
+            # Approve in database
+            proposal_api.approve_proposal(
+                dynasty_id=self._dynasty_id,
+                team_id=self._user_team_id,
+                proposal_id=proposal_id,
+                notes="Approved by owner"
+            )
+
+            # Execute the signing via FA service
+            fa_service = FreeAgencyService(
+                self._database_path,
+                self._dynasty_id,
+                self._season
+            )
+
+            # Get player_id from proposal - stored as subject_player_id, not in details
+            player_id = proposal.subject_player_id
+            if player_id is None:
+                self.error_occurred.emit("Proposal missing player information")
+                return
+
+            # Extract contract terms from proposal details
+            contract_terms = None
+            if proposal.details:
+                contract = proposal.details.get("contract", {})
+                if contract:
+                    # Build contract_terms dict with all needed fields
+                    # Note: signing_bonus is stored in details, not inside contract
+                    contract_terms = {
+                        "aav": contract.get("aav", 0),
+                        "years": contract.get("years", 1),
+                        "total": contract.get("total", contract.get("total_value", 0)),
+                        "guaranteed": contract.get("guaranteed", contract.get("guaranteed_money", 0)),
+                        "signing_bonus": proposal.details.get("signing_bonus", 0),
+                    }
+
+            result = fa_service.sign_free_agent(
+                player_id=int(player_id),  # Convert string to int
+                team_id=self._user_team_id,
+                skip_preference_check=False,  # Check player acceptance for all signings
+                contract_terms=contract_terms  # Use proposal's pre-negotiated terms
+            )
+
+            # Emit result for UI feedback (success or rejection)
+            self.fa_signing_result.emit(proposal_id, result.get("success", False), result)
+
+            if result.get("success"):
+                # Refresh the FA view
+                self._refresh_fa_wave_display()
+            else:
+                # Log but don't show error_occurred - UI will show rejection via fa_signing_result
+                error_msg = result.get("error_message", "Unknown error")
+                print(f"[StageController] FA signing failed: {error_msg}")
+
+        except Exception as e:
+            error_msg = f"FA proposal approval failed: {e}"
+            import traceback
+            traceback.print_exc()
+            self.error_occurred.emit(error_msg)
+
+    def _on_fa_proposal_rejected(self, proposal_id: str):
+        """
+        Handle GM FA signing proposal rejection (Tollgate 7).
+
+        Rejects the proposal in the database.
+        """
+        from game_cycle.database.proposal_api import ProposalAPI
+        from game_cycle.database.connection import GameCycleDatabase
+
+        stage = self.current_stage
+        if stage is None or stage.stage_type != StageType.OFFSEASON_FREE_AGENCY:
+            self.error_occurred.emit("Not in free agency stage")
+            return
+
+        try:
+            db = GameCycleDatabase(self._database_path)
+            proposal_api = ProposalAPI(db)
+
+            proposal_api.reject_proposal(
+                dynasty_id=self._dynasty_id,
+                team_id=self._user_team_id,
+                proposal_id=proposal_id,
+                notes="Rejected by owner"
+            )
+
+        except Exception as e:
+            error_msg = f"FA proposal rejection failed: {e}"
+            self.error_occurred.emit(error_msg)
+
+    def _on_fa_proposal_retracted(self, proposal_id: str):
+        """
+        Handle GM FA signing proposal retraction (Tollgate 7).
+
+        User retracted a previously approved proposal before Process Wave commit.
+        This is just for logging - no database action needed since the approval
+        was never committed.
+        """
+        print(f"[StageController] FA proposal {proposal_id} retracted by user (not committed)")
+
+    def _on_draft_proposal_approved(self, proposal_id: str):
+        """
+        Handle GM draft proposal approval (Tollgate 9).
+
+        Approves the proposal in the database. The pick will be executed
+        when the stage is processed (via _on_prospect_drafted or sim-to-pick).
+        """
+        print(f"[DEBUG] _on_draft_proposal_approved called with proposal_id={proposal_id}")
+
+        from game_cycle.database.proposal_api import ProposalAPI
+        from game_cycle.database.connection import GameCycleDatabase
+
+        stage = self.current_stage
+        if stage is None or stage.stage_type != StageType.OFFSEASON_DRAFT:
+            print(f"[ERROR] Not in draft stage: stage={stage}")
+            self.error_occurred.emit("Not in draft stage")
+            return
+
+        try:
+            db = GameCycleDatabase(self._database_path)
+            proposal_api = ProposalAPI(db)
+
+            proposal_api.approve_proposal(
+                dynasty_id=self._dynasty_id,
+                team_id=self._user_team_id,
+                proposal_id=proposal_id,
+                notes="Approved by owner"
+            )
+
+            print(f"[DEBUG] Proposal approved in database")
+            print(f"[StageController] Draft proposal {proposal_id} approved")
+
+            # Execute the draft pick immediately after approval
+            # Get the proposal to find the prospect_id
+            proposal = proposal_api.get_proposal(
+                dynasty_id=self._dynasty_id,
+                team_id=self._user_team_id,
+                proposal_id=proposal_id,
+            )
+
+            print(f"[DEBUG] Retrieved proposal: {proposal}")
+
+            if proposal:
+                prospect_id = proposal.details.get("prospect_id")
+                print(f"[DEBUG] Extracted prospect_id={prospect_id}")
+
+                if prospect_id:
+                    # Make ONLY this pick via DraftService (not backend which auto-advances)
+                    print(f"[DEBUG] Making draft pick via DraftService for prospect {prospect_id}")
+                    self._refresh_draft_view()  # Ensure controller exists
+
+                    if self._draft_simulation_controller:
+                        # Use controller's draft_service to make just this pick
+                        draft_service = self._draft_simulation_controller._draft_service
+                        current_pick = draft_service.get_current_pick()
+                        if current_pick:
+                            result = draft_service.make_draft_pick(
+                                prospect_id=int(prospect_id),
+                                team_id=self._user_team_id,
+                                pick_info=current_pick
+                            )
+                            if result.get("success"):
+                                print(f"[DEBUG] Draft pick successful, now simulating to next user pick")
+                                # Refresh view to show pick was made
+                                self._refresh_draft_view()
+                                # Now start simulation to next user pick (respects speed)
+                                self._draft_simulation_controller.simulate_to_user_pick()
+                            else:
+                                print(f"[ERROR] Draft pick failed: {result.get('error')}")
+                        else:
+                            print(f"[ERROR] No current pick available")
+                    else:
+                        # Fallback to old behavior if controller not available
+                        print(f"[DEBUG] Falling back to _on_prospect_drafted")
+                        self._on_prospect_drafted(int(prospect_id))
+                else:
+                    print(f"[ERROR] No prospect_id in proposal details: {proposal.details}")
+            else:
+                print(f"[ERROR] Proposal {proposal_id} not found after approval!")
+
+        except Exception as e:
+            error_msg = f"Draft proposal approval failed: {e}"
+            print(f"[ERROR] {error_msg}")
+            import traceback
+            traceback.print_exc()
+            self.error_occurred.emit(error_msg)
+
+    def _on_draft_proposal_rejected(self, proposal_id: str):
+        """
+        Handle GM draft proposal rejection (Tollgate 9).
+
+        Rejects the proposal in the database. User will select manually
+        from the prospects table.
+        """
+        from game_cycle.database.proposal_api import ProposalAPI
+        from game_cycle.database.connection import GameCycleDatabase
+
+        stage = self.current_stage
+        if stage is None or stage.stage_type != StageType.OFFSEASON_DRAFT:
+            self.error_occurred.emit("Not in draft stage")
+            return
+
+        try:
+            db = GameCycleDatabase(self._database_path)
+            proposal_api = ProposalAPI(db)
+
+            proposal_api.reject_proposal(
+                dynasty_id=self._dynasty_id,
+                team_id=self._user_team_id,
+                proposal_id=proposal_id,
+                notes="Rejected by owner - drafting manually"
+            )
+
+            print(f"[StageController] Draft proposal {proposal_id} rejected")
+
+        except Exception as e:
+            error_msg = f"Draft proposal rejection failed: {e}"
+            self.error_occurred.emit(error_msg)
+
+    def _on_draft_alternative_requested(self, proposal_id: str, prospect_id: int):
+        """
+        Handle owner selecting alternative prospect (Tollgate 9).
+
+        Rejects the original proposal and executes the pick with the
+        selected alternative prospect.
+        """
+        from game_cycle.database.proposal_api import ProposalAPI
+        from game_cycle.database.connection import GameCycleDatabase
+
+        stage = self.current_stage
+        if stage is None or stage.stage_type != StageType.OFFSEASON_DRAFT:
+            self.error_occurred.emit("Not in draft stage")
+            return
+
+        try:
+            db = GameCycleDatabase(self._database_path)
+            proposal_api = ProposalAPI(db)
+
+            # Reject the original proposal
+            proposal_api.reject_proposal(
+                dynasty_id=self._dynasty_id,
+                team_id=self._user_team_id,
+                proposal_id=proposal_id,
+                notes=f"Owner selected alternative: prospect {prospect_id}"
+            )
+
+            print(f"[StageController] Draft proposal {proposal_id} rejected, selecting alternative {prospect_id}")
+
+            # Execute the draft pick with the alternative prospect
+            self._on_prospect_drafted(prospect_id)
+
+        except Exception as e:
+            error_msg = f"Draft alternative selection failed: {e}"
+            self.error_occurred.emit(error_msg)
+
     def _on_process_offseason_stage(self):
         """Process current offseason stage when user clicks Process button."""
         stage = self.current_stage
+
         if stage is None or stage.phase != SeasonPhase.OFFSEASON:
             self.error_occurred.emit("Not in offseason phase")
+            return
+
+        # If stage is already completed (from a previous execution in this session),
+        # just advance to next stage. This shouldn't happen normally but handles edge cases.
+        if stage.completed:
+            self._advance_to_next()
+            # Re-enable process button for new stage
+            if hasattr(self, "_offseason_view") and self._offseason_view:
+                self._offseason_view.set_process_enabled(True)
             return
 
         try:
@@ -1352,9 +2237,19 @@ class StageUIController(QObject):
             if self._fa_controller:
                 self._fa_controller.clear_pending()
 
-            # Auto-advance if successful
+            # Auto-advance to next stage after successful execution
+            # The key is: advance ONCE then stop (don't keep advancing through multiple stages)
             if result.can_advance:
+                # Advance to next stage
                 self._advance_to_next()
+
+                # Re-enable process button for the NEW stage
+                if hasattr(self, "_offseason_view") and self._offseason_view:
+                    self._offseason_view.set_process_enabled(True)
+                    # Refresh FA view with updated wave state if in FA stage
+                    new_stage = self.current_stage
+                    if new_stage and new_stage.stage_type == StageType.OFFSEASON_FREE_AGENCY:
+                        self._refresh_fa_wave_display()
 
                 # Check if we transitioned out of offseason (preseason → new season)
                 new_stage = self.current_stage
@@ -1397,6 +2292,333 @@ class StageUIController(QObject):
         self._fa_decisions.clear()
 
     # ========================================================================
+    # Re-signing Stage Support (Restructure Proposals)
+    # ========================================================================
+
+    def _handle_resigning_stage(self):
+        """
+        Handle resigning stage - generate and display restructure proposals.
+
+        Loads owner directives and GM archetype, generates restructure proposals
+        using RestructureProposalGenerator, and displays them in the resigning view.
+
+        Note: If proposals already exist (cards displayed), skip regeneration
+        to avoid wiping out cards that are being processed.
+        """
+        if not hasattr(self, "_offseason_view") or not self._offseason_view:
+            return
+
+        resigning_view = self._offseason_view.get_resigning_view()
+
+        # Skip regeneration if proposals already exist
+        # This prevents wiping cards during approval/rejection processing
+        if resigning_view._proposal_cards:
+            return
+
+        try:
+            # Generate restructure proposals
+            proposals = self._generate_restructure_proposals()
+
+            # Display proposals in resigning view
+            if proposals:
+                # Convert proposals to dicts for display
+                proposal_dicts = [self._proposal_to_dict(p) for p in proposals]
+                resigning_view.set_restructure_proposals(proposal_dicts)
+
+        except Exception as e:
+            print(f"[StageController] Error loading restructure proposals: {e}")
+            # Don't block the stage if proposal generation fails
+
+    def _generate_restructure_proposals(self):
+        """
+        Generate restructure proposals using RestructureProposalGenerator.
+
+        Loads owner directives and GM archetype, then generates proposals
+        based on cap situation and GM personality.
+
+        Returns:
+            List of PersistentGMProposal objects
+        """
+        from game_cycle.services.directive_loader import DirectiveLoader
+        from game_cycle.services.proposal_generators.restructure_generator import RestructureProposalGenerator
+        from team_management.gm_archetype import GMArchetype
+
+        try:
+            # Load owner directives
+            loader = DirectiveLoader(self._database_path)
+            directives = loader.load_directives(
+                dynasty_id=self._dynasty_id,
+                team_id=self._user_team_id,
+                season=self._season
+            )
+
+            if not directives:
+                print("[StageController] No owner directives found, skipping restructure proposals")
+                return []
+
+            # Get GM archetype (using default balanced GM for now)
+            # Future: load from gm_profiles table or staff assignments
+            gm_archetype = GMArchetype(
+                name=f"Team {self._user_team_id} GM",
+                description="Balanced general manager",
+                risk_tolerance=0.5,
+                win_now_mentality=0.5,
+                trade_frequency=0.5,
+                draft_pick_value=0.5,
+                loyalty=0.5,
+                patience_years=3,
+                cap_management=0.5,
+                star_chasing=0.5
+            )
+
+            # Generate proposals
+            generator = RestructureProposalGenerator(
+                db_path=self._database_path,
+                dynasty_id=self._dynasty_id,
+                season=self._season,
+                team_id=self._user_team_id,
+                directives=directives,
+                gm_archetype=gm_archetype
+            )
+
+            proposals = generator.generate_proposals()
+            return proposals
+
+        except Exception as e:
+            print(f"[StageController] Error generating restructure proposals: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+
+    def _proposal_to_dict(self, proposal) -> dict:
+        """
+        Convert PersistentGMProposal to dict for display in resigning view.
+
+        Args:
+            proposal: PersistentGMProposal object
+
+        Returns:
+            Dict with keys expected by resigning view
+        """
+        return {
+            "player_name": proposal.details.get("player_name"),
+            "position": proposal.details.get("position"),
+            "overall": proposal.details.get("overall"),
+            "age": proposal.details.get("age"),
+            "current_cap_hit": proposal.details.get("current_cap_hit"),
+            "new_cap_hit": proposal.details.get("proposed_cap_hit"),
+            "cap_savings": proposal.details.get("cap_savings"),
+            "dead_money_added": proposal.details.get("dead_money_increase"),  # Card expects dead_money_added
+            "base_salary_converted": proposal.details.get("base_salary_converted"),
+            "years_remaining": proposal.details.get("years_remaining"),
+            "contract_id": proposal.details.get("contract_id"),
+            "contract_year": proposal.details.get("contract_year"),  # Needed for restructure execution
+            "gm_reasoning": proposal.gm_reasoning,
+            "confidence": proposal.confidence,
+        }
+
+    # ========================================================================
+    # Preseason Cuts Support (Tollgate 10)
+    # ========================================================================
+
+    def _handle_preseason_w1_stage(self):
+        """Handle Preseason Week 1 cuts stage (90 -> 85)."""
+        self._handle_preseason_cuts_stage(target_size=85, week=1)
+
+    def _handle_preseason_w2_stage(self):
+        """Handle Preseason Week 2 cuts stage (85 -> 80)."""
+        self._handle_preseason_cuts_stage(target_size=80, week=2)
+
+    def _handle_preseason_w3_stage(self):
+        """Handle Preseason Week 3 final cuts stage (80 -> 53)."""
+        self._handle_preseason_cuts_stage(target_size=53, week=3)
+
+    def _handle_preseason_cuts_stage(self, target_size: int, week: int):
+        """
+        Handle preseason cuts stage with Coach-only proposals.
+
+        Shows batch approval dialog if proposals exist and not auto-approved.
+        Tollgate 10: Owner reviews Coach cut recommendations for each preseason week.
+
+        Args:
+            target_size: Target roster size after cuts (85, 80, or 53)
+            week: Preseason week number (1, 2, or 3)
+        """
+        preview = self._backend.get_stage_preview()
+
+        coach_proposals_data = preview.get("coach_proposals", [])
+        trust_coach = preview.get("trust_coach", False)
+
+        # Skip dialog if no proposals or auto-approved
+        if not coach_proposals_data:
+            return
+
+        if trust_coach:
+            # Proposals auto-approved, no dialog needed
+            return
+
+        # Check if proposals are already resolved (re-entering stage)
+        from game_cycle.models.persistent_gm_proposal import PersistentGMProposal
+
+        coach_proposals = [PersistentGMProposal.from_dict(p) for p in coach_proposals_data]
+
+        # Only show dialog if there are pending proposals
+        pending_coach = [p for p in coach_proposals if p.status.value == "PENDING"]
+
+        if not pending_coach:
+            return
+
+        # Show batch approval dialog with Coach section only
+        from game_cycle_ui.dialogs.batch_approval_dialog import (
+            BatchApprovalDialog,
+            ProposalSection,
+        )
+
+        sections = [
+            ProposalSection(
+                title="Coach Recommendations",
+                proposals=pending_coach,
+                icon="🏈",
+                description="Head Coach's performance-based analysis (scheme fit, recent play grades)",
+            )
+        ]
+
+        dialog = BatchApprovalDialog(
+            sections=sections,
+            title=f"Preseason Week {week} Roster Cuts - Cut to {target_size}",
+            description=f"Review {len(pending_coach)} cut proposals from Coach. Target: {target_size}-man roster.",
+            total_calculator=lambda sel: self._calculate_cuts_totals(
+                sel, preview.get("roster_count", 90), target_size=target_size
+            ),
+            parent=self._view,
+        )
+
+        dialog.batch_resolved.connect(self._on_cuts_proposals_resolved)
+        dialog.exec()
+
+    def _calculate_cuts_totals(
+        self, selected_proposals: List, current_roster_size: int, target_size: int = 53
+    ) -> str:
+        """
+        Calculate running totals for roster cuts batch approval.
+
+        Args:
+            selected_proposals: List of selected PersistentGMProposal objects
+            current_roster_size: Current roster size (e.g., 90, 85, 80)
+            target_size: Target roster size after cuts (default: 53)
+
+        Returns:
+            Formatted string showing roster compliance and cap impact
+        """
+        from game_cycle.models.persistent_gm_proposal import PersistentGMProposal
+
+        total_cuts = len(selected_proposals)
+        cap_savings = sum(p.details.get("cap_savings", 0) for p in selected_proposals)
+        dead_money = sum(p.details.get("dead_money", 0) for p in selected_proposals)
+
+        final_roster = current_roster_size - total_cuts
+
+        if final_roster == target_size:
+            status = "✅ COMPLIANT"
+            status_color = "green"
+        elif final_roster > target_size:
+            status = f"❌ OVER by {final_roster - target_size}"
+            status_color = "red"
+        else:
+            status = f"⚠️  UNDER by {target_size - final_roster}"
+            status_color = "orange"
+
+        # Format cap values
+        if cap_savings >= 1_000_000:
+            cap_str = f"${cap_savings / 1_000_000:.1f}M"
+        else:
+            cap_str = f"${cap_savings / 1_000:,.0f}K"
+
+        if dead_money >= 1_000_000:
+            dead_str = f"${dead_money / 1_000_000:.1f}M"
+        else:
+            dead_str = f"${dead_money / 1_000:,.0f}K"
+
+        return f"Roster: {final_roster}/{target_size} ({status}) | Savings: {cap_str} | Dead: {dead_str}"
+
+    def _on_cuts_proposals_resolved(self, decisions: List):
+        """
+        Handle batch approval dialog resolution for roster cuts.
+
+        Approves or rejects proposals in the database based on user selections.
+
+        Args:
+            decisions: List of BatchDecision objects with proposal_id and approved flag
+        """
+        from game_cycle.database.proposal_api import ProposalAPI
+        from game_cycle.database.connection import GameCycleDatabase
+
+        try:
+            db = GameCycleDatabase(self._database_path)
+            proposal_api = ProposalAPI(db)
+
+            approved_count = 0
+            rejected_count = 0
+
+            for decision in decisions:
+                if decision.approved:
+                    proposal_api.approve_proposal(
+                        dynasty_id=self._dynasty_id,
+                        team_id=self._user_team_id,
+                        proposal_id=decision.proposal_id,
+                        notes="Approved by owner",
+                    )
+                    approved_count += 1
+                else:
+                    proposal_api.reject_proposal(
+                        dynasty_id=self._dynasty_id,
+                        team_id=self._user_team_id,
+                        proposal_id=decision.proposal_id,
+                        notes="Rejected by owner",
+                    )
+                    rejected_count += 1
+
+            print(
+                f"[StageController] Roster cuts proposals resolved: "
+                f"{approved_count} approved, {rejected_count} rejected"
+            )
+
+            # Refresh the offseason view to show updated proposal states
+            if hasattr(self, "_offseason_view"):
+                self._refresh_roster_cuts_view()
+
+        except Exception as e:
+            error_msg = f"Roster cuts proposal resolution failed: {e}"
+            self.error_occurred.emit(error_msg)
+
+    def _refresh_roster_cuts_view(self):
+        """Refresh the roster cuts view after proposal decisions."""
+        if not hasattr(self, "_offseason_view"):
+            return
+
+        # Get fresh preview data
+        preview = self._backend.get_stage_preview()
+
+        # Update roster cuts view (it will be updated via the offseason view)
+        # The view will receive the updated approved_gm_cuts and approved_coach_cuts lists
+        if hasattr(self._offseason_view, "get_roster_cuts_view"):
+            roster_cuts_view = self._offseason_view.get_roster_cuts_view()
+
+            # Set roster data with updated approved cuts
+            roster = preview.get("roster", [])
+            cuts_needed = preview.get("cuts_needed", 0)
+            approved_gm_cuts = preview.get("approved_gm_cuts", [])
+            approved_coach_cuts = preview.get("approved_coach_cuts", [])
+
+            if hasattr(roster_cuts_view, "set_roster_data"):
+                roster_cuts_view.set_roster_data(
+                    roster=roster,
+                    cuts_needed=cuts_needed,
+                    approved_gm_cuts=set(approved_gm_cuts),
+                    approved_coach_cuts=set(approved_coach_cuts),
+                )
+
+    # ========================================================================
     # Draft Stage Support
     # ========================================================================
 
@@ -1409,6 +2631,80 @@ class StageUIController(QObject):
         """
         self._draft_direction = direction
         print(f"[UI Controller] Draft direction updated: {direction.strategy.value}")
+
+    def _on_prospect_selected_for_scouting(self, prospect_id: int):
+        """
+        Handle prospect selection for scouting view.
+
+        Args:
+            prospect_id: The selected prospect's ID
+        """
+        if not hasattr(self, "_offseason_view"):
+            return
+
+        try:
+            # Get prospect data from preview
+            preview = self._backend.get_stage_preview()
+            prospects = preview.get("prospects", [])
+
+            # Find the selected prospect
+            prospect = next((p for p in prospects if p.get("prospect_id") == prospect_id), None)
+
+            if not prospect:
+                return
+
+            # Format scouting data
+            scouting_data = {
+                "name": prospect.get("name", "Unknown"),
+                "dev_type": prospect.get("dev_trait", "normal"),
+                "potential": prospect.get("overall", 0),  # Use current OVR as potential
+                "attributes": {},  # Could add specific attributes if available
+                "strengths": self._get_prospect_strengths(prospect),
+                "weaknesses": self._get_prospect_weaknesses(prospect)
+            }
+
+            # Update draft view
+            draft_view = self._offseason_view.get_draft_view()
+            draft_view.set_prospect_scouting_data(scouting_data)
+
+        except Exception as e:
+            print(f"[ERROR] Failed to load scouting data: {e}")
+
+    def _get_prospect_strengths(self, prospect: Dict) -> List[str]:
+        """Extract prospect strengths based on position and ratings."""
+        # Simplified - could be expanded with actual attribute data
+        position = prospect.get("position", "")
+        overall = prospect.get("overall", 0)
+
+        strengths = []
+        if overall >= 80:
+            strengths.append(f"Elite {position} prospect")
+        elif overall >= 70:
+            strengths.append(f"Strong {position} potential")
+
+        # Add generic strengths based on draft grade
+        draft_grade = prospect.get("draft_grade", "")
+        if draft_grade and draft_grade[0] in ["A", "B"]:
+            strengths.append("High draft stock")
+
+        return strengths if strengths else ["Developmental prospect"]
+
+    def _get_prospect_weaknesses(self, prospect: Dict) -> List[str]:
+        """Extract prospect weaknesses."""
+        # Simplified - could be expanded with actual attribute data
+        overall = prospect.get("overall", 0)
+
+        weaknesses = []
+        if overall < 65:
+            weaknesses.append("Needs significant development")
+        elif overall < 75:
+            weaknesses.append("Raw talent, requires coaching")
+
+        age = prospect.get("age", 21)
+        if age >= 24:
+            weaknesses.append("Limited development window")
+
+        return weaknesses if weaknesses else ["No major concerns"]
 
     def _on_prospect_drafted(self, prospect_id: int):
         """
@@ -1455,24 +2751,33 @@ class StageUIController(QObject):
             self.error_occurred.emit("Not in draft stage")
             return
 
+        # Ensure draft simulation controller is initialized
+        self._refresh_draft_view()
+
+        # Use new controller if available (Enhanced Draft View)
+        if self._draft_simulation_controller:
+            # Sync speed from UI before starting simulation
+            draft_view = self._offseason_view.get_draft_view()
+            current_speed = draft_view.get_simulation_speed()
+            # If manual mode, use instant for "Sim to Pick"
+            if current_speed == 0:
+                current_speed = -1  # Instant mode
+            self._draft_simulation_controller.set_speed(current_speed)
+            self._draft_simulation_controller.simulate_to_user_pick()
+            return
+
+        # Fallback to old behavior if controller not available
         try:
-            # Build context for sim-to-pick mode
             context = {
                 "dynasty_id": self._dynasty_id,
                 "season": self._season,
                 "user_team_id": self._user_team_id,
                 "db_path": self._database_path,
-                "sim_to_user_pick": True,  # Signal to sim until user's turn
-                "draft_direction": self._draft_direction,  # Owner's strategy
+                "sim_to_user_pick": True,
+                "draft_direction": self._draft_direction,
             }
-
-            # Execute via backend
             result = self._backend.execute_current_stage(extra_context=context)
-
-            # Refresh the draft view
             self._refresh_draft_view()
-
-            # Check if draft is complete
             if result.can_advance:
                 self._advance_to_next()
 
@@ -1489,21 +2794,35 @@ class StageUIController(QObject):
             self.error_occurred.emit("Not in draft stage")
             return
 
+        # Ensure draft simulation controller is initialized
+        self._refresh_draft_view()
+
+        # Use new controller if available (Enhanced Draft View)
+        if self._draft_simulation_controller:
+            # Sync speed from UI before starting simulation
+            draft_view = self._offseason_view.get_draft_view()
+            current_speed = draft_view.get_simulation_speed()
+            # If manual mode, use instant for auto-complete
+            if current_speed == 0:
+                current_speed = -1  # Instant mode
+            self._draft_simulation_controller.set_speed(current_speed)
+            # Enable delegation so controller handles user picks too
+            self._draft_simulation_controller.set_delegation(True)
+            self._draft_simulation_controller.auto_complete_draft()
+            return
+
+        # Fallback to old behavior if controller not available
         try:
-            # Build context for auto-complete mode
             context = {
                 "dynasty_id": self._dynasty_id,
                 "season": self._season,
                 "user_team_id": self._user_team_id,
                 "db_path": self._database_path,
                 "auto_complete": True,
-                "draft_direction": self._draft_direction,  # Owner's strategy
+                "draft_direction": self._draft_direction,
             }
-
-            # Execute via backend
             result = self._backend.execute_current_stage(extra_context=context)
 
-            # Show result summary
             if self._view:
                 result_dict = {
                     "stage_name": result.stage.display_name,
@@ -1514,10 +2833,8 @@ class StageUIController(QObject):
                 }
                 self._view.show_execution_result(result_dict)
 
-            # Refresh draft view to show complete state
             self._refresh_draft_view()
 
-            # Auto-advance since draft is complete
             if result.can_advance:
                 self._advance_to_next()
 
@@ -1534,6 +2851,31 @@ class StageUIController(QObject):
         if not hasattr(self, "_offseason_view"):
             return
 
+        # Initialize draft simulation controller if needed (Enhanced Draft View)
+        if self._draft_simulation_controller is None:
+            from game_cycle.services.draft_service import DraftService
+            draft_service = DraftService(
+                db_path=self._database_path,
+                dynasty_id=self._dynasty_id,
+                season=self._season
+            )
+            self._draft_simulation_controller = DraftSimulationController(
+                draft_service=draft_service,
+                user_team_id=self._user_team_id,
+                parent=self
+            )
+            # Connect controller signals
+            self._draft_simulation_controller.pick_completed.connect(self._on_draft_pick_completed)
+            self._draft_simulation_controller.user_turn_reached.connect(self._on_user_turn_reached)
+            self._draft_simulation_controller.draft_completed.connect(self._on_draft_simulation_complete)
+
+            # Sync current speed and delegation from draft view
+            draft_view = self._offseason_view.get_draft_view()
+            current_speed = draft_view.get_simulation_speed()
+            self._draft_simulation_controller.set_speed(current_speed)
+            current_delegation = draft_view.is_delegation_enabled()
+            self._draft_simulation_controller.set_delegation(current_delegation)
+
         # Get fresh preview data
         preview = self._backend.get_stage_preview()
 
@@ -1541,8 +2883,7 @@ class StageUIController(QObject):
         draft_view = self._offseason_view.get_draft_view()
 
         prospects = preview.get("prospects", [])
-        if prospects:
-            draft_view.set_prospects(prospects)
+        draft_view.set_prospects(prospects)  # Always update, even if empty to clear table
 
         draft_view.set_current_pick(preview.get("current_pick"))
         draft_progress = preview.get("draft_progress", {})
@@ -1552,18 +2893,214 @@ class StageUIController(QObject):
         )
 
         draft_history = preview.get("draft_history", [])
-        if draft_history:
-            draft_view.set_draft_history(draft_history)
+        draft_view.set_draft_history(draft_history)  # Always update
 
         # Check if draft is complete
         if preview.get("draft_complete", False):
             draft_view.set_draft_complete()
+
+        # Update team needs analysis for sidebar
+        if hasattr(draft_view, 'set_team_needs'):
+            team_needs = self._get_team_needs_for_draft(self._user_team_id, prospects)
+            draft_view.set_team_needs(team_needs)
+
+        # Update owner directives display (Step 7)
+        owner_directives = preview.get("owner_directives")
+        if hasattr(draft_view, 'set_owner_directives'):
+            draft_view.set_owner_directives(owner_directives)
+
+        # Update GM proposal if available (Tollgate 9)
+        gm_proposals = preview.get("gm_proposals", [])
+        gm_proposal = gm_proposals[0] if gm_proposals else None
+        trust_gm = preview.get("trust_gm", False)
+        if hasattr(draft_view, 'set_gm_proposal'):
+            draft_view.set_gm_proposal(gm_proposal, trust_gm)
+
+    # =========================================================================
+    # Enhanced Draft View Handlers (Phase 1-5)
+    # =========================================================================
+
+    def _on_next_pick_requested(self):
+        """Handle manual Next Pick button click."""
+        # Ensure controller is initialized
+        self._refresh_draft_view()
+
+        if self._draft_simulation_controller:
+            self._draft_simulation_controller.process_next_pick()
+            self._refresh_draft_view()
+
+    def _on_draft_speed_changed(self, speed_ms: int):
+        """Handle speed dropdown change."""
+        if self._draft_simulation_controller:
+            self._draft_simulation_controller.set_speed(speed_ms)
+
+    def _on_draft_delegation_changed(self, delegate: bool):
+        """Handle delegation checkbox toggle."""
+        if self._draft_simulation_controller:
+            self._draft_simulation_controller.set_delegation(delegate)
+
+    def _on_draft_pick_completed(self, pick_result: dict):
+        """Handle pick completed signal from simulation controller."""
+        if not hasattr(self, "_offseason_view") or not self._offseason_view:
+            return
+
+        draft_view = self._offseason_view.get_draft_view()
+        if hasattr(draft_view, 'on_pick_completed'):
+            draft_view.on_pick_completed(pick_result)
+        self._refresh_draft_view()
+
+    def _on_user_turn_reached(self):
+        """Handle user turn reached signal."""
+        if not hasattr(self, "_offseason_view") or not self._offseason_view:
+            return
+
+        draft_view = self._offseason_view.get_draft_view()
+        if hasattr(draft_view, 'on_user_turn_reached'):
+            draft_view.on_user_turn_reached()
+        self._refresh_draft_view()
+
+    def _on_draft_simulation_complete(self):
+        """Handle draft completion signal from simulation controller."""
+        print("=" * 60)
+        print("[StageUIController] _on_draft_simulation_complete() CALLED")
+        print("=" * 60)
+
+        if not hasattr(self, "_offseason_view") or not self._offseason_view:
+            print("[StageUIController] No offseason view - returning early")
+            return
+
+        draft_view = self._offseason_view.get_draft_view()
+        if hasattr(draft_view, 'set_draft_complete'):
+            draft_view.set_draft_complete()
+
+        # Check if we can advance stage
+        stage = self.current_stage
+        print(f"[StageUIController] Current stage: {stage}")
+        print(f"[StageUIController] Stage type: {stage.stage_type if stage else 'None'}")
+
+        if stage and stage.stage_type == StageType.OFFSEASON_DRAFT:
+            preview = self._backend.get_stage_preview()
+            draft_complete = preview.get("draft_complete", False)
+            print(f"[StageUIController] Draft complete from preview: {draft_complete}")
+
+            if draft_complete:
+                # IMPORTANT: Call execute_current_stage() instead of _advance_to_next()
+                # This triggers UDFA signings in _execute_draft() before advancing
+                print("[StageUIController] Calling execute_current_stage() to trigger UDFA signings...")
+                self.execute_current_stage()
+            else:
+                print("[StageUIController] Draft not complete in preview - skipping UDFA signings")
+        else:
+            print(f"[StageUIController] Not in draft stage - skipping (stage type: {stage.stage_type if stage else 'None'})")
 
     def _get_current_pick_number(self) -> int:
         """Get the current overall pick number."""
         preview = self._backend.get_stage_preview()
         current_pick = preview.get("current_pick", {})
         return current_pick.get("overall_pick", 1)
+
+    def _get_team_needs_for_draft(self, team_id: int, prospects: List[Dict]) -> List[Dict]:
+        """
+        Get team needs analysis for draft sidebar.
+
+        Args:
+            team_id: Team ID to analyze
+            prospects: Available prospects list
+
+        Returns:
+            List of dicts with: position, priority, best_available
+        """
+        try:
+            import json
+            from constants.position_abbreviations import POSITION_ABBREVIATIONS
+
+            # Get team roster from database
+            conn = self._backend._get_connection()
+            cursor = conn.cursor()
+
+            # Query with correct column name (positions, plural)
+            cursor.execute("""
+                SELECT positions
+                FROM players
+                WHERE team_id = ? AND dynasty_id = ?
+            """, (team_id, self._dynasty_id))
+
+            # Parse JSON and count by primary position
+            position_counts = {}
+            for row in cursor.fetchall():
+                positions_json = row[0]
+
+                # Parse JSON array
+                if isinstance(positions_json, str):
+                    positions_array = json.loads(positions_json)
+                else:
+                    positions_array = positions_json
+
+                # Extract primary position (first in array)
+                if positions_array and len(positions_array) > 0:
+                    primary_pos = positions_array[0].lower()
+
+                    # Convert to abbreviation
+                    abbrev = POSITION_ABBREVIATIONS.get(primary_pos, primary_pos.upper())
+
+                    position_counts[abbrev] = position_counts.get(abbrev, 0) + 1
+
+            # Define minimum needs per position (NFL standard)
+            position_minimums = {
+                "QB": 2, "RB": 3, "WR": 5, "TE": 2,
+                "OT": 2, "OG": 2, "C": 2,
+                "EDGE": 3, "DT": 3, "LB": 4, "CB": 4, "S": 3,
+                "K": 1, "P": 1
+            }
+
+            # Calculate needs
+            needs = []
+            for pos, minimum in position_minimums.items():
+                current_count = position_counts.get(pos, 0)
+                shortage = max(0, minimum - current_count)
+
+                # Determine priority
+                if shortage >= 2:
+                    priority = "High"
+                elif shortage == 1:
+                    priority = "Medium"
+                else:
+                    # Even if we have enough, show low priority for depth
+                    if current_count < minimum + 1:
+                        priority = "Low"
+                    else:
+                        continue  # Skip positions with good depth
+
+                # Find best available prospect at this position
+                best_prospect = self._find_best_available_prospect(pos, prospects)
+
+                needs.append({
+                    "position": pos,
+                    "priority": priority,
+                    "best_available": best_prospect
+                })
+
+            # Sort by priority (High > Medium > Low) and return top 8
+            priority_order = {"High": 0, "Medium": 1, "Low": 2}
+            needs.sort(key=lambda x: priority_order[x["priority"]])
+
+            return needs[:8]
+
+        except Exception as e:
+            print(f"[ERROR] Failed to get team needs: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+
+    def _find_best_available_prospect(self, position: str, prospects: List[Dict]) -> str:
+        """Find top-rated prospect at position."""
+        matching = [p for p in prospects if p.get("position") == position]
+        if matching:
+            best = max(matching, key=lambda p: p.get("overall", 0))
+            name = best.get("name", "Unknown")
+            overall = best.get("overall", 0)
+            return f"{name} ({overall} OVR)"
+        return "None available"
 
     def _on_history_round_filter_changed(self, round_filter: Optional[int]):
         """
