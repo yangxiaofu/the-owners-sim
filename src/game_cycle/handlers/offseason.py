@@ -47,6 +47,8 @@ from ..services.season_init_service import SeasonInitializationService
 from ..services.trade_service import TradeService
 from ..services.training_camp_service import TrainingCampService
 from ..services.waiver_service import WaiverService
+from ..services.game_simulator_service import GameSimulatorService, SimulationMode
+from ..services.preseason_schedule_service import PreseasonScheduleService
 from ..services.prominence_calculator import ProminenceCalculator
 from ..services.headline_generators import (
     RosterCutGenerator,
@@ -57,14 +59,18 @@ from ..services.headline_generators import (
     WaiverGenerator,
     DraftGenerator,
     AwardsGenerator,
+    HOFGenerator,
 )
 from ..models.transaction_event import TransactionEvent, TransactionType
 from ..stage_definitions import Stage, StageType, ROSTER_LIMITS
 
+# Module-level logger for error handling
+logger = logging.getLogger(__name__)
+
 # External src modules (no src. prefix, no .. prefix)
 # Note: These imports are intentionally kept as inline imports within methods
 # to avoid circular import issues and ensure proper PYTHONPATH setup:
-# - constants.team_names.get_team_by_id
+# - team_management.teams.team_loader.get_team_by_id
 # - database.player_roster_api.PlayerRosterAPI
 # - offseason.market_value_calculator.MarketValueCalculator
 # - salary_cap.cap_calculator.CapCalculator
@@ -298,12 +304,17 @@ class OffseasonHandler:
                 logging.getLogger(__name__).error(f"Error checking draft completion: {e}")
                 return True
 
-        # Check preseason cuts completion (user's roster must be at/below target)
+        # Preseason Weeks 1 & 2: Auto-advance after games simulated (no roster cuts)
         if stage.stage_type in [
             StageType.OFFSEASON_PRESEASON_W1,
             StageType.OFFSEASON_PRESEASON_W2,
-            StageType.OFFSEASON_PRESEASON_W3,
         ]:
+            # Modern NFL (2024+): No incremental cuts during preseason
+            # Just game simulation, so always allow advancement
+            return True
+
+        # Preseason Week 3: Must have 53-man roster to advance
+        if stage.stage_type == StageType.OFFSEASON_PRESEASON_W3:
             try:
                 ctx = self._extract_context(context)
                 dynasty_id = ctx['dynasty_id']
@@ -311,22 +322,14 @@ class OffseasonHandler:
                 db_path = ctx['db_path']
                 user_team_id = context.get("user_team_id", 1)
 
-                # Determine target roster size based on stage
-                if stage.stage_type == StageType.OFFSEASON_PRESEASON_W1:
-                    target_size = ROSTER_LIMITS["PRESEASON_W1"]
-                elif stage.stage_type == StageType.OFFSEASON_PRESEASON_W2:
-                    target_size = ROSTER_LIMITS["PRESEASON_W2"]
-                else:  # PRESEASON_W3
-                    target_size = ROSTER_LIMITS["FINAL"]
+                target_size = ROSTER_LIMITS["PRESEASON_W3"]  # 53
 
                 cuts_service = RosterCutsService(db_path, dynasty_id, season)
-                # Get current roster size
                 roster = cuts_service.get_team_roster_for_cuts(user_team_id)
                 current_size = len(roster)
 
-                return current_size <= target_size  # Can advance only if at or below target
+                return current_size <= target_size  # Can advance only if at or below 53
             except Exception as e:
-                # Log error but allow advancement to avoid stuck states
                 import logging
                 logging.getLogger(__name__).error(f"Error checking preseason cuts: {e}")
                 return True
@@ -725,9 +728,15 @@ class OffseasonHandler:
         preview["all_player_recommendations"] = all_player_recommendations
         preview["trust_gm"] = trust_gm
 
-        # Calculate team needs for UI display
+        # Calculate team needs for UI display (legacy text-based)
         team_needs = self._calculate_team_needs(context, team_id)
         preview["team_needs"] = team_needs
+
+        # Add roster data for RosterHealthWidget
+        roster_players = self._get_team_roster_for_widget(context, team_id)
+        expiring_player_ids = self._get_expiring_player_ids(context, team_id)
+        preview["roster_players"] = roster_players
+        preview["expiring_player_ids"] = expiring_player_ids
 
         return preview
 
@@ -832,6 +841,96 @@ class OffseasonHandler:
         except Exception as e:
             print(f"[OffseasonHandler] Error calculating team needs: {e}")
             return {"high_priority": [], "medium_priority": []}
+
+    def _get_team_roster_for_widget(
+        self, context: Dict[str, Any], team_id: int
+    ) -> List[Dict[str, Any]]:
+        """
+        Get roster players formatted for RosterHealthWidget.
+
+        Args:
+            context: Execution context
+            team_id: Team ID
+
+        Returns:
+            List of dicts with: player_id, position, overall
+        """
+        try:
+            ctx = self._extract_context(context)
+            db_path = ctx['db_path']
+            dynasty_id = ctx['dynasty_id']
+
+            from database.player_roster_api import PlayerRosterAPI
+            roster_api = PlayerRosterAPI(db_path)
+            roster = roster_api.get_team_roster(dynasty_id, team_id)
+
+            # Transform to format expected by RosterHealthWidget
+            players = [
+                {
+                    "player_id": player.get("player_id"),
+                    "position": player.get("position", ""),
+                    "overall": player.get("overall", 50),
+                }
+                for player in roster
+            ]
+
+            print(f"[OffseasonHandler] Retrieved {len(players)} roster players for team {team_id}")
+            if len(players) > 0:
+                print(f"[OffseasonHandler] Sample player: {players[0]}")
+
+            return players
+
+        except Exception as e:
+            print(f"[OffseasonHandler] Error getting roster for widget: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+
+    def _get_expiring_player_ids(
+        self, context: Dict[str, Any], team_id: int
+    ) -> set:
+        """
+        Get player IDs with contracts expiring this year.
+
+        Args:
+            context: Execution context
+            team_id: Team ID
+
+        Returns:
+            Set of player IDs
+        """
+        try:
+            ctx = self._extract_context(context)
+            db_path = ctx['db_path']
+            dynasty_id = ctx['dynasty_id']
+            season = ctx['season']
+
+            from salary_cap.cap_database_api import CapDatabaseAPI
+            cap_api = CapDatabaseAPI(db_path)
+
+            # Get expiring contracts (players in last year of contract)
+            expiring_contracts = cap_api.get_pending_free_agents(
+                team_id=team_id,
+                season=season + 1,  # Next season's FAs
+                dynasty_id=dynasty_id
+            )
+
+            # Extract player IDs
+            expiring_ids = {
+                p.get('player_id')
+                for p in expiring_contracts
+                if p.get('player_id')
+            }
+
+            print(f"[OffseasonHandler] Retrieved {len(expiring_ids)} expiring contract IDs for team {team_id}")
+
+            return expiring_ids
+
+        except Exception as e:
+            print(f"[OffseasonHandler] Error getting expiring player IDs: {e}")
+            import traceback
+            traceback.print_exc()
+            return set()
 
     def _get_free_agents(self, context: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
@@ -2354,6 +2453,22 @@ class OffseasonHandler:
 
                     gm_proposals = [p.to_dict() for p in proposals]
 
+            # Get user's roster for the health widget
+            from database.player_roster_api import PlayerRosterAPI
+            from salary_cap.cap_database_api import CapDatabaseAPI
+
+            roster_api = PlayerRosterAPI(db_path)
+            user_roster = roster_api.get_team_roster(dynasty_id, team_id)
+
+            # Get expiring contracts (players in last year of contract)
+            cap_api = CapDatabaseAPI(db_path)
+            expiring_contracts = cap_api.get_pending_free_agents(
+                team_id=team_id,
+                season=season + 1,  # Next season's FAs
+                dynasty_id=dynasty_id
+            )
+            expiring_ids = [p.get('player_id') for p in expiring_contracts if p.get('player_id')]
+
             preview = {
                 "stage_name": "Waiver Wire",
                 "description": f"Submit waiver claims for cut players. Your priority: #{user_priority}",
@@ -2364,6 +2479,8 @@ class OffseasonHandler:
                 "gm_proposals": gm_proposals,
                 "trust_gm": trust_gm,
                 "is_interactive": True,
+                "roster_players": user_roster,
+                "expiring_player_ids": expiring_ids,
             }
             # Add cap data for UI display
             preview["cap_data"] = self._get_cap_data(context, team_id)
@@ -2434,6 +2551,8 @@ class OffseasonHandler:
         Training camp is non-interactive, so we process immediately
         when entering the stage and show results for review.
 
+        Also generates the preseason schedule at the end of training camp.
+
         Args:
             context: Execution context
             user_team_id: User's team ID for default filter
@@ -2454,16 +2573,30 @@ class OffseasonHandler:
             summary = result.get("summary", {})
             depth_summary = result.get("depth_chart_summary", {})
 
+            # Generate preseason schedule at end of training camp
+            preseason_games = 0
+            try:
+                preseason_service = PreseasonScheduleService(db_path, dynasty_id, season)
+                preseason_games = preseason_service.generate_preseason_schedule()
+                print(f"[OffseasonHandler] Generated {preseason_games} preseason games for season {season}")
+            except Exception as e:
+                logging.getLogger(__name__).warning(f"Failed to generate preseason schedule: {e}")
+
+            description = (
+                f"Training camp processed {summary.get('total_players', 0)} players. "
+                f"{summary.get('improved_count', 0)} improved, "
+                f"{summary.get('declined_count', 0)} declined, "
+                f"{summary.get('unchanged_count', 0)} unchanged. "
+                f"Depth charts regenerated for {depth_summary.get('teams_updated', 0)}/32 teams."
+            )
+            if preseason_games > 0:
+                description += f" Preseason schedule generated: {preseason_games} games."
+
             return {
                 "stage_name": "Training Camp - Complete",
-                "description": (
-                    f"Training camp processed {summary.get('total_players', 0)} players. "
-                    f"{summary.get('improved_count', 0)} improved, "
-                    f"{summary.get('declined_count', 0)} declined, "
-                    f"{summary.get('unchanged_count', 0)} unchanged. "
-                    f"Depth charts regenerated for {depth_summary.get('teams_updated', 0)}/32 teams."
-                ),
+                "description": description,
                 "training_camp_results": result,
+                "preseason_games_scheduled": preseason_games,
                 "user_team_id": user_team_id,
                 "is_interactive": False,
             }
@@ -2663,16 +2796,236 @@ class OffseasonHandler:
             }
 
     def _execute_preseason_w1(self, stage: Stage, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute first preseason cuts (90→85)."""
-        return self._execute_preseason_cuts(stage, context, target_size=ROSTER_LIMITS["PRESEASON_W1"], phase="PRESEASON_W1")
+        """Execute Preseason Week 1: Full game simulation only (no cuts)."""
+        return self._execute_preseason_with_game(stage, context, week=1, include_cuts=False)
 
     def _execute_preseason_w2(self, stage: Stage, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute second preseason cuts (85→80)."""
-        return self._execute_preseason_cuts(stage, context, target_size=ROSTER_LIMITS["PRESEASON_W2"], phase="PRESEASON_W2")
+        """Execute Preseason Week 2: Full game simulation only (no cuts)."""
+        return self._execute_preseason_with_game(stage, context, week=2, include_cuts=False)
 
     def _execute_preseason_w3(self, stage: Stage, context: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute final roster cuts (80→53)."""
-        return self._execute_preseason_cuts(stage, context, target_size=ROSTER_LIMITS["PRESEASON_W3"], phase="PRESEASON_W3")
+        """Execute Preseason Week 3: Full game simulation + Final cuts (90→53)."""
+        return self._execute_preseason_with_game(
+            stage, context, week=3, include_cuts=True, target_size=ROSTER_LIMITS["PRESEASON_W3"]
+        )
+
+    def _execute_preseason_with_game(
+        self,
+        stage: Stage,
+        context: Dict[str, Any],
+        week: int,
+        include_cuts: bool,
+        target_size: int = 90
+    ) -> Dict[str, Any]:
+        """
+        Execute preseason week with full game simulation.
+
+        Modern NFL (2024+) style:
+        - Weeks 1-2: Game simulation only (no roster cuts)
+        - Week 3: Game simulation + final cuts (90 → 53)
+
+        Args:
+            stage: Current stage
+            context: Execution context
+            week: Preseason week number (1-3)
+            include_cuts: Whether to process roster cuts after game
+            target_size: Target roster size if cuts included (53)
+
+        Returns:
+            Dictionary with games_played, events_processed, cuts data
+        """
+        dynasty_id = context.get("dynasty_id")
+        season = context.get("season", 2025)
+        user_team_id = context.get("user_team_id", 1)
+        db_path = context.get("db_path", self._database_path)
+
+        events = []
+        games_played = []
+
+        try:
+            # 1. Simulate preseason games for this week
+            game_results = self._simulate_preseason_games(context, week)
+            games_played.extend(game_results.get("games", []))
+            events.extend(game_results.get("events", []))
+
+            # 2. Process cuts if this is Week 3 (final cuts)
+            cuts_data = {}
+            if include_cuts:
+                cuts_data = self._execute_preseason_cuts(
+                    stage, context, target_size=target_size, phase="PRESEASON_W3"
+                )
+                events.extend(cuts_data.get("events_processed", []))
+
+            return {
+                "games_played": games_played,
+                "events_processed": events,
+                "user_cuts": cuts_data.get("user_cuts", []),
+                "ai_cuts": cuts_data.get("ai_cuts", []),
+                "total_cuts": cuts_data.get("total_cuts", 0),
+                "preseason_week": week,
+                "star_cuts": cuts_data.get("star_cuts", []),
+            }
+
+        except Exception as e:
+            logger.error(f"Preseason Week {week} execution error: {e}")
+            traceback.print_exc()
+            events.append(f"Preseason Week {week} error: {str(e)}")
+            return {
+                "games_played": games_played,
+                "events_processed": events,
+                "user_cuts": [],
+                "ai_cuts": [],
+                "total_cuts": 0,
+                "preseason_week": week,
+            }
+
+    def _simulate_preseason_games(
+        self,
+        context: Dict[str, Any],
+        week: int
+    ) -> Dict[str, Any]:
+        """
+        Simulate all preseason games for a week.
+
+        Uses GameSimulatorService with SimulationMode.INSTANT for fast simulation.
+        Updates preseason standings (not regular season standings).
+
+        Args:
+            context: Execution context with dynasty_id, season, db_path
+            week: Preseason week number (1-3)
+
+        Returns:
+            Dictionary with games list and events list
+        """
+        from database.unified_api import UnifiedDatabaseAPI
+
+        dynasty_id = context.get("dynasty_id")
+        season = context.get("season", 2025)
+        user_team_id = context.get("user_team_id", 1)
+        db_path = context.get("db_path", self._database_path)
+
+        events = []
+        games_played = []
+
+        try:
+            unified_api = UnifiedDatabaseAPI(db_path, dynasty_id)
+            game_simulator = GameSimulatorService(db_path, dynasty_id)
+
+            # Get preseason schedule service to fetch games
+            preseason_service = PreseasonScheduleService(db_path, dynasty_id, season)
+            games = preseason_service.get_preseason_games(week=week)
+
+            if not games:
+                events.append(f"No preseason games scheduled for Week {week}")
+                return {"games": [], "events": events}
+
+            events.append(f"Simulating {len(games)} Preseason Week {week} games...")
+
+            db = GameCycleDatabase(db_path)
+            standings_api = StandingsAPI(db)
+
+            for game_data in games:
+                params = game_data.get("parameters", {})
+
+                # Skip if already played
+                results = game_data.get("results")
+                if results and results.get("home_score") is not None:
+                    continue
+
+                home_team_id = params.get("home_team_id")
+                away_team_id = params.get("away_team_id")
+                game_id = f"preseason_{season}_{week}_{home_team_id}_{away_team_id}"
+
+                # Simulate the game
+                sim_result = game_simulator.simulate_game(
+                    game_id=game_id,
+                    home_team_id=home_team_id,
+                    away_team_id=away_team_id,
+                    mode=SimulationMode.INSTANT,
+                    season=season,
+                    week=week,
+                    is_playoff=False
+                )
+
+                home_score = sim_result.home_score
+                away_score = sim_result.away_score
+
+                # Store game result with season_type='preseason'
+                unified_api.games_insert_result({
+                    "game_id": game_id,
+                    "season": season,
+                    "week": week,
+                    "season_type": "preseason",
+                    "game_type": "preseason",
+                    "game_date": params.get("game_date"),
+                    "home_team_id": home_team_id,
+                    "away_team_id": away_team_id,
+                    "home_score": home_score,
+                    "away_score": away_score,
+                    "total_plays": sim_result.total_plays,
+                    "game_duration_minutes": sim_result.game_duration_minutes,
+                    "overtime_periods": sim_result.overtime_periods,
+                })
+
+                # Store player stats with season_type='preseason'
+                if sim_result.player_stats:
+                    unified_api.stats_insert_game_stats(
+                        game_id=game_id,
+                        season=season,
+                        week=week,
+                        season_type="preseason",
+                        player_stats=sim_result.player_stats
+                    )
+
+                # Update PRESEASON standings (not regular season)
+                is_divisional = game_data.get("metadata", {}).get("is_divisional", False)
+                is_conference = game_data.get("metadata", {}).get("is_conference", False)
+
+                standings_api.update_from_game(
+                    dynasty_id=dynasty_id,
+                    season=season,
+                    home_team_id=home_team_id,
+                    away_team_id=away_team_id,
+                    home_score=home_score,
+                    away_score=away_score,
+                    is_divisional=is_divisional,
+                    is_conference=is_conference,
+                    season_type="preseason"  # Key: update preseason standings
+                )
+
+                # Get team names for display
+                from team_management.teams.team_loader import get_team_by_id
+                home_team = get_team_by_id(home_team_id)
+                away_team = get_team_by_id(away_team_id)
+                home_name = home_team.abbreviation if home_team else f"Team {home_team_id}"
+                away_name = away_team.abbreviation if away_team else f"Team {away_team_id}"
+
+                game_info = {
+                    "game_id": game_id,
+                    "home_team_id": home_team_id,
+                    "away_team_id": away_team_id,
+                    "home_score": home_score,
+                    "away_score": away_score,
+                    "is_user_game": home_team_id == user_team_id or away_team_id == user_team_id,
+                }
+                games_played.append(game_info)
+
+                # Highlight user's game
+                if game_info["is_user_game"]:
+                    events.append(f"YOUR GAME: {away_name} @ {home_name} - Final: {away_score}-{home_score}")
+                else:
+                    events.append(f"{away_name} @ {home_name} - Final: {away_score}-{home_score}")
+
+            db.close()
+            events.append(f"Preseason Week {week} complete: {len(games_played)} games played")
+
+            return {"games": games_played, "events": events}
+
+        except Exception as e:
+            logger.error(f"Error simulating preseason games: {e}")
+            traceback.print_exc()
+            events.append(f"Error simulating preseason games: {str(e)}")
+            return {"games": games_played, "events": events}
 
     def _execute_preseason_cuts(
         self,
@@ -3278,6 +3631,20 @@ class OffseasonHandler:
                 )
                 events.append(f"Warning: Retirement processing error - {str(retire_error)}")
 
+            # ===== HALL OF FAME VOTING (Milestone 18) =====
+            hof_results = {}
+            try:
+                hof_results = self._conduct_hof_voting(
+                    db_path, dynasty_id, season, context, events
+                )
+            except Exception as hof_error:
+                # Don't fail entire stage if HOF voting fails
+                logging.getLogger(__name__).warning(
+                    f"Failed to process HOF voting: {hof_error}"
+                )
+                traceback.print_exc()
+                events.append(f"Warning: HOF voting error - {str(hof_error)}")
+
             return {
                 "games_played": [],
                 "events_processed": events,
@@ -3285,6 +3652,7 @@ class OffseasonHandler:
                 "all_pro_count": first_team_count + second_team_count,
                 "pro_bowl_count": afc_count + nfc_count,
                 "retirements": retirement_results,
+                "hall_of_fame": hof_results,
             }
 
         except Exception as e:
@@ -4675,4 +5043,222 @@ class OffseasonHandler:
             loyalty=0.5,
             patience_years=3  # Years willing to commit to rebuild
         )
+
+    # ===== Hall of Fame Methods (Milestone 18) =====
+
+    def _conduct_hof_voting(
+        self,
+        db_path: str,
+        dynasty_id: str,
+        season: int,
+        context: Dict[str, Any],
+        events: List[str]
+    ) -> Dict[str, Any]:
+        """
+        Conduct Hall of Fame voting for eligible candidates.
+
+        Flow:
+        1. Check if HOF voting already processed for this season
+        2. Get eligible candidates (5-year wait, not inducted, not removed)
+        3. Conduct voting simulation
+        4. Process inductees (create ceremonies, persist to DB)
+        5. Generate headlines for inductees
+        6. Return results summary
+
+        Args:
+            db_path: Database path
+            dynasty_id: Dynasty identifier
+            season: Current season (voting year)
+            context: Stage context
+            events: List to append event messages
+
+        Returns:
+            Dict with inductee_count, candidates_count, and inductee details
+        """
+        # Import HOF services inline to avoid circular imports
+        from ..services.hof_eligibility_service import HOFEligibilityService
+        from ..services.hof_voting_engine import HOFVotingEngine
+        from ..services.hof_induction_service import HOFInductionService
+        from ..database.hof_api import HOFAPI
+
+        results = {
+            "inductee_count": 0,
+            "candidates_count": 0,
+            "inductees": [],
+            "first_ballot_count": 0,
+        }
+
+        # Check if already processed (idempotent)
+        with GameCycleDatabase(db_path) as conn:
+            hof_api = HOFAPI(conn, dynasty_id)
+            existing_voting = hof_api.get_voting_history_by_season(season)
+            if existing_voting:
+                events.append(f"HOF voting for {season} already processed")
+                # Count existing results
+                inductees = [v for v in existing_voting if v.get('was_inducted')]
+                results["inductee_count"] = len(inductees)
+                results["candidates_count"] = len(existing_voting)
+                results["first_ballot_count"] = sum(
+                    1 for v in inductees if v.get('is_first_ballot')
+                )
+                return results
+
+        # 1. Get eligible candidates
+        with GameCycleDatabase(db_path) as conn:
+            eligibility_service = HOFEligibilityService(conn, dynasty_id)
+            candidates = eligibility_service.get_eligible_candidates(season)
+
+        if not candidates:
+            events.append(f"No HOF-eligible candidates for {season} voting")
+            return results
+
+        results["candidates_count"] = len(candidates)
+        events.append(f"HOF ballot: {len(candidates)} eligible candidates")
+
+        # 2. Conduct voting simulation
+        voting_engine = HOFVotingEngine()
+        voting_session = voting_engine.conduct_voting(dynasty_id, season, candidates)
+
+        # 3. Persist voting results
+        with GameCycleDatabase(db_path) as conn:
+            hof_api = HOFAPI(conn, dynasty_id)
+
+            for result in voting_session.all_results:
+                hof_api.save_voting_result(
+                    voting_season=season,
+                    player_id=result.player_id,
+                    player_name=result.player_name,
+                    position=result.primary_position,
+                    retirement_season=result.retirement_season,
+                    years_on_ballot=result.years_on_ballot,
+                    vote_percentage=result.vote_percentage,
+                    votes_received=result.votes_received,
+                    total_voters=result.total_voters,
+                    was_inducted=result.was_inducted,
+                    is_first_ballot=result.is_first_ballot,
+                    removed_from_ballot=result.removed_from_ballot,
+                    hof_score=result.hof_score,
+                    score_breakdown=result.score_breakdown
+                )
+
+            conn.commit()
+
+        # 4. Process inductees
+        if voting_session.inductees:
+            # Create induction ceremonies and persist
+            with GameCycleDatabase(db_path) as conn:
+                induction_service = HOFInductionService(conn, dynasty_id)
+                ceremonies = induction_service.create_batch_inductions(
+                    voting_results=voting_session.inductees,
+                    candidates=candidates,
+                    persist=True
+                )
+
+            results["inductee_count"] = len(voting_session.inductees)
+            results["first_ballot_count"] = sum(
+                1 for i in voting_session.inductees if i.is_first_ballot
+            )
+            results["inductees"] = [
+                {
+                    "name": i.player_name,
+                    "position": i.primary_position,
+                    "vote_percentage": i.vote_percentage,
+                    "is_first_ballot": i.is_first_ballot,
+                    "years_on_ballot": i.years_on_ballot,
+                }
+                for i in voting_session.inductees
+            ]
+
+            # Log inductees
+            for inductee in voting_session.inductees:
+                ballot_type = "first-ballot" if inductee.is_first_ballot else ""
+                events.append(
+                    f"{inductee.player_name} ({inductee.primary_position}) inducted to Hall of Fame "
+                    f"{ballot_type} with {inductee.vote_percentage:.1%} of votes"
+                )
+
+            events.append(
+                f"Hall of Fame Class of {season}: {len(voting_session.inductees)} inductees"
+            )
+
+            # 5. Generate headlines for inductees
+            self._generate_hof_headlines(
+                db_path, dynasty_id, season, context, voting_session.inductees
+            )
+        else:
+            events.append(f"No inductees for {season} Hall of Fame class")
+
+        # Log candidates who didn't make it
+        if voting_session.removed_from_ballot:
+            for removed in voting_session.removed_from_ballot:
+                events.append(
+                    f"{removed.player_name} removed from HOF ballot "
+                    f"({removed.vote_percentage:.1%} votes, {removed.years_on_ballot} years)"
+                )
+
+        return results
+
+    def _generate_hof_headlines(
+        self,
+        db_path: str,
+        dynasty_id: str,
+        season: int,
+        context: Dict[str, Any],
+        inductees: List["HOFVotingResult"]
+    ) -> None:
+        """
+        Generate headlines for Hall of Fame inductees.
+
+        Creates headlines for:
+        - First-ballot inductees (high priority)
+        - Standard inductees
+        - Class summary (if 2+ inductees)
+
+        Args:
+            db_path: Database path
+            dynasty_id: Dynasty identifier
+            season: Season year
+            context: Stage context
+            inductees: List of HOFVotingResult for inducted players
+        """
+        try:
+            from ..database.hof_api import HOFVotingResult
+
+            # Create transaction events for each inductee
+            events = []
+            for inductee in inductees:
+                event = TransactionEvent(
+                    event_type=TransactionType.HOF_INDUCTION,
+                    dynasty_id=dynasty_id,
+                    season=season,
+                    week=30,  # Post-season week for HOF
+                    team_id=0,  # HOF is league-wide, no specific team
+                    team_name="Pro Football Hall of Fame",
+                    player_id=inductee.player_id,
+                    player_name=inductee.player_name,
+                    player_position=inductee.primary_position,
+                    details={
+                        "is_first_ballot": inductee.is_first_ballot,
+                        "vote_percentage": inductee.vote_percentage,
+                        "years_on_ballot": inductee.years_on_ballot,
+                        "induction_season": season,
+                        "achievements": [],  # Could be enriched from career_summaries
+                    }
+                )
+                events.append(event)
+
+            # Get prominence calculator
+            prominence_calc = ProminenceCalculator(db_path, dynasty_id, season)
+
+            # Generate headlines using HOFGenerator
+            generator = HOFGenerator(db_path, prominence_calc)
+            generator.generate(
+                events=events,
+                dynasty_id=dynasty_id,
+                season=season,
+                week=30  # Post-season week for HOF
+            )
+
+        except Exception as e:
+            logging.getLogger(__name__).error(f"Failed to generate HOF headlines: {e}", exc_info=True)
 

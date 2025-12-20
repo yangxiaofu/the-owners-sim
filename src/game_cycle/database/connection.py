@@ -737,6 +737,42 @@ class GameCycleDatabase:
         result = self.query_one(f"SELECT COUNT(*) as count FROM {table_name}")
         return result['count'] if result else 0
 
+    def __enter__(self) -> "GameCycleDatabase":
+        """
+        Context manager entry.
+
+        Returns:
+            Self for use with 'with' statements.
+        """
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+        """
+        Context manager exit.
+
+        Commits pending changes and closes connection.
+        Does NOT re-raise exceptions.
+
+        Args:
+            exc_type: Exception type if raised
+            exc_val: Exception value if raised
+            exc_tb: Exception traceback if raised
+
+        Returns:
+            False to re-raise any exception
+        """
+        if self._connection:
+            if exc_type is None:
+                # No exception, commit
+                self._connection.commit()
+            self.close()
+        return False
+
+    def commit(self) -> None:
+        """Commit pending changes."""
+        if self._connection:
+            self._connection.commit()
+
     def reset(self) -> None:
         """Reset database to empty state (drop all data, keep schema)."""
         conn = self.get_connection()

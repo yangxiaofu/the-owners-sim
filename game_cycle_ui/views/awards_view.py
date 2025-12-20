@@ -22,7 +22,14 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor
 
-from game_cycle_ui.theme import TABLE_HEADER_STYLE
+from game_cycle_ui.theme import (
+    TABLE_HEADER_STYLE, TAB_STYLE, PRIMARY_BUTTON_STYLE,
+    SECONDARY_BUTTON_STYLE, DANGER_BUTTON_STYLE, WARNING_BUTTON_STYLE,
+    NEUTRAL_BUTTON_STYLE, Typography, FontSizes, TextColors,
+    apply_table_style
+)
+from game_cycle_ui.widgets import HOFBallotWidget
+from game_cycle_ui.dialogs import HOFInducteeDialog
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +132,7 @@ class AwardsView(QWidget):
 
         # Title
         title = QLabel("AWARDS & HONORS")
-        title.setFont(QFont("Arial", 16, QFont.Bold))
+        title.setFont(Typography.H4)
         header.addWidget(title)
 
         header.addStretch()
@@ -141,11 +148,7 @@ class AwardsView(QWidget):
 
         # Refresh button
         self.refresh_btn = QPushButton("Refresh")
-        self.refresh_btn.setStyleSheet(
-            "QPushButton { background-color: #1976D2; color: white; "
-            "border-radius: 4px; padding: 6px 16px; }"
-            "QPushButton:hover { background-color: #1565C0; }"
-        )
+        self.refresh_btn.setStyleSheet(SECONDARY_BUTTON_STYLE)
         self.refresh_btn.clicked.connect(self.refresh_data)
         header.addWidget(self.refresh_btn)
 
@@ -180,11 +183,11 @@ class AwardsView(QWidget):
         vlayout.setContentsMargins(0, 0, 0, 0)
 
         title_label = QLabel(title)
-        title_label.setStyleSheet("color: #666; font-size: 11px;")
+        title_label.setStyleSheet(f"color: #666; font-size: {FontSizes.CAPTION};")
         vlayout.addWidget(title_label)
 
         value_label = QLabel(initial_value)
-        value_label.setFont(QFont("Arial", 16, QFont.Bold))
+        value_label.setFont(Typography.H4)
         vlayout.addWidget(value_label)
 
         setattr(self, attr_name, value_label)
@@ -193,6 +196,7 @@ class AwardsView(QWidget):
     def _create_tabs(self, parent_layout: QVBoxLayout):
         """Create the main tabbed content area."""
         self.tabs = QTabWidget()
+        self.tabs.setStyleSheet(TAB_STYLE)
 
         # Tab 1: Major Awards
         self._create_major_awards_tab()
@@ -213,6 +217,10 @@ class AwardsView(QWidget):
         # Tab 5: Award Race (mid-season tracking)
         self._create_award_race_tab()
         self.tabs.addTab(self.award_race_tab, "Award Race")
+
+        # Tab 6: Hall of Fame
+        self._create_hall_of_fame_tab()
+        self.tabs.addTab(self.hof_tab, "Hall of Fame")
 
         parent_layout.addWidget(self.tabs, stretch=1)
 
@@ -253,23 +261,23 @@ class AwardsView(QWidget):
         name = AWARD_NAMES.get(award_id, award_id.upper())
 
         group = QGroupBox(f"{icon} {name}")
-        group.setStyleSheet("""
-            QGroupBox {
+        group.setStyleSheet(f"""
+            QGroupBox {{
                 font-weight: bold;
-                font-size: 14px;
-                color: #ffffff;
+                font-size: {FontSizes.H5};
+                color: {TextColors.ON_DARK};
                 background-color: #263238;
                 border: 1px solid #37474f;
                 border-radius: 6px;
                 margin-top: 12px;
                 padding-top: 10px;
-            }
-            QGroupBox::title {
+            }}
+            QGroupBox::title {{
                 subcontrol-origin: margin;
                 left: 10px;
                 padding: 0 5px;
-                color: #ffffff;
-            }
+                color: {TextColors.ON_DARK};
+            }}
         """)
 
         layout = QVBoxLayout(group)
@@ -284,8 +292,8 @@ class AwardsView(QWidget):
         # Winner name - white text on dark background
         winner_name = QLabel("No winner yet")
         winner_name.setObjectName(f"{award_id}_winner_name")
-        winner_name.setFont(QFont("Arial", 14, QFont.Bold))
-        winner_name.setStyleSheet("color: #ffffff;")
+        winner_name.setFont(Typography.H5)
+        winner_name.setStyleSheet(f"color: {TextColors.ON_DARK};")
         winner_name.setCursor(Qt.PointingHandCursor)
         winner_layout.addWidget(winner_name)
 
@@ -322,7 +330,7 @@ class AwardsView(QWidget):
 
         vote_percent = QLabel("0%")
         vote_percent.setObjectName(f"{award_id}_vote_percent")
-        vote_percent.setStyleSheet("color: #ffffff; font-weight: bold;")
+        vote_percent.setStyleSheet(f"color: {TextColors.ON_DARK}; font-weight: bold;")
         vote_percent.setMinimumWidth(80)
         vote_share_layout.addWidget(vote_percent)
 
@@ -331,7 +339,7 @@ class AwardsView(QWidget):
 
         # Finalists section - 2x2 card grid
         finalists_label = QLabel("Finalists:")
-        finalists_label.setStyleSheet("font-weight: bold; margin-top: 8px; color: #ffffff;")
+        finalists_label.setStyleSheet(f"font-weight: bold; margin-top: 8px; color: {TextColors.ON_DARK};")
         layout.addWidget(finalists_label)
 
         finalists_grid = QWidget()
@@ -375,13 +383,13 @@ class AwardsView(QWidget):
         # Line 1: Rank + Name (e.g., "#2 Nick Chubb")
         name_label = QLabel()
         name_label.setObjectName(f"{award_id}_finalist_name_{index}")
-        name_label.setStyleSheet("font-weight: bold; color: #ffffff; font-size: 11px;")
+        name_label.setStyleSheet(f"font-weight: bold; color: {TextColors.ON_DARK}; font-size: {FontSizes.CAPTION};")
         card_layout.addWidget(name_label)
 
         # Line 2: Position - Team · Vote% (e.g., "RB - CLE · 26.0%")
         details_label = QLabel()
         details_label.setObjectName(f"{award_id}_finalist_details_{index}")
-        details_label.setStyleSheet("color: #aaaaaa; font-size: 10px;")
+        details_label.setStyleSheet(f"color: #aaaaaa; font-size: {FontSizes.SMALL};")
         card_layout.addWidget(details_label)
 
         # Connect click handler
@@ -428,12 +436,13 @@ class AwardsView(QWidget):
         table = QTableWidget()
         table.setColumnCount(4)
         table.setHorizontalHeaderLabels(["Position", "Player", "Team", "Grade"])
-        table.horizontalHeader().setStyleSheet(TABLE_HEADER_STYLE)
+
+        # Apply centralized table styling
+        apply_table_style(table)
+
+        # Keep column resize mode settings
         table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        table.setEditTriggers(QTableWidget.NoEditTriggers)
-        table.setSelectionBehavior(QTableWidget.SelectRows)
-        table.setAlternatingRowColors(True)
-        table.verticalHeader().setVisible(False)
+
         table.cellClicked.connect(
             lambda row, col, t=table: self._on_table_player_clicked(t, row)
         )
@@ -476,12 +485,13 @@ class AwardsView(QWidget):
         self.pro_bowl_table.setHorizontalHeaderLabels(
             ["Position", "Player", "Team", "Type", "Score"]
         )
-        self.pro_bowl_table.horizontalHeader().setStyleSheet(TABLE_HEADER_STYLE)
+
+        # Apply centralized table styling
+        apply_table_style(self.pro_bowl_table)
+
+        # Keep column resize mode settings
         self.pro_bowl_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.pro_bowl_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.pro_bowl_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.pro_bowl_table.setAlternatingRowColors(True)
-        self.pro_bowl_table.verticalHeader().setVisible(False)
+
         self.pro_bowl_table.cellClicked.connect(
             lambda row, col: self._on_table_player_clicked(self.pro_bowl_table, row)
         )
@@ -517,12 +527,13 @@ class AwardsView(QWidget):
         self.stat_leaders_table.setHorizontalHeaderLabels(
             ["Rank", "Player", "Team", "Position", "Value"]
         )
-        self.stat_leaders_table.horizontalHeader().setStyleSheet(TABLE_HEADER_STYLE)
+
+        # Apply centralized table styling
+        apply_table_style(self.stat_leaders_table)
+
+        # Keep column resize mode settings
         self.stat_leaders_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.stat_leaders_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.stat_leaders_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.stat_leaders_table.setAlternatingRowColors(True)
-        self.stat_leaders_table.verticalHeader().setVisible(False)
+
         self.stat_leaders_table.cellClicked.connect(
             lambda row, col: self._on_table_player_clicked(self.stat_leaders_table, row)
         )
@@ -569,12 +580,13 @@ class AwardsView(QWidget):
         self.award_race_table.setHorizontalHeaderLabels(
             ["Rank", "Player", "Team", "Position", "Score", "Trend"]
         )
-        self.award_race_table.horizontalHeader().setStyleSheet(TABLE_HEADER_STYLE)
+
+        # Apply centralized table styling
+        apply_table_style(self.award_race_table)
+
+        # Keep column resize mode settings
         self.award_race_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
-        self.award_race_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.award_race_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.award_race_table.setAlternatingRowColors(True)
-        self.award_race_table.verticalHeader().setVisible(False)
+
         self.award_race_table.cellClicked.connect(
             lambda row, col: self._on_table_player_clicked(self.award_race_table, row)
         )
@@ -583,7 +595,7 @@ class AwardsView(QWidget):
 
         # Status label
         self.award_race_status = QLabel("")
-        self.award_race_status.setStyleSheet("color: #888; margin-top: 8px;")
+        self.award_race_status.setStyleSheet(f"color: {TextColors.ON_DARK_MUTED}; margin-top: 8px;")
         layout.addWidget(self.award_race_status)
 
     def _on_award_race_type_changed(self):
@@ -633,7 +645,7 @@ class AwardsView(QWidget):
                 rank_item = QTableWidgetItem(str(entry.get('rank', row + 1)))
                 rank_item.setTextAlignment(Qt.AlignCenter)
                 if row < 3:
-                    rank_item.setFont(QFont("Arial", 10, QFont.Bold))
+                    rank_item.setFont(Typography.SMALL_BOLD)
                 self.award_race_table.setItem(row, 0, rank_item)
 
                 # Player name
@@ -641,7 +653,7 @@ class AwardsView(QWidget):
                 name_item = QTableWidgetItem(name or f"Player {entry.get('player_id', '?')}")
                 name_item.setData(Qt.UserRole, entry.get('player_id'))
                 if row < 3:
-                    name_item.setFont(QFont("Arial", 10, QFont.Bold))
+                    name_item.setFont(Typography.SMALL_BOLD)
                 self.award_race_table.setItem(row, 1, name_item)
 
                 # Team
@@ -693,6 +705,78 @@ class AwardsView(QWidget):
             logger.error(f"Error loading award race data: {e}")
             self.award_race_table.setRowCount(0)
             self.award_race_status.setText(f"Error loading data: {e}")
+
+    # ============================================
+    # Tab 6: Hall of Fame
+    # ============================================
+
+    def _create_hall_of_fame_tab(self):
+        """Create the Hall of Fame tab showing voting results."""
+        self.hof_tab = QWidget()
+        layout = QVBoxLayout(self.hof_tab)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # HOF Ballot Widget (will be created when context is set)
+        self.hof_ballot_widget = None
+
+        # Placeholder message (shown until widget is created with context)
+        self.hof_placeholder = QLabel("Loading Hall of Fame ballot...")
+        self.hof_placeholder.setAlignment(Qt.AlignCenter)
+        self.hof_placeholder.setStyleSheet(f"color: {TextColors.ON_DARK_MUTED}; padding: 40px;")
+        layout.addWidget(self.hof_placeholder)
+
+    def _populate_hof_ballot(self):
+        """Populate Hall of Fame ballot with voting results."""
+        if not self._dynasty_id or not self._db_path:
+            if self.hof_placeholder:
+                self.hof_placeholder.setText("No dynasty context")
+            return
+
+        try:
+            # Create HOF widget if it doesn't exist yet
+            if not self.hof_ballot_widget:
+                self.hof_ballot_widget = HOFBallotWidget(
+                    self._db_path,
+                    self._dynasty_id,
+                    self._season,
+                    parent=self.hof_tab
+                )
+
+                # Connect signals
+                self.hof_ballot_widget.player_clicked.connect(
+                    lambda player_id, name: self.player_selected.emit(player_id)
+                )
+                self.hof_ballot_widget.celebration_requested.connect(
+                    self._show_hof_celebration
+                )
+
+                # Replace placeholder with widget
+                layout = self.hof_tab.layout()
+                if self.hof_placeholder:
+                    layout.removeWidget(self.hof_placeholder)
+                    self.hof_placeholder.deleteLater()
+                    self.hof_placeholder = None
+
+                layout.addWidget(self.hof_ballot_widget)
+
+            # Load voting results for current season
+            self.hof_ballot_widget.load_voting_results()
+
+        except Exception as e:
+            logger.error(f"Error loading HOF ballot: {e}")
+            if self.hof_placeholder:
+                self.hof_placeholder.setText(f"Error loading HOF ballot: {e}")
+
+    def _show_hof_celebration(self, inductees: List[Dict]):
+        """Show celebration dialog for HOF inductees."""
+        if not inductees:
+            return
+
+        try:
+            dialog = HOFInducteeDialog(inductees, self._season, parent=self)
+            dialog.exec()
+        except Exception as e:
+            logger.error(f"Error showing HOF celebration dialog: {e}")
 
     # ============================================
     # Context and Data Loading
@@ -766,6 +850,7 @@ class AwardsView(QWidget):
             self._populate_pro_bowl()
             self._populate_stat_leaders()
             self._populate_award_race()  # Mid-season tracking data
+            self._populate_hof_ballot()  # Hall of Fame voting results
             self._update_summary()
 
             # Note: Do NOT emit refresh_requested here - it causes infinite recursion
@@ -1001,7 +1086,7 @@ class AwardsView(QWidget):
             type_item = QTableWidgetItem(player.selection_type)
             type_item.setTextAlignment(Qt.AlignCenter)
             if player.selection_type == 'STARTER':
-                type_item.setFont(QFont("Arial", 10, QFont.Bold))
+                type_item.setFont(Typography.SMALL_BOLD)
                 type_item.setForeground(QColor("#2E7D32"))
             self.pro_bowl_table.setItem(row, 3, type_item)
 
@@ -1030,14 +1115,14 @@ class AwardsView(QWidget):
             rank_item = QTableWidgetItem(str(leader.league_rank))
             rank_item.setTextAlignment(Qt.AlignCenter)
             if leader.league_rank == 1:
-                rank_item.setFont(QFont("Arial", 10, QFont.Bold))
+                rank_item.setFont(Typography.SMALL_BOLD)
             self.stat_leaders_table.setItem(row, 0, rank_item)
 
             # Player name
             name_item = QTableWidgetItem(leader.player_name)
             name_item.setData(Qt.UserRole, leader.player_id)
             if leader.league_rank == 1:
-                name_item.setFont(QFont("Arial", 10, QFont.Bold))
+                name_item.setFont(Typography.SMALL_BOLD)
             self.stat_leaders_table.setItem(row, 1, name_item)
 
             # Team
@@ -1055,7 +1140,7 @@ class AwardsView(QWidget):
             value_item = QTableWidgetItem(value_str)
             value_item.setTextAlignment(Qt.AlignCenter)
             if leader.league_rank == 1:
-                value_item.setFont(QFont("Arial", 10, QFont.Bold))
+                value_item.setFont(Typography.SMALL_BOLD)
                 value_item.setForeground(QColor("#2E7D32"))
             self.stat_leaders_table.setItem(row, 4, value_item)
 
@@ -1144,11 +1229,7 @@ class AwardsView(QWidget):
         """Create the Continue to Franchise Tag button for offseason flow."""
         # Create a container for the button at the bottom of the view
         self.continue_btn = QPushButton("Continue to Franchise Tag")
-        self.continue_btn.setStyleSheet(
-            "QPushButton { background-color: #4CAF50; color: white; "
-            "border-radius: 6px; padding: 12px 24px; font-size: 14px; font-weight: bold; }"
-            "QPushButton:hover { background-color: #43A047; }"
-        )
+        self.continue_btn.setStyleSheet(PRIMARY_BUTTON_STYLE)
         self.continue_btn.setMinimumHeight(50)
         self.continue_btn.setVisible(False)  # Hidden by default
         self.continue_btn.clicked.connect(self._on_continue_clicked)

@@ -18,6 +18,7 @@ from .resigning_generator import ResigningGenerator
 from .waiver_generator import WaiverGenerator
 from .draft_generator import DraftGenerator
 from .awards_generator import AwardsGenerator
+from .hof_generator import HOFGenerator
 
 __all__ = [
     # Base classes
@@ -32,4 +33,5 @@ __all__ = [
     'WaiverGenerator',
     'DraftGenerator',
     'AwardsGenerator',
+    'HOFGenerator',
 ]
