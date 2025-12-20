@@ -10,8 +10,8 @@ Dynasty-First Architecture:
 
 from typing import Optional, Dict, Any, List
 
-from PySide6.QtCore import QObject, Signal, QTimer
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QObject, Signal, QTimer, Qt
+from PySide6.QtWidgets import QApplication, QProgressDialog
 
 from game_cycle import Stage, StageType, SeasonPhase, ROSTER_LIMITS, INTERACTIVE_OFFSEASON_STAGES
 from game_cycle.stage_controller import StageController as BackendStageController
@@ -197,77 +197,175 @@ class StageUIController(QObject):
             self.error_occurred.emit("No current stage")
             return
 
+        # Check if this stage needs progress dialog (regular season or playoffs)
+        needs_progress = (
+            stage.phase == SeasonPhase.REGULAR_SEASON or
+            stage.phase == SeasonPhase.PLAYOFFS
+        )
+
+        if needs_progress:
+            # Execute with progress dialog
+            self._execute_with_progress(stage)
+        else:
+            # Execute synchronously (offseason stages)
+            self._execute_synchronously(stage)
+
+    def _execute_synchronously(self, stage: Stage):
+        """Execute stage synchronously without progress dialog."""
         try:
             # Execute stage via backend
             result = self._backend.execute_current_stage()
 
-            if self._view:
-                # Convert StageResult to dict for view
-                result_dict = {
-                    "stage_name": result.stage.display_name,
-                    "games_played": result.games_played,
-                    "events_processed": result.events_processed,
-                    "errors": result.errors,
-                    "success": result.success,
-                }
-                self._view.show_execution_result(result_dict)
-
-                # Store GameResult objects for play-by-play access (Phase 1)
-                if result.games_played:
-                    self._view.store_game_results(result.games_played)
-
-            # Auto-advance if successful
-            if result.can_advance:
-                # Special case: OFFSEASON_HONORS - don't auto-advance, show awards first
-                if stage.stage_type == StageType.OFFSEASON_HONORS:
-                    # Emit signal so main window can show awards tab
-                    self.awards_calculated.emit()
-                    # Don't auto-advance - user must click "Continue" after viewing awards
-                # Special case: OFFSEASON_OWNER - don't auto-advance, show owner view
-                elif stage.stage_type == StageType.OFFSEASON_OWNER:
-                    # Emit signal so main window can show owner view tab
-                    self.owner_stage_ready.emit()
-                    # Don't auto-advance - user must click "Continue" after owner decisions
-                # Interactive offseason stages - don't auto-advance, user must make decisions
-                elif stage.stage_type in (
-                    StageType.OFFSEASON_FRANCHISE_TAG,
-                    StageType.OFFSEASON_RESIGNING,
-                    StageType.OFFSEASON_FREE_AGENCY,
-                    StageType.OFFSEASON_TRADING,
-                    StageType.OFFSEASON_DRAFT,
-                    StageType.OFFSEASON_PRESEASON_W1,
-                    StageType.OFFSEASON_PRESEASON_W2,
-                    StageType.OFFSEASON_PRESEASON_W3,
-                    StageType.OFFSEASON_WAIVER_WIRE,
-                ):
-                    # Don't auto-advance - user interaction required
-                    # User must explicitly click "Confirm" or "Continue" to proceed
-                    pass
-                elif stage.stage_type.name.startswith('REGULAR_SEASON_WEEK'):
-                    # Check for IR activations before advancing (regular season only)
-                    # Extract week number from stage
-                    week_number = stage.week_number
-                    ir_shown = self.check_and_show_ir_activations(week_number)
-                    # Note: If IR UI is shown, user must complete it before advancing
-                    # The view's signals will hide it and then we can advance
-                    if not ir_shown:
-                        # No IR activations needed, proceed with auto-advance
-                        self._advance_to_next()
-                else:
-                    # Non-interactive stages (e.g., OFFSEASON_TRAINING_CAMP)
-                    self._advance_to_next()
-
-            self.execution_complete.emit(result_dict)
+            # Handle result
+            self._handle_stage_result(result, stage)
 
         except Exception as e:
-            # Restore cursor on error (in case view set it)
-            QApplication.restoreOverrideCursor()
+            self._handle_execution_error(e)
 
-            error_msg = f"Stage execution failed: {e}"
-            self.error_occurred.emit(error_msg)
+    def _execute_with_progress(self, stage: Stage):
+        """Execute stage with progress dialog (runs in main thread with UI updates)."""
+        # Create progress dialog
+        stage_label = stage.display_name
+        progress = QProgressDialog(
+            f"Simulating {stage_label}...\n\nInitializing...",
+            None,  # No cancel button
+            0, 100,
+            self._view if self._view else None
+        )
+        progress.setWindowTitle("Simulation in Progress")
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)  # Show immediately
+        progress.setValue(0)
+        progress.show()  # Explicitly show the dialog
+        progress.raise_()  # Bring to front
+        print(f"[PROGRESS DIALOG] Showing progress dialog for {stage_label}")  # Debug
+        QApplication.processEvents()  # Force initial render
+
+        # Set up progress callback that updates dialog and processes events
+        def on_progress(current: int, total: int, message: str):
+            """Called from backend as games complete."""
+            print(f"[PROGRESS] {current}/{total}: {message}")  # Debug output
+            if total > 0:
+                percent = int((current / total) * 100)
+                progress.setValue(percent)
+                progress.setLabelText(f"{message}\n({current}/{total} games complete)")
+                # Process events to keep UI responsive
+                QApplication.processEvents()
+
+        # Disable advance button during simulation
+        if self._view:
+            self._view.set_advance_enabled(False)
+
+        # Set callback on backend
+        self._backend.set_progress_callback(on_progress)
+
+        try:
+            # Execute stage in main thread (SQLite requires same-thread access)
+            print(f"[PROGRESS DIALOG] Starting stage execution...")  # Debug
+            result = self._backend.execute_current_stage()
+            print(f"[PROGRESS DIALOG] Stage execution complete")  # Debug
+
+            # Close progress dialog
+            progress.close()
+
+            # Clear callback
+            self._backend.set_progress_callback(None)
+
+            # Re-enable advance button
             if self._view:
-                self._view.set_status(error_msg, is_error=True)
                 self._view.set_advance_enabled(True)
+
+            # Handle result
+            self._handle_stage_result(result, stage)
+
+        except Exception as e:
+            # Close progress dialog
+            progress.close()
+
+            # Clear callback
+            self._backend.set_progress_callback(None)
+
+            # Handle error
+            self._handle_execution_error(e)
+
+    def _handle_stage_result(self, result, stage: Stage):
+        """Common result handling logic for both sync and async execution."""
+        if self._view:
+            # Convert StageResult to dict for view
+            result_dict = {
+                "stage_name": result.stage.display_name,
+                "games_played": result.games_played,
+                "events_processed": result.events_processed,
+                "errors": result.errors,
+                "success": result.success,
+            }
+            self._view.show_execution_result(result_dict)
+
+            # Store GameResult objects for play-by-play access (Phase 1)
+            if result.games_played:
+                self._view.store_game_results(result.games_played)
+
+        # Auto-advance if successful
+        if result.can_advance:
+            # Special case: OFFSEASON_HONORS - don't auto-advance, show awards first
+            if stage.stage_type == StageType.OFFSEASON_HONORS:
+                # Emit signal so main window can show awards tab
+                self.awards_calculated.emit()
+                # Don't auto-advance - user must click "Continue" after viewing awards
+            # Special case: OFFSEASON_OWNER - don't auto-advance, show owner view
+            elif stage.stage_type == StageType.OFFSEASON_OWNER:
+                # Emit signal so main window can show owner view tab
+                self.owner_stage_ready.emit()
+                # Don't auto-advance - user must click "Continue" after owner decisions
+            # Interactive offseason stages - don't auto-advance, user must make decisions
+            elif stage.stage_type in (
+                StageType.OFFSEASON_FRANCHISE_TAG,
+                StageType.OFFSEASON_RESIGNING,
+                StageType.OFFSEASON_FREE_AGENCY,
+                StageType.OFFSEASON_TRADING,
+                StageType.OFFSEASON_DRAFT,
+                StageType.OFFSEASON_PRESEASON_W1,
+                StageType.OFFSEASON_PRESEASON_W2,
+                StageType.OFFSEASON_PRESEASON_W3,
+                StageType.OFFSEASON_WAIVER_WIRE,
+            ):
+                # Don't auto-advance - user interaction required
+                # User must explicitly click "Confirm" or "Continue" to proceed
+                pass
+            elif stage.stage_type.name.startswith('REGULAR_SEASON_WEEK'):
+                # Check for IR activations before advancing (regular season only)
+                # Extract week number from stage
+                week_number = stage.week_number
+                ir_shown = self.check_and_show_ir_activations(week_number)
+                # Note: If IR UI is shown, user must complete it before advancing
+                # The view's signals will hide it and then we can advance
+                if not ir_shown:
+                    # No IR activations needed, proceed with auto-advance
+                    self._advance_to_next()
+            else:
+                # Non-interactive stages (e.g., OFFSEASON_TRAINING_CAMP)
+                self._advance_to_next()
+
+        # Emit completion signal (needed for tests and other listeners)
+        result_dict = {
+            "stage_name": result.stage.display_name,
+            "games_played": result.games_played,
+            "events_processed": result.events_processed,
+            "errors": result.errors,
+            "success": result.success,
+        }
+        self.execution_complete.emit(result_dict)
+
+    def _handle_execution_error(self, error: Exception):
+        """Common error handling logic."""
+        # Restore cursor on error (in case view set it)
+        QApplication.restoreOverrideCursor()
+
+        error_msg = f"Stage execution failed: {error}"
+        self.error_occurred.emit(error_msg)
+        if self._view:
+            self._view.set_status(error_msg, is_error=True)
+            self._view.set_advance_enabled(True)
 
     def _advance_to_next(self):
         """Advance to the next stage."""
@@ -789,20 +887,87 @@ class StageUIController(QObject):
         return self._backend.get_stage_preview()
 
     def _on_skip_to_playoffs(self):
-        """Skip to playoffs by simulating remaining regular season."""
-        # Simulate all remaining regular season weeks
-        while True:
-            stage = self.current_stage
-            if stage is None or stage.phase != SeasonPhase.REGULAR_SEASON:
-                break
+        """Skip to playoffs by simulating remaining regular season with progress dialog."""
+        # Count remaining weeks
+        stage = self.current_stage
+        if stage is None or stage.phase != SeasonPhase.REGULAR_SEASON:
+            return
 
-            result = self._backend.execute_current_stage()
-            if result.can_advance:
-                self._backend.advance_to_next_stage()
-            else:
-                break
+        current_week = stage.week_number
+        total_weeks = 18 - current_week + 1  # Weeks remaining including current
 
-        self.refresh()
+        # Create progress dialog for multi-week simulation
+        progress = QProgressDialog(
+            f"Simulating to Playoffs...\n\nWeek {current_week} of 18",
+            None,  # No cancel button
+            0, total_weeks,
+            self._view if self._view else None
+        )
+        progress.setWindowTitle("Simulating Season")
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+        progress.show()
+        progress.raise_()
+        QApplication.processEvents()
+
+        # Set up game-level progress callback
+        def on_game_progress(current: int, total: int, message: str):
+            """Update with individual game progress."""
+            # Keep the week-level message but show game detail in status
+            if total > 0:
+                progress.setLabelText(
+                    f"Simulating to Playoffs...\n\n{message}\n({current}/{total} games this week)"
+                )
+                QApplication.processEvents()
+
+        # Disable advance button
+        if self._view:
+            self._view.set_advance_enabled(False)
+
+        try:
+            weeks_simulated = 0
+            # Simulate all remaining regular season weeks
+            while True:
+                stage = self.current_stage
+                if stage is None or stage.phase != SeasonPhase.REGULAR_SEASON:
+                    break
+
+                # Update week-level progress
+                week_num = stage.week_number
+                weeks_simulated += 1
+                progress.setValue(weeks_simulated)
+                progress.setLabelText(f"Simulating to Playoffs...\n\nWeek {week_num} of 18")
+                QApplication.processEvents()
+
+                # Set callback for this week's games
+                self._backend.set_progress_callback(on_game_progress)
+
+                # Execute this week
+                result = self._backend.execute_current_stage()
+
+                # Clear callback
+                self._backend.set_progress_callback(None)
+
+                if result.can_advance:
+                    self._backend.advance_to_next_stage()
+                else:
+                    break
+
+            # Close progress dialog
+            progress.close()
+
+            # Re-enable advance button
+            if self._view:
+                self._view.set_advance_enabled(True)
+
+            self.refresh()
+
+        except Exception as e:
+            progress.close()
+            if self._view:
+                self._view.set_advance_enabled(True)
+            raise
 
     def _on_skip_to_offseason(self):
         """Skip directly to offseason without simulating games."""
@@ -1769,9 +1934,9 @@ class StageUIController(QObject):
             return
 
         try:
-            # Get current cap space
-            cap_helper = CapHelper(self._database_path, self._dynasty_id)
-            cap_data = cap_helper.get_cap_summary(self._user_team_id, self._season)
+            # Get current cap space (re-signing uses next season's cap)
+            cap_helper = CapHelper(self._database_path, self._dynasty_id, self._season + 1)
+            cap_data = cap_helper.get_cap_summary(self._user_team_id)
             current_cap_space = cap_data.get("available_space", 0)
 
             # Load owner directives
@@ -3012,10 +3177,11 @@ class StageUIController(QObject):
         """
         try:
             import json
+            import sqlite3
             from constants.position_abbreviations import POSITION_ABBREVIATIONS
 
             # Get team roster from database
-            conn = self._backend._get_connection()
+            conn = sqlite3.connect(self._backend._db_path)
             cursor = conn.cursor()
 
             # Query with correct column name (positions, plural)
@@ -3084,6 +3250,7 @@ class StageUIController(QObject):
             priority_order = {"High": 0, "Medium": 1, "Low": 2}
             needs.sort(key=lambda x: priority_order[x["priority"]])
 
+            conn.close()
             return needs[:8]
 
         except Exception as e:
