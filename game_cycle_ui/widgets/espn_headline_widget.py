@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QSizePolicy,
+    QScrollArea,
 )
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QCursor, QFont
@@ -35,8 +36,11 @@ from game_cycle_ui.theme import (
     ESPN_TEXT_SECONDARY,
     ESPN_TEXT_MUTED,
     ESPN_BORDER,
+    FontSizes,
+    TextColors,
     get_headline_category_display,
 )
+from game_cycle_ui.widgets.player_spotlight_widget import PlayerSpotlightWidget
 
 
 class ESPNFeaturedStoryWidget(QWidget):
@@ -44,8 +48,9 @@ class ESPNFeaturedStoryWidget(QWidget):
     Large featured story card for top headline.
 
     ESPN-style prominent display with:
-    - Large image placeholder area
-    - Bold headline
+    - Split layout: Player spotlight (left) + Story content (right)
+    - Player headshot and key stats
+    - Bold headline with star player subheader
     - Story excerpt
     - Category badge
     """
@@ -55,14 +60,25 @@ class ESPNFeaturedStoryWidget(QWidget):
     def __init__(
         self,
         headline_data: Dict[str, Any],
+        player_data: Optional[Dict[str, Any]] = None,
         parent: Optional[QWidget] = None
     ):
+        """
+        Initialize featured story widget.
+
+        Args:
+            headline_data: Headline data dict
+            player_data: Optional player data dict with keys:
+                - name, position, number, stats
+            parent: Parent widget
+        """
         super().__init__(parent)
         self._data = headline_data
+        self._player_data = player_data
         self._setup_ui()
 
     def _setup_ui(self):
-        """Build the featured story UI."""
+        """Build the featured story UI with split layout."""
         self.setMinimumHeight(200)
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
@@ -85,36 +101,39 @@ class ESPNFeaturedStoryWidget(QWidget):
             }}
         """)
 
-        container_layout = QVBoxLayout(self._container)
+        # Split layout: Left (player spotlight) + Right (story content)
+        container_layout = QHBoxLayout(self._container)
         container_layout.setContentsMargins(0, 0, 0, 0)
         container_layout.setSpacing(0)
 
-        # Image placeholder (simulated with colored bar)
-        image_placeholder = QFrame()
-        image_placeholder.setFixedHeight(120)
-        image_placeholder.setStyleSheet(f"""
-            background: qlineargradient(
-                x1:0, y1:0, x2:1, y2:1,
-                stop:0 #1a1a1a, stop:0.5 #2a2a2a, stop:1 #1a1a1a
-            );
-            border-bottom: 3px solid {ESPN_RED};
-        """)
+        # Left panel: Player spotlight (if player data available)
+        if self._player_data:
+            player_spotlight = PlayerSpotlightWidget(self._player_data)
+            container_layout.addWidget(player_spotlight)
+        else:
+            # Fallback: Empty placeholder (maintain old behavior)
+            placeholder = QFrame()
+            placeholder.setFixedWidth(200)
+            placeholder.setStyleSheet(f"""
+                background: qlineargradient(
+                    x1:0, y1:0, x2:1, y2:1,
+                    stop:0 #1a1a1a, stop:0.5 #2a2a2a, stop:1 #1a1a1a
+                );
+                border-right: 3px solid {ESPN_RED};
+                border-radius: 4px 0 0 4px;
+            """)
+            placeholder_layout = QVBoxLayout(placeholder)
+            placeholder_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            icon_label = QLabel("🏈")
+            icon_label.setStyleSheet(f"font-size: {FontSizes.DISPLAY}; background: transparent;")
+            icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            placeholder_layout.addWidget(icon_label)
+            container_layout.addWidget(placeholder)
 
-        # Center icon in placeholder
-        placeholder_layout = QVBoxLayout(image_placeholder)
-        placeholder_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        icon_label = QLabel("🏈")
-        icon_label.setStyleSheet("font-size: 36px; background: transparent;")
-        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        placeholder_layout.addWidget(icon_label)
-
-        container_layout.addWidget(image_placeholder)
-
-        # Content area
+        # Right panel: Story content
         content = QWidget()
         content_layout = QVBoxLayout(content)
-        content_layout.setContentsMargins(16, 12, 16, 16)
+        content_layout.setContentsMargins(16, 16, 16, 16)
         content_layout.setSpacing(8)
 
         # Category badge
@@ -124,7 +143,7 @@ class ESPNFeaturedStoryWidget(QWidget):
         category_label = QLabel(category.upper())
         category_label.setStyleSheet(f"""
             color: {ESPN_RED};
-            font-size: 10px;
+            font-size: {FontSizes.SMALL};
             font-weight: bold;
             letter-spacing: 1px;
         """)
@@ -135,27 +154,99 @@ class ESPNFeaturedStoryWidget(QWidget):
         headline_label = QLabel(headline_text)
         headline_label.setWordWrap(True)
         headline_label.setStyleSheet(f"""
-            color: {ESPN_TEXT_PRIMARY};
-            font-size: 18px;
+            color: {TextColors.ON_DARK};
+            font-size: {FontSizes.H3};
             font-weight: bold;
             line-height: 1.3;
         """)
         content_layout.addWidget(headline_label)
 
+        # Star player subheader (if player data available)
+        if self._player_data:
+            player_name = self._player_data.get("name", "")
+            player_pos = self._player_data.get("position", "").upper()
+            stats = self._player_data.get("stats", {})
+
+            # Format stat line based on position
+            stat_line = self._format_stat_subheader(player_pos, stats)
+
+            subheader_label = QLabel(f"▸ {player_pos} {player_name}")
+            subheader_label.setStyleSheet(f"""
+                color: {ESPN_TEXT_SECONDARY};
+                font-size: {FontSizes.BODY};
+                font-weight: bold;
+            """)
+            content_layout.addWidget(subheader_label)
+
+            if stat_line:
+                stat_label = QLabel(f"   {stat_line}")
+                stat_label.setStyleSheet(f"""
+                    color: {ESPN_TEXT_MUTED};
+                    font-size: {FontSizes.SMALL};
+                """)
+                content_layout.addWidget(stat_label)
+
         # Excerpt
         body_text = self._data.get("body_text", "")
         if body_text:
-            excerpt = body_text[:150].rsplit(" ", 1)[0] + "..." if len(body_text) > 150 else body_text
+            max_chars = 90 if self._player_data else 150
+            excerpt = body_text[:max_chars].rsplit(" ", 1)[0] + "..." if len(body_text) > max_chars else body_text
             excerpt_label = QLabel(excerpt)
             excerpt_label.setWordWrap(True)
             excerpt_label.setStyleSheet(f"""
-                color: {ESPN_TEXT_SECONDARY};
-                font-size: 13px;
+                color: {TextColors.ON_DARK_MUTED};
+                font-size: {FontSizes.BODY};
             """)
             content_layout.addWidget(excerpt_label)
 
-        container_layout.addWidget(content)
+        content_layout.addStretch()
+        container_layout.addWidget(content, 1)  # Give content area stretch factor
         layout.addWidget(self._container)
+
+    def _format_stat_subheader(self, position: str, stats: Dict[str, Any]) -> str:
+        """
+        Format compact stat line for subheader.
+
+        Args:
+            position: Position abbreviation
+            stats: Stats dictionary
+
+        Returns:
+            Formatted stat line string
+        """
+        if not stats:
+            return ""
+
+        # QB: 3 TDs, 285 yards, 0 INT
+        if position == "QB":
+            tds = stats.get("passing_tds", 0)
+            yards = stats.get("passing_yards", 0)
+            ints = stats.get("passing_interceptions", 0)
+            return f"{tds} TDs, {yards} yards, {ints} INT"
+
+        # RB: 120 rush yards, 2 TDs
+        elif position == "RB":
+            yards = stats.get("rushing_yards", 0)
+            tds = stats.get("rushing_tds", 0)
+            return f"{yards} rush yards, {tds} TDs"
+
+        # WR/TE: 8 rec, 120 yards, 2 TDs
+        elif position in ["WR", "TE"]:
+            rec = stats.get("receptions", 0)
+            yards = stats.get("receiving_yards", 0)
+            tds = stats.get("receiving_tds", 0)
+            return f"{rec} rec, {yards} yards, {tds} TDs"
+
+        # DEF: 12 tackles, 2 sacks
+        elif position in ["DE", "DT", "LB", "MLB", "OLB", "ILB", "CB", "S", "FS", "SS", "DB"]:
+            tackles = stats.get("tackles_total", 0)
+            sacks = stats.get("sacks", 0)
+            if sacks > 0:
+                return f"{tackles} tackles, {sacks} sacks"
+            else:
+                return f"{tackles} tackles"
+
+        return ""
 
     def mousePressEvent(self, event):
         """Handle click to emit signal."""
@@ -188,7 +279,8 @@ class ESPNThumbnailWidget(QWidget):
 
     def _setup_ui(self):
         """Build the thumbnail UI."""
-        self.setFixedHeight(90)
+        self.setMinimumHeight(90)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
         layout = QHBoxLayout(self)
@@ -230,7 +322,7 @@ class ESPNThumbnailWidget(QWidget):
         placeholder_layout = QVBoxLayout(image_placeholder)
         placeholder_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         icon_label = QLabel("🏈")
-        icon_label.setStyleSheet("font-size: 20px; background: transparent;")
+        icon_label.setStyleSheet(f"font-size: {FontSizes.H2}; background: transparent;")
         icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         placeholder_layout.addWidget(icon_label)
 
@@ -249,25 +341,39 @@ class ESPNThumbnailWidget(QWidget):
         category_label = QLabel(category.upper())
         category_label.setStyleSheet(f"""
             color: {ESPN_RED};
-            font-size: 9px;
+            font-size: {FontSizes.TINY};
             font-weight: bold;
             letter-spacing: 1px;
         """)
         content_layout.addWidget(category_label)
 
-        # Headline (truncated)
+        # Headline (no truncation)
         headline_text = self._data.get("headline", "Story")
-        if len(headline_text) > 60:
-            headline_text = headline_text[:57] + "..."
 
-        headline_label = QLabel(headline_text)
-        headline_label.setWordWrap(True)
-        headline_label.setStyleSheet(f"""
-            color: {ESPN_TEXT_PRIMARY};
-            font-size: 12px;
+        self._headline_label = QLabel(headline_text)
+        self._headline_label.setWordWrap(True)
+        self._headline_label.setStyleSheet(f"""
+            color: {TextColors.ON_DARK};
+            font-size: {FontSizes.BODY};
             font-weight: bold;
         """)
-        content_layout.addWidget(headline_label)
+        self._headline_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        content_layout.addWidget(self._headline_label)
+
+        # Subheadline (if exists)
+        subheadline_text = self._data.get("subheadline", "")
+        if subheadline_text:
+            self._subheadline_label = QLabel(subheadline_text)
+            self._subheadline_label.setWordWrap(True)
+            self._subheadline_label.setStyleSheet(f"""
+                color: {ESPN_TEXT_SECONDARY};
+                font-size: {FontSizes.TINY};
+            """)
+            self._subheadline_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            content_layout.addWidget(self._subheadline_label)
+        else:
+            self._subheadline_label = None
+
         content_layout.addStretch()
 
         container_layout.addWidget(content, 1)
@@ -300,6 +406,7 @@ class ESPNHeadlinesGridWidget(QWidget):
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
         self._headlines: List[Dict[str, Any]] = []
+        self._player_data: Optional[Dict[str, Any]] = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -323,14 +430,20 @@ class ESPNHeadlinesGridWidget(QWidget):
         self._grid_layout.setContentsMargins(0, 0, 0, 0)
         self._grid_layout.setSpacing(12)
 
-    def set_headlines(self, headlines: List[Dict[str, Any]]):
+    def set_headlines(
+        self,
+        headlines: List[Dict[str, Any]],
+        player_data: Optional[Dict[str, Any]] = None
+    ):
         """
-        Set headlines to display.
+        Set headlines to display with optional player data for featured story.
 
         Args:
             headlines: List of headline dictionaries sorted by priority
+            player_data: Optional player data dict (name, position, number, stats)
         """
         self._headlines = headlines
+        self._player_data = player_data
         self._rebuild_ui()
 
     def _rebuild_ui(self):
@@ -348,7 +461,7 @@ class ESPNHeadlinesGridWidget(QWidget):
             logger.debug("_rebuild_ui: No headlines, showing empty state")
             empty_label = QLabel("No headlines available for this week.")
             empty_label.setStyleSheet(f"""
-                color: {ESPN_TEXT_MUTED};
+                color: {TextColors.ON_DARK_DISABLED};
                 font-style: italic;
                 padding: 40px;
             """)
@@ -356,32 +469,68 @@ class ESPNHeadlinesGridWidget(QWidget):
             self._layout.addWidget(empty_label)
             return
 
-        # Featured story (first headline)
+        # Featured story (first headline) with optional player data
         logger.debug(f"_rebuild_ui: Creating featured story: {self._headlines[0].get('headline', 'N/A')[:50]}...")
-        self._featured_widget = ESPNFeaturedStoryWidget(self._headlines[0])
+        if self._player_data:
+            logger.debug(f"_rebuild_ui: Including player data for {self._player_data.get('name', 'Unknown')}")
+        self._featured_widget = ESPNFeaturedStoryWidget(
+            headline_data=self._headlines[0],
+            player_data=self._player_data
+        )
         self._featured_widget.clicked.connect(self.headline_clicked.emit)
         self._layout.addWidget(self._featured_widget)
         logger.debug(f"_rebuild_ui: Featured widget added, size={self._featured_widget.sizeHint()}")
 
-        # Thumbnail grid (remaining headlines)
+        # Scrollable list of remaining headlines (up to 49 more = 50 total)
         if len(self._headlines) > 1:
-            self._grid_container = QWidget()
-            self._grid_layout = QGridLayout(self._grid_container)
-            self._grid_layout.setContentsMargins(0, 0, 0, 0)
-            self._grid_layout.setSpacing(12)
+            # Create scroll area for headline list
+            self._scroll_area = QScrollArea()
+            self._scroll_area.setWidgetResizable(True)
+            self._scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            self._scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self._scroll_area.setFrameShape(QFrame.Shape.NoFrame)
+            self._scroll_area.setMinimumHeight(400)  # Ensure visible scroll area
 
-            # Add up to 6 thumbnails in a 2x3 grid
-            for i, headline_data in enumerate(self._headlines[1:7]):
-                row = i // 2
-                col = i % 2
+            # Style the scrollbar to match theme
+            self._scroll_area.setStyleSheet(f"""
+                QScrollArea {{
+                    background-color: transparent;
+                    border: none;
+                }}
+                QScrollBar:vertical {{
+                    background-color: {ESPN_DARK_BG};
+                    width: 10px;
+                    border-radius: 5px;
+                }}
+                QScrollBar::handle:vertical {{
+                    background-color: {ESPN_BORDER};
+                    border-radius: 5px;
+                    min-height: 30px;
+                }}
+                QScrollBar::handle:vertical:hover {{
+                    background-color: {ESPN_RED};
+                }}
+                QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                    height: 0px;
+                }}
+            """)
 
+            # Content widget with vertical layout
+            self._scroll_content = QWidget()
+            self._scroll_content.setStyleSheet("background-color: transparent;")
+            self._scroll_layout = QVBoxLayout(self._scroll_content)
+            self._scroll_layout.setContentsMargins(0, 0, 0, 0)
+            self._scroll_layout.setSpacing(8)
+
+            # Add headline cards (up to 49 more = 50 total)
+            for headline_data in self._headlines[1:50]:
                 thumbnail = ESPNThumbnailWidget(headline_data)
                 thumbnail.clicked.connect(self.headline_clicked.emit)
-                self._grid_layout.addWidget(thumbnail, row, col)
+                self._scroll_layout.addWidget(thumbnail)
 
-            self._layout.addWidget(self._grid_container)
-
-        self._layout.addStretch()
+            self._scroll_layout.addStretch()
+            self._scroll_area.setWidget(self._scroll_content)
+            self._layout.addWidget(self._scroll_area, 1)  # stretch factor 1 to fill space
 
         # Force Qt to recalculate the widget size after adding content
         self.updateGeometry()

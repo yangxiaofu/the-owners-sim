@@ -20,6 +20,7 @@ from ..database.draft_class_api import DraftClassAPI
 from ..database.media_coverage_api import MediaCoverageAPI
 from ..database.owner_directives_api import OwnerDirectivesAPI
 from ..database.proposal_api import ProposalAPI
+from ..database.staff_api import StaffAPI
 from ..database.standings_api import StandingsAPI
 from ..models.owner_directives import OwnerDirectives
 from ..models.proposal_enums import ProposalStatus, ProposalType
@@ -794,8 +795,9 @@ class OffseasonHandler:
             dynasty_id = ctx['dynasty_id']
 
             # Get roster counts by position
-            db_api = DatabaseAPI(db_path)
-            roster = db_api.get_team_roster(team_id, dynasty_id)
+            from database.player_roster_api import PlayerRosterAPI
+            roster_api = PlayerRosterAPI(db_path)
+            roster = roster_api.get_team_roster(dynasty_id, team_id)
 
             roster_counts: Dict[str, int] = {}
             for player in roster:
@@ -1206,6 +1208,9 @@ class OffseasonHandler:
                         "player_id": player_id,
                         "player_name": result["player_name"],
                         "team_id": user_team_id,
+                        "position": result.get("position", ""),
+                        "overall": result.get("overall", 0),
+                        "age": result.get("age", 0),
                     })
                     events.append(f"Released {result['player_name']} to free agency")
 
@@ -2006,12 +2011,23 @@ class OffseasonHandler:
                 # 2. Generate Coach proposals (performance-based)
                 from ..services.proposal_generators.coach_cuts_generator import CoachCutsProposalGenerator
 
+                # Get HC archetype for coach-influenced cut decisions
+                hc_archetype_key = "balanced"  # Default
+                try:
+                    staff_api = StaffAPI(db)
+                    staff_assignment = staff_api.get_staff_assignment(dynasty_id, team_id, season)
+                    if staff_assignment and "hc" in staff_assignment:
+                        hc_archetype_key = staff_assignment["hc"].archetype_key or "balanced"
+                except Exception as e:
+                    logging.warning(f"Could not get HC archetype: {e}")
+
                 coach_generator = CoachCutsProposalGenerator(
                     db_path=db_path,
                     dynasty_id=dynasty_id,
                     season=season,
                     team_id=team_id,
                     directives=directives,
+                    coach_archetype_key=hc_archetype_key,
                 )
 
                 coach_proposals_raw = coach_generator.generate_proposals(roster, cuts_needed)
@@ -2165,12 +2181,23 @@ class OffseasonHandler:
                         # Only generate if no proposals exist for this stage
                         from ..services.proposal_generators.coach_cuts_generator import CoachCutsProposalGenerator
 
+                        # Get HC archetype for coach-influenced cut decisions
+                        hc_archetype_key = "balanced"  # Default
+                        try:
+                            staff_api = StaffAPI(db)
+                            staff_assignment = staff_api.get_staff_assignment(dynasty_id, team_id, season)
+                            if staff_assignment and "hc" in staff_assignment:
+                                hc_archetype_key = staff_assignment["hc"].archetype_key or "balanced"
+                        except Exception as e:
+                            logging.warning(f"Could not get HC archetype for preseason cuts: {e}")
+
                         coach_generator = CoachCutsProposalGenerator(
                             db_path=db_path,
                             dynasty_id=dynasty_id,
                             season=season,
                             team_id=team_id,
                             directives=directives,
+                            coach_archetype_key=hc_archetype_key,
                         )
 
                         # Generate proposals with target size and cut phase
@@ -3450,54 +3477,6 @@ class OffseasonHandler:
                 "total_tags": 0,
             }
 
-    def _execute_preseason(
-        self,
-        stage: Stage,
-        context: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Execute preseason - triggers season initialization pipeline.
-
-        This runs the SeasonInitializationService which executes a series
-        of steps to prepare for the new season (reset records, generate
-        schedule, etc.). The pipeline is extendable for future features.
-        """
-
-        ctx = self._extract_context(context, include_season=False)
-        dynasty_id = ctx['dynasty_id']
-        db_path = ctx['db_path']
-        current_season = stage.season_year
-        next_season = current_season + 1
-
-        events = []
-        events.append(f"Initializing Season {next_season}...")
-
-        # Run initialization pipeline
-        service = SeasonInitializationService(
-            db_path=db_path,
-            dynasty_id=dynasty_id,
-            from_season=current_season,
-            to_season=next_season
-        )
-
-        results = service.run_all()
-
-        # Collect results for UI display
-        for result in results:
-            status_icon = "✓" if result.status.value == "completed" else "✗"
-            events.append(f"{status_icon} {result.step_name}: {result.message}")
-
-        events.append(f"Season {next_season} initialization complete!")
-
-        return {
-            "games_played": [],
-            "events_processed": events,
-            "initialization_results": [
-                {"step": r.step_name, "status": r.status.value, "message": r.message}
-                for r in results
-            ],
-        }
-
     # =========================================================================
     # Trading Stage Methods (Tollgate 5)
     # =========================================================================
@@ -4136,7 +4115,7 @@ class OffseasonHandler:
             generator.generate_and_save(events, dynasty_id, season, week=23)
 
         except Exception as e:
-            print(f"[OffseasonHandler] Failed to generate awards headlines: {e}")
+            self._logger.error(f"Failed to generate awards headlines: {e}", exc_info=True)
 
     def _get_super_bowl_winner_team_id(
         self,
@@ -4247,7 +4226,7 @@ class OffseasonHandler:
                 generator.generate_and_save(events, dynasty_id, season, week=27)
 
         except Exception as e:
-            print(f"[OffseasonHandler] Failed to generate draft headlines: {e}")
+            self._logger.error(f"Failed to generate draft headlines: {e}", exc_info=True)
 
     def _generate_fa_headlines(
         self,
@@ -4310,7 +4289,7 @@ class OffseasonHandler:
             )
 
         except Exception as e:
-            print(f"[OffseasonHandler] Failed to generate FA headlines: {e}")
+            self._logger.error(f"Failed to generate FA headlines: {e}", exc_info=True)
 
     def _generate_trade_headlines(
         self,
@@ -4383,7 +4362,7 @@ class OffseasonHandler:
             generator.generate_and_save(events, dynasty_id, season, week=26)
 
         except Exception as e:
-            print(f"[OffseasonHandler] Failed to generate trade headlines: {e}")
+            self._logger.error(f"Failed to generate trade headlines: {e}", exc_info=True)
 
     def _generate_franchise_tag_headlines(
         self,
@@ -4429,7 +4408,7 @@ class OffseasonHandler:
             generator.generate_and_save(events, dynasty_id, season, week=24)
 
         except Exception as e:
-            print(f"[OffseasonHandler] Failed to generate franchise tag headlines: {e}")
+            self._logger.error(f"Failed to generate franchise tag headlines: {e}", exc_info=True)
 
     def _generate_roster_cuts_headlines(
         self,
@@ -4501,7 +4480,7 @@ class OffseasonHandler:
                 )
 
         except Exception as e:
-            print(f"[OffseasonHandler] Failed to generate roster cuts headlines: {e}")
+            self._logger.error(f"Failed to generate roster cuts headlines: {e}", exc_info=True)
 
     def _generate_resigning_headlines(
         self,
@@ -4595,7 +4574,7 @@ class OffseasonHandler:
             )
 
         except Exception as e:
-            print(f"[OffseasonHandler] Failed to generate resigning headlines: {e}")
+            self._logger.error(f"Failed to generate resigning headlines: {e}", exc_info=True)
 
     def _generate_waiver_wire_headlines(
         self,
@@ -4664,7 +4643,7 @@ class OffseasonHandler:
             )
 
         except Exception as e:
-            print(f"[OffseasonHandler] Failed to generate waiver wire headlines: {e}")
+            self._logger.error(f"Failed to generate waiver wire headlines: {e}", exc_info=True)
 
     def _get_gm_archetype_for_team(self, team_id: int) -> "GMArchetype":
         """

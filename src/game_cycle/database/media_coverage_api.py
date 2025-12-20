@@ -25,7 +25,8 @@ from .connection import GameCycleDatabase
 # Headline types for post-game content (show from previous week)
 RECAP_HEADLINE_TYPES = frozenset([
     'GAME_RECAP', 'BLOWOUT', 'UPSET', 'COMEBACK',
-    'MILESTONE', 'POWER_RANKING', 'STREAK'
+    'MILESTONE', 'POWER_RANKING', 'STREAK',
+    'DUAL_THREAT', 'PLAYER_PERFORMANCE', 'DEFENSIVE_SHOWCASE'  # Player-focused headlines
 ])
 
 # Headline types for upcoming games (show for current week)
@@ -516,6 +517,39 @@ class MediaCoverageAPI:
 
         rows = self.db.query_all(
             sql, (dynasty_id, season, recap_week, current_week, limit)
+        )
+        return [self._row_to_headline(row) for row in rows]
+
+    def get_rolling_headlines(
+        self,
+        dynasty_id: str,
+        season: int,
+        limit: int = 50
+    ) -> List[Headline]:
+        """
+        Get rolling headlines across all weeks for a season.
+
+        Returns most recent headlines first, regardless of week number.
+        Used for "News Feed" style display during offseason/playoffs where
+        headlines from multiple stages should accumulate and persist.
+
+        Args:
+            dynasty_id: Dynasty identifier
+            season: Season year
+            limit: Max headlines to return (default 50)
+
+        Returns:
+            List of Headline sorted by created_at DESC, priority DESC
+        """
+        rows = self.db.query_all(
+            """SELECT id, dynasty_id, season, week, headline_type, headline,
+                      subheadline, body_text, sentiment, priority,
+                      team_ids, player_ids, game_id, metadata, created_at
+               FROM media_headlines
+               WHERE dynasty_id = ? AND season = ?
+               ORDER BY created_at DESC, priority DESC
+               LIMIT ?""",
+            (dynasty_id, season, limit)
         )
         return [self._row_to_headline(row) for row in rows]
 

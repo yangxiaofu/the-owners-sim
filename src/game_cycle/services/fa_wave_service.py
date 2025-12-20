@@ -514,11 +514,17 @@ class FAWaveService:
                 if other_offer_ids:
                     offers_api.bulk_update_status(other_offer_ids, "rejected")
 
+                # Extract player data from contract_details for headline generation
+                contract_details = result.get("contract_details", {})
+
                 surprise_info = {
                     "player_id": player_id,
                     "player_name": result.get("player_name", f"Player {player_id}"),
                     "team_id": best_ai_offer["offering_team_id"],
-                    "aav": best_ai_offer["aav"]
+                    "aav": best_ai_offer["aav"],
+                    "position": contract_details.get("position", ""),
+                    "overall": contract_details.get("overall", 0),
+                    "age": contract_details.get("age", 0),
                 }
                 surprises.append(surprise_info)
 
@@ -533,10 +539,18 @@ class FAWaveService:
     # Offer Resolution
     # -------------------------------------------------------------------------
 
-    def resolve_wave_offers(self) -> Dict[str, Any]:
+    def resolve_wave_offers(
+        self,
+        user_team_id: Optional[int] = None,
+        fa_guidance: Optional[Any] = None
+    ) -> Dict[str, Any]:
         """
         Resolve all pending offers at wave end.
         Each player chooses best offer based on preferences.
+
+        Args:
+            user_team_id: User's team ID (for budget stance modifier)
+            fa_guidance: Owner's FA guidance (for budget stance modifier)
 
         Returns:
             Dict with signings, rejections, no_accepts lists and total_resolved count
@@ -555,7 +569,11 @@ class FAWaveService:
         no_accepts = []
 
         for player_id in players_with_offers:
-            result = self._resolve_player_offers(player_id)
+            result = self._resolve_player_offers(
+                player_id,
+                user_team_id=user_team_id,
+                fa_guidance=fa_guidance
+            )
 
             if result["outcome"] == "signed":
                 signings.append(result)
@@ -576,7 +594,12 @@ class FAWaveService:
             "total_resolved": len(players_with_offers)
         }
 
-    def _resolve_player_offers(self, player_id: int) -> Dict[str, Any]:
+    def _resolve_player_offers(
+        self,
+        player_id: int,
+        user_team_id: Optional[int] = None,
+        fa_guidance: Optional[Any] = None
+    ) -> Dict[str, Any]:
         """
         Resolve offers for a single player using PreferenceEngine.
 
@@ -589,6 +612,8 @@ class FAWaveService:
 
         Args:
             player_id: Player ID to resolve offers for
+            user_team_id: User's team ID (for budget stance modifier)
+            fa_guidance: Owner's FA guidance (for budget stance modifier)
 
         Returns:
             Dict with player_id, outcome, and relevant details
@@ -611,7 +636,11 @@ class FAWaveService:
         if not persona:
             # Accept highest AAV if no persona
             best_offer = max(offers, key=lambda x: x["aav"])
-            return self._accept_offer(best_offer)
+            return self._accept_offer(
+                best_offer,
+                user_team_id=user_team_id,
+                fa_guidance=fa_guidance
+            )
 
         # Score each offer
         scored_offers = []
@@ -677,7 +706,11 @@ class FAWaveService:
         # Try to accept offers in order of preference
         for scored in scored_offers:
             if random.random() < scored["probability"]:
-                return self._accept_offer(scored["offer"])
+                return self._accept_offer(
+                    scored["offer"],
+                    user_team_id=user_team_id,
+                    fa_guidance=fa_guidance
+                )
 
         # All rejected - player stays free agent
         offer_ids = [o["offer_id"] for o in offers]
@@ -689,12 +722,19 @@ class FAWaveService:
             "offers_rejected": len(offers)
         }
 
-    def _accept_offer(self, offer: Dict[str, Any]) -> Dict[str, Any]:
+    def _accept_offer(
+        self,
+        offer: Dict[str, Any],
+        user_team_id: Optional[int] = None,
+        fa_guidance: Optional[Any] = None
+    ) -> Dict[str, Any]:
         """
         Accept an offer and create the contract.
 
         Args:
             offer: Offer dict to accept
+            user_team_id: User's team ID (for budget stance modifier)
+            fa_guidance: Owner's FA guidance (for budget stance modifier)
 
         Returns:
             Dict with outcome and signing details
@@ -702,11 +742,17 @@ class FAWaveService:
         offers_api = self._get_offers_api()
         fa_service = self._get_fa_service()
 
-        # Sign via FreeAgencyService
+        # Apply budget stance modifier only for user team
+        guidance_to_use = None
+        if user_team_id and offer["offering_team_id"] == user_team_id:
+            guidance_to_use = fa_guidance
+
+        # Sign via FreeAgencyService (with budget stance modifier for user team)
         result = fa_service.sign_free_agent(
             player_id=offer["player_id"],
             team_id=offer["offering_team_id"],
-            skip_preference_check=True  # Already checked
+            skip_preference_check=True,  # Already checked
+            fa_guidance=guidance_to_use
         )
 
         if result.get("success"):
@@ -730,13 +776,19 @@ class FAWaveService:
                 f"Team {offer['offering_team_id']}: ${offer['aav']:,}/yr"
             )
 
+            # Extract player data from contract_details for headline generation
+            contract_details = result.get("contract_details", {})
+
             return {
                 "player_id": offer["player_id"],
                 "outcome": "signed",
                 "team_id": offer["offering_team_id"],
                 "aav": offer["aav"],
                 "years": offer["years"],
-                "player_name": result.get("player_name", "")
+                "player_name": result.get("player_name", ""),
+                "position": contract_details.get("position", ""),
+                "overall": contract_details.get("overall", 0),
+                "age": contract_details.get("age", 0),
             }
 
         return {

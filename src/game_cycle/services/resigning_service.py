@@ -27,7 +27,8 @@ class ResigningService:
         self,
         db_path: str,
         dynasty_id: str,
-        season: int
+        season: int,
+        valuation_service: Optional[Any] = None
     ):
         """
         Initialize the re-signing service.
@@ -36,6 +37,7 @@ class ResigningService:
             db_path: Path to the database
             dynasty_id: Dynasty identifier
             season: Current season year
+            valuation_service: Optional ValuationService for contract valuations
         """
         self._db_path = db_path
         self._dynasty_id = dynasty_id
@@ -49,6 +51,9 @@ class ResigningService:
         self._persona_service = None
         self._attractiveness_service = None
         self._preference_engine = None
+
+        # Optional valuation service for sophisticated contract calculations
+        self._valuation_service = valuation_service
 
         # Transaction logger for audit trail
         self._transaction_logger = TransactionLogger(db_path)
@@ -335,6 +340,111 @@ class ResigningService:
 
         return expiring_players
 
+    def get_gm_rejection_recommendations(
+        self,
+        team_id: int,
+        expiring_players: Optional[List[Dict[str, Any]]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get GM's recommendations for players NOT to extend.
+
+        Evaluates each expiring player using _should_ai_resign() and
+        returns those the GM recommends releasing with reasoning.
+
+        Args:
+            team_id: Team ID
+            expiring_players: Optional list of expiring players (to avoid re-query)
+
+        Returns:
+            List of dicts with:
+                - player_id: int
+                - player_name: str
+                - position: str
+                - age: int
+                - overall: int
+                - current_salary: int
+                - reason: str (primary rejection reason)
+                - concerns: List[str] (detailed concerns)
+                - acceptance_probability: float (0.0-1.0)
+                - category: str ("age", "performance", "preference", "expendable")
+        """
+        # Get expiring contracts if not provided
+        if expiring_players is None:
+            expiring_players = self.get_expiring_contracts(team_id)
+
+        rejections = []
+
+        for player in expiring_players:
+            # Run GM evaluation logic
+            should_attempt, probability, concerns = self._should_ai_resign(
+                player, team_id
+            )
+
+            # Only include players GM recommends NOT extending
+            if not should_attempt:
+                # Determine primary category
+                category = self._categorize_rejection_reason(concerns, player)
+
+                rejection = {
+                    "player_id": player["player_id"],
+                    "player_name": player.get("name", "Unknown"),
+                    "position": player.get("position", ""),
+                    "age": player.get("age", 0),
+                    "overall": player.get("overall", 0),
+                    "current_salary": player.get("salary", 0),
+                    "reason": concerns[0] if concerns else "GM does not recommend extension",
+                    "concerns": concerns,
+                    "acceptance_probability": probability,
+                    "category": category
+                }
+                rejections.append(rejection)
+
+        # Sort by category priority, then by overall rating (descending)
+        category_priority = {"age": 1, "performance": 2, "preference": 3, "expendable": 4}
+        rejections.sort(
+            key=lambda x: (category_priority.get(x["category"], 99), -x["overall"])
+        )
+
+        return rejections
+
+    def _categorize_rejection_reason(
+        self,
+        concerns: List[str],
+        player: Dict[str, Any]
+    ) -> str:
+        """
+        Categorize rejection reason for UI display.
+
+        Args:
+            concerns: List of concern strings
+            player: Player dict with age, overall
+
+        Returns:
+            Category: "age", "performance", "preference", or "expendable"
+        """
+        if not concerns:
+            return "performance"
+
+        primary_concern = concerns[0].lower()
+
+        # Age-related
+        if any(keyword in primary_concern for keyword in ["old", "age", "declining", "prime"]):
+            return "age"
+
+        # Performance-related
+        if any(keyword in primary_concern for keyword in ["below", "threshold", "rating"]):
+            return "performance"
+
+        # Preference/acceptance related
+        if any(keyword in primary_concern for keyword in ["probability", "unlikely", "reject"]):
+            return "preference"
+
+        # Expendable (owner directive)
+        if "expendable" in primary_concern:
+            return "expendable"
+
+        return "performance"  # Default
+
     def resign_player(
         self,
         player_id: int,
@@ -417,19 +527,83 @@ class ResigningService:
             years_pro = player_info.get("years_pro", 3)
 
             # Calculate market value for the new contract
-            market_value = market_calculator.calculate_player_value(
-                position=position,
-                overall=overall,
-                age=age,
-                years_pro=years_pro
-            )
+            # Use ValuationService if available, otherwise fall back to MarketValueCalculator
+            if self._valuation_service:
+                try:
+                    # Prepare player data for valuation service
+                    player_data = {
+                        "position": position,
+                        "overall_rating": overall,
+                        "age": age,
+                        "player_id": player_id,
+                        "years_pro": years_pro,
+                        "attributes": attributes,
+                    }
 
-            # Convert from millions to dollars
-            total_value = int(market_value["total_value"] * 1_000_000)
-            aav = int(market_value["aav"] * 1_000_000)
-            signing_bonus = int(market_value["signing_bonus"] * 1_000_000)
-            guaranteed = int(market_value["guaranteed"] * 1_000_000)
-            years = market_value["years"]
+                    # Get GM archetype if available
+                    gm_archetype = None
+                    try:
+                        from team_management.gm_archetype import GMArchetype
+                        from team_management.teams.team_loader import TeamDataLoader
+                        team_loader = TeamDataLoader()
+                        team_data = team_loader.get_team_by_id(team_id)
+                        if team_data and hasattr(team_data, 'gm_archetype'):
+                            gm_archetype = team_data.gm_archetype
+                    except Exception as e:
+                        self._logger.debug(f"Could not load GM archetype: {e}")
+
+                    # Valuate player using sophisticated engine
+                    valuation_result = self._valuation_service.valuate_player(
+                        player_data=player_data,
+                        team_id=team_id,
+                        gm_archetype=gm_archetype,
+                    )
+
+                    # Extract contract offer from valuation result
+                    aav = valuation_result.offer.aav
+                    years = valuation_result.offer.years
+                    guaranteed = valuation_result.offer.guaranteed
+                    signing_bonus = valuation_result.offer.signing_bonus
+                    total_value = valuation_result.offer.total_value
+
+                    self._logger.info(
+                        f"Using ValuationService for {player_name}: "
+                        f"{years}yr/${aav:,} AAV (${total_value:,} total)"
+                    )
+
+                except Exception as e:
+                    self._logger.warning(
+                        f"ValuationService failed for {player_name}, using fallback: {e}"
+                    )
+                    # Fall back to MarketValueCalculator
+                    market_value = market_calculator.calculate_player_value(
+                        position=position,
+                        overall=overall,
+                        age=age,
+                        years_pro=years_pro
+                    )
+
+                    # Convert from millions to dollars
+                    total_value = int(market_value["total_value"] * 1_000_000)
+                    aav = int(market_value["aav"] * 1_000_000)
+                    signing_bonus = int(market_value["signing_bonus"] * 1_000_000)
+                    guaranteed = int(market_value["guaranteed"] * 1_000_000)
+                    years = market_value["years"]
+            else:
+                # Fallback to existing logic
+                market_value = market_calculator.calculate_player_value(
+                    position=position,
+                    overall=overall,
+                    age=age,
+                    years_pro=years_pro
+                )
+
+                # Convert from millions to dollars
+                total_value = int(market_value["total_value"] * 1_000_000)
+                aav = int(market_value["aav"] * 1_000_000)
+                signing_bonus = int(market_value["signing_bonus"] * 1_000_000)
+                guaranteed = int(market_value["guaranteed"] * 1_000_000)
+                years = market_value["years"]
 
             # Player preference check (unless skipped)
             if not skip_preference_check:
@@ -554,6 +728,9 @@ class ResigningService:
                     "aav": aav,
                     "guaranteed": guaranteed,
                     "signing_bonus": signing_bonus,
+                    "position": position,
+                    "overall": overall,
+                    "age": age,
                 }
             }
 
@@ -613,6 +790,23 @@ class ResigningService:
                 positions = json.loads(positions)
             player_position = positions[0] if positions else ""
 
+            # Extract overall from JSON attributes object
+            attributes = player_info.get("attributes", {})
+            if isinstance(attributes, str):
+                attributes = json.loads(attributes)
+            player_overall = attributes.get("overall", 0)
+
+            # Calculate age from birthdate
+            player_age = player_info.get("age", 0)  # Use cached age if available
+            if not player_age:
+                birthdate = player_info.get("birthdate")
+                if birthdate:
+                    try:
+                        birth_year = int(birthdate.split("-")[0])
+                        player_age = self._season - birth_year
+                    except (ValueError, IndexError):
+                        player_age = 0
+
             # Get current team_id from player_info
             current_team_id = player_info.get("team_id", team_id)
 
@@ -654,6 +848,9 @@ class ResigningService:
             return {
                 "success": True,
                 "player_name": player_name,
+                "position": player_position,
+                "overall": player_overall,
+                "age": player_age,
             }
 
         except Exception as e:
@@ -745,6 +942,9 @@ class ResigningService:
                                 "player_name": player_name,
                                 "team_id": team_id,
                                 "team_name": team.full_name,
+                                "position": release_result.get("position", player.get("position", "")),
+                                "overall": release_result.get("overall", player.get("overall", 0)),
+                                "age": release_result.get("age", player.get("age", 0)),
                             })
                             events.append(
                                 f"{team.abbreviation}: {player_name} rejected re-signing, became free agent"
@@ -758,6 +958,9 @@ class ResigningService:
                             "player_name": result["player_name"],
                             "team_id": team_id,
                             "team_name": team.full_name,
+                            "position": result.get("position", player.get("position", "")),
+                            "overall": result.get("overall", player.get("overall", 0)),
+                            "age": result.get("age", player.get("age", 0)),
                         })
                         events.append(
                             f"{team.abbreviation} released {result['player_name']} to free agency"
@@ -828,29 +1031,68 @@ class ResigningService:
                     team_attractiveness = attractiveness_service.get_team_attractiveness(team_id)
 
                     # Calculate market value for evaluation
-                    from offseason.market_value_calculator import MarketValueCalculator
                     from src.player_management.preference_engine import ContractOffer
 
-                    market_calculator = MarketValueCalculator()
                     years_pro = player.get("years_pro", 3)
 
-                    market_value = market_calculator.calculate_player_value(
-                        position=position,
-                        overall=overall,
-                        age=age,
-                        years_pro=years_pro
-                    )
+                    # Use ValuationService if available
+                    if self._valuation_service:
+                        try:
+                            player_data = {
+                                "position": position,
+                                "overall_rating": overall,
+                                "age": age,
+                                "player_id": player_id,
+                                "years_pro": years_pro,
+                            }
 
-                    market_aav = int(market_value["aav"] * 1_000_000)
-                    years = market_value["years"]
+                            valuation_result = self._valuation_service.valuate_player(
+                                player_data=player_data,
+                                team_id=team_id,
+                                gm_archetype=None,  # AI uses default logic
+                            )
+
+                            market_aav = valuation_result.offer.aav
+                            years = valuation_result.offer.years
+                            guaranteed = valuation_result.offer.guaranteed
+                            signing_bonus = valuation_result.offer.signing_bonus
+
+                        except Exception:
+                            # Fallback to MarketValueCalculator
+                            from offseason.market_value_calculator import MarketValueCalculator
+                            market_calculator = MarketValueCalculator()
+                            market_value = market_calculator.calculate_player_value(
+                                position=position,
+                                overall=overall,
+                                age=age,
+                                years_pro=years_pro
+                            )
+                            market_aav = int(market_value["aav"] * 1_000_000)
+                            years = market_value["years"]
+                            guaranteed = int(market_value["guaranteed"] * 1_000_000)
+                            signing_bonus = int(market_value["signing_bonus"] * 1_000_000)
+                    else:
+                        # Fallback to MarketValueCalculator
+                        from offseason.market_value_calculator import MarketValueCalculator
+                        market_calculator = MarketValueCalculator()
+                        market_value = market_calculator.calculate_player_value(
+                            position=position,
+                            overall=overall,
+                            age=age,
+                            years_pro=years_pro
+                        )
+                        market_aav = int(market_value["aav"] * 1_000_000)
+                        years = market_value["years"]
+                        guaranteed = int(market_value["guaranteed"] * 1_000_000)
+                        signing_bonus = int(market_value["signing_bonus"] * 1_000_000)
 
                     offer = ContractOffer(
                         team_id=team_id,
                         aav=market_aav,
                         total_value=market_aav * years,
                         years=years,
-                        guaranteed=int(market_value["guaranteed"] * 1_000_000),
-                        signing_bonus=int(market_value["signing_bonus"] * 1_000_000),
+                        guaranteed=guaranteed,
+                        signing_bonus=signing_bonus,
                         market_aav=market_aav,
                         role=self._estimate_role(team_id, position, overall)
                     )

@@ -44,6 +44,9 @@ class SigningResult:
     team_id: int
     aav: int
     years: int
+    position: str = ""
+    overall: int = 0
+    age: int = 0
     is_surprise: bool = False
 
 
@@ -219,6 +222,9 @@ class FAWaveExecutor:
                 team_id=s["team_id"],
                 aav=s["aav"],
                 years=0,  # Not tracked in surprise signings
+                position=s.get("position", ""),
+                overall=s.get("overall", 0),
+                age=s.get("age", 0),
                 is_surprise=True
             )
             for s in surprises_raw
@@ -240,16 +246,25 @@ class FAWaveExecutor:
         return self._wave_service.advance_day()
 
     def advance_wave(
-        self
+        self,
+        user_team_id: Optional[int] = None,
+        fa_guidance: Optional[Any] = None
     ) -> tuple[List[SigningResult], List[int], Optional[Dict[str, Any]]]:
         """
         Resolve all pending offers and advance to next wave.
 
+        Args:
+            user_team_id: User's team ID (for budget stance modifier)
+            fa_guidance: Owner's FA guidance (for budget stance modifier)
+
         Returns:
             Tuple of (signings, rejected_player_ids, new_wave_state or None)
         """
-        # Resolve all pending offers first
-        resolution = self._wave_service.resolve_wave_offers()
+        # Resolve all pending offers first (with budget stance for user team)
+        resolution = self._wave_service.resolve_wave_offers(
+            user_team_id=user_team_id,
+            fa_guidance=fa_guidance
+        )
 
         # Convert signings to dataclass
         signings = [
@@ -259,6 +274,9 @@ class FAWaveExecutor:
                 team_id=s["team_id"],
                 aav=s["aav"],
                 years=s["years"],
+                position=s.get("position", ""),
+                overall=s.get("overall", 0),
+                age=s.get("age", 0),
                 is_surprise=False
             )
             for s in resolution.get("signings", [])
@@ -348,7 +366,8 @@ class FAWaveExecutor:
         withdraw_offers: Optional[List[int]] = None,
         advance_day: bool = False,
         advance_wave: bool = False,
-        enable_post_draft: bool = False
+        enable_post_draft: bool = False,
+        fa_guidance: Optional[Any] = None
     ) -> WaveExecutionResult:
         """
         Execute a complete FA turn with all actions.
@@ -363,6 +382,7 @@ class FAWaveExecutor:
             advance_day: Whether to advance to next day
             advance_wave: Whether to resolve offers and advance wave
             enable_post_draft: Whether to enable wave 4
+            fa_guidance: Owner's FA guidance (for budget stance modifier)
 
         Returns:
             WaveExecutionResult with all turn data
@@ -405,7 +425,10 @@ class FAWaveExecutor:
         if enable_post_draft:
             state = self.enable_post_draft()
         elif advance_wave:
-            signings, rejections, new_state = self.advance_wave()
+            signings, rejections, new_state = self.advance_wave(
+                user_team_id=user_team_id,
+                fa_guidance=fa_guidance
+            )
             print(f"[DEBUG FAWaveExecutor] advance_wave() returned: new_state={new_state}")
             if new_state is not None:
                 state = new_state

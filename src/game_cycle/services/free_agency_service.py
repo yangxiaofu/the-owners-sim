@@ -6,7 +6,7 @@ Uses MarketValueCalculator to generate realistic contract offers.
 """
 
 from datetime import date
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Callable
 import logging
 import json
 
@@ -28,7 +28,8 @@ class FreeAgencyService:
         self,
         db_path: str,
         dynasty_id: str,
-        season: int
+        season: int,
+        valuation_service_factory: Optional[Callable[[int], Any]] = None
     ):
         """
         Initialize the free agency service.
@@ -37,6 +38,10 @@ class FreeAgencyService:
             db_path: Path to the database
             dynasty_id: Dynasty identifier
             season: Current season year
+            valuation_service_factory: Optional factory function that creates
+                ValuationService instances per team. Signature: (team_id: int) -> ValuationService
+                If provided, NPC teams will use the ContractValuationEngine for offers.
+                If None, falls back to MarketValueCalculator (legacy behavior).
         """
         self._db_path = db_path
         self._dynasty_id = dynasty_id
@@ -53,6 +58,9 @@ class FreeAgencyService:
 
         # Transaction logger for audit trail
         self._transaction_logger = TransactionLogger(db_path)
+
+        # Optional valuation service factory for sophisticated contract offers
+        self._valuation_service_factory = valuation_service_factory
 
     def _get_cap_helper(self):
         """Get or create cap helper instance.
@@ -92,6 +100,107 @@ class FreeAgencyService:
             from src.player_management.preference_engine import PlayerPreferenceEngine
             self._preference_engine = PlayerPreferenceEngine()
         return self._preference_engine
+
+    def _get_gm_archetype(self, team_id: int):
+        """Get GM archetype for a team.
+
+        Args:
+            team_id: Team ID
+
+        Returns:
+            GMArchetype instance or None if not available
+        """
+        try:
+            from team_management.gm_archetype_factory import GMArchetypeFactory
+            factory = GMArchetypeFactory()
+            return factory.get_team_archetype(team_id)
+        except Exception as e:
+            self._logger.warning(f"Could not load GM archetype for team {team_id}: {e}")
+            return None
+
+    def _calculate_npc_contract_offer(
+        self,
+        player_info: Dict[str, Any],
+        team_id: int,
+        position: str,
+        overall: int,
+        age: int,
+        years_pro: int
+    ) -> Dict[str, Any]:
+        """Calculate contract offer for NPC team.
+
+        Uses ContractValuationEngine if available, otherwise falls back
+        to MarketValueCalculator.
+
+        Args:
+            player_info: Full player info dict
+            team_id: Team making the offer
+            position: Player position
+            overall: Overall rating
+            age: Player age
+            years_pro: Years in the league
+
+        Returns:
+            Dict with aav, years, total_value, signing_bonus, guaranteed (all in dollars)
+        """
+        # Try valuation engine first if available
+        if self._valuation_service_factory:
+            try:
+                valuation_service = self._valuation_service_factory(team_id)
+                gm_archetype = self._get_gm_archetype(team_id)
+
+                # Build player data dict for valuation engine
+                player_data = {
+                    "position": position,
+                    "overall_rating": overall,
+                    "age": age,
+                }
+
+                # Add optional fields if available
+                if "attributes" in player_info:
+                    player_data["attributes"] = player_info["attributes"]
+
+                valuation_result = valuation_service.valuate_player(
+                    player_data=player_data,
+                    team_id=team_id,
+                    gm_archetype=gm_archetype,
+                )
+
+                # Extract offer details
+                offer = valuation_result.offer
+                return {
+                    "aav": offer.aav,
+                    "years": offer.years,
+                    "total_value": offer.total_value,
+                    "signing_bonus": offer.signing_bonus,
+                    "guaranteed": offer.guaranteed_money,
+                }
+
+            except Exception as e:
+                self._logger.warning(
+                    f"Valuation engine failed for team {team_id}, "
+                    f"falling back to MarketValueCalculator: {e}"
+                )
+
+        # Fallback to legacy MarketValueCalculator
+        from offseason.market_value_calculator import MarketValueCalculator
+        market_calculator = MarketValueCalculator()
+
+        market_value = market_calculator.calculate_player_value(
+            position=position,
+            overall=overall,
+            age=age,
+            years_pro=years_pro
+        )
+
+        # Convert from millions to dollars
+        return {
+            "aav": int(market_value["aav"] * 1_000_000),
+            "years": market_value["years"],
+            "total_value": int(market_value["total_value"] * 1_000_000),
+            "signing_bonus": int(market_value["signing_bonus"] * 1_000_000),
+            "guaranteed": int(market_value["guaranteed"] * 1_000_000),
+        }
 
     def _get_dev_type(self, archetype_id: Optional[str]) -> str:
         """
@@ -377,7 +486,10 @@ class FreeAgencyService:
         player_id: int,
         team_id: int,
         player_info: Optional[Dict[str, Any]] = None,
-        skip_preference_check: bool = False
+        skip_preference_check: bool = False,
+        fa_guidance: Optional[Any] = None,
+        use_valuation_engine: bool = False,
+        contract_terms: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Sign a free agent to a team with a market-value contract.
@@ -385,11 +497,23 @@ class FreeAgencyService:
         Includes player preference check - players may reject offers based on
         their persona and the team's attractiveness.
 
+        Budget stance modifiers (if fa_guidance provided):
+        - AGGRESSIVE: Offer 5-10% above market (increases acceptance chance)
+        - MODERATE: Offer market value (no modifier)
+        - CONSERVATIVE: Offer 5-10% below market (decreases acceptance chance)
+
         Args:
             player_id: Player ID to sign
             team_id: Team ID signing the player
             player_info: Optional player info dict (to avoid extra DB query)
             skip_preference_check: If True, bypasses player preference check
+            fa_guidance: Optional FAGuidance with budget_stance directive
+            use_valuation_engine: If True, uses ContractValuationEngine for NPC teams
+                (requires valuation_service_factory to be set). User team always
+                uses MarketValueCalculator regardless of this setting.
+            contract_terms: Optional dict with pre-negotiated contract terms from
+                GM proposal (aav, years, total, guaranteed, signing_bonus).
+                If provided, these terms are used instead of recalculating.
 
         Returns:
             Dict with:
@@ -402,19 +526,18 @@ class FreeAgencyService:
                 - concerns: List[str] (if player declined)
                 - acceptance_probability: float (if player declined)
                 - interest_level: str (if player declined)
+                - budget_modifier: float (if fa_guidance provided)
         """
         from salary_cap.cap_database_api import CapDatabaseAPI
         from salary_cap.contract_manager import ContractManager
         from salary_cap.cap_calculator import CapCalculator
         from database.player_roster_api import PlayerRosterAPI
-        from offseason.market_value_calculator import MarketValueCalculator
 
         try:
             roster_api = PlayerRosterAPI(self._db_path)
             cap_api = CapDatabaseAPI(self._db_path)
             contract_manager = ContractManager(self._db_path)
             cap_calculator = CapCalculator(self._db_path)
-            market_calculator = MarketValueCalculator()
 
             # Get player info if not provided
             if player_info is None:
@@ -458,20 +581,78 @@ class FreeAgencyService:
             years_pro = player_info.get("years_pro", 3)
             player_name = f"{player_info.get('first_name', '')} {player_info.get('last_name', '')}".strip()
 
-            # Calculate market value
-            market_value = market_calculator.calculate_player_value(
-                position=position,
-                overall=overall,
-                age=age,
-                years_pro=years_pro
-            )
+            # Calculate contract offer:
+            # 1. Use contract_terms if provided (from GM proposal approval)
+            # 2. Otherwise, use valuation engine for NPCs if enabled
+            # 3. Otherwise, fallback to MarketValueCalculator
+            if contract_terms:
+                # Use pre-negotiated terms from GM proposal
+                aav = contract_terms.get("aav", 0)
+                years = contract_terms.get("years", 1)
+                total_value = contract_terms.get("total", contract_terms.get("total_value", aav * years))
+                signing_bonus = contract_terms.get("signing_bonus", 0)
+                guaranteed = contract_terms.get("guaranteed", 0)
+                self._logger.info(
+                    f"Using proposal contract terms for {player_name}: "
+                    f"{years}yr, ${aav:,} AAV, ${total_value:,} total"
+                )
+            elif use_valuation_engine:
+                contract_offer = self._calculate_npc_contract_offer(
+                    player_info=player_info,
+                    team_id=team_id,
+                    position=position,
+                    overall=overall,
+                    age=age,
+                    years_pro=years_pro
+                )
+                aav = contract_offer["aav"]
+                years = contract_offer["years"]
+                total_value = contract_offer["total_value"]
+                signing_bonus = contract_offer["signing_bonus"]
+                guaranteed = contract_offer["guaranteed"]
+            else:
+                # Legacy MarketValueCalculator path (user team or NPC without valuation engine)
+                from offseason.market_value_calculator import MarketValueCalculator
+                market_calculator = MarketValueCalculator()
 
-            # Convert from millions to dollars
-            total_value = int(market_value["total_value"] * 1_000_000)
-            aav = int(market_value["aav"] * 1_000_000)
-            signing_bonus = int(market_value["signing_bonus"] * 1_000_000)
-            guaranteed = int(market_value["guaranteed"] * 1_000_000)
-            years = market_value["years"]
+                market_value = market_calculator.calculate_player_value(
+                    position=position,
+                    overall=overall,
+                    age=age,
+                    years_pro=years_pro
+                )
+
+                # Convert from millions to dollars
+                total_value = int(market_value["total_value"] * 1_000_000)
+                aav = int(market_value["aav"] * 1_000_000)
+                signing_bonus = int(market_value["signing_bonus"] * 1_000_000)
+                guaranteed = int(market_value["guaranteed"] * 1_000_000)
+                years = market_value["years"]
+
+            # Apply budget stance modifier (Tollgate 7: Owner directive integration)
+            budget_modifier = 1.0
+            if fa_guidance:
+                import random
+                budget_stance = getattr(fa_guidance, 'budget_stance', 'moderate').lower()
+
+                if budget_stance == 'aggressive':
+                    # Offer 5-10% above market (better chance of acceptance)
+                    budget_modifier = random.uniform(1.05, 1.10)
+                elif budget_stance == 'conservative':
+                    # Offer 5-10% below market (lower chance of acceptance)
+                    budget_modifier = random.uniform(0.90, 0.95)
+                # else: moderate = 1.0 (no change)
+
+                # Apply modifier to contract values
+                total_value = int(total_value * budget_modifier)
+                aav = int(aav * budget_modifier)
+                signing_bonus = int(signing_bonus * budget_modifier)
+                guaranteed = int(guaranteed * budget_modifier)
+
+                self._logger.info(
+                    f"FA contract for {player_name}: {budget_stance.upper()} stance, "
+                    f"{budget_modifier:.2f}x modifier"
+                )
 
             # Player preference check (unless skipped)
             if not skip_preference_check:
@@ -549,6 +730,12 @@ class FreeAgencyService:
                 season=self._season + 1  # Contract starts NEXT league year
             )
 
+            # Calculate Year-1 cap hit (SSOT for cap projections)
+            # Matches contract_manager.create_contract() calculation
+            proration_years = min(years, 5)
+            year1_bonus_proration = signing_bonus // proration_years if proration_years > 0 else 0
+            year1_cap_hit = base_salaries[0] + year1_bonus_proration
+
             # Update player's team_id
             roster_api.update_player_team(
                 dynasty_id=self._dynasty_id,
@@ -595,7 +782,12 @@ class FreeAgencyService:
                     "aav": aav,
                     "guaranteed": guaranteed,
                     "signing_bonus": signing_bonus,
-                }
+                    "year1_cap_hit": year1_cap_hit,  # SSOT for cap projections
+                    "position": position,
+                    "overall": overall,
+                    "age": age,
+                },
+                "budget_modifier": budget_modifier,
             }
 
         except Exception as e:
@@ -910,9 +1102,11 @@ class FreeAgencyService:
                     attempts += 1
 
                     # Try to sign (will check preferences internally)
+                    # Use valuation engine if available, otherwise fallback to legacy calculator
                     result = self.sign_free_agent(
                         fa["player_id"], team_id, None,
-                        skip_preference_check=False  # Check preferences
+                        skip_preference_check=False,  # Check preferences
+                        use_valuation_engine=True  # Enable valuation engine for NPC teams
                     )
 
                     if result["success"]:
