@@ -23,10 +23,12 @@ class StageType(Enum):
 
     Stages are ordered - the simulation progresses through them sequentially.
     """
-    # Preseason (optional - can be skipped)
-    PRESEASON_WEEK_1 = auto()
-    PRESEASON_WEEK_2 = auto()
-    PRESEASON_WEEK_3 = auto()
+    # Preseason (DEPRECATED - use OFFSEASON_PRESEASON_W1/W2/W3 instead)
+    # These stages are kept for backwards compatibility but should not be used.
+    # The offseason preseason stages now handle both games and cuts.
+    PRESEASON_WEEK_1 = auto()  # DEPRECATED
+    PRESEASON_WEEK_2 = auto()  # DEPRECATED
+    PRESEASON_WEEK_3 = auto()  # DEPRECATED
 
     # Regular Season - 18 weeks
     REGULAR_WEEK_1 = auto()
@@ -62,10 +64,11 @@ class StageType(Enum):
     OFFSEASON_FREE_AGENCY = auto()        # Sign free agents from other teams
     OFFSEASON_TRADING = auto()            # Trade players and draft picks
     OFFSEASON_DRAFT = auto()              # NFL Draft (7 rounds)
-    OFFSEASON_ROSTER_CUTS = auto()        # Cut roster from 90 to 53
+    OFFSEASON_TRAINING_CAMP = auto()      # Training camp - player progression (90 players)
+    OFFSEASON_PRESEASON_W1 = auto()       # Preseason Week 1 - full game simulation (no cuts)
+    OFFSEASON_PRESEASON_W2 = auto()       # Preseason Week 2 - full game simulation (no cuts)
+    OFFSEASON_PRESEASON_W3 = auto()       # Preseason Week 3 - game + final cuts (90 → 53)
     OFFSEASON_WAIVER_WIRE = auto()        # Process waiver claims for cut players
-    OFFSEASON_TRAINING_CAMP = auto()      # Finalize depth charts
-    OFFSEASON_PRESEASON = auto()          # Exhibition games (optional)
 
     @classmethod
     def get_phase(cls, stage: "StageType") -> SeasonPhase:
@@ -129,23 +132,30 @@ class Stage:
         elif name.startswith("PRESEASON_WEEK_"):
             return int(name.replace("PRESEASON_WEEK_", ""))
         elif self.stage_type == StageType.WILD_CARD:
-            return 1
+            return 19  # Database week for Wild Card (matches playoffs.py _round_to_week)
         elif self.stage_type == StageType.DIVISIONAL:
-            return 2
+            return 20  # Database week for Divisional
         elif self.stage_type == StageType.CONFERENCE_CHAMPIONSHIP:
-            return 3
+            return 21  # Database week for Conference Championship
         elif self.stage_type == StageType.SUPER_BOWL:
-            return 4
+            return 22  # Database week for Super Bowl
         elif name.startswith("OFFSEASON_"):
-            # Map offseason stages to sequential numbers
-            offseason_order = [
-                "OFFSEASON_HONORS", "OFFSEASON_OWNER", "OFFSEASON_FRANCHISE_TAG",
-                "OFFSEASON_RESIGNING", "OFFSEASON_FREE_AGENCY", "OFFSEASON_TRADING",
-                "OFFSEASON_DRAFT", "OFFSEASON_ROSTER_CUTS", "OFFSEASON_WAIVER_WIRE",
-                "OFFSEASON_TRAINING_CAMP", "OFFSEASON_PRESEASON"
-            ]
-            if name in offseason_order:
-                return offseason_order.index(name) + 1
+            # Map offseason stages to database week numbers (matches offseason.py social post generation)
+            offseason_week_map = {
+                "OFFSEASON_HONORS": 23,            # Awards ceremony (week 23)
+                "OFFSEASON_OWNER": 23,             # Owner review (no social posts, use same as honors)
+                "OFFSEASON_FRANCHISE_TAG": 24,     # Franchise tags
+                "OFFSEASON_RESIGNING": 24,         # Re-signing (same week as tags)
+                "OFFSEASON_FREE_AGENCY": 25,       # Free agency
+                "OFFSEASON_TRADING": 26,           # Trading period
+                "OFFSEASON_DRAFT": 27,             # NFL Draft
+                "OFFSEASON_TRAINING_CAMP": 27,     # Training camp (no social posts, use draft week)
+                "OFFSEASON_PRESEASON_W1": 27,      # Preseason W1 (no posts yet, use draft week)
+                "OFFSEASON_PRESEASON_W2": 28,      # Preseason W2 (no posts yet, use cuts week)
+                "OFFSEASON_PRESEASON_W3": 28,      # Preseason W3 + Final roster cuts
+                "OFFSEASON_WAIVER_WIRE": 29,       # Waiver wire claims
+            }
+            return offseason_week_map.get(name)
         return None
 
     @property
@@ -159,6 +169,13 @@ class Stage:
         elif name.startswith("PRESEASON_WEEK_"):
             week = name.replace("PRESEASON_WEEK_", "")
             return f"Preseason Week {week}"
+        elif name.startswith("OFFSEASON_PRESEASON_W"):
+            # OFFSEASON_PRESEASON_W1 -> "Preseason Week 1"
+            # OFFSEASON_PRESEASON_W3 -> "Preseason Week 3 & Final Cuts"
+            week = name.replace("OFFSEASON_PRESEASON_W", "")
+            if week == "3":
+                return "Preseason Week 3 & Final Cuts"
+            return f"Preseason Week {week}"
         elif name.startswith("OFFSEASON_"):
             # Convert OFFSEASON_FREE_AGENCY -> "Free Agency"
             phase_name = name.replace("OFFSEASON_", "").replace("_", " ").title()
@@ -171,18 +188,27 @@ class Stage:
         """
         Get the next stage in the cycle.
 
+        Note: This method only determines the NEXT stage type, not the season year.
+        The season year is managed by StageController as the SSOT (Single Source of Truth).
+        StageController.advance_to_next_stage() will override the season_year from the SSOT
+        when appropriate (e.g., when transitioning to a new season).
+
         Special cases:
-        - After OFFSEASON_PRESEASON: Loop back to PRESEASON_WEEK_1 with incremented year
+        - After OFFSEASON_WAIVER_WIRE: Loop back to REGULAR_WEEK_1
+          (season increment handled by StageController, not here)
+        - Skip deprecated PRESEASON_WEEK_* stages
         """
         stages = list(StageType)
         current_index = stages.index(self.stage_type)
 
         if current_index >= len(stages) - 1:
-            # Last stage (OFFSEASON_PRESEASON) - loop back to start new season
-            next_type = stages[0]  # PRESEASON_WEEK_1
+            # Last stage (OFFSEASON_WAIVER_WIRE) - loop back to start new season
+            # Skip deprecated PRESEASON_WEEK_* stages, go directly to REGULAR_WEEK_1
+            # NOTE: Season year will be overridden by StageController from SSOT
+            next_type = StageType.REGULAR_WEEK_1
             return Stage(
                 stage_type=next_type,
-                season_year=self.season_year + 1,  # Increment year for new season
+                season_year=self.season_year,  # Placeholder, controller will override
                 completed=False
             )
 
@@ -199,12 +225,13 @@ class Stage:
 # Ordered list of all stages for iteration
 ALL_STAGES = list(StageType)
 
-# Stages that have games
+# Stages that have games (includes offseason preseason weeks)
 GAME_STAGES = (
-    [StageType.get_preseason_week(w) for w in range(1, 4)] +
     [StageType.get_regular_season_week(w) for w in range(1, 19)] +
     [StageType.WILD_CARD, StageType.DIVISIONAL,
-     StageType.CONFERENCE_CHAMPIONSHIP, StageType.SUPER_BOWL]
+     StageType.CONFERENCE_CHAMPIONSHIP, StageType.SUPER_BOWL] +
+    [StageType.OFFSEASON_PRESEASON_W1, StageType.OFFSEASON_PRESEASON_W2,
+     StageType.OFFSEASON_PRESEASON_W3]
 )
 
 # Offseason stages in order
@@ -216,8 +243,33 @@ OFFSEASON_STAGES = [
     StageType.OFFSEASON_FREE_AGENCY,
     StageType.OFFSEASON_TRADING,
     StageType.OFFSEASON_DRAFT,
-    StageType.OFFSEASON_ROSTER_CUTS,
-    StageType.OFFSEASON_WAIVER_WIRE,
-    StageType.OFFSEASON_TRAINING_CAMP,
-    StageType.OFFSEASON_PRESEASON,
+    StageType.OFFSEASON_TRAINING_CAMP,    # Training camp - player progression (90 players)
+    StageType.OFFSEASON_PRESEASON_W1,     # Preseason Week 1 - game simulation (no cuts)
+    StageType.OFFSEASON_PRESEASON_W2,     # Preseason Week 2 - game simulation (no cuts)
+    StageType.OFFSEASON_PRESEASON_W3,     # Preseason Week 3 - game + final cuts (90 → 53)
+    StageType.OFFSEASON_WAIVER_WIRE,      # Process waiver claims for cut players
 ]
+
+# Offseason stages that require user interaction (don't auto-advance)
+INTERACTIVE_OFFSEASON_STAGES = frozenset({
+    StageType.OFFSEASON_HONORS,
+    StageType.OFFSEASON_OWNER,
+    StageType.OFFSEASON_FRANCHISE_TAG,
+    StageType.OFFSEASON_RESIGNING,
+    StageType.OFFSEASON_FREE_AGENCY,
+    StageType.OFFSEASON_TRADING,
+    StageType.OFFSEASON_DRAFT,
+    StageType.OFFSEASON_PRESEASON_W1,
+    StageType.OFFSEASON_PRESEASON_W2,
+    StageType.OFFSEASON_PRESEASON_W3,
+    StageType.OFFSEASON_WAIVER_WIRE,
+})
+
+# Roster limits for each preseason phase (Modern NFL 2024+ style - single cutdown)
+# Note: No incremental cuts after W1/W2, only final cut to 53 after W3
+ROSTER_LIMITS = {
+    "TRAINING_CAMP": 90,
+    "PRESEASON_W1": 90,  # No cuts after Week 1
+    "PRESEASON_W2": 90,  # No cuts after Week 2
+    "PRESEASON_W3": 53,  # Final cuts after Week 3 (90 → 53)
+}

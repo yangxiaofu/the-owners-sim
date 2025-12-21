@@ -5,7 +5,7 @@ Dynasty-First Architecture:
 - Requires dynasty_id for all operations
 - Uses production database APIs (DatabaseAPI, DynastyStateAPI)
 - Uses production StandingsStore instead of custom standings manager
-- Shares database with main.py (nfl_simulation.db)
+- Uses game_cycle.db exclusively (main2.py entry point)
 """
 
 import logging
@@ -108,7 +108,7 @@ class StageController:
 
     Usage:
         controller = StageController(
-            db_path="path/to/nfl_simulation.db",
+            db_path="data/database/game_cycle/game_cycle.db",
             dynasty_id="my_dynasty",
             season=2025
         )
@@ -134,7 +134,7 @@ class StageController:
         Initialize the stage controller.
 
         Args:
-            db_path: Path to production database (nfl_simulation.db)
+            db_path: Path to game_cycle.db database
             dynasty_id: Dynasty identifier (REQUIRED)
             season: Season year (default: 2025)
         """
@@ -344,6 +344,9 @@ class StageController:
         If advancing to a playoff stage, pre-seeds the bracket so matchups
         are visible before games are executed.
 
+        If advancing to a new season (waiver wire → Week 1), increments the
+        season SSOT and verifies standings are initialized.
+
         Returns:
             The new current stage, or None if cannot advance
         """
@@ -351,17 +354,46 @@ class StageController:
         if current is None:
             return None
 
-        next_stage = current.next_stage()
-        if next_stage is None:
+        # Get the next stage type to check for season transition
+        next_stage_temp = current.next_stage()
+        if next_stage_temp is None:
             return None
 
+        # Check if we're transitioning to a new season (waiver wire → Week 1)
+        is_new_season = (
+            current.stage_type == StageType.OFFSEASON_WAIVER_WIRE and
+            next_stage_temp.stage_type == StageType.REGULAR_WEEK_1
+        )
+
+        # If starting new season, increment the SSOT first
+        if is_new_season:
+            logger.info(f"Transitioning to new season, incrementing SSOT from {self._season} to {self._season + 1}")
+            self._season = self._season + 1  # Increment cache
+
+            # Update SSOT in database BEFORE creating next stage
+            self._dynasty_state_api.update_season(
+                dynasty_id=self._dynasty_id,
+                season=self._season
+            )
+
+        # Now create the next stage with the correct season from SSOT
+        next_stage = Stage(
+            stage_type=next_stage_temp.stage_type,
+            season_year=self._season,  # Use SSOT, not next_stage.season_year
+            completed=False
+        )
+
         self._current_stage = next_stage
-        self._season = next_stage.season_year  # Keep season in sync with stage
         self._save_current_stage(next_stage)
 
         # Pre-seed playoff bracket when entering a playoff stage
         if next_stage.phase == SeasonPhase.PLAYOFFS:
             self._seed_playoff_bracket(next_stage)
+
+        # Verify standings initialized when starting a new regular season
+        if is_new_season:
+            logger.info(f"Starting new season {self._season}, verifying standings initialized")
+            self._verify_season_standings(self._season)
 
         return next_stage
 
@@ -789,3 +821,42 @@ class StageController:
     def get_current_stage(self) -> Optional[Stage]:
         """Public API to get current stage (used by jump_to_offseason)."""
         return self.current_stage
+
+    def _verify_season_standings(self, season: int) -> None:
+        """
+        Ensure standings exist and are initialized for the given season.
+
+        Called when transitioning to a new regular season to ensure
+        standings are properly initialized to 0-0 for all teams.
+
+        This provides defensive verification and self-healing:
+        - If standings exist (32 teams), logs confirmation
+        - If standings are missing or incomplete, initializes them to 0-0
+
+        Args:
+            season: Season year to verify standings for
+
+        Raises:
+            Exception if standings initialization fails
+        """
+        from database.unified_api import UnifiedDatabaseAPI
+
+        # UnifiedDatabaseAPI expects a database path, not a connection
+        # It will create its own connection pool
+        api = UnifiedDatabaseAPI(self._db_path, self._dynasty_id)
+
+        # Check if standings exist for this season
+        conn = api._get_connection()
+        cursor = conn.execute(
+            '''SELECT COUNT(*) FROM standings
+               WHERE dynasty_id = ? AND season = ? AND season_type = ?''',
+            (self._dynasty_id, season, 'regular_season')
+        )
+        count = cursor.fetchone()[0]
+
+        if count < 32:
+            logger.warning(f"Only {count}/32 standings records for season {season}, initializing")
+            api.standings_reset(season=season, season_type='regular_season')
+            logger.info(f"Initialized 0-0 standings for all 32 teams in season {season}")
+        else:
+            logger.info(f"Standings verified for season {season}: {count} teams")

@@ -403,6 +403,90 @@ class DynastyStateAPI:
             )
             return False
 
+    def update_season(
+        self,
+        dynasty_id: str,
+        season: int
+    ) -> bool:
+        """
+        Update the season in dynasty_state (SSOT for current season).
+
+        This is the canonical way to advance to a new season.
+        Should only be called when transitioning from offseason to new regular season.
+
+        Updates the most recent dynasty_state record's season field to the new value.
+        This method is used by StageController when transitioning from
+        OFFSEASON_WAIVER_WIRE to REGULAR_WEEK_1.
+
+        Args:
+            dynasty_id: Dynasty identifier
+            season: New season number to set
+
+        Returns:
+            True if successful, False otherwise
+
+        Raises:
+            CalendarSyncPersistenceException: If database update fails (fail-loud)
+
+        Examples:
+            >>> api = DynastyStateAPI()
+            >>> api.update_season("my_dynasty", 2026)  # Advance to season 2026
+        """
+        try:
+            # Update the most recent dynasty_state record's season field
+            query = '''
+                UPDATE dynasty_state
+                SET season = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE dynasty_id = ?
+                    AND id = (
+                        SELECT id FROM dynasty_state
+                        WHERE dynasty_id = ?
+                        ORDER BY season DESC, updated_at DESC
+                        LIMIT 1
+                    )
+            '''
+
+            rows_affected = self.db.execute_update(query, (season, dynasty_id, dynasty_id))
+
+            # FAIL-LOUD: If no rows affected, dynasty doesn't exist
+            if rows_affected == 0:
+                self.logger.error(
+                    f"Season SSOT update failed - no rows affected!\n"
+                    f"  Dynasty ID: {dynasty_id}\n"
+                    f"  New Season: {season}\n"
+                    f"  Reason: Dynasty may not exist or no state records found"
+                )
+                raise CalendarSyncPersistenceException(
+                    operation="season_update",
+                    sync_point="update_season",
+                    state_info={
+                        "dynasty_id": dynasty_id,
+                        "season": season,
+                        "reason": "No rows affected - dynasty may not exist"
+                    }
+                )
+
+            self.logger.info(f"Updated season SSOT to {season} for dynasty {dynasty_id}")
+            return True
+
+        except CalendarSyncPersistenceException:
+            # Re-raise our custom exception without wrapping
+            raise
+
+        except Exception as e:
+            # Log and wrap database errors
+            self.logger.error(f"Error updating season SSOT: {e}", exc_info=True)
+            raise CalendarSyncPersistenceException(
+                operation="season_update",
+                sync_point="update_season",
+                state_info={
+                    "dynasty_id": dynasty_id,
+                    "season": season,
+                    "error": str(e)
+                }
+            ) from e
+
     def delete_state(
         self,
         dynasty_id: str,
