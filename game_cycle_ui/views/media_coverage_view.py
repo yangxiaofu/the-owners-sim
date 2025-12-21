@@ -49,6 +49,7 @@ from game_cycle_ui.theme import (
 )
 from constants.position_abbreviations import get_position_abbreviation
 from constants.team_abbreviations import get_team_abbreviation
+from src.utils.player_stat_formatter import format_player_stats, StatFormatStyle, CaseStyle
 from game_cycle_ui.widgets.scoreboard_ticker_widget import ScoreboardTickerWidget
 from game_cycle_ui.widgets.breaking_news_widget import BreakingNewsBanner
 from game_cycle_ui.widgets.espn_headline_widget import ESPNHeadlinesGridWidget
@@ -1102,39 +1103,13 @@ class MediaCoverageView(QWidget):
         }
 
     def _build_stats_line(self, player_data: Dict[str, Any], position: str) -> str:
-        """Build position-specific stats highlight string."""
-        if position == 'QB':
-            yds = player_data.get('passing_yards', 0)
-            tds = player_data.get('passing_tds', 0)
-            ints = player_data.get('passing_interceptions', 0)
-            return f"{yds} YDS, {tds} TD, {ints} INT"
-
-        elif position == 'RB':
-            rush_yds = player_data.get('rushing_yards', 0)
-            rush_tds = player_data.get('rushing_tds', 0)
-            rec_yds = player_data.get('receiving_yards', 0)
-            if rec_yds > 0:
-                return f"{rush_yds} RUSH YDS, {rec_yds} REC YDS, {rush_tds} TD"
-            return f"{rush_yds} YDS, {rush_tds} TD"
-
-        elif position in ('WR', 'TE'):
-            rec = player_data.get('receptions', 0)
-            yds = player_data.get('receiving_yards', 0)
-            tds = player_data.get('receiving_tds', 0)
-            return f"{rec} REC, {yds} YDS, {tds} TD"
-
-        elif position in ('CB', 'S', 'FS', 'SS', 'LB', 'MLB', 'OLB', 'LOLB', 'ROLB', 'DE', 'DT', 'LE', 'RE'):
-            tackles = player_data.get('tackles_total', 0)
-            sacks = player_data.get('sacks', 0)
-            ints = player_data.get('interceptions', 0)
-            if ints > 0:
-                return f"{tackles} TKL, {ints} INT, {sacks:.1f} SK"
-            return f"{tackles} TKL, {sacks:.1f} SK"
-
-        else:
-            # Generic fallback
-            fp = player_data.get('fantasy_points', 0)
-            return f"{fp:.1f} Fantasy Points"
+        """Build position-specific stats highlight string (uses centralized formatter)."""
+        return format_player_stats(
+            player_data,
+            position,
+            style=StatFormatStyle.COMPACT,
+            case=CaseStyle.UPPERCASE  # UI uses uppercase
+        )
 
     def _get_team_abbreviation(self, team_id: int) -> str:
         """Get 2-3 letter team abbreviation from team_id."""

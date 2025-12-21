@@ -23,6 +23,7 @@ from ..stage_definitions import Stage, StageType
 from ..game_result_generator import generate_instant_result
 from ..services.game_simulator_service import GameSimulatorService, SimulationMode
 from constants.position_abbreviations import get_position_abbreviation
+from src.utils.player_stat_formatter import format_player_stats, StatFormatStyle, CaseStyle
 
 logger = logging.getLogger(__name__)
 
@@ -1012,7 +1013,7 @@ class RegularSeasonHandler:
         stats_dict: Dict[str, Any]
     ) -> str:
         """
-        Format player stats for display based on position.
+        Format player stats for display based on position (uses centralized formatter).
 
         Args:
             stats_dict: Stats dict from PlayerSeasonStatsAPI containing:
@@ -1025,71 +1026,25 @@ class RegularSeasonHandler:
             - QB: "287 yds, 2 TD, 0 INT"
             - RB: "112 yds, 1 TD"
             - WR: "8 rec, 95 yds, 1 TD"
+            - LB: "12 tkl, 1.5 sk"
         """
-        # Convert position from database format (e.g., "quarterback") to abbreviation (e.g., "QB")
+        # Extract position
         raw_position = stats_dict.get('position', 'PLAYER')
         position = get_position_abbreviation(raw_position)
 
-        # Handle both nested and flat stat formats
-        # get_weekly_top_performers returns flat format (stats at top level)
-        # Other callers may pass nested format (stats under 'stats' key)
+        # Get stats - handle both nested and flat formats
         if 'stats' in stats_dict:
-            stats = stats_dict['stats']  # Nested format
+            stats = stats_dict['stats']
         else:
-            stats = stats_dict  # Flat format
+            stats = stats_dict
 
-        parts = []
-
-        if position == 'QB':
-            # Passing stats
-            passing_yards = stats.get('passing_yards', 0)
-            passing_tds = stats.get('passing_tds', 0)
-            passing_ints = stats.get('passing_interceptions', 0)
-
-            if passing_yards:
-                parts.append(f"{passing_yards} yds")
-            if passing_tds:
-                parts.append(f"{passing_tds} TD")
-            parts.append(f"{passing_ints} INT")
-
-            # Rushing stats (if significant)
-            rushing_yards = stats.get('rushing_yards', 0)
-            if rushing_yards and rushing_yards >= 20:
-                parts.append(f"{rushing_yards} rush")
-
-        elif position in ('RB', 'FB'):
-            # Rushing stats
-            rushing_yards = stats.get('rushing_yards', 0)
-            rushing_tds = stats.get('rushing_tds', 0)
-
-            if rushing_yards:
-                parts.append(f"{rushing_yards} yds")
-            if rushing_tds:
-                parts.append(f"{rushing_tds} TD")
-
-            # Receiving stats (if significant)
-            receptions = stats.get('receptions', 0)
-            receiving_yards = stats.get('receiving_yards', 0)
-
-            if receptions:
-                parts.append(f"{receptions} rec")
-            if receiving_yards:
-                parts.append(f"{receiving_yards} rec yds")
-
-        elif position in ('WR', 'TE'):
-            # Receiving stats
-            receptions = stats.get('receptions', 0)
-            receiving_yards = stats.get('receiving_yards', 0)
-            receiving_tds = stats.get('receiving_tds', 0)
-
-            if receptions:
-                parts.append(f"{receptions} rec")
-            if receiving_yards:
-                parts.append(f"{receiving_yards} yds")
-            if receiving_tds:
-                parts.append(f"{receiving_tds} TD")
-
-        return ", ".join(parts) if parts else "N/A"
+        # Use centralized formatter
+        return format_player_stats(
+            stats,
+            position,
+            style=StatFormatStyle.COMPACT,
+            case=CaseStyle.LOWERCASE
+        )
 
     def _get_top_performers_for_week(
         self,
