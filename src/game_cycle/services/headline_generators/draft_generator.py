@@ -13,6 +13,7 @@ Generates headlines for:
 from typing import List, Optional
 
 from constants.position_abbreviations import get_position_abbreviation
+from utils.player_field_extractors import extract_overall_rating
 from .base_generator import BaseHeadlineGenerator, GeneratedHeadline
 from game_cycle.models.transaction_event import TransactionEvent, TransactionType
 

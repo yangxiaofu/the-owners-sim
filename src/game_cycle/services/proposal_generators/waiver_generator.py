@@ -10,6 +10,7 @@ to PersistentGMProposal objects for owner approval workflow.
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from utils.player_field_extractors import extract_overall_rating
 from game_cycle.models.owner_directives import OwnerDirectives
 from game_cycle.models.persistent_gm_proposal import (
     PersistentGMProposal,
@@ -119,7 +120,7 @@ class WaiverProposalGenerator:
         )
         quality_players = [
             p for p in available_players
-            if p.get("overall", 0) >= quality_threshold
+            if extract_overall_rating(p, default=0) >= quality_threshold
         ]
 
         if not quality_players:
@@ -198,7 +199,7 @@ class WaiverProposalGenerator:
         Returns:
             Claim score (higher = more valuable claim)
         """
-        overall = player.get("overall", 0)
+        overall = extract_overall_rating(player, default=0)
         age = player.get("age", 25)
         position = player.get("position", "")
 
@@ -273,7 +274,7 @@ class WaiverProposalGenerator:
             Probability between 0.0 and 1.0
         """
         team_priority = self._get_team_priority()
-        overall = player.get("overall", 70)
+        overall = extract_overall_rating(player, default=70)
 
         # Base probability from priority
         # Priority 1 = 95%, Priority 16 = 50%, Priority 32 = 10%
@@ -308,7 +309,7 @@ class WaiverProposalGenerator:
             Priority tier (1=HIGH, 2=MEDIUM, 3=LOW)
         """
         position = player.get("position", "")
-        overall = player.get("overall", 70)
+        overall = extract_overall_rating(player, default=70)
 
         # TIER_HIGH_PRIORITY: Top 2 priority positions + quality + good chance
         if position in self._directives.priority_positions[:2]:  # Top 2 positions
@@ -381,7 +382,7 @@ class WaiverProposalGenerator:
         name = player.get("name", f"Player {player.get('player_id', '?')}")
         position = player.get("position", "")
         age = player.get("age", 0)
-        overall = player.get("overall", 0)
+        overall = extract_overall_rating(player, default=0)
         team_priority = self._get_team_priority()
 
         philosophy = self._directives.team_philosophy
@@ -513,7 +514,7 @@ class WaiverProposalGenerator:
         name = player.get("name", f"Player {player.get('player_id', '?')}")
         position = player.get("position", "")
         age = player.get("age", 0)
-        overall = player.get("overall", 0)
+        overall = extract_overall_rating(player, default=0)
         waiver_priority = self._get_team_priority()
 
         # Estimate contract remaining (simplified - actual values from player contract)
@@ -552,6 +553,6 @@ class WaiverProposalGenerator:
             gm_reasoning=reasoning,
             confidence=confidence,
             priority=tier,  # Use tier directly as priority
-            status=ProposalStatus.PENDING,
+            status=ProposalStatus.APPROVED,  # Default to approved - owner can reject
             created_at=datetime.now(),
         )

@@ -11,6 +11,7 @@ from datetime import date
 from typing import Any, Dict, List, Optional
 
 from src.persistence.transaction_logger import TransactionLogger
+from utils.player_field_extractors import extract_overall_rating
 from src.transactions.transaction_constants import TRADE_DEADLINE_WEEK
 from src.transactions.models import (
     TradeAsset, TradeProposal, TradeDecision, AssetType, FairnessRating,
@@ -123,7 +124,7 @@ class TradeService:
                     p.last_name,
                     p.positions as position,
                     json_extract(p.attributes, '$.overall') as overall_rating,
-                    CAST((julianday('now') - julianday(p.birthdate)) / 365.25 AS INTEGER) as age,
+                    ? - CAST(substr(p.birthdate, 1, 4) AS INTEGER) as age,
                     p.years_pro,
                     pc.contract_id,
                     pc.end_year - ? as years_remaining,
@@ -139,7 +140,7 @@ class TradeService:
                     AND p.team_id = ?
                     AND COALESCE(p.status, 'active') != 'IR'
                 ORDER BY json_extract(p.attributes, '$.overall') DESC, p.positions
-            """, (self._season, self._season, self._dynasty_id, team_id))
+            """, (self._season, self._season, self._season, self._dynasty_id, team_id))
 
             players = []
             for row in cursor.fetchall():
@@ -598,7 +599,7 @@ class TradeService:
                     p.first_name || ' ' || p.last_name as name,
                     p.positions as position,
                     json_extract(p.attributes, '$.overall') as overall_rating,
-                    CAST((julianday('now') - julianday(p.birthdate)) / 365.25 AS INTEGER) as age,
+                    ? - CAST(substr(p.birthdate, 1, 4) AS INTEGER) as age,
                     p.years_pro,
                     p.team_id,
                     pc.contract_id,
@@ -610,7 +611,7 @@ class TradeService:
                 LEFT JOIN contract_year_details cyd ON pc.contract_id = cyd.contract_id
                     AND cyd.season_year = ?
                 WHERE p.dynasty_id = ? AND p.player_id = ?
-            """, (self._season, self._season, self._dynasty_id, player_id))
+            """, (self._season, self._season, self._season, self._dynasty_id, player_id))
 
             row = cursor.fetchone()
             if row:
@@ -754,7 +755,7 @@ class TradeService:
                 self._transaction_logger.log_transaction(
                     dynasty_id=self._dynasty_id,
                     season=self._season,
-                    transaction_type="TRADE_PICK",
+                    transaction_type="TRADE",
                     player_id=pick["pick_id"],  # Use pick_id as player_id
                     player_name=f"Round {pick['round']} Pick ({pick['season']})",
                     position="PICK",
@@ -803,10 +804,17 @@ class TradeService:
         """, (self._dynasty_id, player_id))
         player = cursor.fetchone()
 
-        # 2. Update player's team_id
+        # 2. Update player's team_id in players table
         conn.execute("""
             UPDATE players
             SET team_id = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE dynasty_id = ? AND player_id = ?
+        """, (to_team_id, self._dynasty_id, player_id))
+
+        # 3. Update team_rosters table to maintain consistency
+        conn.execute("""
+            UPDATE team_rosters
+            SET team_id = ?
             WHERE dynasty_id = ? AND player_id = ?
         """, (to_team_id, self._dynasty_id, player_id))
 
@@ -1212,7 +1220,7 @@ class TradeService:
         for player in players:
             # Calculate trade value
             trade_value = self._get_value_calculator.calculate_player_value(
-                overall_rating=player.get("overall_rating", 70),
+                overall_rating=extract_overall_rating(player, default=70),
                 position=player.get("position", ""),
                 age=player.get("age", 25),
                 contract_years_remaining=player.get("contract_years_remaining"),
@@ -1224,7 +1232,7 @@ class TradeService:
                 player_id=player["player_id"],
                 player_name=player.get("name", "Unknown"),
                 position=player.get("position"),
-                overall_rating=player.get("overall_rating"),
+                overall_rating=extract_overall_rating(player, default=0),
                 age=player.get("age"),
                 years_pro=player.get("years_pro"),
                 contract_years_remaining=player.get("contract_years_remaining"),

@@ -37,6 +37,7 @@ from game_cycle_ui.widgets.hover_card import HoverCard
 from game_cycle_ui.widgets.roster_health_widget import RosterHealthWidget
 from game_cycle_ui.utils.table_utils import NumericTableWidgetItem, TableCellHelper
 from constants.position_abbreviations import get_position_abbreviation
+from utils.player_field_extractors import extract_overall_rating
 
 
 class ResigningView(QWidget, SplitterLayoutMixin):
@@ -615,6 +616,25 @@ class ResigningView(QWidget, SplitterLayoutMixin):
                 self._proposal_cards[contract_id] = card  # Track card by contract_id
             self.restructure_proposals_layout.addWidget(card)
 
+    def clear_restructure_proposals(self):
+        """
+        Clear all restructure proposals and their cards.
+
+        Used when re-evaluating to allow fresh proposal generation.
+        """
+        self._restructure_proposals.clear()
+        self._proposal_cards.clear()
+
+        # Remove all card widgets (except header)
+        while self.restructure_proposals_layout.count() > 1:
+            item = self.restructure_proposals_layout.takeAt(1)
+            if item.widget():
+                item.widget().deleteLater()
+
+        # Hide proposals widget, show manual restructure button
+        self.restructure_proposals_widget.hide()
+        self.restructure_btn.show()
+
     def _create_restructure_proposal_card(self, proposal: Dict) -> QWidget:
         """Create a single restructure proposal card widget."""
         card = QWidget()
@@ -634,7 +654,7 @@ class ResigningView(QWidget, SplitterLayoutMixin):
         player_info_layout = QHBoxLayout()
         player_name = proposal.get("player_name", "Unknown")
         position = get_position_abbreviation(proposal.get("position", ""))
-        overall = proposal.get("overall", 0)
+        overall = extract_overall_rating(proposal, default=0)
 
         player_label = QLabel(f"{player_name} ({position}, {overall} OVR)")
         player_label.setFont(QFont(Typography.FAMILY, 12, QFont.Weight.Bold))
@@ -1111,7 +1131,7 @@ class ResigningView(QWidget, SplitterLayoutMixin):
         self.extensions_table.setItem(row, 2, age_item)
 
         # OVR (color coded: 85+ green, 75+ blue)
-        ovr = rec.get("overall", 0)
+        ovr = extract_overall_rating(rec, default=0)
         ovr_item = NumericTableWidgetItem(ovr)
         ovr_item.setTextAlignment(Qt.AlignCenter)
         ovr_item.setFlags(ovr_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
@@ -1238,7 +1258,7 @@ class ResigningView(QWidget, SplitterLayoutMixin):
         self.extensions_table.setItem(row, 2, age_item)
 
         # OVR (color coded: 85+ green, 75+ blue)
-        ovr = details.get("overall", 0)
+        ovr = extract_overall_rating(details, default=0)
         ovr_item = NumericTableWidgetItem(ovr)
         ovr_item.setTextAlignment(Qt.AlignCenter)
         ovr_item.setFlags(ovr_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
@@ -1494,8 +1514,9 @@ class ResigningView(QWidget, SplitterLayoutMixin):
             self.extension_summary_label.setText(self._original_summary_text)
         self.extension_summary_label.setStyleSheet(f"color: {TextColors.ON_LIGHT_SECONDARY};")
 
-        # Show action buttons again
+        # Show action buttons again AND re-enable them
         self.reevaluate_gm_btn.show()
+        self.reevaluate_gm_btn.setEnabled(True)  # Re-enable button after cancel/error
         self.approve_all_btn.show()
         self.reject_all_btn.show()
 

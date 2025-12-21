@@ -12,6 +12,7 @@ import sqlite3
 import json
 
 from src.persistence.transaction_logger import TransactionLogger
+from utils.player_field_extractors import extract_overall_rating
 
 
 class RosterCutsService:
@@ -213,10 +214,10 @@ class RosterCutsService:
             position = positions[0] if positions else ""
 
             # Extract overall and potential from JSON attributes
+            overall = extract_overall_rating(player, default=0)
             attributes = player.get("attributes", {})
             if isinstance(attributes, str):
                 attributes = json.loads(attributes)
-            overall = attributes.get("overall", 0)
             potential = attributes.get("potential", 0)
 
             # Calculate age from birthdate if available
@@ -831,10 +832,10 @@ class RosterCutsService:
                         positions = json.loads(positions)
                     position = positions[0] if positions else ""
 
+                    overall = extract_overall_rating(player_info, default=0)
                     attributes = player_info.get("attributes", {})
                     if isinstance(attributes, str):
                         attributes = json.loads(attributes)
-                    overall = attributes.get("overall", 0)
                     potential = attributes.get("potential", 0)
 
                     # Get development type from archetype

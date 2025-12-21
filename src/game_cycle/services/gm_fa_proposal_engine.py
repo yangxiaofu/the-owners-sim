@@ -10,11 +10,15 @@ Design:
 - Returns top N proposals for owner review
 """
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 import random
 
 from src.game_cycle.models import FAGuidance, FAPhilosophy, GMProposal
 from src.team_management.gm_archetype import GMArchetype
+from utils.player_field_extractors import extract_overall_rating
+
+if TYPE_CHECKING:
+    from src.game_cycle.services.valuation_service import ValuationService
 
 
 class GMFAProposalEngine:
@@ -31,7 +35,9 @@ class GMFAProposalEngine:
     def __init__(
         self,
         gm_archetype: GMArchetype,
-        fa_guidance: FAGuidance
+        fa_guidance: FAGuidance,
+        valuation_service: Optional["ValuationService"] = None,
+        team_id: Optional[int] = None
     ):
         """
         Initialize proposal engine.
@@ -39,9 +45,20 @@ class GMFAProposalEngine:
         Args:
             gm_archetype: GM's personality traits
             fa_guidance: Owner's strategic guidance
+            valuation_service: Optional ContractValuationEngine service for sophisticated valuations
+            team_id: Team ID (required if valuation_service provided)
         """
         self.gm = gm_archetype
         self.guidance = fa_guidance
+        self._valuation_service = valuation_service
+        self._team_id = team_id
+
+        # Debug logging for GM proposal engine initialization
+        print(f"[DEBUG] GMFAProposalEngine initialized: priority_positions={fa_guidance.priority_positions}")
+
+        # Validation: if valuation_service provided, team_id is required
+        if valuation_service and team_id is None:
+            raise ValueError("team_id required when valuation_service is provided")
 
     def generate_proposals(
         self,
@@ -112,7 +129,7 @@ class GMFAProposalEngine:
 
         for player in available_players:
             # Estimate minimum AAV needed (rough guess based on rating)
-            min_aav = player.get("overall", 0) * 100_000  # $100k per OVR point
+            min_aav = extract_overall_rating(player, default=0) * 100_000  # $100k per OVR point
 
             # Skip if clearly can't afford
             if min_aav > cap_space:
@@ -147,7 +164,7 @@ class GMFAProposalEngine:
         Returns:
             Score (0-100+, higher = better fit)
         """
-        score = float(player.get("overall", 0))  # Base value
+        score = float(extract_overall_rating(player, default=0))  # Base value
 
         # Archetype modifiers
         age = player.get("age", 25)
@@ -181,6 +198,22 @@ class GMFAProposalEngine:
         position = player.get("position", "")
         if position in self.guidance.priority_positions:
             score += 15
+            player_name = f"{player.get('first_name', '')} {player.get('last_name', '')}".strip()
+            print(f"[DEBUG] Priority position bonus +15 for {player_name} ({position})")
+
+        # Wishlist bonus - owner's specific targets
+        if self.guidance.wishlist_names:
+            first_name = player.get("first_name", "")
+            last_name = player.get("last_name", "")
+            player_full_name = f"{first_name} {last_name}".strip()
+
+            # Check full name or last name match (case-insensitive)
+            for wishlist_name in self.guidance.wishlist_names:
+                wishlist_lower = wishlist_name.lower()
+                if (player_full_name.lower() == wishlist_lower or
+                        last_name.lower() == wishlist_lower):
+                    score += 20  # Strong bonus for owner's wishlist targets
+                    break
 
         # Need urgency
         position_need = needs.get(position, 5)  # 0 = critical, 5 = no need
@@ -217,73 +250,54 @@ class GMFAProposalEngine:
         Returns:
             GMProposal with terms + reasoning, or None if can't create valid offer
         """
-        # Estimate market value (rough formula, would be more sophisticated)
-        base_market_value = player.get("overall", 0) * 100_000
-
-        # Adjust market value by tier
+        # Get tier and age for logic below
         tier = player.get("tier", "Unknown")
-        if tier == "Elite":
-            market_value = int(base_market_value * 1.5)
-        elif tier == "Quality":
-            market_value = int(base_market_value * 1.2)
-        elif tier == "Depth":
-            market_value = int(base_market_value * 0.8)
+        age = player.get("age", 25)
+
+        # Check if we should use the valuation engine
+        if self._valuation_service and self._team_id:
+            # Use sophisticated ContractValuationEngine
+            try:
+                valuation_result = self._valuation_service.valuate_player(
+                    player_data=player,
+                    team_id=self._team_id,
+                    gm_archetype=self.gm,
+                )
+                aav = valuation_result.offer.aav
+                years = valuation_result.offer.years
+                guaranteed = valuation_result.offer.guaranteed
+
+                # Adjust for FA guidance philosophy
+                if self.guidance.philosophy == FAPhilosophy.AGGRESSIVE:
+                    aav = int(aav * 1.05)  # +5% for aggressive approach
+                    guaranteed = int(guaranteed * 1.1)  # +10% guaranteed
+                elif self.guidance.philosophy == FAPhilosophy.CONSERVATIVE:
+                    aav = int(aav * 0.95)  # -5% for conservative approach
+                    guaranteed = int(guaranteed * 0.9)  # -10% guaranteed
+
+                # Apply guidance year caps
+                years = min(years, self.guidance.max_contract_years)
+
+                # Apply guidance guaranteed cap (as % of total value)
+                total_value = aav * years
+                max_guaranteed = int(total_value * self.guidance.max_guaranteed_percent)
+                guaranteed = min(guaranteed, max_guaranteed)
+
+            except Exception as e:
+                # Fallback to legacy formula if valuation fails
+                print(f"[WARNING GMFAProposalEngine] Valuation engine failed, using legacy formula: {e}")
+                aav, years, guaranteed = self._legacy_contract_calculation(
+                    player, score, cap_space
+                )
         else:
-            market_value = base_market_value
-
-        # AAV calculation based on archetype
-        if self.gm.cap_management > 0.7:
-            # Conservative: 85-95% market
-            aav_percent = 0.85 + (self.gm.risk_tolerance * 0.10)
-        elif self.gm.cap_management < 0.3:
-            # Aggressive: 95-110% market
-            aav_percent = 0.95 + (self.gm.star_chasing * 0.15)
-        else:
-            # Balanced: 90-100% market
-            aav_percent = 0.90 + (score / 1000)  # Score-based adjustment
-
-        # Apply philosophy modifier
-        if self.guidance.philosophy == FAPhilosophy.AGGRESSIVE:
-            aav_percent += 0.05  # +5% for aggressive approach
-        elif self.guidance.philosophy == FAPhilosophy.CONSERVATIVE:
-            aav_percent -= 0.05  # -5% for conservative approach
-
-        aav = int(market_value * aav_percent)
+            # Use legacy formula (backward compatibility)
+            aav, years, guaranteed = self._legacy_contract_calculation(
+                player, score, cap_space
+            )
 
         # Cap check - can't exceed available space
         if aav > cap_space:
             return None  # Can't afford this player
-
-        # Contract years based on archetype + age + guidance
-        age = player.get("age", 25)
-
-        if self.gm.risk_tolerance > 0.7:
-            base_years = 5
-        elif age >= 30:
-            base_years = 2  # Short deals for older players
-        elif age < 25:
-            base_years = 4  # Longer deals for young players
-        else:
-            base_years = 3
-
-        years = min(base_years, self.guidance.max_contract_years)
-
-        # Guaranteed money based on archetype + guidance
-        if self.gm.risk_tolerance > 0.7:
-            base_guaranteed = 0.7  # High risk = high guarantees
-        elif self.gm.cap_management > 0.7:
-            base_guaranteed = 0.35  # Conservative = low guarantees
-        else:
-            base_guaranteed = 0.5  # Balanced
-
-        # Apply philosophy modifier
-        if self.guidance.philosophy == FAPhilosophy.AGGRESSIVE:
-            base_guaranteed += 0.1
-        elif self.guidance.philosophy == FAPhilosophy.CONSERVATIVE:
-            base_guaranteed -= 0.1
-
-        guaranteed_percent = min(base_guaranteed, self.guidance.max_guaranteed_percent)
-        guaranteed = int(aav * years * guaranteed_percent)
 
         # Signing bonus (30% of guaranteed as upfront money)
         signing_bonus = int(guaranteed * 0.3)
@@ -303,7 +317,22 @@ class GMFAProposalEngine:
         pitch = self._generate_pitch(player, needs, score, tier)
 
         # Generate archetype rationale
-        rationale = self._generate_archetype_rationale(player, aav, years, tier)
+        # Include valuation result if available
+        valuation_description = None
+        if self._valuation_service and self._team_id:
+            try:
+                valuation_result = self._valuation_service.valuate_player(
+                    player_data=player,
+                    team_id=self._team_id,
+                    gm_archetype=self.gm,
+                )
+                valuation_description = valuation_result.gm_style_description
+            except Exception:
+                pass
+
+        rationale = self._generate_archetype_rationale(
+            player, aav, years, tier, valuation_description
+        )
 
         # Determine need addressed
         position = player.get("position", "")
@@ -326,7 +355,7 @@ class GMFAProposalEngine:
                 player_name=player.get("full_name", player.get("name", "Unknown")),
                 position=position,
                 age=age,
-                overall_rating=player.get("overall", 0),
+                overall_rating=extract_overall_rating(player, default=0),
                 tier=tier,
                 aav=aav,
                 years=years,
@@ -338,8 +367,8 @@ class GMFAProposalEngine:
                 cap_impact=cap_impact,
                 remaining_cap_after=remaining_cap,
                 score_breakdown={
-                    "base": float(player.get("overall", 0)),
-                    "archetype_fit": score - float(player.get("overall", 0)),
+                    "base": float(extract_overall_rating(player, default=0)),
+                    "archetype_fit": score - float(extract_overall_rating(player, default=0)),
                     "total": score,
                 }
             )
@@ -361,7 +390,7 @@ class GMFAProposalEngine:
         position_need = needs.get(position, 5)
         name = player.get("full_name", player.get("name", "Unknown"))
         age = player.get("age", 25)
-        overall = player.get("overall", 0)
+        overall = extract_overall_rating(player, default=0)
 
         # Urgency based on score
         if score > 90:
@@ -406,10 +435,15 @@ class GMFAProposalEngine:
         player: Dict[str, Any],
         aav: int,
         years: int,
-        tier: str
+        tier: str,
+        valuation_description: Optional[str] = None
     ) -> str:
         """Explain how proposal fits GM's archetype."""
         reasons = []
+
+        # If we have a valuation description from the engine, use it first
+        if valuation_description:
+            reasons.append(valuation_description)
 
         # Star chasing
         if self.gm.star_chasing > 0.7 and tier == "Elite":
@@ -441,3 +475,81 @@ class GMFAProposalEngine:
             reasons.append("Balanced approach to roster building")
 
         return ". ".join(reasons) + "."
+
+    def _legacy_contract_calculation(
+        self,
+        player: Dict[str, Any],
+        score: float,
+        cap_space: int
+    ) -> tuple[int, int, int]:
+        """
+        Legacy contract calculation formula (pre-valuation engine).
+
+        Returns:
+            Tuple of (aav, years, guaranteed)
+        """
+        # Estimate market value (rough formula)
+        base_market_value = extract_overall_rating(player, default=0) * 100_000
+
+        # Adjust market value by tier
+        tier = player.get("tier", "Unknown")
+        if tier == "Elite":
+            market_value = int(base_market_value * 1.5)
+        elif tier == "Quality":
+            market_value = int(base_market_value * 1.2)
+        elif tier == "Depth":
+            market_value = int(base_market_value * 0.8)
+        else:
+            market_value = base_market_value
+
+        # AAV calculation based on archetype
+        if self.gm.cap_management > 0.7:
+            # Conservative: 85-95% market
+            aav_percent = 0.85 + (self.gm.risk_tolerance * 0.10)
+        elif self.gm.cap_management < 0.3:
+            # Aggressive: 95-110% market
+            aav_percent = 0.95 + (self.gm.star_chasing * 0.15)
+        else:
+            # Balanced: 90-100% market
+            aav_percent = 0.90 + (score / 1000)  # Score-based adjustment
+
+        # Apply philosophy modifier
+        if self.guidance.philosophy == FAPhilosophy.AGGRESSIVE:
+            aav_percent += 0.05  # +5% for aggressive approach
+        elif self.guidance.philosophy == FAPhilosophy.CONSERVATIVE:
+            aav_percent -= 0.05  # -5% for conservative approach
+
+        aav = int(market_value * aav_percent)
+
+        # Contract years based on archetype + age + guidance
+        age = player.get("age", 25)
+
+        if self.gm.risk_tolerance > 0.7:
+            base_years = 5
+        elif age >= 30:
+            base_years = 2  # Short deals for older players
+        elif age < 25:
+            base_years = 4  # Longer deals for young players
+        else:
+            base_years = 3
+
+        years = min(base_years, self.guidance.max_contract_years)
+
+        # Guaranteed money based on archetype + guidance
+        if self.gm.risk_tolerance > 0.7:
+            base_guaranteed = 0.7  # High risk = high guarantees
+        elif self.gm.cap_management > 0.7:
+            base_guaranteed = 0.35  # Conservative = low guarantees
+        else:
+            base_guaranteed = 0.5  # Balanced
+
+        # Apply philosophy modifier
+        if self.guidance.philosophy == FAPhilosophy.AGGRESSIVE:
+            base_guaranteed += 0.1
+        elif self.guidance.philosophy == FAPhilosophy.CONSERVATIVE:
+            base_guaranteed -= 0.1
+
+        guaranteed_percent = min(base_guaranteed, self.guidance.max_guaranteed_percent)
+        guaranteed = int(aav * years * guaranteed_percent)
+
+        return aav, years, guaranteed

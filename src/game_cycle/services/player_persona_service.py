@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Tuple, Any
 
 from src.player_management.player_persona import PlayerPersona, PersonaType
 from src.game_cycle.database.persona_api import PersonaAPI, PersonaRecord
+from utils.player_field_extractors import extract_overall_rating
 
 
 # Base distribution weights (total = 100)
@@ -537,14 +538,13 @@ class PlayerPersonaService:
             Tuple of (age, overall, position)
         """
         # Parse attributes JSON
+        overall = extract_overall_rating(player, default=70)
         attributes = player.get("attributes", {})
         if isinstance(attributes, str):
             try:
                 attributes = json.loads(attributes)
             except json.JSONDecodeError:
                 attributes = {}
-
-        overall = attributes.get("overall", 70)
 
         # Parse positions JSON
         positions = player.get("positions", [])

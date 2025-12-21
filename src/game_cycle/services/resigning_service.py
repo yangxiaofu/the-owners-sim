@@ -9,7 +9,8 @@ from datetime import date
 from typing import Dict, List, Any, Optional, Tuple
 import logging
 
-from src.persistence.transaction_logger import TransactionLogger
+from persistence.transaction_logger import TransactionLogger
+from utils.player_field_extractors import extract_overall_rating
 
 
 class ResigningService:
@@ -73,7 +74,7 @@ class ResigningService:
     def _get_persona_service(self):
         """Lazy-load PlayerPersonaService."""
         if self._persona_service is None:
-            from src.game_cycle.services.player_persona_service import PlayerPersonaService
+            from game_cycle.services.player_persona_service import PlayerPersonaService
             self._persona_service = PlayerPersonaService(
                 self._db_path, self._dynasty_id, self._season
             )
@@ -82,8 +83,8 @@ class ResigningService:
     def _get_attractiveness_service(self):
         """Lazy-load TeamAttractivenessService."""
         if self._attractiveness_service is None:
-            from src.game_cycle.services.team_attractiveness_service import TeamAttractivenessService
-            from src.game_cycle.database.connection import GameCycleDatabase
+            from game_cycle.services.team_attractiveness_service import TeamAttractivenessService
+            from game_cycle.database.connection import GameCycleDatabase
             db = GameCycleDatabase(self._db_path)
             self._attractiveness_service = TeamAttractivenessService(
                 db, self._dynasty_id, self._season
@@ -93,7 +94,7 @@ class ResigningService:
     def _get_preference_engine(self):
         """Lazy-load PlayerPreferenceEngine."""
         if self._preference_engine is None:
-            from src.player_management.preference_engine import PlayerPreferenceEngine
+            from player_management.preference_engine import PlayerPreferenceEngine
             self._preference_engine = PlayerPreferenceEngine()
         return self._preference_engine
 
@@ -294,11 +295,11 @@ class ResigningService:
                     position = positions[0] if positions else ""
 
                     # Extract overall and potential from JSON attributes
+                    overall = extract_overall_rating(player_info, default=0)
                     attributes = player_info.get("attributes", {})
                     if isinstance(attributes, str):
                         import json
                         attributes = json.loads(attributes)
-                    overall = attributes.get("overall", 0)
                     potential = attributes.get("potential", overall)
 
                     # Calculate age from birthdate if available
@@ -509,10 +510,10 @@ class ResigningService:
             position = positions[0] if positions else ""
 
             # Extract overall from JSON attributes object
+            overall = extract_overall_rating(player_info, default=70)
             attributes = player_info.get("attributes", {})
             if isinstance(attributes, str):
                 attributes = json.loads(attributes)
-            overall = attributes.get("overall", 70)
 
             # Calculate age from birthdate
             age = 25  # Default
@@ -791,10 +792,10 @@ class ResigningService:
             player_position = positions[0] if positions else ""
 
             # Extract overall from JSON attributes object
+            player_overall = extract_overall_rating(player_info, default=0)
             attributes = player_info.get("attributes", {})
             if isinstance(attributes, str):
                 attributes = json.loads(attributes)
-            player_overall = attributes.get("overall", 0)
 
             # Calculate age from birthdate
             player_age = player_info.get("age", 0)  # Use cached age if available
@@ -997,7 +998,7 @@ class ResigningService:
         Returns:
             Tuple of (should_attempt, acceptance_probability, concerns)
         """
-        overall = player.get("overall", 0)
+        overall = extract_overall_rating(player, default=0)
         age = player.get("age", 0)
         position = player.get("position", "")
         player_id = player.get("player_id")

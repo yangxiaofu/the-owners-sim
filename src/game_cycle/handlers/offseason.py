@@ -15,6 +15,9 @@ import sqlite3
 import traceback
 from typing import Any, Callable, Dict, List, Optional
 
+# Utilities
+from utils.player_field_extractors import extract_primary_position, extract_overall_rating
+
 # Game cycle - local (relative imports from ..)
 from ..database.analytics_api import AnalyticsAPI
 from ..database.connection import GameCycleDatabase
@@ -49,6 +52,8 @@ from ..services.season_init_service import SeasonInitializationService
 from ..services.trade_service import TradeService
 from ..services.training_camp_service import TrainingCampService
 from ..services.waiver_service import WaiverService
+from ..services.social_generators.factory import SocialPostGeneratorFactory
+from ..models.social_event_types import SocialEventType
 from ..services.game_simulator_service import GameSimulatorService, SimulationMode
 from ..services.preseason_schedule_service import PreseasonScheduleService
 from ..services.prominence_calculator import ProminenceCalculator
@@ -305,40 +310,49 @@ class OffseasonHandler:
             Silently catches all exceptions and returns None - calling code should
             handle None case gracefully.
         """
-        # Check cache first - avoid duplicate database queries
-        cache_key = (dynasty_id, team_id, season)
+        # Offseason stages need directives for NEXT season (season + 1)
+        query_season = season + 1
+
+        # Check cache first - avoid duplicate database queries (use query_season in cache key)
+        cache_key = (dynasty_id, team_id, query_season)
         if cache_key in self._directives_cache:
-            return self._directives_cache[cache_key]
+            cached = self._directives_cache[cache_key]
+            print(f"[DEBUG] Using cached directives for team {team_id}, season {query_season}, "
+                  f"priority_positions={cached.priority_positions if cached else 'None'}")
+            return cached
+
+        # Debug logging for directive load
+        print(f"[DEBUG] Loading directives: dynasty={dynasty_id}, team={team_id}, "
+              f"current_season={season}, query_season={query_season}")
 
         try:
-            # Use cached loader instead of creating new instance
+            # Load directives for NEXT season (offseason directives apply to upcoming season)
+            # Pass query_season explicitly rather than using apply_season_offset for clarity
             directives = self._directive_loader.load_directives(
                 dynasty_id=dynasty_id,
                 team_id=team_id,
-                season=season,
-                apply_season_offset=True
+                season=query_season,  # Pass season+1 explicitly
+                apply_season_offset=False  # No additional offset needed
             )
 
-            # If no directives exist, create sensible defaults
-            # Use season + 1 to match the offset used in load_directives (offseason loads next season)
+            # If no directives exist, create sensible defaults (IN-MEMORY ONLY)
             if directives is None:
-                print(f"[OffseasonHandler] No owner directives found for team {team_id}, creating defaults")
+                print(f"[WARN] No owner directives found for team {team_id}, season {query_season}. "
+                      "Using defaults. Set directives in Owner Review to influence GM.")
                 directives = OwnerDirectives(
                     dynasty_id=dynasty_id,
                     team_id=team_id,
-                    season=season + 1,
+                    season=query_season,  # Use consistent variable
                     team_philosophy="maintain",  # Balanced approach
                     draft_strategy="balanced",    # Mix of BPA and needs
                     priority_positions=[],        # No specific priority
                     fa_philosophy="balanced",     # Moderate in free agency
                     trust_gm=False,              # Owner reviews all decisions
-                    owner_notes="Auto-generated default directives"
+                    owner_notes="Default directives (not saved - set via Owner Review)"
                 )
-                # Save to database for future use
-                try:
-                    self._directive_loader.save_directives(directives)
-                except Exception as save_err:
-                    print(f"[OffseasonHandler] Warning: Could not save default directives: {save_err}")
+                # DO NOT save defaults - let user set real directives via Owner Review
+            else:
+                print(f"[DEBUG] Found directives: priority_positions={directives.priority_positions}")
 
             # Cache the result for subsequent calls
             self._directives_cache[cache_key] = directives
@@ -814,14 +828,8 @@ class OffseasonHandler:
                                 positions = json.loads(positions)
                             position = positions[0] if positions else ""
 
-                        # Extract overall - use same key as ResigningService
-                        # Try "overall_rating" first (ResigningService), then "overall" in attributes
-                        overall = player_info.get("overall_rating", 0)
-                        if not overall:
-                            attributes = player_info.get("attributes", {})
-                            if isinstance(attributes, str):
-                                attributes = json.loads(attributes)
-                            overall = attributes.get("overall", 70)
+                        # Extract overall - utility handles overall_rating, overall, and nested attributes
+                        overall = extract_overall_rating(player_info, default=70)
 
                         # Get age - use direct "age" key (matches ResigningService)
                         # Fallback to birthdate calculation if not present
@@ -886,7 +894,7 @@ class OffseasonHandler:
                         })
 
             # Sort by overall rating (highest first)
-            expiring_players.sort(key=lambda x: x.get("overall", 0), reverse=True)
+            expiring_players.sort(key=lambda x: extract_overall_rating(x, default=0), reverse=True)
 
             return expiring_players
 
@@ -1105,8 +1113,8 @@ class OffseasonHandler:
             players = [
                 {
                     "player_id": player.get("player_id"),
-                    "position": player.get("position", ""),
-                    "overall": player.get("overall", 50),
+                    "position": extract_primary_position(player.get("positions")),
+                    "overall": extract_overall_rating(player, default=50),
                 }
                 for player in roster
             ]
@@ -1261,6 +1269,9 @@ class OffseasonHandler:
                     trust_gm = directives.trust_gm
                     owner_directives_dict = directives.to_dict()
                     fa_guidance = directives.to_fa_guidance()
+                    # Debug logging for FA preview
+                    print(f"[DEBUG] FA preview owner_directives: priority_positions="
+                          f"{owner_directives_dict.get('priority_positions', [])}")
 
                     # Generate GM FA proposals using proposal engine
                     # Only generate if wave allows signing
@@ -1547,7 +1558,7 @@ class OffseasonHandler:
                         "player_name": result["player_name"],
                         "team_id": user_team_id,
                         "position": result.get("position", ""),
-                        "overall": result.get("overall", 0),
+                        "overall": extract_overall_rating(result, default=0),
                         "age": result.get("age", 0),
                     })
                     events.append(f"Released {result['player_name']} to free agency")
@@ -1562,6 +1573,22 @@ class OffseasonHandler:
 
         # Generate headlines for re-signings and departures
         self._generate_resigning_headlines(context, resigned_players, released_players)
+
+        # Generate social media posts for re-signings (transform to event_data format)
+        resigning_events = []
+        for player in resigned_players:
+            contract = player.get('contract_details', {})
+            aav = contract.get('aav', 0)
+            if aav > 5_000_000:  # Only notable re-signings
+                resigning_events.append({
+                    'team_id': player['team_id'],
+                    'player_name': player.get('player_name', 'Unknown'),
+                    'position': contract.get('position', ''),
+                    'contract_value': aav / 1_000_000,  # Convert to millions
+                    'contract_years': contract.get('years', 1),
+                    'is_star': extract_overall_rating(contract, default=0) >= 85
+                })
+        self._generate_social_posts(context, SocialEventType.RESIGNING, resigning_events)
 
         return {
             "games_played": [],
@@ -1876,7 +1903,7 @@ class OffseasonHandler:
                             "player_id": player_id,
                             "player_name": row["name"],
                             "position": positions[0] if positions else "",
-                            "overall": attributes.get("overall", 0),
+                            "overall": extract_overall_rating(attributes, default=0),
                             "team_id": None,  # No team - rejected all
                             "team_name": "Rejected All Offers",  # Special marker
                             "aav": 0,  # No contract
@@ -1897,7 +1924,21 @@ class OffseasonHandler:
         if all_signings:
             current_wave = fresh_wave_state.get("current_wave", 0)
             self._generate_fa_headlines(context, all_signings, current_wave)
-            self._generate_fa_social_posts(context, all_signings, current_wave)
+
+            # Generate social media posts for FA signings (transform to event_data format)
+            signing_events = []
+            for signing in all_signings:
+                contract_value = signing.get('contract_value', 0)
+                if contract_value > 1_000_000:  # Only notable signings
+                    signing_events.append({
+                        'team_id': signing['team_id'],
+                        'player_name': signing.get('player_name', 'Unknown'),
+                        'position': signing.get('position', ''),
+                        'contract_value': contract_value / 1_000_000,  # Convert to millions
+                        'contract_years': signing.get('contract_years', 1),
+                        'wave': current_wave
+                    })
+            self._generate_social_posts(context, SocialEventType.SIGNING, signing_events)
 
         return {
             "games_played": [],
@@ -2191,6 +2232,22 @@ class OffseasonHandler:
             # Generate draft headlines for notable picks
             if picks:
                 self._generate_draft_headlines(context, picks, is_complete)
+
+                # Generate social media posts for draft picks (Rounds 1-3 only, transform to event_data format)
+                draft_events = []
+                for pick in picks:
+                    pick_round = pick.get('round', 1)
+                    if pick_round <= 3:  # Only rounds 1-3
+                        draft_events.append({
+                            'team_id': pick['team_id'],
+                            'player_name': pick.get('player_name', 'Unknown'),
+                            'position': pick.get('position', ''),
+                            'round': pick_round,
+                            'pick_number': pick.get('overall_pick', 0),
+                            'college': pick.get('college', ''),
+                            'is_surprise': pick.get('is_surprise', False)
+                        })
+                self._generate_social_posts(context, SocialEventType.DRAFT_PICK, draft_events)
 
             return {
                 "games_played": [],
@@ -2804,11 +2861,15 @@ class OffseasonHandler:
             regular_season_games = 0
             init_results = []
             try:
+                # Note: season is the current offseason year (e.g., 2025).
+                # After offseason completes, the new season starts with year+1 (e.g., 2026).
+                # So we need to initialize for season+1 (the upcoming regular season).
+                next_season = season + 1
                 init_service = SeasonInitializationService(
                     db_path=db_path,
                     dynasty_id=dynasty_id,
-                    from_season=season - 1,  # Previous season (for archiving stats/awards)
-                    to_season=season         # Current season to initialize
+                    from_season=season,       # Current offseason year (archiving stats/awards)
+                    to_season=next_season     # Next regular season to initialize
                 )
                 init_results = init_service.run_all()
 
@@ -2822,9 +2883,9 @@ class OffseasonHandler:
                             regular_season_games = int(match.group(1))
                         break
 
-                print(f"[OffseasonHandler] Season {season} initialized: {len(init_results)} steps, {regular_season_games} regular season games")
+                print(f"[OffseasonHandler] Season {next_season} initialized: {len(init_results)} steps, {regular_season_games} regular season games")
             except Exception as e:
-                logger.error(f"Failed to initialize season {season}: {e}")
+                logger.error(f"Failed to initialize season {next_season}: {e}")
                 traceback.print_exc()
 
             description = (
@@ -3027,6 +3088,24 @@ class OffseasonHandler:
             self._generate_roster_cuts_headlines(
                 context, user_cut_results, ai_result.get("cuts", []), is_final_cuts=True
             )
+
+            # Generate social media posts for roster cuts (transform to event_data format)
+            all_cuts = user_cut_results + ai_result.get("cuts", [])
+            cut_events = []
+            for cut in all_cuts:
+                dead_money = cut.get('dead_money', 0)
+                cap_savings = cut.get('cap_savings', 0)
+                # Filter for notable cuts (dead money or cap savings > $500K)
+                if dead_money > 500_000 or cap_savings > 500_000:
+                    cut_events.append({
+                        'team_id': cut['team_id'],
+                        'player_name': cut.get('player_name', 'Unknown'),
+                        'position': cut.get('position', ''),
+                        'dead_money': dead_money / 1_000_000,  # Convert to millions
+                        'cap_savings': cap_savings / 1_000_000,  # Convert to millions
+                        'reason': 'roster_cut'
+                    })
+            self._generate_social_posts(context, SocialEventType.CUT, cut_events)
 
             return {
                 "games_played": [],
@@ -3354,7 +3433,7 @@ class OffseasonHandler:
                     total_cap_savings += result.get("cap_savings", 0)
 
                     # Track star cuts (overall >= 80)
-                    player_overall = result.get("overall", 0)
+                    player_overall = extract_overall_rating(result, default=0)
                     if player_overall >= 80:
                         star_cuts.append({
                             "player_name": result.get("player_name"),
@@ -3396,7 +3475,7 @@ class OffseasonHandler:
                         total_cap_savings += result.get("cap_savings", 0)
 
                         # Track star cuts
-                        player_overall = result.get("overall", 0)
+                        player_overall = extract_overall_rating(result, default=0)
                         if player_overall >= 80:
                             star_cuts.append({
                                 "player_name": result.get("player_name"),
@@ -3551,6 +3630,20 @@ class OffseasonHandler:
                 process_result.get("claims_awarded", []),
                 clear_result.get("cleared_players", [])
             )
+
+            # Generate social media posts for waiver wire claims (transform to event_data format)
+            claims_awarded = process_result.get("claims_awarded", [])
+            waiver_events = []
+            for claim in claims_awarded:
+                waiver_events.append({
+                    'team_id': claim['team_id'],
+                    'player_name': claim.get('player_name', 'Unknown'),
+                    'position': claim.get('position', ''),
+                    'former_team_id': claim.get('former_team_id'),
+                    'former_team': claim.get('former_team', ''),
+                    'priority': claim.get('priority', 32)
+                })
+            self._generate_social_posts(context, SocialEventType.WAIVER_CLAIM, waiver_events)
 
             return {
                 "games_played": [],
@@ -3803,9 +3896,21 @@ class OffseasonHandler:
             self._generate_awards_headlines(
                 context, awards_calculated, all_pro, pro_bowl
             )
-            self._generate_awards_social_posts(
-                context, awards_calculated, all_pro, pro_bowl
-            )
+
+            # Generate social media posts for awards (transform to event_data format)
+            award_events = []
+            for award_dict in awards_calculated:
+                award_id = award_dict.get('award_id', '')
+                winner = award_dict.get('winner')
+                if winner:
+                    award_events.append({
+                        'award_type': award_id.upper(),
+                        'player_id': getattr(winner, 'player_id', 0),  # Not always available
+                        'player_name': winner.player_name,
+                        'team_id': winner.team_id,
+                        'stats': {}  # Optional stats
+                    })
+            self._generate_social_posts(context, SocialEventType.AWARD, award_events)
 
             # ===== RETIREMENT PROCESSING (Milestone 17) =====
             retirement_results = {}
@@ -4048,6 +4153,18 @@ class OffseasonHandler:
             # Generate headlines for franchise tags
             self._generate_franchise_tag_headlines(context, tags_applied)
 
+            # Generate social media posts for franchise tags (transform to event_data format)
+            tag_events = []
+            for tag in tags_applied:
+                tag_events.append({
+                    'team_id': tag['team_id'],
+                    'player_name': tag.get('player_name', 'Unknown'),
+                    'position': tag.get('position', ''),
+                    'tag_value': tag.get('tag_salary', 0) / 1_000_000,  # Convert to millions
+                    'tag_type': tag.get('tag_type', 'franchise')
+                })
+            self._generate_social_posts(context, SocialEventType.FRANCHISE_TAG, tag_events)
+
             return {
                 "games_played": [],
                 "events_processed": events,
@@ -4265,7 +4382,37 @@ class OffseasonHandler:
             # Generate trade headlines
             if executed_trades:
                 self._generate_trade_headlines(context, executed_trades)
-                self._generate_trade_social_posts(context, executed_trades)
+
+                # Generate social media posts for trades (transform to event_data format)
+                trade_events = []
+                for trade in executed_trades:
+                    team1_players = trade.get('team1_players', [])
+                    team2_players = trade.get('team2_players', [])
+                    all_players = team1_players + team2_players
+                    if all_players:  # Only generate posts if players involved
+                        # Transform players to include from_team and to_team
+                        players_traded = []
+                        for p in team1_players:
+                            players_traded.append({
+                                'player_id': p.get('player_id', 0),
+                                'player_name': p.get('player_name', 'Unknown'),
+                                'from_team': trade.get('team1_id'),
+                                'to_team': trade.get('team2_id')
+                            })
+                        for p in team2_players:
+                            players_traded.append({
+                                'player_id': p.get('player_id', 0),
+                                'player_name': p.get('player_name', 'Unknown'),
+                                'from_team': trade.get('team2_id'),
+                                'to_team': trade.get('team1_id')
+                            })
+                        trade_events.append({
+                            'team_1_id': trade.get('team1_id'),
+                            'team_2_id': trade.get('team2_id'),
+                            'players_traded': players_traded,
+                            'picks_traded': trade.get('team1_picks', []) + trade.get('team2_picks', [])
+                        })
+                self._generate_social_posts(context, SocialEventType.TRADE, trade_events)
 
             return {
                 "games_played": [],
@@ -4443,10 +4590,10 @@ class OffseasonHandler:
                 # Simple AI trade logic: propose swapping 1-2 players
                 # Pick random players (weighted toward lower overall to trade away)
                 team1_players_sorted = sorted(
-                    team1_players, key=lambda p: p.get("overall_rating", 70)
+                    team1_players, key=lambda p: extract_overall_rating(p, default=70)
                 )
                 team2_players_sorted = sorted(
-                    team2_players, key=lambda p: p.get("overall_rating", 70)
+                    team2_players, key=lambda p: extract_overall_rating(p, default=70)
                 )
 
                 # Select 1-2 players from each team (lower rated more likely)
@@ -4697,7 +4844,7 @@ class OffseasonHandler:
                     "position": award.get("winner_position", ""),
                     "team_id": team_id,
                     "vote_share": award.get("vote_share", 0.0),
-                    "overall": award.get("overall", 0),
+                    "overall": extract_overall_rating(award, default=0),
                     # Additional stats for body text generation
                     "passing_yards": award.get("passing_yards"),
                     "passing_tds": award.get("passing_tds"),
@@ -4729,97 +4876,80 @@ class OffseasonHandler:
         except Exception as e:
             logger.error(f"Failed to generate awards headlines: {e}", exc_info=True)
 
-    def _generate_awards_social_posts(
+    def _generate_social_posts(
         self,
         context: Dict[str, Any],
-        awards_calculated: List[Dict],
-        all_pro: Any,
-        pro_bowl: Any
+        event_type: SocialEventType,
+        events: List[Dict[str, Any]],
+        week_override: Optional[int] = None
     ) -> None:
         """
-        Generate and persist social media posts for award announcements.
+        Centralized social post generation for all offseason events.
 
-        Integrates SocialPostGenerator with awards announcement flow.
-        Posts are persisted to social_posts table for display in Social Feed UI.
+        Uses SocialPostGeneratorFactory to dispatch to appropriate generator.
+        Handles generation and persistence in a single call.
 
         Non-critical: Errors are logged but do not fail stage execution.
 
         Args:
-            context: Execution context with dynasty_id, season, db_path
-            awards_calculated: List of award results (MVP, OPOY, etc.)
-            all_pro: All-Pro team selections
-            pro_bowl: Pro Bowl roster selections
+            context: Execution context with dynasty_id, season, db_path, stage
+            event_type: Type of event (AWARD, FRANCHISE_TAG, SIGNING, etc.)
+            events: List of event data dictionaries
+            week_override: Optional week number override (uses stage.week_number if None)
         """
-        try:
-            from ..services.social_post_generator import SocialPostGenerator
-            from ..database.social_posts_api import SocialPostsAPI
-            from ..database.connection import GameCycleDatabase
+        if not events:
+            return
 
+        try:
             ctx = self._extract_context(context)
             dynasty_id = ctx['dynasty_id']
             season = ctx['season']
             db_path = ctx['db_path']
+            stage = ctx.get('stage')
 
-            # Generate posts using SocialPostGenerator
-            post_generator = SocialPostGenerator(GameCycleDatabase(db_path), dynasty_id)
+            # Determine week number
+            if week_override is not None:
+                week = week_override
+            elif stage and hasattr(stage, 'week_number'):
+                week = stage.week_number
+            else:
+                # Fallback to magic numbers (should not happen with proper stage context)
+                week_map = {
+                    SocialEventType.AWARD: 23,
+                    SocialEventType.FRANCHISE_TAG: 24,
+                    SocialEventType.RESIGNING: 24,
+                    SocialEventType.SIGNING: 25,
+                    SocialEventType.TRADE: 26,
+                    SocialEventType.DRAFT_PICK: 27,
+                    SocialEventType.CUT: 28,
+                    SocialEventType.WAIVER_CLAIM: 29,
+                    SocialEventType.TRAINING_CAMP: 30,
+                }
+                week = week_map.get(event_type, 23)
+                logger.warning(f"No stage context for social posts, using fallback week {week}")
 
-            all_posts = []
-
-            # Generate posts for major awards (MVP, OPOY, DPOY, etc.)
-            award_magnitude_map = {
-                'mvp': 100,
-                'opoy': 90,
-                'dpoy': 90,
-                'oroy': 80,
-                'droy': 80,
-                'cpoy': 75,
-            }
-
-            for award_dict in awards_calculated:
-                award_id = award_dict.get('award_id', '')
-                winner = award_dict.get('winner')
-
-                if not winner:
-                    continue
-
-                magnitude = award_magnitude_map.get(award_id, 70)
-
-                posts = post_generator.generate_award_posts(
-                    season=season,
-                    week=23,  # Awards occur in week 23 (offseason)
-                    award_name=award_id.upper(),
-                    player_name=winner.player_name,
-                    team_id=winner.team_id,
-                    player_stats=f"{magnitude} award points"  # Placeholder stats
-                )
-                all_posts.extend(posts)
-
-            if not all_posts:
-                return
-
-            # Persist to database
+            # Generate and persist posts via factory
             gc_db = GameCycleDatabase(db_path)
             try:
-                posts_api = SocialPostsAPI(gc_db)
-                for post in all_posts:
-                    posts_api.create_post(
+                total_posts = 0
+                for event_data in events:
+                    count = SocialPostGeneratorFactory.generate_posts(
+                        event_type=event_type,
+                        db=gc_db,
                         dynasty_id=dynasty_id,
                         season=season,
-                        week=23,
-                        personality_id=post.personality_id,
-                        post_text=post.post_text,
-                        sentiment=post.sentiment,
-                        likes=post.likes,
-                        retweets=post.retweets,
-                        event_type='AWARD',
-                        event_metadata=post.event_metadata
+                        week=week,
+                        event_data=event_data
                     )
-                logger.info("Generated %d social posts for %d awards", len(all_posts), len(awards_calculated))
+                    total_posts += count
+
+                if total_posts > 0:
+                    logger.info(f"[SOCIAL] Generated {total_posts} posts for {len(events)} {event_type.value} events")
             finally:
                 gc_db.close()
 
         except Exception as e:
-            logger.warning("Failed to generate award social posts: %s", e)
+            logger.error(f"Failed to generate social posts for {event_type.value}: {e}", exc_info=True)
 
     def _get_super_bowl_winner_team_id(
         self,
@@ -4886,7 +5016,7 @@ class OffseasonHandler:
                 "player_id": pick.get("player_id"),
                 "player_name": pick.get("player_name", ""),
                 "position": pick.get("position", ""),
-                "overall": pick.get("overall", 0),
+                "overall": extract_overall_rating(pick, default=0),
                 "round": pick.get("round", 1),
                 "pick": pick.get("overall_pick", 0),
                 "overall_pick": pick.get("overall_pick", 0),
@@ -5009,89 +5139,6 @@ class OffseasonHandler:
         except Exception as e:
             logger.error(f"Failed to generate FA headlines: {e}", exc_info=True)
 
-    def _generate_fa_social_posts(
-        self,
-        context: Dict[str, Any],
-        signings: List[Dict],
-        wave: int
-    ) -> None:
-        """
-        Generate and persist social media posts for free agency signings.
-
-        Integrates SocialPostGenerator with free agency flow.
-        Posts are persisted to social_posts table for display in Social Feed UI.
-
-        Non-critical: Errors are logged but do not fail stage execution.
-
-        Args:
-            context: Execution context with dynasty_id, season, db_path
-            signings: List of signing dicts with player_name, team_id, contract_value
-            wave: Current FA wave number
-        """
-        try:
-            from ..services.social_post_generator import SocialPostGenerator
-            from ..database.social_posts_api import SocialPostsAPI
-            from ..database.connection import GameCycleDatabase
-
-            ctx = self._extract_context(context)
-            dynasty_id = ctx['dynasty_id']
-            season = ctx['season']
-            db_path = ctx['db_path']
-
-            # Filter for notable signings (contract value > $1M)
-            notable_signings = [s for s in signings if s.get('contract_value', 0) > 1_000_000]
-
-            if not notable_signings:
-                return
-
-            # Generate social posts using SocialPostGenerator
-            post_generator = SocialPostGenerator(GameCycleDatabase(db_path), dynasty_id)
-
-            all_posts = []
-            for signing in notable_signings:
-                posts = post_generator.generate_transaction_posts(
-                    season=season,
-                    week=25,  # FA occurs in week 25 (offseason)
-                    event_type='SIGNING',
-                    team_id=signing['team_id'],
-                    player_name=signing.get('player_name', 'Unknown Player'),
-                    transaction_details={
-                        'contract_value': signing.get('contract_value', 0),
-                        'contract_years': signing.get('contract_years', 1),
-                        'wave': wave,
-                        'magnitude': min(100, int(signing.get('contract_value', 0) / 100_000))
-                    }
-                )
-                all_posts.extend(posts)
-
-            if not all_posts:
-                return
-
-            # Persist to database
-            gc_db = GameCycleDatabase(db_path)
-            try:
-                posts_api = SocialPostsAPI(gc_db)
-                for post in all_posts:
-                    posts_api.create_post(
-                        dynasty_id=dynasty_id,
-                        season=season,
-                        week=25,
-                        personality_id=post.personality_id,
-                        post_text=post.post_text,
-                        sentiment=post.sentiment,
-                        likes=post.likes,
-                        retweets=post.retweets,
-                        event_type='SIGNING',
-                        event_metadata=post.event_metadata
-                    )
-                logger.info("Generated %d social posts for %d FA signings (wave %d)",
-                          len(all_posts), len(notable_signings), wave)
-            finally:
-                gc_db.close()
-
-        except Exception as e:
-            logger.warning("Failed to generate FA social posts: %s", e)
-
     def _generate_trade_headlines(
         self,
         context: Dict[str, Any],
@@ -5167,100 +5214,6 @@ class OffseasonHandler:
 
         except Exception as e:
             logger.error(f"Failed to generate trade headlines: {e}", exc_info=True)
-
-    def _generate_trade_social_posts(
-        self,
-        context: Dict[str, Any],
-        executed_trades: List[Dict]
-    ) -> None:
-        """
-        Generate and persist social media posts for completed trades.
-
-        Integrates SocialPostGenerator with trade flow.
-        Posts are persisted to social_posts table for display in Social Feed UI.
-
-        Non-critical: Errors are logged but do not fail stage execution.
-
-        Args:
-            context: Execution context with dynasty_id, season, db_path
-            executed_trades: List of executed trade results
-        """
-        try:
-            from ..services.social_post_generator import SocialPostGenerator
-            from ..database.social_posts_api import SocialPostsAPI
-            from ..database.connection import GameCycleDatabase
-
-            ctx = self._extract_context(context)
-            dynasty_id = ctx['dynasty_id']
-            season = ctx['season']
-            db_path = ctx['db_path']
-
-            # Generate posts for each trade
-            post_generator = SocialPostGenerator(GameCycleDatabase(db_path), dynasty_id)
-
-            all_posts = []
-            for trade in executed_trades:
-                # Extract trade details
-                team1_id = trade.get('team1_id')
-                team2_id = trade.get('team2_id')
-
-                # Get key player involved (most prominent)
-                team1_players = trade.get('team1_players', [])
-                team2_players = trade.get('team2_players', [])
-                all_players = team1_players + team2_players
-
-                if not all_players:
-                    continue
-
-                # Use first player as the main subject
-                main_player = all_players[0]
-
-                # Calculate trade magnitude based on number of assets
-                picks_count = len(trade.get('team1_picks', [])) + len(trade.get('team2_picks', []))
-                magnitude = min(100, (len(all_players) * 30) + (picks_count * 10))
-
-                # Generate posts for both teams involved
-                posts = post_generator.generate_transaction_posts(
-                    season=season,
-                    week=26,  # Trades occur in week 26 (offseason)
-                    event_type='TRADE',
-                    team_id=team1_id,
-                    player_name=main_player.get('player_name', 'Unknown Player'),
-                    transaction_details={
-                        'other_team': team2_id,
-                        'picks': f"{picks_count} draft picks" if picks_count > 0 else "no picks",
-                        'magnitude': magnitude,
-                        'player_count': len(all_players)
-                    }
-                )
-                all_posts.extend(posts)
-
-            if not all_posts:
-                return
-
-            # Persist to database
-            gc_db = GameCycleDatabase(db_path)
-            try:
-                posts_api = SocialPostsAPI(gc_db)
-                for post in all_posts:
-                    posts_api.create_post(
-                        dynasty_id=dynasty_id,
-                        season=season,
-                        week=26,
-                        personality_id=post.personality_id,
-                        post_text=post.post_text,
-                        sentiment=post.sentiment,
-                        likes=post.likes,
-                        retweets=post.retweets,
-                        event_type='TRADE',
-                        event_metadata=post.event_metadata
-                    )
-                logger.info("Generated %d social posts for %d trades", len(all_posts), len(executed_trades))
-            finally:
-                gc_db.close()
-
-        except Exception as e:
-            logger.warning("Failed to generate trade social posts: %s", e)
 
     def _generate_franchise_tag_headlines(
         self,
@@ -5415,7 +5368,7 @@ class OffseasonHandler:
                     "player_name": player.get("player_name"),
                     "team_id": team_id,
                     "position": contract.get("position", ""),
-                    "overall": contract.get("overall", 0),
+                    "overall": extract_overall_rating(contract, default=0),
                     "aav": contract.get("aav", 0),
                     "years": contract.get("years", 1),
                     "age": contract.get("age", 0),
@@ -5445,7 +5398,7 @@ class OffseasonHandler:
                     "player_name": player.get("player_name"),
                     "team_id": team_id,
                     "position": player.get("position", ""),
-                    "overall": player.get("overall", 0),
+                    "overall": extract_overall_rating(player, default=0),
                     "aav": 0,  # No contract for departures
                     "years": 0,
                 }
@@ -5503,7 +5456,7 @@ class OffseasonHandler:
                 "player_id": claim.get("player_id"),
                 "player_name": claim.get("player_name", ""),
                 "position": claim.get("position", ""),
-                "overall": claim.get("overall", 0),
+                "overall": extract_overall_rating(claim, default=0),
                 "age": claim.get("age", 0),
             }
 

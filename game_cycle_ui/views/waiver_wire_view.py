@@ -15,8 +15,13 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor, QBrush
 
-from game_cycle_ui.theme import TABLE_HEADER_STYLE
+from game_cycle_ui.widgets import SummaryPanel, RosterHealthWidget
+from game_cycle_ui.theme import (
+    apply_table_style, Colors, TABLE_BUTTON_STYLE, TABLE_BUTTON_NEUTRAL_STYLE,
+    Typography, FontSizes, TextColors
+)
 from constants.position_abbreviations import get_position_abbreviation
+from utils.player_field_extractors import extract_overall_rating
 
 
 class WaiverWireView(QWidget):
@@ -38,6 +43,8 @@ class WaiverWireView(QWidget):
         self._filtered_players: List[Dict] = []
         self._user_claims: Set[int] = set()
         self._user_priority: int = 16  # Default to middle priority
+        self._roster_players: List[Dict] = []  # User's current roster for health widget
+        self._expiring_player_ids: Set[int] = set()  # IDs of players with expiring contracts
         self._setup_ui()
 
     def _setup_ui(self):
@@ -48,6 +55,11 @@ class WaiverWireView(QWidget):
 
         # Summary panel at top
         self._create_summary_panel(layout)
+
+        # Roster health panel showing position group scores
+        self.roster_health = RosterHealthWidget()
+        self.roster_health.position_clicked.connect(self._on_position_filter_from_health)
+        layout.addWidget(self.roster_health)
 
         # Filter panel
         self._create_filter_panel(layout)
@@ -60,76 +72,22 @@ class WaiverWireView(QWidget):
 
     def _create_summary_panel(self, parent_layout: QVBoxLayout):
         """Create the summary panel showing waiver info."""
-        summary_group = QGroupBox("Waiver Wire Summary")
-        summary_layout = QHBoxLayout(summary_group)
-        summary_layout.setSpacing(30)
+        summary_panel = SummaryPanel("Waiver Wire Summary")
 
         # Available players
-        available_frame = QFrame()
-        available_layout = QVBoxLayout(available_frame)
-        available_layout.setContentsMargins(0, 0, 0, 0)
-
-        available_title = QLabel("Players on Waivers")
-        available_title.setStyleSheet("color: #666; font-size: 11px;")
-        available_layout.addWidget(available_title)
-
-        self.available_count_label = QLabel("0")
-        self.available_count_label.setFont(QFont("Arial", 16, QFont.Bold))
-        available_layout.addWidget(self.available_count_label)
-
-        summary_layout.addWidget(available_frame)
+        self.available_count_label = summary_panel.add_stat("Players on Waivers", "0")
 
         # Your waiver priority
-        priority_frame = QFrame()
-        priority_layout = QVBoxLayout(priority_frame)
-        priority_layout.setContentsMargins(0, 0, 0, 0)
-
-        priority_title = QLabel("Your Waiver Priority")
-        priority_title.setStyleSheet("color: #666; font-size: 11px;")
-        priority_layout.addWidget(priority_title)
-
-        self.priority_label = QLabel("#16")
-        self.priority_label.setFont(QFont("Arial", 16, QFont.Bold))
-        self.priority_label.setStyleSheet("color: #1976D2;")  # Blue
-        priority_layout.addWidget(self.priority_label)
-
-        summary_layout.addWidget(priority_frame)
+        self.priority_label = summary_panel.add_stat("Your Waiver Priority", "#16", Colors.INFO)
 
         # Your pending claims
-        claims_frame = QFrame()
-        claims_layout = QVBoxLayout(claims_frame)
-        claims_layout.setContentsMargins(0, 0, 0, 0)
+        self.claims_count_label = summary_panel.add_stat("Your Claims", "0", Colors.WARNING)
 
-        claims_title = QLabel("Your Claims")
-        claims_title.setStyleSheet("color: #666; font-size: 11px;")
-        claims_layout.addWidget(claims_title)
+        # Priority explanation - using muted color, smaller font handled by StatFrame
+        self.priority_info_label = summary_panel.add_stat("Priority Info", "Lower # = Higher Priority", Colors.MUTED)
 
-        self.claims_count_label = QLabel("0")
-        self.claims_count_label.setFont(QFont("Arial", 16, QFont.Bold))
-        self.claims_count_label.setStyleSheet("color: #FF6F00;")  # Orange
-        claims_layout.addWidget(self.claims_count_label)
-
-        summary_layout.addWidget(claims_frame)
-
-        # Priority explanation
-        priority_info_frame = QFrame()
-        priority_info_layout = QVBoxLayout(priority_info_frame)
-        priority_info_layout.setContentsMargins(0, 0, 0, 0)
-
-        priority_info_title = QLabel("Priority Info")
-        priority_info_title.setStyleSheet("color: #666; font-size: 11px;")
-        priority_info_layout.addWidget(priority_info_title)
-
-        self.priority_info_label = QLabel("Lower # = Higher Priority")
-        self.priority_info_label.setFont(QFont("Arial", 10))
-        self.priority_info_label.setStyleSheet("color: #666;")
-        priority_info_layout.addWidget(self.priority_info_label)
-
-        summary_layout.addWidget(priority_info_frame)
-
-        summary_layout.addStretch()
-
-        parent_layout.addWidget(summary_group)
+        summary_panel.add_stretch()
+        parent_layout.addWidget(summary_panel)
 
     def _create_filter_panel(self, parent_layout: QVBoxLayout):
         """Create filter controls for position and overall."""
@@ -181,9 +139,11 @@ class WaiverWireView(QWidget):
             "Player", "Position", "Age", "OVR", "Former Team", "Dead $", "Status", "Action"
         ])
 
-        # Configure table appearance
+        # Apply standard ESPN dark table styling
+        apply_table_style(self.players_table)
+
+        # Configure column resize modes
         header = self.players_table.horizontalHeader()
-        header.setStyleSheet(TABLE_HEADER_STYLE)
         header.setSectionResizeMode(0, QHeaderView.Stretch)  # Player name stretches
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
@@ -193,11 +153,6 @@ class WaiverWireView(QWidget):
         header.setSectionResizeMode(6, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(7, QHeaderView.Fixed)
         header.resizeSection(7, 120)  # Action column width
-
-        self.players_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.players_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.players_table.setAlternatingRowColors(True)
-        self.players_table.verticalHeader().setVisible(False)
 
         table_layout.addWidget(self.players_table)
         parent_layout.addWidget(table_group, stretch=1)
@@ -211,8 +166,19 @@ class WaiverWireView(QWidget):
             "Unclaimed players become free agents."
         )
         instructions.setWordWrap(True)
-        instructions.setStyleSheet("color: #666; font-style: italic; padding: 8px;")
+        instructions.setStyleSheet(f"color: {Colors.MUTED}; font-style: italic; padding: 8px;")
         parent_layout.addWidget(instructions)
+
+    def _on_position_filter_from_health(self, position: str):
+        """Handle position filter from roster health widget click."""
+        if position:
+            # Find the matching index in the position combo
+            for i in range(self.position_combo.count()):
+                if self.position_combo.itemData(i) == position:
+                    self.position_combo.setCurrentIndex(i)
+                    return
+        # If no match or empty, reset to "All Positions"
+        self.position_combo.setCurrentIndex(0)
 
     def set_waiver_data(self, data: Dict):
         """
@@ -223,10 +189,14 @@ class WaiverWireView(QWidget):
                 - waiver_players: List of player dicts on waivers
                 - user_priority: int (1-32, 1 = highest priority)
                 - user_claims: List of player_ids already claimed by user
+                - roster_players: List of user's current roster player dicts
+                - expiring_player_ids: List of player IDs with expiring contracts
         """
         self._waiver_players = data.get("waiver_players", [])
         self._user_priority = data.get("user_priority", 16)
         self._user_claims = set(data.get("user_claims", []))
+        self._roster_players = data.get("roster_players", [])
+        self._expiring_player_ids = set(data.get("expiring_player_ids", []))
 
         # Update summary labels
         self.available_count_label.setText(str(len(self._waiver_players)))
@@ -235,14 +205,21 @@ class WaiverWireView(QWidget):
 
         # Color priority based on position
         if self._user_priority <= 5:
-            self.priority_label.setStyleSheet("color: #2E7D32;")  # Green - high priority
+            self.priority_label.setStyleSheet(f"color: {Colors.SUCCESS};")  # Green - high priority
             self.priority_info_label.setText("You have high priority!")
         elif self._user_priority <= 16:
-            self.priority_label.setStyleSheet("color: #1976D2;")  # Blue - mid priority
+            self.priority_label.setStyleSheet(f"color: {Colors.INFO};")  # Blue - mid priority
             self.priority_info_label.setText("You have mid priority")
         else:
-            self.priority_label.setStyleSheet("color: #C62828;")  # Red - low priority
+            self.priority_label.setStyleSheet(f"color: {Colors.ERROR};")  # Red - low priority
             self.priority_info_label.setText("You have low priority")
+
+        # Update roster health widget if roster data is provided
+        if self._roster_players:
+            self.roster_health.update_scores(
+                self._roster_players,
+                self._expiring_player_ids
+            )
 
         self._apply_filters()
 
@@ -260,13 +237,13 @@ class WaiverWireView(QWidget):
                     continue
 
             # Overall filter
-            if player.get("overall", 0) < min_overall:
+            if extract_overall_rating(player, default=0) < min_overall:
                 continue
 
             self._filtered_players.append(player)
 
         # Sort by overall (highest first)
-        self._filtered_players.sort(key=lambda p: p.get("overall", 0), reverse=True)
+        self._filtered_players.sort(key=lambda p: extract_overall_rating(p, default=0), reverse=True)
 
         # Update table
         self.players_table.setRowCount(len(self._filtered_players))
@@ -301,25 +278,25 @@ class WaiverWireView(QWidget):
         age_item = QTableWidgetItem(str(age))
         age_item.setTextAlignment(Qt.AlignCenter)
         if age >= 30:
-            age_item.setForeground(QColor("#C62828"))
+            age_item.setForeground(QColor(Colors.ERROR))
         if highlight_color:
             age_item.setBackground(QBrush(highlight_color))
         self.players_table.setItem(row, 2, age_item)
 
         # Overall rating
-        overall = player.get("overall", 0)
+        overall = extract_overall_rating(player, default=0)
         ovr_item = QTableWidgetItem(str(overall))
         ovr_item.setTextAlignment(Qt.AlignCenter)
         if overall >= 85:
-            ovr_item.setForeground(QColor("#2E7D32"))
+            ovr_item.setForeground(QColor(Colors.SUCCESS))
         elif overall >= 75:
-            ovr_item.setForeground(QColor("#1976D2"))
+            ovr_item.setForeground(QColor(Colors.INFO))
         if highlight_color:
             ovr_item.setBackground(QBrush(highlight_color))
         self.players_table.setItem(row, 3, ovr_item)
 
         # Former team
-        former_team = player.get("former_team", "Unknown")
+        former_team = player.get("former_team_name", player.get("former_team", "Unknown"))
         team_item = QTableWidgetItem(former_team)
         team_item.setTextAlignment(Qt.AlignCenter)
         if highlight_color:
@@ -331,7 +308,7 @@ class WaiverWireView(QWidget):
         dead_text = f"${dead_money:,}" if dead_money else "$0"
         dead_item = QTableWidgetItem(dead_text)
         dead_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        dead_item.setForeground(QColor("#666"))
+        dead_item.setForeground(QColor(Colors.MUTED))
         if highlight_color:
             dead_item.setBackground(QBrush(highlight_color))
         self.players_table.setItem(row, 5, dead_item)
@@ -339,10 +316,10 @@ class WaiverWireView(QWidget):
         # Status
         if has_claim:
             status_text = "Claimed"
-            status_color = QColor("#1976D2")  # Blue
+            status_color = QColor(Colors.INFO)  # Blue
         else:
             status_text = "Available"
-            status_color = QColor("#666")
+            status_color = QColor(Colors.MUTED)
 
         status_item = QTableWidgetItem(status_text)
         status_item.setTextAlignment(Qt.AlignCenter)
@@ -360,18 +337,12 @@ class WaiverWireView(QWidget):
         if has_claim:
             # Cancel button for existing claims
             btn = QPushButton("Cancel")
-            btn.setStyleSheet(
-                "QPushButton { background-color: #757575; color: white; border-radius: 3px; padding: 4px 8px; }"
-                "QPushButton:hover { background-color: #616161; }"
-            )
+            btn.setStyleSheet(TABLE_BUTTON_NEUTRAL_STYLE)
             btn.clicked.connect(lambda checked, pid=player_id, r=row: self._on_cancel_clicked(pid, r))
         else:
             # Claim button
             btn = QPushButton("Claim")
-            btn.setStyleSheet(
-                "QPushButton { background-color: #1976D2; color: white; border-radius: 3px; padding: 4px 8px; }"
-                "QPushButton:hover { background-color: #1565C0; }"
-            )
+            btn.setStyleSheet(TABLE_BUTTON_STYLE)
             btn.clicked.connect(lambda checked, pid=player_id, r=row: self._on_claim_clicked(pid, r))
 
         action_layout.addWidget(btn)
@@ -383,7 +354,7 @@ class WaiverWireView(QWidget):
         status_item = self.players_table.item(row, 6)
         if status_item:
             status_item.setText("Claimed")
-            status_item.setForeground(QColor("#1976D2"))
+            status_item.setForeground(QColor(Colors.INFO))
 
         # Update button to Cancel
         action_widget = self.players_table.cellWidget(row, 7)
@@ -391,10 +362,7 @@ class WaiverWireView(QWidget):
             for child in action_widget.children():
                 if isinstance(child, QPushButton):
                     child.setText("Cancel")
-                    child.setStyleSheet(
-                        "QPushButton { background-color: #757575; color: white; border-radius: 3px; padding: 4px 8px; }"
-                        "QPushButton:hover { background-color: #616161; }"
-                    )
+                    child.setStyleSheet(TABLE_BUTTON_NEUTRAL_STYLE)
                     # Reconnect to cancel handler
                     child.clicked.disconnect()
                     child.clicked.connect(lambda checked, pid=player_id, r=row: self._on_cancel_clicked(pid, r))
@@ -418,7 +386,7 @@ class WaiverWireView(QWidget):
         status_item = self.players_table.item(row, 6)
         if status_item:
             status_item.setText("Available")
-            status_item.setForeground(QColor("#666"))
+            status_item.setForeground(QColor(Colors.MUTED))
 
         # Update button to Claim
         action_widget = self.players_table.cellWidget(row, 7)
@@ -426,10 +394,7 @@ class WaiverWireView(QWidget):
             for child in action_widget.children():
                 if isinstance(child, QPushButton):
                     child.setText("Claim")
-                    child.setStyleSheet(
-                        "QPushButton { background-color: #1976D2; color: white; border-radius: 3px; padding: 4px 8px; }"
-                        "QPushButton:hover { background-color: #1565C0; }"
-                    )
+                    child.setStyleSheet(TABLE_BUTTON_STYLE)
                     # Reconnect to claim handler
                     child.clicked.disconnect()
                     child.clicked.connect(lambda checked, pid=player_id, r=row: self._on_claim_clicked(pid, r))
@@ -462,8 +427,11 @@ class WaiverWireView(QWidget):
 
         message_item = QTableWidgetItem("No players currently on waivers")
         message_item.setTextAlignment(Qt.AlignCenter)
-        message_item.setForeground(QColor("#666"))
-        message_item.setFont(QFont("Arial", 12, QFont.Normal, True))
+        message_item.setForeground(QColor(Colors.MUTED))
+        # Typography.BODY (12px) with italic style
+        font = QFont(Typography.BODY)
+        font.setItalic(True)
+        message_item.setFont(font)
 
         self.players_table.setItem(0, 0, message_item)
         self.available_count_label.setText("0")
@@ -480,13 +448,13 @@ class WaiverWireView(QWidget):
         self.priority_label.setText(f"#{priority}")
 
         if priority <= 5:
-            self.priority_label.setStyleSheet("color: #2E7D32;")
+            self.priority_label.setStyleSheet(f"color: {Colors.SUCCESS};")
             self.priority_info_label.setText("You have high priority!")
         elif priority <= 16:
-            self.priority_label.setStyleSheet("color: #1976D2;")
+            self.priority_label.setStyleSheet(f"color: {Colors.INFO};")
             self.priority_info_label.setText("You have mid priority")
         else:
-            self.priority_label.setStyleSheet("color: #C62828;")
+            self.priority_label.setStyleSheet(f"color: {Colors.ERROR};")
             self.priority_info_label.setText("You have low priority")
 
     def set_cap_data(self, cap_data: Dict):

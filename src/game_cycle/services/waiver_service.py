@@ -12,6 +12,7 @@ import json
 from datetime import datetime, date
 
 from src.persistence.transaction_logger import TransactionLogger
+from utils.player_field_extractors import extract_overall_rating
 
 
 class WaiverService:
@@ -229,10 +230,10 @@ class WaiverService:
                         positions = json.loads(positions)
                     position = positions[0] if positions else ""
 
+                    overall = extract_overall_rating(player_info, default=0)
                     attributes = player_info.get("attributes", {})
                     if isinstance(attributes, str):
                         attributes = json.loads(attributes)
-                    overall = attributes.get("overall", 0)
 
                     # Get former team info
                     former_team = team_loader.get_team_by_id(former_team_id)
@@ -451,7 +452,7 @@ class WaiverService:
         available_players = self.get_available_players()
 
         # Sort by overall (best players first)
-        available_players.sort(key=lambda p: p.get("overall", 0), reverse=True)
+        available_players.sort(key=lambda p: extract_overall_rating(p, default=0), reverse=True)
 
         claims_submitted = []
 
@@ -473,7 +474,7 @@ class WaiverService:
                     continue
 
                 # Only claim decent players
-                if player.get("overall", 0) < 70:
+                if extract_overall_rating(player, default=0) < 70:
                     continue
 
                 result = self.submit_claim(team_id, player["player_id"])

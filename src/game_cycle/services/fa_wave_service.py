@@ -10,6 +10,7 @@ import random
 from typing import Dict, List, Any, Optional
 
 from src.game_cycle.database.fa_wave_state_api import FAWaveStateAPI, WAVE_CONFIGS
+from utils.player_field_extractors import extract_overall_rating
 
 
 class FAWaveService:
@@ -163,7 +164,7 @@ class FAWaveService:
         # Filter by OVR tier
         filtered = [
             p for p in all_fas
-            if min_ovr <= p.get("overall", 0) <= max_ovr
+            if min_ovr <= extract_overall_rating(p, default=0) <= max_ovr
         ]
 
         # Add offer status for each player

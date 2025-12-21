@@ -24,6 +24,7 @@ Usage:
 """
 
 import json
+import logging
 import random
 import sqlite3
 from dataclasses import dataclass, field
@@ -31,6 +32,9 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from src.constants.position_abbreviations import get_position_abbreviation
 from src.game_cycle.models.injury_models import Injury
+from utils.player_field_extractors import extract_overall_rating
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -359,6 +363,7 @@ class MockStatsGenerator:
             cursor = conn.cursor()
 
             # Get active players excluding those with active injuries
+            # Use team_rosters.team_id as source of truth (players.team_id may be stale after trades)
             query = """
                 SELECT
                     p.player_id,
@@ -366,7 +371,7 @@ class MockStatsGenerator:
                     p.last_name,
                     p.positions,
                     p.attributes,
-                    p.team_id
+                    tr.team_id
                 FROM players p
                 JOIN team_rosters tr
                     ON p.dynasty_id = tr.dynasty_id
@@ -376,7 +381,7 @@ class MockStatsGenerator:
                     AND p.player_id = pi.player_id
                     AND pi.is_active = 1
                 WHERE p.dynasty_id = ?
-                    AND p.team_id = ?
+                    AND tr.team_id = ?
                     AND tr.roster_status = 'active'
                     AND pi.injury_id IS NULL
                 ORDER BY tr.depth_chart_order
@@ -385,20 +390,29 @@ class MockStatsGenerator:
             cursor.execute(query, (self.dynasty_id, team_id))
             rows = cursor.fetchall()
 
+            if not rows:
+                logger.warning(
+                    "[MockStatsGenerator] Empty roster for team_id=%d, dynasty_id=%s. "
+                    "Stats will not be generated. Check team_rosters table.",
+                    team_id, self.dynasty_id
+                )
+                return []
+
             roster = []
             for row in rows:
                 positions = json.loads(row['positions'])
                 attributes = json.loads(row['attributes'])
 
-                roster.append({
+                player_dict = {
                     'player_id': row['player_id'],
                     'player_name': f"{row['first_name']} {row['last_name']}",
                     'team_id': row['team_id'],
                     'positions': positions,
                     'primary_position': positions[0] if positions else 'unknown',
                     'attributes': attributes,
-                    'overall': attributes.get('overall', 50)
-                })
+                }
+                player_dict['overall'] = extract_overall_rating(player_dict, default=50)
+                roster.append(player_dict)
 
             return roster
 
@@ -480,7 +494,9 @@ class MockStatsGenerator:
             'rushing_tds': 0,
             'rushing_attempts': random.randint(2, 5),
             'rushing_long': random.randint(8, 18),
-            'rushing_fumbles': 0,
+            'rushing_fumbles': random.choices([0, 1, 2], weights=[70, 25, 5])[0],
+            'fumbles_lost': random.choices([0, 1], weights=[80, 20])[0],
+            'rushing_20_plus': random.randint(0, 1),
 
             # No receiving stats for QB
             'receiving_yards': 0,
@@ -605,7 +621,9 @@ class MockStatsGenerator:
                 'rushing_tds': tds,
                 'rushing_attempts': attempts,
                 'rushing_long': long_run,
-                'rushing_fumbles': fumbles,
+                'rushing_fumbles': random.choices([0, 1, 2], weights=[70, 25, 5])[0],
+                'fumbles_lost': random.choices([0, 1], weights=[80, 20])[0],
+                'rushing_20_plus': random.randint(0, 3),
 
                 # RBs can catch passes (handled in receiving allocation)
                 'receiving_yards': 0,  # Will be filled by _allocate_receiving_stats
@@ -775,6 +793,8 @@ class MockStatsGenerator:
                 'rushing_attempts': 0,
                 'rushing_long': 0,
                 'rushing_fumbles': 0,
+                'fumbles_lost': 0,
+                'rushing_20_plus': 0,
 
                 # Receiving stats
                 'receiving_yards': yards,
@@ -938,6 +958,8 @@ class MockStatsGenerator:
                 'rushing_attempts': 0,
                 'rushing_long': 0,
                 'rushing_fumbles': 0,
+                'fumbles_lost': 0,
+                'rushing_20_plus': 0,
 
                 'receiving_yards': 0,
                 'receiving_tds': 0,
@@ -1082,6 +1104,8 @@ class MockStatsGenerator:
             'rushing_attempts': 0,
             'rushing_long': 0,
             'rushing_fumbles': 0,
+            'fumbles_lost': 0,
+            'rushing_20_plus': 0,
 
             'receiving_yards': 0,
             'receiving_tds': 0,
@@ -1214,6 +1238,8 @@ class MockStatsGenerator:
                 'rushing_attempts': 0,
                 'rushing_long': 0,
                 'rushing_fumbles': 0,
+                'fumbles_lost': 0,
+                'rushing_20_plus': 0,
 
                 'receiving_yards': 0,
                 'receiving_tds': 0,
