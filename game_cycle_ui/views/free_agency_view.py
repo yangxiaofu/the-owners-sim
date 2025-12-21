@@ -311,7 +311,22 @@ class FreeAgencyView(QWidget):
         # No fixed width - let it flex to 50% via stretch ratio
         layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
+        layout.setSpacing(8)
+
+        # Pending approvals banner (hidden by default, shown when proposals are approved)
+        self._pending_banner = QLabel()
+        self._pending_banner.setStyleSheet("""
+            QLabel {
+                background-color: #FFA500;
+                color: white;
+                padding: 10px;
+                font-weight: bold;
+                border-radius: 4px;
+            }
+        """)
+        self._pending_banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._pending_banner.hide()  # Hidden by default
+        layout.addWidget(self._pending_banner)
 
         # Scroll area for proposals
         scroll = QScrollArea()
@@ -1350,6 +1365,20 @@ class FreeAgencyView(QWidget):
         # Refresh cap display to include pre-approved proposals
         self._refresh_cap_display()
 
+    def set_expected_signing_results(self, count: int) -> None:
+        """
+        Set the expected number of signing results for result tracking.
+
+        This is used to initialize the result collection system when GM proposals
+        are being processed. The view will accumulate results until this count is
+        reached, then display them in a batch dialog.
+
+        Args:
+            count: Expected number of signing results
+        """
+        self._expected_results_count = count
+        self._wave_results = []
+
     def _populate_proposal_row(self, row: int, proposal: Dict):
         """Populate a single row in the proposals table."""
         details = proposal.get("details", {})
@@ -1503,6 +1532,15 @@ class FreeAgencyView(QWidget):
             self._refresh_cap_display()
         else:
             print(f"[FreeAgencyView] Proposal {proposal_id} approved but not found in local list")
+
+        # Update pending banner and Process Wave button
+        self._update_pending_banner()
+        self._update_process_wave_button()
+
+        # Update card visual state to show "Pending Execution"
+        card = self.gm_proposals_panel._cards.get(proposal_id)
+        if card:
+            card.set_pending_execution_state()
 
     def _on_proposal_rejected(self, proposal_id: str):
         """Handle reject button click - immediately emit rejection."""
@@ -1693,6 +1731,62 @@ class FreeAgencyView(QWidget):
         if expected > 0 and len(self._wave_results) >= expected:
             self._show_wave_results_dialog()
 
+    def _update_pending_banner(self):
+        """Update pending approvals banner visibility and text."""
+        if not hasattr(self, '_pending_banner'):
+            return
+
+        pending_count = len(self.gm_proposals_panel.get_pending_approvals())
+        if pending_count > 0:
+            plural = "s" if pending_count != 1 else ""
+            self._pending_banner.setText(
+                f"⚠️  {pending_count} proposal{plural} approved - "
+                f"Click 'Process Wave' to execute all signings"
+            )
+            self._pending_banner.show()
+        else:
+            self._pending_banner.hide()
+
+    def _update_process_wave_button(self):
+        """Update Process Wave button styling based on pending state."""
+        if not hasattr(self, '_process_wave_btn'):
+            return
+
+        pending_count = len(self.gm_proposals_panel.get_pending_approvals())
+
+        if pending_count > 0:
+            # Highlight button when action needed
+            self._process_wave_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #FF6B35;
+                    color: white;
+                    font-weight: bold;
+                    padding: 10px 20px;
+                }
+                QPushButton:hover {
+                    background-color: #FF8555;
+                }
+            """)
+            # Save the current text (could be "Process Wave", "Begin Signing Period", etc.)
+            current_text = self._process_wave_btn.text()
+            # If it doesn't already have the count, add it
+            if " pending)" not in current_text:
+                base_text = current_text.split(" (")[0]  # Remove any existing suffix
+                self._process_wave_btn.setText(f"{base_text} ({pending_count} pending)")
+        else:
+            # Normal style when no pending approvals
+            # Reset to default style
+            self._process_wave_btn.setStyleSheet(
+                f"QPushButton {{ background-color: #00695C; color: white; "
+                f"padding: 10px 20px; font-weight: bold; "
+                f"font-size: 13px; border-radius: 4px; }}"
+            )
+            # Remove the count suffix if present
+            current_text = self._process_wave_btn.text()
+            if " pending)" in current_text:
+                base_text = current_text.split(" (")[0]
+                self._process_wave_btn.setText(base_text)
+
     def _show_wave_results_dialog(self):
         """Show the wave results dialog with all signing outcomes."""
         from game_cycle_ui.dialogs import WaveResultsDialog
@@ -1756,9 +1850,12 @@ class FreeAgencyView(QWidget):
         if pending:
             from PySide6.QtWidgets import QMessageBox
 
-            msg = f"Process {len(pending)} approved GM proposal{'s' if len(pending) != 1 else ''}?\n\n"
-            msg += "This will execute all approved signings and commit them to the database.\n"
-            msg += "Pre-approved proposals that you didn't review will be executed."
+            msg = f"Execute {len(pending)} approved GM proposal{'s' if len(pending) != 1 else ''}?\n\n"
+            msg += "This will:\n"
+            msg += "• Submit contract offers to players\n"
+            msg += "• Show acceptance/rejection results\n"
+            msg += "• Update team roster and salary cap\n\n"
+            msg += "This action cannot be undone."
 
             reply = QMessageBox.question(
                 self,
@@ -1814,6 +1911,10 @@ class FreeAgencyView(QWidget):
         # Clear pending proposal cap tracking and refresh display
         self._pending_proposal_cap_hits.clear()
         self._refresh_cap_display()
+
+        # Update banner and button (will hide banner and reset button style)
+        self._update_pending_banner()
+        self._update_process_wave_button()
 
         # Then request wave processing
         self.process_wave_requested.emit()

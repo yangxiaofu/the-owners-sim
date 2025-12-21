@@ -14,8 +14,9 @@ from typing import List, Dict, Any, Optional, TYPE_CHECKING
 import random
 
 from src.game_cycle.models import FAGuidance, FAPhilosophy, GMProposal
+from src.game_cycle.models.fa_guidance import FA_WAVE_PROPOSAL_LIMITS
 from src.team_management.gm_archetype import GMArchetype
-from utils.player_field_extractors import extract_overall_rating
+from src.utils.player_field_extractors import extract_overall_rating
 
 if TYPE_CHECKING:
     from src.game_cycle.services.valuation_service import ValuationService
@@ -28,8 +29,9 @@ class GMFAProposalEngine:
     Core logic:
     - Analyze available FA pool for current wave
     - Score candidates using archetype-weighted formula
+    - Dynamically calculate proposal count based on team needs, cap space, and GM personality
     - Generate contract offers aligned with GM personality
-    - Return top N proposals for owner review
+    - Return top N proposals for owner review (N varies from 1 to wave_limit)
     """
 
     def __init__(
@@ -68,7 +70,13 @@ class GMFAProposalEngine:
         wave: int
     ) -> List[GMProposal]:
         """
-        Generate 1-3 proposals for current wave turn.
+        Generate 1-N proposals for current wave turn (dynamic based on team situation).
+
+        Proposal count varies based on:
+        - Team needs urgency (more critical needs = more proposals)
+        - Cap space available (more space = more proposals)
+        - GM archetype (star-chasers focus on fewer elite targets, aggressive GMs cast wider net)
+        - Wave tier limits (Wave 1: max 3, Wave 2: max 5, Wave 3: max 7, Wave 4: max 5)
 
         Args:
             available_players: FAs available in current wave
@@ -77,7 +85,7 @@ class GMFAProposalEngine:
             wave: Current wave number (1-4)
 
         Returns:
-            List of GMProposal objects (max 3)
+            List of GMProposal objects (1 to wave_limit proposals)
         """
         # 1. Filter candidates by cap fit + tier
         candidates = self._filter_candidates(available_players, cap_space, wave)
@@ -95,18 +103,103 @@ class GMFAProposalEngine:
         if not scored:
             return []
 
-        # 3. Sort by score, take top 3
-        scored.sort(key=lambda x: x[1], reverse=True)
-        top_candidates = scored[:3]
+        # 3. Calculate dynamic proposal count based on needs, cap, GM traits
+        proposal_count = self._calculate_proposal_count(
+            team_needs=team_needs,
+            cap_space=cap_space,
+            wave=wave,
+            available_players=candidates
+        )
 
-        # 4. Generate proposals
+        # 4. Sort by score, take top N candidates
+        scored.sort(key=lambda x: x[1], reverse=True)
+        top_candidates = scored[:proposal_count]
+
+        # 5. Generate proposals with cumulative cap tracking
         proposals = []
+        remaining_cap = cap_space
         for player, score in top_candidates:
-            proposal = self._create_proposal(player, score, team_needs, cap_space)
+            proposal = self._create_proposal(player, score, team_needs, remaining_cap)
             if proposal:
                 proposals.append(proposal)
+                remaining_cap = proposal.remaining_cap_after  # Update for next proposal
+            else:
+                # Log when we can't afford more proposals
+                player_name = player.get('full_name', player.get('name', 'Unknown'))
+                print(f"[DEBUG GMFAProposalEngine] Skipping {player_name} - insufficient cap (${remaining_cap:,} remaining)")
 
         return proposals
+
+    def _calculate_proposal_count(
+        self,
+        team_needs: Dict[str, int],
+        cap_space: int,
+        wave: int,
+        available_players: List[Dict[str, Any]]
+    ) -> int:
+        """
+        Calculate dynamic proposal count based on team situation and GM personality.
+
+        Factors considered:
+        - Team needs urgency (critical needs = more proposals)
+        - Cap space availability (more space = more proposals)
+        - GM archetype personality (star_chasing, cap_management, win_now)
+        - Wave tier limits (respect max per wave)
+
+        Args:
+            team_needs: Position needs (position → depth level, 0 = critical)
+            cap_space: Available cap space
+            wave: Current wave number (1-4)
+            available_players: Available FA pool (for future enhancements)
+
+        Returns:
+            Number of proposals to generate (1 to wave_limit)
+        """
+        # Base count from wave limits
+        base_count = FA_WAVE_PROPOSAL_LIMITS.get(wave, 3)
+
+        # Factor 1: Team needs urgency (0-3 bonus)
+        # Count positions with HIGH or CRITICAL urgency (depth level 0-3)
+        critical_needs = sum(
+            1 for urgency in team_needs.values()
+            if isinstance(urgency, (int, float)) and urgency <= 3
+        )
+        need_modifier = min(critical_needs, 3)  # Cap at +3
+
+        # Factor 2: Cap space availability (0-3 bonus)
+        if cap_space > 50_000_000:
+            cap_modifier = 3
+        elif cap_space > 30_000_000:
+            cap_modifier = 2
+        elif cap_space > 15_000_000:
+            cap_modifier = 1
+        else:
+            cap_modifier = 0
+
+        # Factor 3: GM archetype personality (-2 to +2)
+        gm_modifier = 0
+
+        if self.gm.star_chasing > 0.75:
+            # Star-chasers focus on fewer elite targets
+            gm_modifier -= 2
+        elif self.gm.star_chasing < 0.3 and self.gm.cap_management < 0.4:
+            # Aggressive spenders make more offers
+            gm_modifier += 2
+        elif self.gm.win_now_mentality > 0.75:
+            # Win-now GMs are more active
+            gm_modifier += 1
+        elif self.gm.cap_management > 0.75:
+            # Conservative GMs are cautious
+            gm_modifier -= 1
+
+        # Calculate total
+        total = base_count + need_modifier + cap_modifier + gm_modifier
+
+        # Clamp to reasonable range [1, wave_limit]
+        max_for_wave = FA_WAVE_PROPOSAL_LIMITS.get(wave, 3)
+        total = max(1, min(total, max_for_wave))
+
+        return total
 
     def _filter_candidates(
         self,

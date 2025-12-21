@@ -14,6 +14,17 @@ from enum import Enum
 from typing import Dict, List
 
 
+# FA Wave Proposal Limits - Maximum proposals per wave
+# Used by GMFAProposalEngine and FASigningProposalGenerator to enforce wave-specific caps
+FA_WAVE_PROPOSAL_LIMITS = {
+    0: 0,   # Legal Tampering: no signings allowed
+    1: 3,   # Elite wave: max 3 proposals
+    2: 5,   # Quality wave: max 5 proposals
+    3: 7,   # Depth wave: max 7 proposals
+    4: 5,   # Post-Draft wave: max 5 proposals
+}
+
+
 class FAPhilosophy(Enum):
     """Owner's free agency philosophy/approach."""
 
@@ -67,6 +78,15 @@ class FAGuidance:
     GM proposal engine gives +15 bonus to players at these positions.
 
     Example: ["WR", "CB", "OT"]
+    """
+
+    wishlist_names: List[str] = field(default_factory=list)
+    """
+    Specific player names owner wants GM to target in free agency.
+
+    GM proposal engine gives +20 bonus to wishlist players.
+
+    Example: ["John Smith", "Mike Jones"]
     """
 
     max_contract_years: int = 5
@@ -137,6 +157,7 @@ class FAGuidance:
             "philosophy": self.philosophy.value,
             "budget_by_position_group": self.budget_by_position_group.copy(),
             "priority_positions": self.priority_positions.copy(),
+            "wishlist_names": self.wishlist_names.copy(),
             "max_contract_years": self.max_contract_years,
             "max_guaranteed_percent": self.max_guaranteed_percent,
         }
@@ -152,6 +173,7 @@ class FAGuidance:
             philosophy=FAPhilosophy.BALANCED,
             budget_by_position_group={},  # No budget constraints
             priority_positions=[],  # No position priorities
+            wishlist_names=[],  # No wishlist targets
             max_contract_years=5,  # Full flexibility
             max_guaranteed_percent=0.75,  # Balanced guarantees
         )
@@ -162,6 +184,49 @@ class FAGuidance:
             self.philosophy == FAPhilosophy.BALANCED
             and len(self.budget_by_position_group) == 0
             and len(self.priority_positions) == 0
+            and len(self.wishlist_names) == 0
             and self.max_contract_years == 5
             and self.max_guaranteed_percent == 0.75
         )
+
+    def get_max_offer_multiplier(self) -> float:
+        """
+        Get max offer as % of market value based on philosophy.
+
+        Philosophy-based multipliers:
+        - AGGRESSIVE: 1.15x (overpay 15% to secure top talent)
+        - BALANCED: 1.0x (market rate)
+        - CONSERVATIVE: 0.90x (underpay 10%, value signings only)
+
+        Returns:
+            Multiplier to apply to base market value
+        """
+        multipliers = {
+            FAPhilosophy.AGGRESSIVE: 1.15,
+            FAPhilosophy.BALANCED: 1.0,
+            FAPhilosophy.CONSERVATIVE: 0.90,
+        }
+        return multipliers.get(self.philosophy, 1.0)
+
+    def should_pursue_player(self, player_ovr: int) -> bool:
+        """
+        Filter players by philosophy and overall rating threshold.
+
+        Philosophy-based thresholds:
+        - AGGRESSIVE: Pursue players 70+ OVR (go after good players)
+        - BALANCED: Pursue players 75+ OVR (mid-tier or better)
+        - CONSERVATIVE: Pursue players 80+ OVR (only elite players)
+
+        Args:
+            player_ovr: Player overall rating (0-99)
+
+        Returns:
+            True if player meets philosophy threshold
+        """
+        thresholds = {
+            FAPhilosophy.AGGRESSIVE: 70,
+            FAPhilosophy.BALANCED: 75,
+            FAPhilosophy.CONSERVATIVE: 80,
+        }
+        threshold = thresholds.get(self.philosophy, 75)
+        return player_ovr >= threshold

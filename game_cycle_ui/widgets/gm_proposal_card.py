@@ -8,6 +8,7 @@ Part of Concept 1 UI redesign - replaces table with rich cards showing:
 - Large approve/reject buttons
 """
 
+from enum import Enum
 from typing import Dict, Any, List, Optional
 from PySide6.QtWidgets import (
     QWidget, QFrame, QVBoxLayout, QHBoxLayout, QLabel,
@@ -21,6 +22,15 @@ from game_cycle_ui.theme import (
 )
 from constants.position_abbreviations import get_position_abbreviation
 from utils.player_field_extractors import extract_overall_rating
+
+
+class ProposalCardState(Enum):
+    """Visual states for GM proposal cards."""
+    PENDING = "pending"              # Awaiting user decision
+    APPROVED = "approved"            # User approved, not executed
+    PENDING_EXECUTION = "pending_execution"  # Queued for execution
+    SIGNED = "signed"                # Player accepted after execution
+    REJECTED = "rejected"            # Player rejected after execution
 
 
 class GMProposalCard(QFrame):
@@ -53,12 +63,11 @@ class GMProposalCard(QFrame):
         self._proposal_data = proposal_data  # Store for modify dialog
         # Check if proposal is pre-approved (new default behavior)
         from game_cycle.models.proposal_enums import ProposalStatus
-        proposal_status = proposal_data.get("status", "PENDING")
-        # Handle both string and enum values
-        if isinstance(proposal_status, str):
-            self._is_approved = (proposal_status == "APPROVED" or proposal_status == ProposalStatus.APPROVED.value)
-        else:
-            self._is_approved = (proposal_status == ProposalStatus.APPROVED)
+        proposal_status = ProposalStatus.normalize(proposal_data.get("status", "PENDING"))
+        self._is_approved = (proposal_status == ProposalStatus.APPROVED)
+
+        # Track current visual state
+        self._state = ProposalCardState.PENDING
 
         # Store cap data for affordability check
         details = proposal_data.get("details", {})
@@ -256,6 +265,10 @@ class GMProposalCard(QFrame):
             "border-radius: 4px; padding: 8px 12px; font-weight: bold; }"
             "QPushButton:hover { background-color: #66bb6a; }"
         )
+        self._approve_btn.setToolTip(
+            "Queue this signing for execution.\n"
+            "Click 'Process Wave' to execute all approved signings."
+        )
         self._approve_btn.clicked.connect(self._on_approve_clicked)
         btn_layout.addWidget(self._approve_btn)
 
@@ -322,38 +335,18 @@ class GMProposalCard(QFrame):
         self.set_approved_state(False)
         self.proposal_retracted.emit(self.proposal_id)
 
-    def set_approved_state(self, approved: bool):
+    def set_state(self, state: ProposalCardState, details: Optional[Dict[str, Any]] = None):
         """
-        Toggle between approved and pending state.
+        Set card visual state with unified state management.
 
-        When approved:
-        - Show green tint on card border
-        - Show "✓ APPROVED" badge
-        - Hide Approve/Reject buttons, show Retract button
-
-        When not approved (pending):
-        - Normal card styling
-        - Hide badge
-        - Show Approve/Reject buttons, hide Retract button
+        Args:
+            state: Target state
+            details: Optional dict with state-specific data (contract for SIGNED, reason for REJECTED)
         """
-        self._is_approved = approved
+        self._state = state
+        details = details or {}
 
-        if approved:
-            # Approved state
-            self.setStyleSheet("""
-                GMProposalCard {
-                    background-color: #2a2a2a;
-                    border: 2px solid #4caf50;
-                    border-radius: 6px;
-                    margin-bottom: 8px;
-                }
-            """)
-            self._approved_badge.show()
-            self._approve_btn.hide()
-            self._modify_btn.hide()
-            self._reject_btn.hide()
-            self._retract_btn.show()
-        else:
+        if state == ProposalCardState.PENDING:
             # Pending state (normal)
             self.setStyleSheet("""
                 GMProposalCard {
@@ -367,10 +360,138 @@ class GMProposalCard(QFrame):
                 }
             """)
             self._approved_badge.hide()
+            self._result_badge.hide()
+            self._result_details.hide()
             self._approve_btn.show()
             self._modify_btn.show()
             self._reject_btn.show()
             self._retract_btn.hide()
+
+        elif state == ProposalCardState.APPROVED:
+            # Approved state
+            self.setStyleSheet("""
+                GMProposalCard {
+                    background-color: #2a2a2a;
+                    border: 2px solid #4caf50;
+                    border-radius: 6px;
+                    margin-bottom: 8px;
+                }
+            """)
+            self._approved_badge.show()
+            self._result_badge.hide()
+            self._result_details.hide()
+            self._approve_btn.hide()
+            self._modify_btn.hide()
+            self._reject_btn.hide()
+            self._retract_btn.show()
+
+        elif state == ProposalCardState.PENDING_EXECUTION:
+            # Pending execution state
+            self._approve_btn.hide()
+            self._modify_btn.hide()
+            self._reject_btn.hide()
+            self._retract_btn.hide()
+            self._approved_badge.hide()
+
+            self._result_badge.setText("⏳ PENDING EXECUTION")
+            self._result_badge.setStyleSheet("color: #FFA500; padding: 4px 0; font-weight: bold;")
+            self._result_badge.show()
+
+            self._result_details.setText("Click 'Process Wave' to execute this signing")
+            self._result_details.setStyleSheet("color: #FFB84D;")
+            self._result_details.show()
+
+            self.setStyleSheet("""
+                GMProposalCard {
+                    background-color: #3a2a1b;
+                    border: 2px solid #FFA500;
+                    border-radius: 6px;
+                    margin-bottom: 8px;
+                }
+            """)
+
+        elif state == ProposalCardState.SIGNED:
+            # Signed state
+            self._approved_badge.hide()
+            self._approve_btn.hide()
+            self._modify_btn.hide()
+            self._reject_btn.hide()
+            self._retract_btn.hide()
+            self._btn_row.hide()
+
+            self._result_badge.setText("✓ SIGNED")
+            self._result_badge.setStyleSheet("color: #4caf50; padding: 4px 0;")
+            self._result_badge.show()
+
+            # Show contract summary if provided
+            aav = details.get("aav", 0)
+            years = details.get("years", 0)
+            if aav and years:
+                self._result_details.setText(f"{years}yr, ${aav:,}/yr")
+                self._result_details.setStyleSheet("color: #81c784;")
+                self._result_details.show()
+
+            self.setStyleSheet("""
+                GMProposalCard {
+                    background-color: #1b3a1b;
+                    border: 2px solid #4caf50;
+                    border-radius: 6px;
+                    margin-bottom: 8px;
+                }
+            """)
+
+        elif state == ProposalCardState.REJECTED:
+            # Rejected state
+            self._approved_badge.hide()
+            self._approve_btn.hide()
+            self._modify_btn.hide()
+            self._reject_btn.hide()
+            self._retract_btn.hide()
+            self._btn_row.hide()
+
+            self._result_badge.setText("✗ REJECTED")
+            self._result_badge.setStyleSheet("color: #f44336; padding: 4px 0;")
+            self._result_badge.show()
+
+            # Show rejection details
+            reason = details.get("reason", "Player rejected offer")
+            concerns = details.get("concerns", [])
+            if concerns:
+                details_text = f"{reason}\n• " + "\n• ".join(concerns[:2])  # Show top 2 concerns
+            else:
+                details_text = reason
+            self._result_details.setText(details_text)
+            self._result_details.setStyleSheet("color: #ef9a9a;")
+            self._result_details.show()
+
+            self.setStyleSheet("""
+                GMProposalCard {
+                    background-color: #3a1b1b;
+                    border: 2px solid #f44336;
+                    border-radius: 6px;
+                    margin-bottom: 8px;
+                }
+            """)
+
+    def set_approved_state(self, approved: bool):
+        """
+        Backwards compatible wrapper for set_state().
+
+        Toggle between approved and pending state.
+
+        When approved:
+        - Show green tint on card border
+        - Show "✓ APPROVED" badge
+        - Hide Approve/Reject buttons, show Retract button
+
+        When not approved (pending):
+        - Normal card styling
+        - Hide badge
+        - Show Approve/Reject buttons, hide Retract button
+        """
+        self._is_approved = approved
+        state = ProposalCardState.APPROVED if approved else ProposalCardState.PENDING
+        self.set_state(state)
 
     def is_approved(self) -> bool:
         """Return whether this card is in approved state."""
@@ -378,81 +499,37 @@ class GMProposalCard(QFrame):
 
     def set_signed_state(self, contract_details: Dict[str, Any]):
         """
+        Backwards compatible wrapper for set_state().
+
         Show signed state after successful Process Wave.
 
         Args:
             contract_details: Dict with aav, years from the signed contract
         """
-        # Hide all interactive elements
-        self._approved_badge.hide()
-        self._approve_btn.hide()
-        self._modify_btn.hide()
-        self._reject_btn.hide()
-        self._retract_btn.hide()
-        self._btn_row.hide()
-
-        # Show signed badge
-        self._result_badge.setText("✓ SIGNED")
-        self._result_badge.setStyleSheet("color: #4caf50; padding: 4px 0;")
-        self._result_badge.show()
-
-        # Show contract summary
-        aav = contract_details.get("aav", 0)
-        years = contract_details.get("years", 0)
-        if aav and years:
-            self._result_details.setText(f"{years}yr, ${aav:,}/yr")
-            self._result_details.setStyleSheet("color: #81c784;")
-            self._result_details.show()
-
-        # Card styling - green border
-        self.setStyleSheet("""
-            GMProposalCard {
-                background-color: #1b3a1b;
-                border: 2px solid #4caf50;
-                border-radius: 6px;
-                margin-bottom: 8px;
-            }
-        """)
+        self.set_state(ProposalCardState.SIGNED, details=contract_details)
 
     def set_rejected_state(self, reason: str, concerns: Optional[List[str]] = None):
         """
+        Backwards compatible wrapper for set_state().
+
         Show rejected state after failed signing attempt.
 
         Args:
             reason: Main rejection reason (e.g., "Player rejected offer")
             concerns: Optional list of specific concerns
         """
-        # Hide all interactive elements
-        self._approved_badge.hide()
-        self._approve_btn.hide()
-        self._modify_btn.hide()
-        self._reject_btn.hide()
-        self._retract_btn.hide()
-        self._btn_row.hide()
+        details = {"reason": reason, "concerns": concerns or []}
+        self.set_state(ProposalCardState.REJECTED, details=details)
 
-        # Show rejected badge
-        self._result_badge.setText("✗ REJECTED")
-        self._result_badge.setStyleSheet("color: #f44336; padding: 4px 0;")
-        self._result_badge.show()
+    def set_pending_execution_state(self):
+        """
+        Backwards compatible wrapper for set_state().
 
-        # Show rejection details
-        if concerns:
-            details_text = f"{reason}\n• " + "\n• ".join(concerns[:2])  # Show top 2 concerns
-        else:
-            details_text = reason
-        self._result_details.setText(details_text)
-        self._result_details.setStyleSheet("color: #ef9a9a;")
-        self._result_details.show()
+        Set card to pending execution state (approved but not yet processed).
 
-        # Card styling - red border
-        self.setStyleSheet("""
-            GMProposalCard {
-                background-color: #3a1b1b;
-                border: 2px solid #f44336;
-                border-radius: 6px;
-                margin-bottom: 8px;
-            }
-        """)
+        Shows that the proposal has been queued for execution when "Process Wave" is clicked.
+        """
+        self.set_state(ProposalCardState.PENDING_EXECUTION)
 
 
 class GMProposalsPanel(QWidget):
@@ -596,18 +673,28 @@ class GMProposalsPanel(QWidget):
             self.cards_layout.addWidget(card)
             self._cards[proposal_id] = card  # Store reference
 
+        # Register any pre-approved proposals
+        self._register_pre_approved_proposals()
+
         # Update controls
         count = len(proposals)
         self._update_approve_all_button()
 
-        # Update title
-        self.title.setText(f"GM SIGNING RECOMMENDATIONS ({count})")
+        # Update title with pre-approved count
+        self._update_title()
 
         # Auto-approval indicator
         if auto_approve:
             self.auto_indicator.setText("Auto-Approve: ON ✓")
         else:
             self.auto_indicator.setText("")
+
+    def _register_pre_approved_proposals(self):
+        """Detect and register pre-approved proposals in pending set."""
+        for proposal_id, card in self._cards.items():
+            if card.is_approved():
+                self._pending_approvals.add(proposal_id)
+                print(f"[DEBUG GMProposalsPanel] Pre-approved proposal added to pending: {proposal_id}")
 
     def _on_proposal_approved(self, proposal_id: str):
         """

@@ -45,6 +45,18 @@ class StageUIController(QObject):
     fa_signing_result = Signal(str, bool, dict)  # proposal_id, success, result_details
     week_navigated = Signal(int)  # Emitted when user navigates to a different week (historical navigation)
 
+    # ========================================================================
+    # Stage Handler Registry
+    # ========================================================================
+    # Centralized mapping of stages that require special handling in refresh()
+    # Prevents bugs where handler calls are missed (like resigning stage had)
+    STAGE_HANDLERS = {
+        StageType.OFFSEASON_RESIGNING: "_handle_resigning_stage",
+        StageType.OFFSEASON_PRESEASON_W1: "_handle_preseason_w1_stage",
+        StageType.OFFSEASON_PRESEASON_W2: "_handle_preseason_w2_stage",
+        StageType.OFFSEASON_PRESEASON_W3: "_handle_preseason_w3_stage",
+    }
+
     def __init__(
         self,
         database_path: str,
@@ -76,6 +88,9 @@ class StageUIController(QObject):
         self._tag_decision: Optional[Dict] = None  # {"player_id": X, "tag_type": "franchise"|"transition"}
         self._cut_decisions: Dict[int, bool] = {}  # {player_id: use_june_1} for roster cuts
         self._draft_direction = None  # Owner's draft strategy (Phase 1)
+
+        # Cache expiring players for re-evaluation (prevents empty list bug after restructures)
+        self._cached_resigning_expiring_players: List[Dict] = []
 
         # Wave-based Free Agency controller (Milestone 8 - SoC)
         # Created lazily in set_offseason_view() for proper DI
@@ -146,6 +161,16 @@ class StageUIController(QObject):
             except Exception as e:
                 print(f"[StageUIController] Error in get_stage_preview(): {e}")
                 preview = {"stage_name": stage.display_name, "description": "Error loading preview"}
+
+            # Cache expiring players for re-evaluation (prevents empty list bug after restructures)
+            if stage.stage_type == StageType.OFFSEASON_RESIGNING:
+                expiring_players = preview.get("expiring_players", [])
+                if expiring_players:
+                    self._cached_resigning_expiring_players = expiring_players
+                    print(f"[DEBUG] Cached {len(expiring_players)} expiring players on stage load")
+                else:
+                    print("[DEBUG] No expiring players in preview - cache will be empty")
+
             self._view.set_preview(preview)
             self._view.set_advance_enabled(True)
 
@@ -159,13 +184,12 @@ class StageUIController(QObject):
             # Update week navigation based on stage phase
             self._update_week_navigation(stage)
 
-            # Handle preseason cuts stages (Coach-only proposals)
-            if stage.stage_type == StageType.OFFSEASON_PRESEASON_W1:
-                self._handle_preseason_w1_stage()
-            elif stage.stage_type == StageType.OFFSEASON_PRESEASON_W2:
-                self._handle_preseason_w2_stage()
-            elif stage.stage_type == StageType.OFFSEASON_PRESEASON_W3:
-                self._handle_preseason_w3_stage()
+            # Handle stage-specific setup using registry pattern
+            # This prevents bugs where handler calls are missed
+            handler_name = self.STAGE_HANDLERS.get(stage.stage_type)
+            if handler_name:
+                handler = getattr(self, handler_name)
+                handler()
 
             # Emit signal so MainWindow can update offseason view
             self.stage_changed.emit(stage)
@@ -1447,10 +1471,9 @@ class StageUIController(QObject):
             # Get FA view reference
             fa_view = self._offseason_view.get_free_agency_view()
 
-            # CRITICAL FIX: Explicitly update wave header
-            # This ensures the header updates even if refresh_view doesn't
+            # Update wave header
             wave_state = preview.get("wave_state", {})
-            if wave_state and hasattr(fa_view, 'set_wave_info'):
+            if wave_state:
                 fa_view.set_wave_info(
                     wave=wave_state.get("current_wave", 0),
                     wave_name=wave_state.get("wave_name", ""),
@@ -1458,26 +1481,29 @@ class StageUIController(QObject):
                     days_total=wave_state.get("days_in_wave", 1),
                 )
 
-            # Also update the free agents list
+            # Update the free agents list
             free_agents = preview.get("free_agents", [])
-            if free_agents and hasattr(fa_view, 'set_free_agents'):
+            if free_agents:
                 fa_view.set_free_agents(free_agents)
 
             # Update cap data
             cap_data = preview.get("cap_data", {})
-            if cap_data and hasattr(fa_view, 'set_cap_data'):
+            if cap_data:
                 fa_view.set_cap_data(cap_data)
 
             # Update owner directives display (Step 8)
             owner_directives = preview.get("owner_directives")
-            if hasattr(fa_view, 'set_owner_directives'):
-                fa_view.set_owner_directives(owner_directives)
+            fa_view.set_owner_directives(owner_directives)
 
             # Update GM proposals if available (Tollgate 7)
             gm_proposals = preview.get("gm_proposals", [])
             trust_gm = preview.get("trust_gm", False)
-            if hasattr(fa_view, 'set_gm_proposals'):
-                fa_view.set_gm_proposals(gm_proposals, trust_gm)
+            fa_view.set_gm_proposals(gm_proposals, trust_gm)
+
+            # Initialize expected results count for result dialog
+            if gm_proposals and hasattr(fa_view, 'set_expected_signing_results'):
+                fa_view.set_expected_signing_results(len(gm_proposals))
+                print(f"[StageUIController] Expecting {len(gm_proposals)} signing results")
 
         except Exception as e:
             print(f"[StageUIController] Error refreshing FA wave display: {e}")
@@ -1689,10 +1715,7 @@ class StageUIController(QObject):
         franchise_tag_view = self._offseason_view.get_franchise_tag_view()
 
         taggable_players = preview.get("taggable_players", [])
-        if taggable_players:
-            franchise_tag_view.set_taggable_players(taggable_players)
-        else:
-            franchise_tag_view.show_no_taggable_message()
+        franchise_tag_view.set_taggable_players(taggable_players)
 
         franchise_tag_view.set_tag_used(preview.get("tag_used", False))
 
@@ -1900,11 +1923,8 @@ class StageUIController(QObject):
         """
         Handle GM restructure proposal approval.
 
-        Shows visual feedback during execution:
-        1. "Processing..." state immediately
-        2. Deferred execution (50ms delay) to allow UI repaint
-        3. "✓ Saved $X" on success (card auto-removes after 1s)
-        4. Re-enables buttons on failure for retry
+        Executes the restructure in the database and refreshes cap display.
+        The dialog handles all visual feedback (status column updates).
 
         Args:
             proposal: Proposal dict containing contract_id and base_salary_converted
@@ -1917,54 +1937,15 @@ class StageUIController(QObject):
         contract_id = proposal.get("contract_id")
         base_to_convert = proposal.get("base_salary_converted")
         contract_year = proposal.get("contract_year", 1)
+        player_name = proposal.get("player_name", "Unknown")
 
         if not contract_id or not base_to_convert:
             self.error_occurred.emit("Invalid restructure proposal data")
             return
 
-        # Get resigning view for visual feedback
-        resigning_view = self._offseason_view.get_resigning_view()
-
-        # Step 1: Show processing state immediately
-        resigning_view.set_card_processing(contract_id)
-
-        # Step 2: Defer execution by 500ms so user can perceive "Processing..." state
-        # Human perception requires ~200-300ms minimum to register visual changes
-        QTimer.singleShot(500, lambda: self._execute_restructure_deferred(
-            contract_id, base_to_convert, contract_year, proposal
-        ))
-
-    def _execute_restructure_deferred(
-        self,
-        contract_id: int,
-        base_to_convert: int,
-        contract_year: int,
-        proposal: dict
-    ):
-        """
-        Execute restructure after UI has repainted.
-
-        This runs 50ms after the "Processing..." state is shown, giving
-        the UI time to render before the database work begins.
-
-        Args:
-            contract_id: Contract ID to restructure
-            base_to_convert: Amount of base salary to convert
-            contract_year: Year of the contract to restructure
-            proposal: Original proposal dict
-        """
-        from salary_cap.contract_manager import ContractManager
-
-        # Get resigning view for visual feedback
-        resigning_view = self._offseason_view.get_resigning_view()
-
-        stage = self.current_stage
-        if stage is None:
-            resigning_view.set_card_failure(contract_id, "Stage not available")
-            return
-
         try:
-            # Execute the restructure
+            from salary_cap.contract_manager import ContractManager
+
             manager = ContractManager(self._database_path)
             result = manager.restructure_contract(
                 contract_id=contract_id,
@@ -1973,29 +1954,15 @@ class StageUIController(QObject):
             )
 
             cap_savings = result.get("cap_savings", 0)
-
-            # Step 3: Show success or failure based on actual cap savings
-            if cap_savings > 0:
-                # SUCCESS: Show success state, card auto-removes after delay
-                # Pass controller reference so view can notify when timer fires
-                resigning_view.set_card_success(
-                    contract_id,
-                    cap_savings,
-                    on_complete=self._refresh_cap_display_with_pending
-                )
-            else:
-                # Silent failure - restructure returned but no savings
-                resigning_view.set_card_failure(contract_id, "No cap savings")
-                print(f"[WARN] Restructure returned 0 cap savings for contract {contract_id}")
-                # Refresh cap display only on failure (success refreshes after timer)
-                self._refresh_cap_display_with_pending()
+            print(f"[StageController] Contract {contract_id} ({player_name}) restructured, saved ${cap_savings:,}")
 
         except Exception as e:
             error_msg = f"Restructure execution failed: {e}"
             self.error_occurred.emit(error_msg)
             print(f"[ERROR] {error_msg}")
-            # Show failure state, card stays visible for retry
-            resigning_view.set_card_failure(contract_id, str(e))
+
+        # Always refresh cap display
+        self._refresh_cap_display_with_pending()
 
     def _on_restructure_proposal_rejected(self, proposal: dict):
         """
@@ -2035,13 +2002,8 @@ class StageUIController(QObject):
             cap_data = cap_helper.get_cap_summary(self._user_team_id)
             current_cap_space = cap_data.get("available_space", 0)
 
-            # Load owner directives
-            loader = DirectiveLoader(self._database_path)
-            directives = loader.load_directives(
-                dynasty_id=self._dynasty_id,
-                team_id=self._user_team_id,
-                season=self._season
-            )
+            # Load owner directives (with default fallback)
+            directives = self._load_directives_with_defaults()
 
             # Load GM archetype (currently uses default balanced GM)
             # Future: load from StaffAPI based on assigned GM's archetype
@@ -2049,12 +2011,30 @@ class StageUIController(QObject):
 
             api = UnifiedDatabaseAPI(self._database_path)
 
-            # Get expiring players (use correct method name and parameter order)
-            expiring_players = api.contracts_get_expiring(
-                season=self._season,
-                team_id=self._user_team_id,
-                active_only=True
-            )
+            # Use cached expiring players (populated during initial stage load)
+            # This prevents empty list bug after restructures modify contract records
+            expiring_players = self._cached_resigning_expiring_players
+            if not expiring_players:
+                print("[ERROR] No cached expiring players! Stage may not have loaded properly.")
+                self.error_occurred.emit("Re-evaluation failed: No cached player data")
+                return
+            print(f"[DEBUG] Using cached {len(expiring_players)} expiring players (prevents empty list bug)")
+
+            # 🔍 DEBUG LOGGING - Verify expiring players after restructure
+            print("\n" + "=" * 70)
+            print("[DEBUG] Re-evaluation Expiring Players Check")
+            print("=" * 70)
+            print(f"Season: {self._season}")
+            print(f"Team ID: {self._user_team_id}")
+            print(f"Expiring players count: {len(expiring_players)}")
+            if expiring_players:
+                print("Players:")
+                for p in expiring_players:
+                    print(f"  - {p.get('name')} ({p.get('position')}, {p.get('player_id')})")
+            else:
+                print("⚠️  NO EXPIRING PLAYERS FOUND!")
+            print("=" * 70 + "\n")
+            # 🔍 END DEBUG
 
             # Generate new recommendations
             generator = ResigningProposalGenerator(
@@ -2063,36 +2043,32 @@ class StageUIController(QObject):
                 team_id=self._user_team_id,
                 db_path=self._database_path,
                 cap_space=current_cap_space,
-                gm_archetype=gm_archetype,
+                gm_archetype=gm_archetype.to_dict(),  # Convert GMArchetype object to dict
                 directives=directives
             )
 
             new_recommendations = generator.generate_all_player_recommendations(expiring_players)
 
-            # Update view with new recommendations (with animation)
-            resigning_view = self._offseason_view.get_resigning_view()
-            resigning_view.set_all_players(new_recommendations, is_reevaluation=True)
-
-            # Also regenerate restructure proposals based on current cap
+            # Regenerate restructure proposals based on current cap
+            new_restructure_proposals = []
             try:
-                # Clear existing proposal cards to allow regeneration
-                resigning_view.clear_restructure_proposals()
-
-                # Generate new restructure proposals with current cap space
                 new_restructure_proposals = self._generate_restructure_proposals()
-
-                # Display new proposals
-                if new_restructure_proposals:
-                    proposal_dicts = [self._proposal_to_dict(p) for p in new_restructure_proposals]
-                    resigning_view.set_restructure_proposals(proposal_dicts)
-                else:
-                    # No proposals needed (cap compliant or no viable restructures)
-                    resigning_view.clear_restructure_proposals()
-
                 print(f"[StageController] Re-evaluated {len(new_restructure_proposals)} restructure proposals")
             except Exception as e:
                 print(f"[StageController] Error regenerating restructure proposals: {e}")
                 # Don't block re-evaluation if restructure generation fails
+
+            # Update view with consolidated data (single method call)
+            from game_cycle_ui.models.stage_data import ResigningStageData
+
+            resigning_view = self._offseason_view.get_resigning_view()
+            stage_data = ResigningStageData(
+                recommendations=new_recommendations,
+                restructure_proposals=[self._proposal_to_dict(p) for p in new_restructure_proposals],
+                cap_data=cap_data,
+                is_reevaluation=True
+            )
+            resigning_view.update_stage_data(stage_data)
 
             print(f"[StageController] GM re-evaluated with ${current_cap_space/1_000_000:.1f}M cap space")
 
@@ -2102,10 +2078,9 @@ class StageUIController(QObject):
             print(f"[ERROR] {error_msg}")
 
             # Reset the view's re-evaluate button
-            if hasattr(self, "_offseason_view") and self._offseason_view:
+            if self._offseason_view:
                 resigning_view = self._offseason_view.get_resigning_view()
-                if hasattr(resigning_view, '_cancel_reevaluation'):
-                    resigning_view._cancel_reevaluation()
+                resigning_view._cancel_reevaluation()
 
     def _on_trade_proposal_approved(self, proposal_id: str):
         """
@@ -2582,6 +2557,37 @@ class StageUIController(QObject):
     # Re-signing Stage Support (Restructure Proposals)
     # ========================================================================
 
+    def _load_directives_with_defaults(self):
+        """
+        Load owner directives or return sensible defaults.
+
+        Centralizes directive loading logic with fallback to default priorities.
+        This prevents bugs where directives are missing (e.g., first season before
+        owner completes OFFSEASON_OWNER stage).
+
+        Returns:
+            OwnerDirectives with either loaded values or defaults
+        """
+        from game_cycle.services.directive_loader import DirectiveLoader
+        from game_cycle.models.owner_directives import OwnerDirectives
+
+        loader = DirectiveLoader(self._database_path)
+        directives = loader.load_directives(
+            dynasty_id=self._dynasty_id,
+            team_id=self._user_team_id,
+            season=self._season
+        )
+
+        if not directives:
+            # Create consistent defaults using the classmethod
+            directives = OwnerDirectives.create_default(
+                dynasty_id=self._dynasty_id,
+                team_id=self._user_team_id,
+                season=self._season
+            )
+
+        return directives
+
     def _handle_resigning_stage(self):
         """
         Handle resigning stage - generate and display restructure proposals.
@@ -2631,17 +2637,8 @@ class StageUIController(QObject):
         from team_management.gm_archetype import GMArchetype
 
         try:
-            # Load owner directives
-            loader = DirectiveLoader(self._database_path)
-            directives = loader.load_directives(
-                dynasty_id=self._dynasty_id,
-                team_id=self._user_team_id,
-                season=self._season
-            )
-
-            if not directives:
-                print("[StageController] No owner directives found, skipping restructure proposals")
-                return []
+            # Load owner directives (with default fallback)
+            directives = self._load_directives_with_defaults()
 
             # Get GM archetype (using default balanced GM for now)
             # Future: load from gm_profiles table or staff assignments
@@ -2665,7 +2662,7 @@ class StageUIController(QObject):
                 season=self._season,
                 team_id=self._user_team_id,
                 directives=directives,
-                gm_archetype=gm_archetype
+                gm_archetype=gm_archetype.to_dict()  # Convert GMArchetype to dict
             )
 
             proposals = generator.generate_proposals()
@@ -2886,24 +2883,21 @@ class StageUIController(QObject):
         # Get fresh preview data
         preview = self._backend.get_stage_preview()
 
-        # Update roster cuts view (it will be updated via the offseason view)
-        # The view will receive the updated approved_gm_cuts and approved_coach_cuts lists
-        if hasattr(self._offseason_view, "get_roster_cuts_view"):
-            roster_cuts_view = self._offseason_view.get_roster_cuts_view()
+        # Update roster cuts view with approved cuts
+        roster_cuts_view = self._offseason_view.get_roster_cuts_view()
 
-            # Set roster data with updated approved cuts
-            roster = preview.get("roster", [])
-            cuts_needed = preview.get("cuts_needed", 0)
-            approved_gm_cuts = preview.get("approved_gm_cuts", [])
-            approved_coach_cuts = preview.get("approved_coach_cuts", [])
+        # Set roster data with updated approved cuts
+        roster = preview.get("roster", [])
+        cuts_needed = preview.get("cuts_needed", 0)
+        approved_gm_cuts = preview.get("approved_gm_cuts", [])
+        approved_coach_cuts = preview.get("approved_coach_cuts", [])
 
-            if hasattr(roster_cuts_view, "set_roster_data"):
-                roster_cuts_view.set_roster_data(
-                    roster=roster,
-                    cuts_needed=cuts_needed,
-                    approved_gm_cuts=set(approved_gm_cuts),
-                    approved_coach_cuts=set(approved_coach_cuts),
-                )
+        roster_cuts_view.set_roster_data(
+            roster=roster,
+            cuts_needed=cuts_needed,
+            approved_gm_cuts=set(approved_gm_cuts),
+            approved_coach_cuts=set(approved_coach_cuts),
+        )
 
     # ========================================================================
     # Draft Stage Support
@@ -3187,21 +3181,18 @@ class StageUIController(QObject):
             draft_view.set_draft_complete()
 
         # Update team needs analysis for sidebar
-        if hasattr(draft_view, 'set_team_needs'):
-            team_needs = self._get_team_needs_for_draft(self._user_team_id, prospects)
-            draft_view.set_team_needs(team_needs)
+        team_needs = self._get_team_needs_for_draft(self._user_team_id, prospects)
+        draft_view.set_team_needs(team_needs)
 
         # Update owner directives display (Step 7)
         owner_directives = preview.get("owner_directives")
-        if hasattr(draft_view, 'set_owner_directives'):
-            draft_view.set_owner_directives(owner_directives)
+        draft_view.set_owner_directives(owner_directives)
 
         # Update GM proposal if available (Tollgate 9)
         gm_proposals = preview.get("gm_proposals", [])
         gm_proposal = gm_proposals[0] if gm_proposals else None
         trust_gm = preview.get("trust_gm", False)
-        if hasattr(draft_view, 'set_gm_proposal'):
-            draft_view.set_gm_proposal(gm_proposal, trust_gm)
+        draft_view.set_gm_proposal(gm_proposal, trust_gm)
 
     # =========================================================================
     # Enhanced Draft View Handlers (Phase 1-5)
@@ -3228,22 +3219,20 @@ class StageUIController(QObject):
 
     def _on_draft_pick_completed(self, pick_result: dict):
         """Handle pick completed signal from simulation controller."""
-        if not hasattr(self, "_offseason_view") or not self._offseason_view:
+        if not self._offseason_view:
             return
 
         draft_view = self._offseason_view.get_draft_view()
-        if hasattr(draft_view, 'on_pick_completed'):
-            draft_view.on_pick_completed(pick_result)
+        draft_view.on_pick_completed(pick_result)
         self._refresh_draft_view()
 
     def _on_user_turn_reached(self):
         """Handle user turn reached signal."""
-        if not hasattr(self, "_offseason_view") or not self._offseason_view:
+        if not self._offseason_view:
             return
 
         draft_view = self._offseason_view.get_draft_view()
-        if hasattr(draft_view, 'on_user_turn_reached'):
-            draft_view.on_user_turn_reached()
+        draft_view.on_user_turn_reached()
         self._refresh_draft_view()
 
     def _on_draft_simulation_complete(self):
@@ -3252,13 +3241,12 @@ class StageUIController(QObject):
         print("[StageUIController] _on_draft_simulation_complete() CALLED")
         print("=" * 60)
 
-        if not hasattr(self, "_offseason_view") or not self._offseason_view:
+        if not self._offseason_view:
             print("[StageUIController] No offseason view - returning early")
             return
 
         draft_view = self._offseason_view.get_draft_view()
-        if hasattr(draft_view, 'set_draft_complete'):
-            draft_view.set_draft_complete()
+        draft_view.set_draft_complete()
 
         # Check if we can advance stage
         stage = self.current_stage
