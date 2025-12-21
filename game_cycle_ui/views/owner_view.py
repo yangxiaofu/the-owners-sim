@@ -13,14 +13,22 @@ from typing import Dict, List, Optional, Any
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox,
-    QPushButton, QFrame, QTabWidget, QSpinBox, QComboBox,
+    QPushButton, QFrame, QTabWidget, QStackedWidget, QSpinBox, QComboBox,
     QLineEdit, QScrollArea, QTableWidget, QTableWidgetItem,
     QHeaderView, QSizePolicy, QGridLayout
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
 
-from game_cycle_ui.theme import UITheme, TABLE_HEADER_STYLE
+from game_cycle_ui.theme import (
+    UITheme, Colors, TAB_STYLE, Typography, FontSizes, TextColors, apply_table_style,
+    ESPN_THEME, PRIMARY_BUTTON_STYLE, SECONDARY_BUTTON_STYLE, DANGER_BUTTON_STYLE
+)
+from game_cycle_ui.widgets import (
+    PerformanceSummaryWidget, TransactionsSectionWidget, StaffPerformanceWidget,
+    CapSummaryCompactWidget
+)
+from game_cycle_ui.widgets.owner_flow_guidance import OwnerFlowGuidance, FlowState
+from game_cycle_ui.models import StaffState
 
 
 # Position options for priority selection
@@ -34,7 +42,7 @@ POSITION_OPTIONS = [
 DRAFT_STRATEGIES = [
     ("balanced", "Balanced - Mix of BPA and needs"),
     ("bpa", "Best Player Available"),
-    ("needs", "Needs-Based - Focus on roster holes"),
+    ("needs_based", "Needs-Based - Focus on roster holes"),
     ("position_focus", "Position Focus - Target specific positions"),
 ]
 
@@ -51,9 +59,10 @@ class OwnerView(QWidget):
     View for the owner review stage.
 
     Features:
-    - Tab 1: Season Summary - Record vs. expectations
-    - Tab 2: Staff Decisions - GM/HC keep/fire/hire
-    - Tab 3: Strategic Direction - Directives for GM
+    - Step 1: Season Review - Record vs. expectations + Staff Decisions (GM/HC keep/fire/hire)
+    - Step 2: Strategic Direction - Directives for GM
+
+    Sequential wizard flow with Back/Next/Continue navigation buttons.
 
     Signals:
         continue_clicked: User ready to proceed to next stage
@@ -76,13 +85,13 @@ class OwnerView(QWidget):
 
         # Current state
         self._current_staff: Optional[Dict[str, Any]] = None
-        self._gm_candidates: List[Dict[str, Any]] = []
-        self._hc_candidates: List[Dict[str, Any]] = []
         self._season_summary: Optional[Dict[str, Any]] = None
-        self._is_gm_fired: bool = False
-        self._is_hc_fired: bool = False
-        self._selected_gm_id: Optional[str] = None
-        self._selected_hc_id: Optional[str] = None
+
+        # Staff state (consolidated from 6 scattered variables)
+        self._staff_state = {
+            "gm": StaffState(),
+            "hc": StaffState()
+        }
 
         # Completion tracking for flow guidance
         self._summary_reviewed: bool = False
@@ -97,57 +106,29 @@ class OwnerView(QWidget):
         layout.setSpacing(16)
         layout.setContentsMargins(16, 16, 16, 16)
 
+        # Stacked widget for wizard steps (create before header for flow guidance)
+        self._stacked_widget = QStackedWidget()
+
+        # Keep reference to tab widget for backward compatibility with flow guidance
+        # (will be removed in future cleanup)
+        self._tab_widget = QTabWidget()  # Dummy for now
+        self._tab_widget.setStyleSheet(TAB_STYLE)
+
         # Header
         self._create_header(layout)
 
-        # Tab widget for main content
-        self._tab_widget = QTabWidget()
-        self._tab_widget.setStyleSheet("""
-            QTabWidget::pane {
-                border: 1px solid #ccc;
-                background: #ffffff;
-                border-radius: 4px;
-            }
-            QTabBar::tab {
-                padding: 10px 24px;
-                margin-right: 4px;
-                border: 1px solid #ccc;
-                border-bottom: none;
-                background: #e0e0e0;
-                color: #333333;
-                font-size: 13px;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-            }
-            QTabBar::tab:selected {
-                background: #ffffff;
-                color: #1976D2;
-                font-weight: bold;
-            }
-            QTabBar::tab:hover:!selected {
-                background: #d0d0d0;
-            }
-        """)
+        # Step 1: Season Review (combines performance summary + staff decisions)
+        self._review_step = self._create_comprehensive_review_tab()
+        self._stacked_widget.addWidget(self._review_step)
 
-        # Tab 1: Season Summary
-        self._summary_tab = self._create_summary_tab()
-        self._tab_widget.addTab(self._summary_tab, "Season Summary")
+        # Step 2: Strategic Direction
+        self._strategy_step = self._create_strategy_tab()
+        self._stacked_widget.addWidget(self._strategy_step)
 
-        # Tab 2: Staff Decisions
-        self._staff_tab = self._create_staff_tab()
-        self._tab_widget.addTab(self._staff_tab, "Staff Decisions")
+        layout.addWidget(self._stacked_widget, stretch=1)
 
-        # Tab 3: Strategic Direction
-        self._strategy_tab = self._create_strategy_tab()
-        self._tab_widget.addTab(self._strategy_tab, "Strategic Direction")
-
-        # Connect tab change signal to track visits
-        self._tab_widget.currentChanged.connect(self._on_tab_changed)
-
-        layout.addWidget(self._tab_widget, stretch=1)
-
-        # Continue button at bottom
-        self._create_continue_button(layout)
+        # Navigation footer with Back/Next/Continue buttons
+        self._create_navigation_footer(layout)
 
         # Initialize flow guidance
         self._update_flow_guidance()
@@ -155,15 +136,15 @@ class OwnerView(QWidget):
     def _create_header(self, layout: QVBoxLayout):
         """Create the header section."""
         header = QLabel("Owner Review")
-        header.setFont(QFont("Arial", 24, QFont.Weight.Bold))
+        header.setFont(Typography.H1)
         header.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        header.setStyleSheet("color: #1976D2;")
+        header.setStyleSheet(f"color: {Colors.INFO};")
         layout.addWidget(header)
 
         subtitle = QLabel("Review performance and set direction for the upcoming season")
-        subtitle.setFont(QFont("Arial", 12))
+        subtitle.setFont(Typography.BODY)
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        subtitle.setStyleSheet("color: #666;")
+        subtitle.setStyleSheet(f"color: {Colors.MUTED};")
         layout.addWidget(subtitle)
 
         # Action banner for flow guidance
@@ -177,7 +158,7 @@ class OwnerView(QWidget):
         banner_layout.addWidget(self._banner_icon)
 
         self._banner_text = QLabel()
-        self._banner_text.setFont(QFont("Arial", 11))
+        self._banner_text.setFont(Typography.CAPTION)
         self._banner_text.setWordWrap(True)
         banner_layout.addWidget(self._banner_text, stretch=1)
 
@@ -189,368 +170,95 @@ class OwnerView(QWidget):
 
         layout.addWidget(self._action_banner)
 
-    # ==================== Tab 1: Season Summary ====================
-
-    def _create_summary_tab(self) -> QWidget:
-        """Create the season summary tab."""
-        widget = QWidget()
-        widget.setStyleSheet("background-color: #ffffff;")
-        layout = QVBoxLayout(widget)
-        layout.setSpacing(16)
-        layout.setContentsMargins(16, 16, 16, 16)
-
-        # Season record group
-        record_group = QGroupBox("Season Record")
-        record_group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                font-size: 14px;
-                color: #333333;
-                border: 1px solid #cccccc;
-                border-radius: 4px;
-                margin-top: 12px;
-                padding-top: 8px;
-                background-color: #f9f9f9;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 8px;
-                color: #333333;
-            }
-        """)
-        record_layout = QHBoxLayout(record_group)
-        record_layout.setSpacing(40)
-
-        # Season year
-        year_frame = self._create_stat_frame("Season", "--")
-        self._season_label = year_frame.findChild(QLabel, "value_label")
-        record_layout.addWidget(year_frame)
-
-        # Record
-        record_frame = self._create_stat_frame("Record", "-- - --")
-        self._record_label = record_frame.findChild(QLabel, "value_label")
-        record_layout.addWidget(record_frame)
-
-        # Target wins
-        target_frame = self._create_stat_frame("Target", "--")
-        self._target_label = target_frame.findChild(QLabel, "value_label")
-        record_layout.addWidget(target_frame)
-
-        # Met expectations
-        met_frame = self._create_stat_frame("Expectations", "--")
-        self._expectations_label = met_frame.findChild(QLabel, "value_label")
-        record_layout.addWidget(met_frame)
-
-        record_layout.addStretch()
-        layout.addWidget(record_group)
-
-        # Placeholder for additional stats
-        placeholder = QLabel(
-            "Additional season statistics and performance metrics\n"
-            "will be displayed here in future updates."
+        # Initialize flow guidance manager (manages banner and tab title state)
+        self._flow_guidance = OwnerFlowGuidance(
+            banner=self._action_banner,
+            banner_icon=self._banner_icon,
+            banner_text=self._banner_text,
+            action_btn=self._banner_action_btn,
+            tab_widget=self._tab_widget
         )
-        placeholder.setStyleSheet("color: #888; font-style: italic;")
-        placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(placeholder)
 
-        layout.addStretch()
-        return widget
+    # ==================== Tab 1: Season Review (Comprehensive) ====================
 
-    def _create_stat_frame(self, title: str, value: str) -> QFrame:
-        """Create a stat display frame."""
-        frame = QFrame()
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(0, 0, 0, 0)
+    def _create_comprehensive_review_tab(self) -> QWidget:
+        """
+        Create the comprehensive season review tab.
 
-        title_label = QLabel(title)
-        title_label.setStyleSheet("color: #555555; font-size: 12px;")
-        layout.addWidget(title_label)
+        2-column ESPN-style layout:
+        - Left (60%): Performance Summary + Transactions Section
+        - Right (40%): Staff Performance (GM and HC cards)
 
-        value_label = QLabel(value)
-        value_label.setObjectName("value_label")
-        value_label.setFont(QFont("Arial", 18, QFont.Weight.Bold))
-        value_label.setStyleSheet("color: #222222;")
-        layout.addWidget(value_label)
+        Wrapped in scroll area for overflow content.
+        """
+        # Create scrollable content widget
+        content_widget = QWidget()
+        content_widget.setStyleSheet(f"background-color: {ESPN_THEME['dark_bg']};")
 
-        return frame
+        main_layout = QHBoxLayout(content_widget)
+        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(10, 10, 10, 10)
 
-    # ==================== Tab 2: Staff Decisions ====================
+        # ======== LEFT COLUMN (60%) ========
+        left_column = QWidget()
+        left_layout = QVBoxLayout(left_column)
+        left_layout.setSpacing(12)
+        left_layout.setContentsMargins(0, 0, 0, 0)
 
-    def _create_staff_tab(self) -> QWidget:
-        """Create the staff decisions tab."""
+        # Performance Summary widget (~250px)
+        self._performance_widget = PerformanceSummaryWidget()
+        left_layout.addWidget(self._performance_widget)
+
+        # Transactions Section widget (~450px scrollable)
+        self._transactions_widget = TransactionsSectionWidget()
+        left_layout.addWidget(self._transactions_widget)
+
+        left_layout.addStretch()  # Push to top
+        main_layout.addWidget(left_column, 60)  # 60% width
+
+        # ======== RIGHT COLUMN (40%) ========
+        right_column = QWidget()
+        right_layout = QVBoxLayout(right_column)
+        right_layout.setSpacing(12)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Salary Cap Summary (~90px)
+        self._cap_widget = CapSummaryCompactWidget()
+        right_layout.addWidget(self._cap_widget)
+
+        # Staff Performance widget (~410px with minimum heights)
+        self._staff_widget = StaffPerformanceWidget()
+        self._staff_widget.gm_fired.connect(lambda: self._on_fire_staff("gm"))
+        self._staff_widget.hc_fired.connect(lambda: self._on_fire_staff("hc"))
+        right_layout.addWidget(self._staff_widget)
+
+        right_layout.addStretch()  # Push to top
+        main_layout.addWidget(right_column, 40)  # 40% width
+
+        # Wrap in scroll area
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet("background-color: #ffffff;")
-
-        widget = QWidget()
-        widget.setStyleSheet("background-color: #ffffff;")
-        layout = QVBoxLayout(widget)
-        layout.setSpacing(20)
-        layout.setContentsMargins(16, 16, 16, 16)
-
-        # GM Section
-        self._gm_group = self._create_staff_section("General Manager", "gm")
-        layout.addWidget(self._gm_group)
-
-        # HC Section
-        self._hc_group = self._create_staff_section("Head Coach", "hc")
-        layout.addWidget(self._hc_group)
-
-        layout.addStretch()
-        scroll.setWidget(widget)
-        return scroll
-
-    def _create_staff_section(self, title: str, staff_type: str) -> QGroupBox:
-        """Create a staff section (GM or HC) with keep/fire/hire functionality."""
-        group = QGroupBox(title)
-        group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                font-size: 14px;
-                color: #333333;
-                border: 1px solid #cccccc;
-                border-radius: 4px;
-                margin-top: 12px;
-                padding-top: 8px;
-                background-color: #f9f9f9;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 8px;
-                color: #333333;
-            }
-            QLabel {
-                color: #333333;
-            }
+        scroll.setWidget(content_widget)
+        scroll.setStyleSheet(f"""
+            QScrollArea {{ background-color: {ESPN_THEME['dark_bg']}; border: none; }}
+            QScrollBar:vertical {{ width: 8px; background: {ESPN_THEME['dark_bg']}; }}
+            QScrollBar::handle:vertical {{ background: #444; border-radius: 4px; }}
         """)
-        layout = QVBoxLayout(group)
-        layout.setSpacing(12)
 
-        # Current staff info frame (shown when keeping)
-        info_frame = QFrame()
-        info_frame.setObjectName(f"{staff_type}_info_frame")
-        info_layout = QVBoxLayout(info_frame)
-        info_layout.setContentsMargins(8, 8, 8, 8)
-
-        # Name and archetype
-        name_label = QLabel(f"[{title} Name]")
-        name_label.setObjectName(f"{staff_type}_name")
-        name_label.setFont(QFont("Arial", 14, QFont.Weight.Bold))
-        info_layout.addWidget(name_label)
-
-        archetype_label = QLabel("Archetype: --")
-        archetype_label.setObjectName(f"{staff_type}_archetype")
-        archetype_label.setStyleSheet("color: #666;")
-        info_layout.addWidget(archetype_label)
-
-        tenure_label = QLabel("Tenure: -- seasons")
-        tenure_label.setObjectName(f"{staff_type}_tenure")
-        tenure_label.setStyleSheet("color: #666;")
-        info_layout.addWidget(tenure_label)
-
-        history_label = QLabel("")
-        history_label.setObjectName(f"{staff_type}_history")
-        history_label.setStyleSheet("color: #555; font-style: italic;")
-        history_label.setWordWrap(True)
-        info_layout.addWidget(history_label)
-
-        layout.addWidget(info_frame)
-
-        # Action buttons
-        btn_layout = QHBoxLayout()
-
-        keep_btn = QPushButton(f"Keep {title.split()[0]}")
-        keep_btn.setObjectName(f"{staff_type}_keep_btn")
-        keep_btn.setStyleSheet(UITheme.button_style("primary"))
-        keep_btn.clicked.connect(lambda: self._on_keep_staff(staff_type))
-        btn_layout.addWidget(keep_btn)
-
-        fire_btn = QPushButton(f"Fire {title.split()[0]}")
-        fire_btn.setObjectName(f"{staff_type}_fire_btn")
-        fire_btn.setStyleSheet(UITheme.button_style("danger"))
-        fire_btn.clicked.connect(lambda: self._on_fire_staff(staff_type))
-        btn_layout.addWidget(fire_btn)
-
-        btn_layout.addStretch()
-        layout.addLayout(btn_layout)
-
-        # Candidates table (hidden initially)
-        candidates_frame = QFrame()
-        candidates_frame.setObjectName(f"{staff_type}_candidates_frame")
-        candidates_frame.setVisible(False)
-        candidates_layout = QVBoxLayout(candidates_frame)
-
-        candidates_label = QLabel(f"Select New {title}:")
-        candidates_label.setFont(QFont("Arial", 12, QFont.Weight.Bold))
-        candidates_layout.addWidget(candidates_label)
-
-        candidates_table = QTableWidget()
-        candidates_table.setObjectName(f"{staff_type}_candidates_table")
-        candidates_table.setColumnCount(4)
-        candidates_table.setHorizontalHeaderLabels(["Name", "Archetype", "History", "Action"])
-        candidates_table.horizontalHeader().setStyleSheet(TABLE_HEADER_STYLE)
-        candidates_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        candidates_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        candidates_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
-        candidates_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
-        candidates_table.horizontalHeader().resizeSection(3, 80)
-        candidates_table.verticalHeader().setVisible(False)
-        candidates_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        candidates_table.setMaximumHeight(200)
-        candidates_layout.addWidget(candidates_table)
-
-        layout.addWidget(candidates_frame)
-
-        # Status label
-        status_label = QLabel("")
-        status_label.setObjectName(f"{staff_type}_status")
-        status_label.setStyleSheet("font-weight: bold;")
-        layout.addWidget(status_label)
-
-        return group
-
-    def _on_keep_staff(self, staff_type: str):
-        """Handle keeping current staff member."""
-        if staff_type == "gm":
-            self._is_gm_fired = False
-            self._gm_candidates = []
-            self._selected_gm_id = None
-        else:
-            self._is_hc_fired = False
-            self._hc_candidates = []
-            self._selected_hc_id = None
-
-        self._update_staff_ui(staff_type)
-        self._update_flow_guidance()
+        return scroll
 
     def _on_fire_staff(self, staff_type: str):
         """Handle firing staff member."""
+        self._staff_state[staff_type].fire()
+
         if staff_type == "gm":
-            self._is_gm_fired = True
             self.gm_fired.emit()
         else:
-            self._is_hc_fired = True
             self.hc_fired.emit()
+
         self._update_flow_guidance()
 
-    def _on_hire_candidate(self, staff_type: str, candidate_id: str):
-        """Handle hiring a candidate."""
-        if staff_type == "gm":
-            self._selected_gm_id = candidate_id
-            self.gm_hired.emit(candidate_id)
-        else:
-            self._selected_hc_id = candidate_id
-            self.hc_hired.emit(candidate_id)
-        self._update_staff_ui(staff_type)
-        self._update_flow_guidance()
-
-    def _update_staff_ui(self, staff_type: str):
-        """Update UI for staff section based on current state."""
-        is_fired = self._is_gm_fired if staff_type == "gm" else self._is_hc_fired
-        candidates = self._gm_candidates if staff_type == "gm" else self._hc_candidates
-        selected_id = self._selected_gm_id if staff_type == "gm" else self._selected_hc_id
-
-        # Get widgets
-        info_frame = self._staff_tab.findChild(QFrame, f"{staff_type}_info_frame")
-        candidates_frame = self._staff_tab.findChild(QFrame, f"{staff_type}_candidates_frame")
-        keep_btn = self._staff_tab.findChild(QPushButton, f"{staff_type}_keep_btn")
-        fire_btn = self._staff_tab.findChild(QPushButton, f"{staff_type}_fire_btn")
-        status_label = self._staff_tab.findChild(QLabel, f"{staff_type}_status")
-
-        if is_fired and not selected_id:
-            # Show candidates, hide info
-            info_frame.setVisible(False)
-            candidates_frame.setVisible(True)
-            keep_btn.setEnabled(True)
-            fire_btn.setEnabled(False)
-            status_label.setText("Select a replacement from the candidates below")
-            status_label.setStyleSheet("color: #F57C00; font-weight: bold;")
-
-            # Populate candidates table
-            self._populate_candidates_table(staff_type, candidates)
-
-        elif selected_id:
-            # Show selected candidate info
-            selected = next((c for c in candidates if c.get("staff_id") == selected_id), None)
-            if selected:
-                self._update_staff_info(staff_type, selected)
-            info_frame.setVisible(True)
-            candidates_frame.setVisible(False)
-            keep_btn.setEnabled(False)
-            fire_btn.setEnabled(True)
-            status_label.setText("New hire selected")
-            status_label.setStyleSheet("color: #2E7D32; font-weight: bold;")
-
-        else:
-            # Show current staff (keeping)
-            info_frame.setVisible(True)
-            candidates_frame.setVisible(False)
-            keep_btn.setEnabled(False)
-            fire_btn.setEnabled(True)
-            status_label.setText("Keeping current staff")
-            status_label.setStyleSheet("color: #2E7D32; font-weight: bold;")
-
-    def _populate_candidates_table(self, staff_type: str, candidates: List[Dict]):
-        """Populate the candidates table."""
-        table = self._staff_tab.findChild(QTableWidget, f"{staff_type}_candidates_table")
-        table.setRowCount(len(candidates))
-
-        for row, candidate in enumerate(candidates):
-            # Name
-            name_item = QTableWidgetItem(candidate.get("name", "Unknown"))
-            name_item.setFlags(name_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            table.setItem(row, 0, name_item)
-
-            # Archetype
-            archetype = candidate.get("archetype_key", "balanced")
-            archetype_display = archetype.replace("_", " ").title()
-            archetype_item = QTableWidgetItem(archetype_display)
-            archetype_item.setFlags(archetype_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            table.setItem(row, 1, archetype_item)
-
-            # History
-            history = candidate.get("history", "")
-            history_item = QTableWidgetItem(history[:80] + "..." if len(history) > 80 else history)
-            history_item.setToolTip(history)
-            history_item.setFlags(history_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
-            table.setItem(row, 2, history_item)
-
-            # Hire button
-            hire_btn = QPushButton("Hire")
-            hire_btn.setStyleSheet(UITheme.button_style("primary"))
-            candidate_id = candidate.get("staff_id", "")
-            hire_btn.clicked.connect(
-                lambda checked, st=staff_type, cid=candidate_id: self._on_hire_candidate(st, cid)
-            )
-            table.setCellWidget(row, 3, hire_btn)
-
-    def _update_staff_info(self, staff_type: str, staff_data: Dict):
-        """Update staff info display."""
-        name_label = self._staff_tab.findChild(QLabel, f"{staff_type}_name")
-        archetype_label = self._staff_tab.findChild(QLabel, f"{staff_type}_archetype")
-        tenure_label = self._staff_tab.findChild(QLabel, f"{staff_type}_tenure")
-        history_label = self._staff_tab.findChild(QLabel, f"{staff_type}_history")
-
-        name = staff_data.get("name", "Unknown")
-        archetype = staff_data.get("archetype_key", "balanced")
-        hire_season = staff_data.get("hire_season", 0)
-        history = staff_data.get("history", "")
-
-        name_label.setText(name)
-        archetype_label.setText(f"Archetype: {archetype.replace('_', ' ').title()}")
-
-        # Calculate tenure
-        if self._season_summary and hire_season:
-            current_season = self._season_summary.get("season", 0)
-            tenure = current_season - hire_season + 1
-            tenure_label.setText(f"Tenure: {tenure} season{'s' if tenure != 1 else ''}")
-        else:
-            tenure_label.setText("Tenure: 1 season")
-
-        history_label.setText(history)
 
     # ==================== Tab 3: Strategic Direction ====================
 
@@ -558,7 +266,7 @@ class OwnerView(QWidget):
         """Create the strategic direction tab with fixed footer."""
         # Container for scroll area + fixed footer
         container = QWidget()
-        container.setStyleSheet("background-color: #ffffff;")
+        container.setStyleSheet(f"background-color: {ESPN_THEME['dark_bg']};")
         container_layout = QVBoxLayout(container)
         container_layout.setContentsMargins(0, 0, 0, 0)
         container_layout.setSpacing(0)
@@ -567,41 +275,82 @@ class OwnerView(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setStyleSheet("background-color: #ffffff;")
+        scroll.setStyleSheet(f"""
+            QScrollArea {{ background-color: {ESPN_THEME['dark_bg']}; border: none; }}
+            QScrollBar:vertical {{ width: 8px; background: {ESPN_THEME['dark_bg']}; }}
+            QScrollBar::handle:vertical {{ background: #444; border-radius: 4px; }}
+        """)
 
         widget = QWidget()
-        widget.setStyleSheet("background-color: #ffffff;")
+        widget.setStyleSheet(f"background-color: {ESPN_THEME['dark_bg']};")
         layout = QVBoxLayout(widget)
         layout.setSpacing(16)
         layout.setContentsMargins(16, 16, 16, 16)
 
-        # Common group box style
-        group_style = """
-            QGroupBox {
+        # Common group box style for dark theme
+        group_style = f"""
+            QGroupBox {{
                 font-weight: bold;
-                font-size: 14px;
-                color: #333333;
-                border: 1px solid #cccccc;
+                font-size: {FontSizes.H5};
+                color: {ESPN_THEME['text_primary']};
+                border: 1px solid {ESPN_THEME['border']};
                 border-radius: 4px;
                 margin-top: 12px;
                 padding-top: 8px;
-                background-color: #f9f9f9;
-            }
-            QGroupBox::title {
+                background-color: {ESPN_THEME['card_bg']};
+            }}
+            QGroupBox::title {{
                 subcontrol-origin: margin;
                 subcontrol-position: top left;
                 padding: 0 8px;
-                color: #333333;
-            }
-            QLabel {
-                color: #333333;
-            }
-            QComboBox, QSpinBox, QLineEdit {
-                color: #333333;
-                background-color: #ffffff;
-                border: 1px solid #cccccc;
-                padding: 4px;
-            }
+                color: {ESPN_THEME['text_primary']};
+            }}
+            QLabel {{
+                color: {ESPN_THEME['text_primary']};
+            }}
+            QComboBox {{
+                color: {ESPN_THEME['text_primary']};
+                background-color: #2a2a2a;
+                border: 1px solid {ESPN_THEME['border']};
+                border-radius: 3px;
+                padding: 6px 8px;
+            }}
+            QComboBox:hover {{
+                border-color: #555555;
+            }}
+            QComboBox::drop-down {{
+                border: none;
+                width: 20px;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: #2a2a2a;
+                color: {ESPN_THEME['text_primary']};
+                selection-background-color: #3a3a3a;
+                border: 1px solid {ESPN_THEME['border']};
+            }}
+            QSpinBox {{
+                color: {ESPN_THEME['text_primary']};
+                background-color: #2a2a2a;
+                border: 1px solid {ESPN_THEME['border']};
+                border-radius: 3px;
+                padding: 6px 8px;
+            }}
+            QSpinBox:hover {{
+                border-color: #555555;
+            }}
+            QLineEdit {{
+                color: {ESPN_THEME['text_primary']};
+                background-color: #2a2a2a;
+                border: 1px solid {ESPN_THEME['border']};
+                border-radius: 3px;
+                padding: 6px 8px;
+            }}
+            QLineEdit:hover {{
+                border-color: #555555;
+            }}
+            QLineEdit:focus {{
+                border-color: {Colors.INFO};
+            }}
         """
 
         # Win Target
@@ -627,7 +376,7 @@ class OwnerView(QWidget):
         priority_layout = QVBoxLayout(priority_group)
 
         priority_desc = QLabel("Select up to 5 positions to prioritize in free agency and draft:")
-        priority_desc.setStyleSheet("color: #555555;")
+        priority_desc.setStyleSheet(f"color: {ESPN_THEME['text_secondary']};")
         priority_layout.addWidget(priority_desc)
 
         positions_layout = QHBoxLayout()
@@ -718,24 +467,7 @@ class OwnerView(QWidget):
         scroll.setWidget(widget)
         container_layout.addWidget(scroll, stretch=1)
 
-        # Fixed footer with Save button (always visible)
-        footer = QFrame()
-        footer.setStyleSheet("""
-            QFrame {
-                background-color: #f5f5f5;
-                border-top: 1px solid #cccccc;
-            }
-        """)
-        footer_layout = QHBoxLayout(footer)
-        footer_layout.setContentsMargins(16, 12, 16, 12)
-        footer_layout.addStretch()
-
-        self._save_directives_btn = QPushButton("Save Directives")
-        self._save_directives_btn.setStyleSheet(UITheme.button_style("primary"))
-        self._save_directives_btn.clicked.connect(self._on_save_directives)
-        footer_layout.addWidget(self._save_directives_btn)
-
-        container_layout.addWidget(footer)
+        # Note: Save button removed - navigation footer handles saving via "Save & Complete"
 
         return container
 
@@ -779,29 +511,64 @@ class OwnerView(QWidget):
 
     # ==================== Continue Button ====================
 
-    def _create_continue_button(self, layout: QVBoxLayout):
-        """Create the continue button."""
+    def _create_navigation_footer(self, layout: QVBoxLayout):
+        """Create navigation footer with Back/Next/Continue buttons."""
         btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(12)
+        btn_layout.setContentsMargins(0, 12, 0, 0)
+
+        # Back button
+        self._back_btn = QPushButton("\u2190 Back")
+        self._back_btn.setStyleSheet(SECONDARY_BUTTON_STYLE)
+        self._back_btn.setFixedWidth(120)
+        self._back_btn.clicked.connect(self._on_back_clicked)
+        btn_layout.addWidget(self._back_btn)
+
         btn_layout.addStretch()
 
+        # Next button (changes text based on step)
+        self._next_btn = QPushButton("Next: Strategic Direction \u2192")
+        self._next_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {Colors.INFO};
+                color: white;
+                border-radius: 4px;
+                padding: 12px 24px;
+                font-size: {FontSizes.H5};
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: #1565C0;
+            }}
+            QPushButton:disabled {{
+                background-color: #444444;
+                color: {ESPN_THEME['text_muted']};
+            }}
+        """)
+        self._next_btn.clicked.connect(self._on_next_clicked)
+        btn_layout.addWidget(self._next_btn)
+
+        btn_layout.addStretch()
+
+        # Continue button (shown after Step 2 is complete)
         self._continue_btn = QPushButton("Continue to Franchise Tag")
-        self._continue_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #1976D2;
+        self._continue_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {Colors.SUCCESS};
                 color: white;
                 border-radius: 4px;
                 padding: 12px 32px;
-                font-size: 14px;
+                font-size: {FontSizes.H5};
                 font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #1565C0;
-            }
+            }}
+            QPushButton:hover {{
+                background-color: #2E7D32;
+            }}
         """)
         self._continue_btn.clicked.connect(self._on_continue)
+        self._continue_btn.setVisible(False)  # Initially hidden
         btn_layout.addWidget(self._continue_btn)
 
-        btn_layout.addStretch()
         layout.addLayout(btn_layout)
 
     def _on_continue(self):
@@ -818,21 +585,43 @@ class OwnerView(QWidget):
             staff: Dict with 'gm' and 'hc' keys containing staff data
         """
         self._current_staff = staff
-        self._is_gm_fired = False
-        self._is_hc_fired = False
-        self._selected_gm_id = None
-        self._selected_hc_id = None
-        self._gm_candidates = []
-        self._hc_candidates = []
+        self._staff_state["gm"].reset()
+        self._staff_state["hc"].reset()
 
         if staff:
             gm_data = staff.get("gm", {})
             hc_data = staff.get("hc", {})
-            self._update_staff_info("gm", gm_data)
-            self._update_staff_info("hc", hc_data)
 
-        self._update_staff_ui("gm")
-        self._update_staff_ui("hc")
+            # Update new staff widget
+            if hasattr(self, '_staff_widget'):
+                # Convert staff data to widget format
+                gm_widget_data = {
+                    'name': gm_data.get('name', 'Unknown GM'),
+                    'contract_year': gm_data.get('contract_year', 1),
+                    'contract_total_years': gm_data.get('contract_years', 4),
+                    'salary': gm_data.get('salary', 3_500_000),
+                    'archetype': gm_data.get('archetype_key', 'Unknown'),
+                    'draft_grade': 'N/A',  # Placeholder
+                    'trade_success_rate': 0.0,  # Placeholder
+                    'fa_hit_rate': 0.0  # Placeholder
+                }
+                hc_widget_data = {
+                    'name': hc_data.get('name', 'Unknown HC'),
+                    'contract_year': hc_data.get('contract_year', 1),
+                    'contract_total_years': hc_data.get('contract_years', 5),
+                    'salary': hc_data.get('salary', 5_200_000),
+                    'archetype': hc_data.get('archetype_key', 'Unknown'),
+                    'win_pct': 0.0,  # Placeholder
+                    'ppg_for': 0.0,  # Placeholder
+                    'ppg_against': 0.0,  # Placeholder
+                    'player_dev': 0.0  # Placeholder
+                }
+                self._staff_widget.set_gm_data(gm_widget_data)
+                self._staff_widget.set_hc_data(hc_widget_data)
+
+        # Update flow guidance after staff changes
+        if hasattr(self, '_flow_guidance'):
+            self._update_flow_guidance()
 
     def set_gm_candidates(self, candidates: List[Dict[str, Any]]):
         """
@@ -841,8 +630,7 @@ class OwnerView(QWidget):
         Args:
             candidates: List of candidate dicts from StaffGeneratorService
         """
-        self._gm_candidates = candidates
-        self._update_staff_ui("gm")
+        self._staff_state["gm"].candidates = candidates
 
     def set_hc_candidates(self, candidates: List[Dict[str, Any]]):
         """
@@ -851,52 +639,39 @@ class OwnerView(QWidget):
         Args:
             candidates: List of candidate dicts from StaffGeneratorService
         """
-        self._hc_candidates = candidates
-        self._update_staff_ui("hc")
+        self._staff_state["hc"].candidates = candidates
 
     def set_season_summary(self, summary: Dict[str, Any]):
         """
         Set the season summary data.
 
         Args:
-            summary: Dict with season, target_wins, wins, losses
+            summary: Dict with season, target_wins, wins, losses,
+                    and optionally playoff_result, priority_positions, etc.
         """
         self._season_summary = summary
 
         season = summary.get("season", "--")
-        wins = summary.get("wins")
-        losses = summary.get("losses")
-        target = summary.get("target_wins")
+        wins = summary.get("wins", 0)
+        losses = summary.get("losses", 0)
+        target = summary.get("target_wins", 10)
 
-        self._season_label.setText(str(season))
 
-        if wins is not None and losses is not None:
-            self._record_label.setText(f"{wins} - {losses}")
-
-            if target is not None:
-                self._target_label.setText(f"{target} wins")
-
-                # Determine if expectations met
-                if wins >= target:
-                    self._expectations_label.setText("Met")
-                    self._expectations_label.setStyleSheet(
-                        "color: #2E7D32; font-weight: bold; font-size: 18px;"
-                    )
-                else:
-                    self._expectations_label.setText("Not Met")
-                    self._expectations_label.setStyleSheet(
-                        "color: #C62828; font-weight: bold; font-size: 18px;"
-                    )
-            else:
-                self._target_label.setText("Not set")
-                self._expectations_label.setText("N/A")
-                self._expectations_label.setStyleSheet(
-                    "color: #666; font-size: 18px;"
-                )
-        else:
-            self._record_label.setText("-- - --")
-            self._target_label.setText("--")
-            self._expectations_label.setText("--")
+        # Update new performance widget
+        if hasattr(self, '_performance_widget'):
+            performance_data = {
+                'wins': wins,
+                'losses': losses,
+                'target_wins': target,
+                'playoff_result': summary.get('playoff_result', 'Did not make playoffs'),
+                'playoff_expectation': summary.get('playoff_expectation', 'Miss playoffs'),
+                'cap_used': summary.get('cap_used', 0),
+                'cap_total': summary.get('cap_total', 255_400_000),
+                'priority_positions': summary.get('priority_positions', []),
+                'strategy_adherence': summary.get('strategy_adherence', 0.0),
+                'strategy_name': summary.get('strategy_name', 'Unknown Strategy')
+            }
+            self._performance_widget.set_data(performance_data)
 
     def set_directives(self, directives: Optional[Dict[str, Any]]):
         """
@@ -946,206 +721,120 @@ class OwnerView(QWidget):
         guaranteed = directives.get("max_guaranteed_percent", 0.75) or 0.75
         self._max_guaranteed_spin.setValue(int(guaranteed * 100))
 
+    def set_transactions(self, transactions: List[Dict[str, Any]]):
+        """
+        Set the season transactions data for the transactions widget.
+
+        Args:
+            transactions: List of transaction dicts with:
+                - type: 'trade' | 'fa_signing' | 'draft_pick' | 'cut'
+                - timing: str (e.g., 'Week 3', 'March 15', 'Round 1, Pick 18')
+                - acquired: str (optional, what was acquired)
+                - sent: str (optional, what was sent)
+                - impact: str (description of impact on team/goals)
+        """
+        if hasattr(self, '_transactions_widget'):
+            self._transactions_widget.set_transactions(transactions)
+
+    def set_cap_data(self, cap_data: Dict[str, Any]):
+        """
+        Set the salary cap data for the cap widget.
+
+        Args:
+            cap_data: {
+                'total_cap': int,
+                'cap_used': int,
+                'cap_room': int
+            }
+        """
+        if hasattr(self, '_cap_widget'):
+            self._cap_widget.set_data(cap_data)
+
     # ==================== Flow Guidance ====================
 
-    def _on_tab_changed(self, index: int):
-        """Handle tab change to track visits and update completion state."""
-        if index == 0:  # Season Summary tab
-            self._summary_reviewed = True
+    def _on_banner_action_clicked(self):
+        """Stub for banner action button (no longer used in wizard flow)."""
+        pass
+
+    def _on_back_clicked(self):
+        """Handle Back button click - return to Step 1."""
+        self._stacked_widget.setCurrentIndex(0)
+        self._update_navigation_buttons()
         self._update_flow_guidance()
 
-    def _on_banner_action_clicked(self):
-        """Handle clicking the action button in the banner."""
-        # Determine which tab to switch to based on current state
-        if not self._summary_reviewed:
-            self._tab_widget.setCurrentIndex(0)
-        elif not self._staff_decisions_complete:
-            self._tab_widget.setCurrentIndex(1)
-        elif not self._directives_saved:
-            self._tab_widget.setCurrentIndex(2)
+    def _on_next_clicked(self):
+        """Handle Next button click - advance to Step 2 or save directives."""
+        current_step = self._stacked_widget.currentIndex() + 1
+
+        if current_step == 1:
+            # Advancing from Step 1 to Step 2
+            if self._can_proceed_to_step_2():
+                self._summary_reviewed = True  # Mark Step 1 as reviewed
+                self._stacked_widget.setCurrentIndex(1)
+                self._update_navigation_buttons()
+                self._update_flow_guidance()
+        elif current_step == 2:
+            # Save directives on Step 2
+            self._on_save_directives()
+            # Note: _on_save_directives already updates flow guidance
+
+    def _can_proceed_to_step_2(self) -> bool:
+        """Check if user can proceed to Step 2."""
+        # Auto-mark as reviewed when advancing (user has seen the content)
+        return self._check_staff_decisions_complete()
+
+    def _update_navigation_buttons(self):
+        """Update Back/Next/Continue button states based on current step."""
+        current_step = self._stacked_widget.currentIndex() + 1
+
+        # Back button - enabled on Step 2
+        self._back_btn.setEnabled(current_step == 2)
+
+        # Next button - behavior changes by step
+        if current_step == 1:
+            self._next_btn.setVisible(True)
+            self._next_btn.setEnabled(self._can_proceed_to_step_2())
+            self._next_btn.setText("Next: Strategic Direction \u2192")
+        elif current_step == 2:
+            self._next_btn.setVisible(True)
+            self._next_btn.setEnabled(True)
+            self._next_btn.setText("Save & Complete")
+
+        # Continue button - show after directives saved on Step 2
+        self._continue_btn.setVisible(current_step == 2 and self._directives_saved)
 
     def _check_staff_decisions_complete(self) -> bool:
         """Check if both GM and HC decisions have been made."""
-        # GM decision: either keeping (not fired) or hired a replacement
-        gm_decided = not self._is_gm_fired or self._selected_gm_id is not None
-        # HC decision: either keeping (not fired) or hired a replacement
-        hc_decided = not self._is_hc_fired or self._selected_hc_id is not None
-        return gm_decided and hc_decided
+        return (self._staff_state["gm"].is_decision_complete() and
+                self._staff_state["hc"].is_decision_complete())
 
     def _update_flow_guidance(self):
-        """Update the action banner, tab titles, and continue button based on completion state."""
+        """Update the action banner and navigation buttons based on completion state."""
         # Update staff decisions state
         self._staff_decisions_complete = self._check_staff_decisions_complete()
 
-        # Determine current step and what action is needed
-        all_complete = self._summary_reviewed and self._staff_decisions_complete and self._directives_saved
+        # Get current wizard step
+        current_step = self._stacked_widget.currentIndex() + 1
 
-        # Update tab titles with completion indicators
-        tab_titles = [
-            ("Season Summary", self._summary_reviewed),
-            ("Staff Decisions", self._staff_decisions_complete),
-            ("Strategic Direction", self._directives_saved),
-        ]
+        # Delegate banner updates to flow guidance manager
+        flow_state = FlowState(
+            summary_reviewed=self._summary_reviewed,
+            staff_decisions_complete=self._staff_decisions_complete,
+            directives_saved=self._directives_saved,
+            gm_fired_not_hired=self._staff_state["gm"].is_fired and not self._staff_state["gm"].selected_id,
+            hc_fired_not_hired=self._staff_state["hc"].is_fired and not self._staff_state["hc"].selected_id,
+            current_step=current_step
+        )
+        self._flow_guidance.update(flow_state)
 
-        for i, (title, is_complete) in enumerate(tab_titles):
-            if is_complete:
-                indicator = "\u2713"  # Checkmark
-                self._tab_widget.setTabText(i, f"{indicator} {title}")
-            elif i == 1 and self._is_gm_fired and not self._selected_gm_id:
-                # Staff tab needs action (GM not yet hired)
-                self._tab_widget.setTabText(i, f"! {title}")
-            elif i == 1 and self._is_hc_fired and not self._selected_hc_id:
-                # Staff tab needs action (HC not yet hired)
-                self._tab_widget.setTabText(i, f"! {title}")
-            else:
-                self._tab_widget.setTabText(i, title)
-
-        # Update action banner
-        if all_complete:
-            # All done - green success banner
-            self._action_banner.setStyleSheet("""
-                QFrame#action_banner {
-                    background-color: #E8F5E9;
-                    border: 1px solid #4CAF50;
-                    border-radius: 6px;
-                }
-            """)
-            self._banner_icon.setText("\u2713")
-            self._banner_icon.setStyleSheet("color: #2E7D32; font-size: 16px; font-weight: bold;")
-            self._banner_text.setText("All set! You've completed all owner decisions. Click Continue to proceed.")
-            self._banner_text.setStyleSheet("color: #2E7D32;")
-            self._banner_action_btn.setVisible(False)
-
-        elif not self._summary_reviewed:
-            # Step 1: Review season summary
-            self._action_banner.setStyleSheet("""
-                QFrame#action_banner {
-                    background-color: #FFF3E0;
-                    border: 1px solid #FF9800;
-                    border-radius: 6px;
-                }
-            """)
-            self._banner_icon.setText("1")
-            self._banner_icon.setStyleSheet("""
-                color: white;
-                background-color: #FF9800;
-                border-radius: 10px;
-                font-size: 12px;
-                font-weight: bold;
-                padding: 2px 6px;
-            """)
-            self._banner_text.setText("Step 1 of 3: Review your team's season performance before making decisions.")
-            self._banner_text.setStyleSheet("color: #E65100;")
-            self._banner_action_btn.setText("View Summary")
-            self._banner_action_btn.setStyleSheet(UITheme.button_style("warning"))
-            self._banner_action_btn.setVisible(True)
-
-        elif not self._staff_decisions_complete:
-            # Step 2: Make staff decisions
-            self._action_banner.setStyleSheet("""
-                QFrame#action_banner {
-                    background-color: #FFF3E0;
-                    border: 1px solid #FF9800;
-                    border-radius: 6px;
-                }
-            """)
-            self._banner_icon.setText("2")
-            self._banner_icon.setStyleSheet("""
-                color: white;
-                background-color: #FF9800;
-                border-radius: 10px;
-                font-size: 12px;
-                font-weight: bold;
-                padding: 2px 6px;
-            """)
-
-            # Specific message based on what's missing
-            if self._is_gm_fired and not self._selected_gm_id:
-                msg = "Step 2 of 3: You fired the GM - select a replacement before continuing."
-            elif self._is_hc_fired and not self._selected_hc_id:
-                msg = "Step 2 of 3: You fired the Head Coach - select a replacement before continuing."
-            else:
-                msg = "Step 2 of 3: Decide whether to keep or replace your GM and Head Coach."
-
-            self._banner_text.setText(msg)
-            self._banner_text.setStyleSheet("color: #E65100;")
-            self._banner_action_btn.setText("Staff Decisions")
-            self._banner_action_btn.setStyleSheet(UITheme.button_style("warning"))
-            self._banner_action_btn.setVisible(True)
-
-        elif not self._directives_saved:
-            # Step 3: Set strategic direction
-            self._action_banner.setStyleSheet("""
-                QFrame#action_banner {
-                    background-color: #FFF3E0;
-                    border: 1px solid #FF9800;
-                    border-radius: 6px;
-                }
-            """)
-            self._banner_icon.setText("3")
-            self._banner_icon.setStyleSheet("""
-                color: white;
-                background-color: #FF9800;
-                border-radius: 10px;
-                font-size: 12px;
-                font-weight: bold;
-                padding: 2px 6px;
-            """)
-            self._banner_text.setText("Step 3 of 3: Set your strategic direction for the upcoming season, then save.")
-            self._banner_text.setStyleSheet("color: #E65100;")
-            self._banner_action_btn.setText("Set Direction")
-            self._banner_action_btn.setStyleSheet(UITheme.button_style("warning"))
-            self._banner_action_btn.setVisible(True)
-
-        # Update continue button state
-        if all_complete:
-            self._continue_btn.setEnabled(True)
-            self._continue_btn.setText("Continue to Franchise Tag")
-            self._continue_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #1976D2;
-                    color: white;
-                    border-radius: 4px;
-                    padding: 12px 32px;
-                    font-size: 14px;
-                    font-weight: bold;
-                }
-                QPushButton:hover {
-                    background-color: #1565C0;
-                }
-            """)
-        else:
-            self._continue_btn.setEnabled(False)
-            # Show what's missing
-            missing = []
-            if not self._summary_reviewed:
-                missing.append("review summary")
-            if not self._staff_decisions_complete:
-                missing.append("staff decisions")
-            if not self._directives_saved:
-                missing.append("save directives")
-
-            self._continue_btn.setText(f"Complete: {', '.join(missing)}")
-            self._continue_btn.setStyleSheet("""
-                QPushButton {
-                    background-color: #BDBDBD;
-                    color: #757575;
-                    border-radius: 4px;
-                    padding: 12px 32px;
-                    font-size: 14px;
-                    font-weight: bold;
-                }
-            """)
+        # Update navigation button states
+        self._update_navigation_buttons()
 
     def refresh(self):
         """Refresh the view with current data."""
-        # Reset state
-        self._is_gm_fired = False
-        self._is_hc_fired = False
-        self._selected_gm_id = None
-        self._selected_hc_id = None
-        self._gm_candidates = []
-        self._hc_candidates = []
+        # Reset staff state
+        self._staff_state["gm"].reset()
+        self._staff_state["hc"].reset()
 
         # Reset completion tracking
         self._summary_reviewed = False
@@ -1153,11 +842,10 @@ class OwnerView(QWidget):
         self._directives_saved = False
 
         # Update UI
-        self._update_staff_ui("gm")
-        self._update_staff_ui("hc")
+        # Note: Staff widgets handle their own updates now via StaffPerformanceWidget
 
-        # Update flow guidance
+        # Reset to Step 1
+        self._stacked_widget.setCurrentIndex(0)
+
+        # Update flow guidance and navigation buttons
         self._update_flow_guidance()
-
-        # Reset to first tab
-        self._tab_widget.setCurrentIndex(0)
