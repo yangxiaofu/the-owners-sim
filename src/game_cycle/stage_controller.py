@@ -255,13 +255,15 @@ class StageController:
 
     def execute_current_stage(
         self,
-        extra_context: Optional[Dict[str, Any]] = None
+        extra_context: Optional[Dict[str, Any]] = None,
+        auto_advance: bool = True
     ) -> StageResult:
         """
         Execute all events/games for the current stage.
 
         Args:
             extra_context: Optional extra context to merge (e.g., user_decisions for offseason)
+            auto_advance: If True (default), automatically advance past completed stages
 
         Returns:
             StageResult with execution details
@@ -284,6 +286,25 @@ class StageController:
                 can_advance=False,
                 next_stage=None
             )
+
+        # Auto-advance past completed stages to prevent re-execution
+        if auto_advance and stage.completed:
+            logger.info(f"Stage {stage.display_name} already completed, advancing to next...")
+            next_stage = self.advance_to_next_stage()
+            if next_stage:
+                stage = next_stage
+                logger.info(f"Advanced to {stage.display_name}")
+            else:
+                logger.warning("No next stage available after completed stage")
+                return StageResult(
+                    stage=stage,
+                    success=False,
+                    games_played=[],
+                    events_processed=[],
+                    errors=["No next stage available"],
+                    can_advance=False,
+                    next_stage=None
+                )
 
         context = self._build_context()
 

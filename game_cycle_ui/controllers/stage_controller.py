@@ -258,6 +258,9 @@ class StageUIController(QObject):
             self.error_occurred.emit("No current stage")
             return
 
+        # Note: Auto-advance for completed stages is handled by backend's
+        # execute_current_stage(auto_advance=True) - no duplicate check needed here
+
         # Check if this stage needs progress dialog (regular season or playoffs)
         needs_progress = (
             stage.phase == SeasonPhase.REGULAR_SEASON or
