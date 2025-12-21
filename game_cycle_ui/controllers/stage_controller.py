@@ -43,6 +43,7 @@ class StageUIController(QObject):
     owner_stage_ready = Signal()  # Emitted when entering OFFSEASON_OWNER - UI should show owner view
     super_bowl_completed = Signal(dict, dict)  # super_bowl_result, season_awards - show results dialog
     fa_signing_result = Signal(str, bool, dict)  # proposal_id, success, result_details
+    week_navigated = Signal(int)  # Emitted when user navigates to a different week (historical navigation)
 
     def __init__(
         self,
@@ -155,6 +156,9 @@ class StageUIController(QObject):
             # Update nested view contexts with current season (fixes player aging bug)
             self._update_nested_view_contexts(stage)
 
+            # Update week navigation based on stage phase
+            self._update_week_navigation(stage)
+
             # Handle preseason cuts stages (Coach-only proposals)
             if stage.stage_type == StageType.OFFSEASON_PRESEASON_W1:
                 self._handle_preseason_w1_stage()
@@ -163,32 +167,65 @@ class StageUIController(QObject):
             elif stage.stage_type == StageType.OFFSEASON_PRESEASON_W3:
                 self._handle_preseason_w3_stage()
 
+            # Emit signal so MainWindow can update offseason view
+            self.stage_changed.emit(stage)
+
+    def _refresh_button_only(self):
+        """
+        Refresh only the simulate button state without rebuilding the view.
+
+        Used after simulation to update button text/state while preserving
+        game results and top performers.
+        """
+        if not self._backend.is_initialized():
+            return
+
+        stage = self.current_stage
+
+        if self._view and stage:
+            # Update button state without calling set_preview()
+            self._view.set_current_stage(stage)
+            self._view.set_advance_enabled(True)
+
+            # Update preview data for box score dialog without rebuilding game rows
+            # This ensures the info button can find game data to display box scores
+            preview = self._backend.get_stage_preview()
+            if preview:
+                self._view.update_preview_data(preview)
+
             # Handle resigning stage - load restructure proposals
             if stage.stage_type == StageType.OFFSEASON_RESIGNING:
                 self._handle_resigning_stage()
 
-            # Update week navigation state for regular season and playoffs
-            if stage.phase == SeasonPhase.REGULAR_SEASON:
-                week_number = preview.get("week", 1)
-                self._view.set_week_navigation_state(week_number, week_number)
-                self._view.set_week_navigation_visible(True)
-            elif stage.phase == SeasonPhase.PLAYOFFS:
-                # Map playoff stage to week number (19-22)
-                playoff_week_map = {
-                    StageType.WILD_CARD: 19,
-                    StageType.DIVISIONAL: 20,
-                    StageType.CONFERENCE_CHAMPIONSHIP: 21,
-                    StageType.SUPER_BOWL: 22,
-                }
-                week_number = playoff_week_map.get(stage.stage_type, 19)
-                self._view.set_week_navigation_state(week_number, week_number)
-                self._view.set_week_navigation_visible(True)
-            else:
-                # Hide week navigation during offseason
-                self._view.set_week_navigation_visible(False)
+            # Update week navigation based on stage phase
+            self._update_week_navigation(stage)
 
         if stage:
             self.stage_changed.emit(stage)
+
+    def _update_week_navigation(self, stage: Stage):
+        """Update week navigation visibility and state based on current stage."""
+        if not self._view:
+            return
+
+        if stage.phase == SeasonPhase.REGULAR_SEASON:
+            week_number = stage.week_number if stage.week_number else 1
+            self._view.set_week_navigation_state(week_number, week_number)
+            self._view.set_week_navigation_visible(True)
+        elif stage.phase == SeasonPhase.PLAYOFFS:
+            # Map playoff stage to week number (19-22)
+            playoff_week_map = {
+                StageType.WILD_CARD: 19,
+                StageType.DIVISIONAL: 20,
+                StageType.CONFERENCE_CHAMPIONSHIP: 21,
+                StageType.SUPER_BOWL: 22,
+            }
+            week_number = playoff_week_map.get(stage.stage_type, 19)
+            self._view.set_week_navigation_state(week_number, week_number)
+            self._view.set_week_navigation_visible(True)
+        else:
+            # Hide week navigation during offseason
+            self._view.set_week_navigation_visible(False)
 
     def execute_current_stage(self):
         """Execute the current stage (simulate games/process events)."""
@@ -328,7 +365,7 @@ class StageUIController(QObject):
                 # Don't auto-advance - user interaction required
                 # User must explicitly click "Confirm" or "Continue" to proceed
                 pass
-            elif stage.stage_type.name.startswith('REGULAR_SEASON_WEEK'):
+            elif stage.stage_type.name.startswith('REGULAR_WEEK'):
                 # Check for IR activations before advancing (regular season only)
                 # Extract week number from stage
                 week_number = stage.week_number
@@ -336,8 +373,11 @@ class StageUIController(QObject):
                 # Note: If IR UI is shown, user must complete it before advancing
                 # The view's signals will hide it and then we can advance
                 if not ir_shown:
-                    # No IR activations needed, proceed with auto-advance
-                    self._advance_to_next()
+                    # No IR activations needed, stay on current week to let user review scores
+                    # Query top performers and update UI with results
+                    self._update_ui_with_results(stage, week_number)
+                    # Refresh only the simulate button without rebuilding the view
+                    self._refresh_button_only()
             else:
                 # Non-interactive stages (e.g., OFFSEASON_TRAINING_CAMP)
                 self._advance_to_next()
@@ -362,6 +402,63 @@ class StageUIController(QObject):
         if self._view:
             self._view.set_status(error_msg, is_error=True)
             self._view.set_advance_enabled(True)
+
+    def _update_ui_with_results(self, stage: Stage, week_number: int):
+        """
+        Update UI with post-simulation results for regular season week.
+
+        Queries top performers and game scores, then updates the view's
+        expandable game rows to show results instead of preview data.
+
+        Args:
+            stage: Current stage (regular season week)
+            week_number: Week number that was just simulated
+        """
+        if not self._view:
+            return
+
+        try:
+            # Query games for this week to get scores
+            from database.unified_api import UnifiedDatabaseAPI
+            unified_api = UnifiedDatabaseAPI(self._database_path, self._dynasty_id)
+
+            games = unified_api.events_get_games_by_week(
+                season=stage.season_year,
+                week=week_number,
+                season_type='regular_season'
+            )
+
+            # Query top performers using backend handler
+            handler = self._backend._regular_season_handler
+            top_performers_map = handler._get_top_performers_for_week(
+                week=week_number,
+                season=stage.season_year,
+                dynasty_id=self._dynasty_id,
+                db_path=self._database_path
+            )
+
+            # Build results list in format expected by view
+            results = []
+            for game in games:
+                game_id = game['game_id']
+
+                result = {
+                    'game_id': game_id,
+                    'home_score': game.get('home_score', 0),
+                    'away_score': game.get('away_score', 0),
+                    'top_performers': top_performers_map.get(game_id, {
+                        'home': [],
+                        'away': []
+                    })
+                }
+                results.append(result)
+
+            # Update view with results (will auto-expand game rows)
+            self._view.update_with_results(results)
+
+        except Exception as e:
+            logger.error(f"Failed to update UI with results: {e}", exc_info=True)
+            # Don't crash - just log error and continue
 
     def _advance_to_next(self):
         """Advance to the next stage."""
@@ -407,7 +504,7 @@ class StageUIController(QObject):
         """
         stage = self._backend.advance_to_next_stage()
         if stage:
-            self.stage_changed.emit(stage)
+            # Signal emitted by refresh() - no need to emit twice
             self.refresh()
         return stage
 
@@ -1023,6 +1120,9 @@ class StageUIController(QObject):
             # Update the view with the preview
             if self._view:
                 self._view.set_preview(preview)
+
+            # Emit signal for MainWindow to update media view
+            self.week_navigated.emit(week_number)
 
         except Exception as e:
             print(f"[StageUIController] Error navigating to week {week_number}: {e}")
@@ -1915,8 +2015,8 @@ class StageUIController(QObject):
         """
         Handle GM re-evaluation request from resigning view.
 
-        Regenerates extension recommendations based on current cap space,
-        then updates the view with new recommendations (with animations).
+        Regenerates BOTH extension recommendations AND restructure proposals
+        based on current cap space, then updates the view with new recommendations.
         """
         from game_cycle.services.proposal_generators.resigning_generator import ResigningProposalGenerator
         from game_cycle.services.directive_loader import DirectiveLoader
@@ -1943,13 +2043,18 @@ class StageUIController(QObject):
                 season=self._season
             )
 
-            # Load GM archetype
-            api = UnifiedDatabaseAPI(self._database_path)
-            gm_data = api.get_team_gm(self._user_team_id, self._dynasty_id)
-            gm_archetype = GMArchetype.from_dict(gm_data) if gm_data else GMArchetype.get_default()
+            # Load GM archetype (currently uses default balanced GM)
+            # Future: load from StaffAPI based on assigned GM's archetype
+            gm_archetype = GMArchetype.get_default()
 
-            # Get expiring players
-            expiring_players = api.get_expiring_contracts(self._user_team_id, self._season, self._dynasty_id)
+            api = UnifiedDatabaseAPI(self._database_path)
+
+            # Get expiring players (use correct method name and parameter order)
+            expiring_players = api.contracts_get_expiring(
+                season=self._season,
+                team_id=self._user_team_id,
+                active_only=True
+            )
 
             # Generate new recommendations
             generator = ResigningProposalGenerator(
@@ -1967,6 +2072,27 @@ class StageUIController(QObject):
             # Update view with new recommendations (with animation)
             resigning_view = self._offseason_view.get_resigning_view()
             resigning_view.set_all_players(new_recommendations, is_reevaluation=True)
+
+            # Also regenerate restructure proposals based on current cap
+            try:
+                # Clear existing proposal cards to allow regeneration
+                resigning_view.clear_restructure_proposals()
+
+                # Generate new restructure proposals with current cap space
+                new_restructure_proposals = self._generate_restructure_proposals()
+
+                # Display new proposals
+                if new_restructure_proposals:
+                    proposal_dicts = [self._proposal_to_dict(p) for p in new_restructure_proposals]
+                    resigning_view.set_restructure_proposals(proposal_dicts)
+                else:
+                    # No proposals needed (cap compliant or no viable restructures)
+                    resigning_view.clear_restructure_proposals()
+
+                print(f"[StageController] Re-evaluated {len(new_restructure_proposals)} restructure proposals")
+            except Exception as e:
+                print(f"[StageController] Error regenerating restructure proposals: {e}")
+                # Don't block re-evaluation if restructure generation fails
 
             print(f"[StageController] GM re-evaluated with ${current_cap_space/1_000_000:.1f}M cap space")
 
@@ -2463,17 +2589,17 @@ class StageUIController(QObject):
         Loads owner directives and GM archetype, generates restructure proposals
         using RestructureProposalGenerator, and displays them in the resigning view.
 
-        Note: If proposals already exist (cards displayed), skip regeneration
-        to avoid wiping out cards that are being processed.
+        Note: Skip regeneration if already loaded to avoid duplicate generation.
+        Re-evaluation will explicitly clear and regenerate.
         """
         if not hasattr(self, "_offseason_view") or not self._offseason_view:
             return
 
         resigning_view = self._offseason_view.get_resigning_view()
 
-        # Skip regeneration if proposals already exist
-        # This prevents wiping cards during approval/rejection processing
-        if resigning_view._proposal_cards:
+        # Skip regeneration if proposals already loaded
+        # (Re-evaluation will explicitly clear before regenerating)
+        if resigning_view._restructure_proposals:
             return
 
         try:
@@ -3555,8 +3681,8 @@ class StageUIController(QObject):
             ai_result = injury_service.process_ai_ir_activations(ai_team_ids, current_week)
 
             if ai_result["total_activations"] > 0:
-                self._logger.info(
-                    f"AI teams activated {ai_result['total_activations']} players from IR "
+                print(
+                    f"[StageUIController] AI teams activated {ai_result['total_activations']} players from IR "
                     f"(cut {ai_result['total_cuts']} players)"
                 )
 
@@ -3599,11 +3725,11 @@ class StageUIController(QObject):
                 self._ir_activation_view.show()
                 return True  # UI shown, will block until user makes decision
             else:
-                self._logger.warning("IR activation view not set, skipping user IR activations")
+                print("[StageUIController] IR activation view not set, skipping user IR activations")
                 return False
 
         except Exception as e:
-            self._logger.error(f"Error in check_and_show_ir_activations: {e}")
+            print(f"[ERROR StageUIController] Error in check_and_show_ir_activations: {e}")
             import traceback
             traceback.print_exc()
             return False
@@ -3647,12 +3773,12 @@ class StageUIController(QObject):
                     f"Activated: {activated_names}\n"
                     f"Cut: {cut_names}"
                 )
-                self._logger.info(message)
+                print(f"[StageUIController] {message}")
                 if self._view:
                     self._view.set_status(f"IR activations complete: {len(result['activations'])} activated")
             else:
                 error_msg = "\n".join(result["errors"])
-                self._logger.error(f"IR activation failed: {error_msg}")
+                print(f"[ERROR StageUIController] IR activation failed: {error_msg}")
                 if self._view:
                     self._view.set_status(f"IR activation failed: {error_msg}")
 
@@ -3660,13 +3786,13 @@ class StageUIController(QObject):
             self._advance_to_next()
 
         except Exception as e:
-            self._logger.error(f"Error processing IR activations: {e}")
+            print(f"[ERROR StageUIController] Error processing IR activations: {e}")
             import traceback
             traceback.print_exc()
 
     def _on_ir_skip_all(self):
         """Handle user choosing to skip all IR activations this week."""
-        self._logger.info("User skipped all IR activations for this week")
+        print("[StageUIController] User skipped all IR activations for this week")
 
         # Hide the IR activation view
         if hasattr(self, '_ir_activation_view'):
