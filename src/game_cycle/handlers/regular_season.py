@@ -22,6 +22,7 @@ import random
 from ..stage_definitions import Stage, StageType
 from ..game_result_generator import generate_instant_result
 from ..services.game_simulator_service import GameSimulatorService, SimulationMode
+from constants.position_abbreviations import get_position_abbreviation
 
 logger = logging.getLogger(__name__)
 
@@ -262,6 +263,29 @@ class RegularSeasonHandler:
         except Exception as e:
             logger.warning("Failed to persist box scores for game %s: %s", ctx.game_id_for_db, e)
 
+        # Generate social media posts for game result (Milestone 14)
+        print("=" * 80)
+        print(f"SOCIAL POST GENERATION STARTING FOR GAME: {ctx.game_id_for_db}")
+        print(f"Parameters available: sim_result={sim_result is not None}")
+        print("=" * 80)
+        logger.info(f"[SOCIAL] About to generate posts for game {ctx.game_id_for_db}")
+        try:
+            self._generate_game_social_posts(
+                db_path=db_path,
+                dynasty_id=dynasty_id,
+                season=ctx.season,
+                week=ctx.week,
+                game_id=ctx.game_id_for_db,
+                home_team_id=ctx.home_team_id,
+                away_team_id=ctx.away_team_id,
+                home_score=home_score,
+                away_score=away_score,
+                sim_result=sim_result
+            )
+        except Exception as e:
+            logger.error("SOCIAL POST GENERATION FAILED for game %s: %s", ctx.game_id_for_db, e, exc_info=True)
+            # Don't fail the whole simulation, but log full traceback
+
         # Update event in events table (optional - legacy feature)
         if ctx.event_id:
             try:
@@ -297,20 +321,6 @@ class RegularSeasonHandler:
 
         # Generate headline
         self._generate_game_headline(
-            db_path=db_path,
-            dynasty_id=dynasty_id,
-            season=ctx.season,
-            week=ctx.week,
-            game_id=ctx.game_id_for_db,
-            home_team_id=ctx.home_team_id,
-            away_team_id=ctx.away_team_id,
-            home_score=home_score,
-            away_score=away_score,
-            sim_result=sim_result
-        )
-
-        # Generate social media posts (Milestone 14)
-        self._generate_game_social_posts(
             db_path=db_path,
             dynasty_id=dynasty_id,
             season=ctx.season,
@@ -661,15 +671,17 @@ class RegularSeasonHandler:
         self,
         games: List[Dict[str, Any]],
         standings_lookup: Dict[int, Any],
-        team_id_key: str = "team_id"
+        team_id_key: str = "team_id",
+        featured_players_map: Optional[Dict[int, List[Dict[str, Any]]]] = None
     ) -> List[Dict[str, Any]]:
         """
-        Build matchup list from games with standings info.
+        Build matchup list from games with standings info and featured players.
 
         Args:
             games: List of game dicts with home_team_id, away_team_id
             standings_lookup: team_id -> standing mapping
             team_id_key: Key name for team ID in output ("id" or "team_id")
+            featured_players_map: Optional dict mapping team_id -> list of featured players
 
         Returns:
             List of matchup dicts ready for UI display
@@ -688,7 +700,7 @@ class RegularSeasonHandler:
             home_team = team_loader.get_team_by_id(home_team_id)
             away_team = team_loader.get_team_by_id(away_team_id)
 
-            matchups.append({
+            matchup = {
                 "game_id": game.get("game_id"),
                 "home_team": {
                     team_id_key: home_team_id,
@@ -705,8 +717,477 @@ class RegularSeasonHandler:
                 "is_played": game.get("home_score") is not None,
                 "home_score": game.get("home_score"),
                 "away_score": game.get("away_score"),
-            })
+            }
+
+            # Add featured players if available
+            if featured_players_map:
+                matchup["home_featured"] = featured_players_map.get(home_team_id, [])
+                matchup["away_featured"] = featured_players_map.get(away_team_id, [])
+            else:
+                matchup["home_featured"] = []
+                matchup["away_featured"] = []
+
+            matchups.append(matchup)
+
         return matchups
+
+    def _get_featured_players_batch(
+        self,
+        team_ids: List[int],
+        dynasty_id: str,
+        db_path: str
+    ) -> Dict[int, List[Dict[str, Any]]]:
+        """
+        Get featured players for multiple teams in a single query (batch optimization).
+
+        Query Strategy:
+        - Use SQL window function (ROW_NUMBER() OVER PARTITION BY) to rank players
+        - Get top player per position (QB, RB, WR) per team in one query
+        - Performance: 96 queries → 1 query (50-100x faster for 16-game week)
+
+        Args:
+            team_ids: List of team IDs to query
+            dynasty_id: Dynasty ID for isolation
+            db_path: Path to database
+
+        Returns:
+            Dict mapping team_id -> list of player dicts
+            Example: {
+                1: [
+                    {'name': 'Josh Allen', 'position': 'QB', 'overall': 95},
+                    {'name': 'James Cook', 'position': 'RB', 'overall': 85},
+                    {'name': 'Stefon Diggs', 'position': 'WR', 'overall': 90}
+                ],
+                2: [...],
+                ...
+            }
+        """
+        import sqlite3
+
+        if not team_ids:
+            return {}
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        try:
+            # Batch query with window function to get top player per position per team
+            # Note: positions is JSON array ["quarterback"], attributes is JSON {"overall": 95, ...}
+            placeholders = ','.join('?' * len(team_ids))
+            query = f'''
+                WITH ranked_players AS (
+                    SELECT
+                        team_id,
+                        first_name,
+                        last_name,
+                        CASE
+                            WHEN positions LIKE '%quarterback%' THEN 'QB'
+                            WHEN positions LIKE '%running_back%' THEN 'RB'
+                            WHEN positions LIKE '%wide_receiver%' THEN 'WR'
+                        END as position,
+                        CAST(json_extract(attributes, '$.overall') AS INTEGER) as overall,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY team_id,
+                                CASE
+                                    WHEN positions LIKE '%quarterback%' THEN 'QB'
+                                    WHEN positions LIKE '%running_back%' THEN 'RB'
+                                    WHEN positions LIKE '%wide_receiver%' THEN 'WR'
+                                END
+                            ORDER BY CAST(json_extract(attributes, '$.overall') AS INTEGER) DESC
+                        ) as rn
+                    FROM players
+                    WHERE dynasty_id = ?
+                      AND team_id IN ({placeholders})
+                      AND (positions LIKE '%quarterback%' OR positions LIKE '%running_back%' OR positions LIKE '%wide_receiver%')
+                      AND status = 'active'
+                )
+                SELECT team_id, first_name, last_name, position, overall
+                FROM ranked_players
+                WHERE rn = 1 AND position IS NOT NULL
+                ORDER BY team_id, position
+            '''
+
+            cursor.execute(query, [dynasty_id] + team_ids)
+            rows = cursor.fetchall()
+
+            # Group by team_id
+            result = {team_id: [] for team_id in team_ids}
+            for row in rows:
+                team_id = row[0]
+                player_dict = {
+                    'name': f"{row[1]} {row[2]}",
+                    'position': row[3],
+                    'overall': row[4]
+                }
+                result[team_id].append(player_dict)
+
+            # Add placeholders for teams with missing positions
+            for team_id, players in result.items():
+                positions_found = {p['position'] for p in players}
+                for position in ['QB', 'RB', 'WR']:
+                    if position not in positions_found:
+                        result[team_id].append({
+                            'name': f'No {position} on roster',
+                            'position': position,
+                            'overall': 0
+                        })
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error in batch featured players query: {e}", exc_info=True)
+            # Return empty lists for all teams on error
+            return {team_id: [] for team_id in team_ids}
+
+        finally:
+            conn.close()
+
+    def _get_played_games_for_week(
+        self,
+        week_number: int,
+        dynasty_id: str,
+        season: int,
+        db_path: str
+    ) -> Dict[str, Dict[str, int]]:
+        """
+        Get games that have already been played for a given week.
+
+        Args:
+            week_number: Week number (1-18)
+            dynasty_id: Dynasty ID
+            season: Season year
+            db_path: Path to game cycle database
+
+        Returns:
+            Dict mapping game_id to game results:
+            {
+                'game_id': {'away_score': int, 'home_score': int, 'away_id': int, 'home_id': int}
+            }
+        """
+        import sqlite3
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        try:
+            # Query games table for played games (JOIN with box_scores to filter)
+            # Fetch scores from games table instead of calculating from box_scores
+            query = """
+                SELECT DISTINCT g.game_id,
+                       g.home_team_id,
+                       g.away_team_id,
+                       g.home_score,
+                       g.away_score
+                FROM box_scores b
+                INNER JOIN games g ON b.game_id = g.game_id AND b.dynasty_id = g.dynasty_id
+                WHERE b.dynasty_id = ?
+                  AND g.season = ?
+                  AND g.week = ?
+                ORDER BY g.game_id
+            """
+
+            cursor.execute(query, (dynasty_id, season, week_number))
+            rows = cursor.fetchall()
+
+            # Each game is now a single row with both scores
+            played_games = {}
+
+            for row in rows:
+                game_id = row[0]
+                home_team_id = row[1]
+                away_team_id = row[2]
+                home_score = row[3]
+                away_score = row[4]
+
+                played_games[game_id] = {
+                    'away_score': away_score,
+                    'home_score': home_score,
+                    'away_team_id': away_team_id,
+                    'home_team_id': home_team_id,
+                    'game_id': game_id
+                }
+
+            return played_games
+
+        except Exception as e:
+            logger.error(f"Error querying played games for week {week_number}: {e}", exc_info=True)
+            return {}
+
+        finally:
+            conn.close()
+
+    def _get_top_performers_for_game(
+        self,
+        game_id: str,
+        dynasty_id: str,
+        season: int,
+        week_number: int,
+        away_id: int,
+        home_id: int,
+        db_path: str
+    ) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Get top performers for a specific game from the database.
+
+        Args:
+            game_id: Game ID
+            dynasty_id: Dynasty ID
+            season: Season year
+            week_number: Week number
+            away_id: Away team ID
+            home_id: Home team ID
+            db_path: Path to game cycle database
+
+        Returns:
+            Dict with 'away' and 'home' keys, each containing list of top performer dicts:
+            {
+                'away': [{'name': str, 'position': str, 'stats': str}, ...],
+                'home': [{'name': str, 'position': str, 'stats': str}, ...]
+            }
+        """
+        from game_cycle.database.connection import GameCycleDatabase
+        from game_cycle.database.player_stats_api import PlayerSeasonStatsAPI
+
+        db = GameCycleDatabase(db_path)
+        try:
+            stats_api = PlayerSeasonStatsAPI(db_path)  # Pass string path, not db object
+
+            # Get top performers for THIS GAME specifically
+            # Query by game_id to get performers from both teams that played
+            all_performers = stats_api.get_game_top_performers(
+                dynasty_id=dynasty_id,
+                game_id=game_id,
+                limit=10,  # Get enough to split between both teams (5 per team max)
+                season_type='regular_season'
+            )
+
+            # Split performers by team (game only has 2 teams)
+            away_performers = []
+            home_performers = []
+
+            for performer in all_performers:
+                team_id = performer.get('team_id')
+                if team_id == away_id and len(away_performers) < 3:
+                    away_performers.append(performer)
+                elif team_id == home_id and len(home_performers) < 3:
+                    home_performers.append(performer)
+
+                # Stop once we have 3 for each team
+                if len(away_performers) >= 3 and len(home_performers) >= 3:
+                    break
+
+            # Format for UI consumption
+            away_formatted = [
+                {
+                    'name': p.get('name', 'Unknown'),
+                    'position': p.get('position', 'N/A'),
+                    'stats': self._format_player_stats(p),
+                }
+                for p in away_performers
+            ]
+
+            home_formatted = [
+                {
+                    'name': p.get('name', 'Unknown'),
+                    'position': p.get('position', 'N/A'),
+                    'stats': self._format_player_stats(p),
+                }
+                for p in home_performers
+            ]
+
+            return {
+                'away': away_formatted,
+                'home': home_formatted,
+            }
+
+        except Exception as e:
+            logger.error(f"Error querying top performers for game {game_id}: {e}", exc_info=True)
+            return {'away': [], 'home': []}
+
+        finally:
+            db.close()
+
+    def _format_player_stats(
+        self,
+        stats_dict: Dict[str, Any]
+    ) -> str:
+        """
+        Format player stats for display based on position.
+
+        Args:
+            stats_dict: Stats dict from PlayerSeasonStatsAPI containing:
+                - position: Player position
+                - stats: Dict with passing_yards, rushing_yards, etc.
+
+        Returns:
+            Formatted stats string
+            Examples:
+            - QB: "287 yds, 2 TD, 0 INT"
+            - RB: "112 yds, 1 TD"
+            - WR: "8 rec, 95 yds, 1 TD"
+        """
+        # Convert position from database format (e.g., "quarterback") to abbreviation (e.g., "QB")
+        raw_position = stats_dict.get('position', 'PLAYER')
+        position = get_position_abbreviation(raw_position)
+
+        # Handle both nested and flat stat formats
+        # get_weekly_top_performers returns flat format (stats at top level)
+        # Other callers may pass nested format (stats under 'stats' key)
+        if 'stats' in stats_dict:
+            stats = stats_dict['stats']  # Nested format
+        else:
+            stats = stats_dict  # Flat format
+
+        parts = []
+
+        if position == 'QB':
+            # Passing stats
+            passing_yards = stats.get('passing_yards', 0)
+            passing_tds = stats.get('passing_tds', 0)
+            passing_ints = stats.get('passing_interceptions', 0)
+
+            if passing_yards:
+                parts.append(f"{passing_yards} yds")
+            if passing_tds:
+                parts.append(f"{passing_tds} TD")
+            parts.append(f"{passing_ints} INT")
+
+            # Rushing stats (if significant)
+            rushing_yards = stats.get('rushing_yards', 0)
+            if rushing_yards and rushing_yards >= 20:
+                parts.append(f"{rushing_yards} rush")
+
+        elif position in ('RB', 'FB'):
+            # Rushing stats
+            rushing_yards = stats.get('rushing_yards', 0)
+            rushing_tds = stats.get('rushing_tds', 0)
+
+            if rushing_yards:
+                parts.append(f"{rushing_yards} yds")
+            if rushing_tds:
+                parts.append(f"{rushing_tds} TD")
+
+            # Receiving stats (if significant)
+            receptions = stats.get('receptions', 0)
+            receiving_yards = stats.get('receiving_yards', 0)
+
+            if receptions:
+                parts.append(f"{receptions} rec")
+            if receiving_yards:
+                parts.append(f"{receiving_yards} rec yds")
+
+        elif position in ('WR', 'TE'):
+            # Receiving stats
+            receptions = stats.get('receptions', 0)
+            receiving_yards = stats.get('receiving_yards', 0)
+            receiving_tds = stats.get('receiving_tds', 0)
+
+            if receptions:
+                parts.append(f"{receptions} rec")
+            if receiving_yards:
+                parts.append(f"{receiving_yards} yds")
+            if receiving_tds:
+                parts.append(f"{receiving_tds} TD")
+
+        return ", ".join(parts) if parts else "N/A"
+
+    def _get_top_performers_for_week(
+        self,
+        week: int,
+        season: int,
+        dynasty_id: str,
+        db_path: str
+    ) -> Dict[str, Dict[str, List[Dict[str, Any]]]]:
+        """
+        Get top 3 performers for each team in all games for the week.
+
+        Uses PlayerSeasonStatsAPI to query game stats and splits results by team.
+
+        Args:
+            week: Week number (1-18)
+            season: Season year
+            dynasty_id: Dynasty ID for isolation
+            db_path: Path to database
+
+        Returns:
+            Dict mapping game_id -> {home: [performers], away: [performers]}
+            Example: {
+                'game_2025_w5_id1': {
+                    'home': [player_dict, ...],
+                    'away': [player_dict, ...]
+                },
+                ...
+            }
+        """
+        from ..database.player_stats_api import PlayerSeasonStatsAPI
+
+        player_stats_api = PlayerSeasonStatsAPI(db_path)
+
+        # Get all games for the week from context
+        # We need to build this from the unified_api
+        import sqlite3
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        try:
+            # Query games for this week
+            cursor.execute('''
+                SELECT game_id, home_team_id, away_team_id
+                FROM games
+                WHERE dynasty_id = ? AND season = ? AND week = ?
+            ''', (dynasty_id, season, week))
+
+            games = cursor.fetchall()
+            result = {}
+
+            for game_row in games:
+                game_id, home_team_id, away_team_id = game_row
+
+                # Get top performers for this game (both teams combined)
+                all_performers = player_stats_api.get_game_top_performers(
+                    dynasty_id=dynasty_id,
+                    game_id=game_id,
+                    limit=10,  # Get more to ensure we have 3 per team
+                    season_type='regular_season'
+                )
+
+                # Split performers by team
+                home_performers = []
+                away_performers = []
+
+                for performer in all_performers:
+                    formatted_stats = self._format_player_stats(performer)
+
+                    player_dict = {
+                        'name': performer['name'],
+                        'position': performer['position'],
+                        'stats': formatted_stats
+                    }
+
+                    if performer['team_id'] == home_team_id:
+                        if len(home_performers) < 3:
+                            home_performers.append(player_dict)
+                    elif performer['team_id'] == away_team_id:
+                        if len(away_performers) < 3:
+                            away_performers.append(player_dict)
+
+                    # Stop if we have 3 for both teams
+                    if len(home_performers) >= 3 and len(away_performers) >= 3:
+                        break
+
+                result[game_id] = {
+                    'home': home_performers,
+                    'away': away_performers
+                }
+
+            return result
+
+        except Exception as e:
+            logger.error(f"Error getting top performers for week: {e}", exc_info=True)
+            return {}
+
+        finally:
+            conn.close()
 
     def get_week_preview(
         self,
@@ -714,23 +1195,44 @@ class RegularSeasonHandler:
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Get preview of the week's matchups.
+        Get preview of the week's matchups with featured players.
 
         Args:
             stage: The week stage
             context: Execution context
 
         Returns:
-            Preview with matchups, standings implications, etc.
+            Preview with matchups, standings implications, and featured players
         """
         unified_api = context["unified_api"]
         season = context["season"]
+        dynasty_id = context.get("dynasty_id")
+        db_path = self._get_db_path(context)
         week_number = self._get_week_number(stage.stage_type)
 
         games = unified_api.events_get_games_by_week(season, week_number)
         standings_data = unified_api.standings_get(season)
         standings_lookup = self._build_standings_lookup(standings_data)
-        matchups = self._build_matchups(games, standings_lookup, team_id_key="id")
+
+        # Batch query for featured players (performance optimization)
+        featured_players_map = {}
+        if dynasty_id and db_path:
+            # Extract all team IDs from games
+            team_ids = []
+            for game in games:
+                team_ids.append(game.get("home_team_id"))
+                team_ids.append(game.get("away_team_id"))
+            team_ids = list(set(team_ids))  # Remove duplicates
+
+            # Single batch query for all teams
+            featured_players_map = self._get_featured_players_batch(
+                team_ids, dynasty_id, db_path
+            )
+
+        matchups = self._build_matchups(
+            games, standings_lookup,
+            featured_players_map=featured_players_map
+        )
 
         return {
             "week": week_number,
@@ -745,7 +1247,7 @@ class RegularSeasonHandler:
         context: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Get preview for a specific week (for navigation).
+        Get preview for a specific week with featured players (for navigation).
 
         Unlike get_week_preview(), this takes a week number directly
         instead of requiring a Stage object. Used for browsing past/future weeks.
@@ -755,7 +1257,7 @@ class RegularSeasonHandler:
             context: Execution context
 
         Returns:
-            Preview with matchups for the specified week
+            Preview with matchups and featured players for the specified week
         """
         # Route playoff weeks to dedicated handler
         if week_number > 18:
@@ -763,20 +1265,100 @@ class RegularSeasonHandler:
 
         unified_api = context["unified_api"]
         season = context["season"]
+        dynasty_id = context.get("dynasty_id")
+        db_path = self._get_db_path(context)
 
         games = unified_api.events_get_games_by_week(season, week_number)
         standings_data = unified_api.standings_get(season)
         standings_lookup = self._build_standings_lookup(standings_data)
-        matchups = self._build_matchups(games, standings_lookup)
+
+        # Check which games have already been played (query box_scores)
+        played_games = {}
+        played_games_by_teams = {}
+        if dynasty_id and db_path:
+            played_games = self._get_played_games_for_week(
+                week_number, dynasty_id, season, db_path
+            )
+            # Create lookup dict by team matchup (home_team_id, away_team_id)
+            # Game IDs from events table and box_scores table have different formats, so match by teams
+            for game_id, game_data in played_games.items():
+                key = (game_data["home_team_id"], game_data["away_team_id"])
+                played_games_by_teams[key] = game_data
+
+        # Merge played game scores into games list
+        for game in games:
+            home_id = game.get("home_team_id")
+            away_id = game.get("away_team_id")
+            matchup_key = (home_id, away_id)
+
+            if matchup_key in played_games_by_teams:
+                game_data = played_games_by_teams[matchup_key]
+                game["home_score"] = game_data["home_score"]
+                game["away_score"] = game_data["away_score"]
+                game["is_played"] = True  # Mark as completed game so widget renders in post-game mode
+                game["box_score_game_id"] = game_data.get("game_id")  # Store box scores game_id for later use
+
+        # Batch query for featured players (for unplayed games only)
+        featured_players_map = {}
+        if dynasty_id and db_path:
+            # Extract all team IDs from games
+            team_ids = []
+            for game in games:
+                team_ids.append(game.get("home_team_id"))
+                team_ids.append(game.get("away_team_id"))
+            team_ids = list(set(team_ids))  # Remove duplicates
+
+            # Single batch query for all teams
+            featured_players_map = self._get_featured_players_batch(
+                team_ids, dynasty_id, db_path
+            )
+
+        matchups = self._build_matchups(
+            games, standings_lookup,
+            featured_players_map=featured_players_map
+        )
+
+        # Post-process: Replace featured players with top performers for played games
+        if dynasty_id and db_path and played_games_by_teams:
+            for matchup in matchups:
+                # Match by team IDs instead of game_id (different formats between tables)
+                home_id = matchup.get("home_team", {}).get("team_id")
+                away_id = matchup.get("away_team", {}).get("team_id")
+                matchup_key = (home_id, away_id)
+
+                if matchup_key in played_games_by_teams:
+                    # Game was played - get top performers from database
+                    game_info = played_games_by_teams[matchup_key]
+                    # Use the box scores game_id for fetching top performers
+                    box_score_game_id = game_info.get("game_id")
+                    top_performers = self._get_top_performers_for_game(
+                        game_id=box_score_game_id,
+                        dynasty_id=dynasty_id,
+                        season=season,
+                        week_number=week_number,
+                        away_id=game_info["away_team_id"],
+                        home_id=game_info["home_team_id"],
+                        db_path=db_path
+                    )
+
+                    # Replace featured players with top performers
+                    # Use nested structure expected by ExpandableGameRow widget
+                    matchup["top_performers"] = {
+                        "away": top_performers["away"],
+                        "home": top_performers["home"]
+                    }
+                    # Remove featured players (not needed for played games)
+                    matchup.pop("away_featured", None)
+                    matchup.pop("home_featured", None)
+                else:
+                    pass
 
         # Get teams on bye for this week (Milestone 11, Tollgate 3)
         teams_on_bye = []
         try:
             from ..database.bye_week_api import ByeWeekAPI
             from ..database.connection import GameCycleDatabase
-            dynasty_id = context.get("dynasty_id")
             if dynasty_id:
-                db_path = self._get_db_path(context)
                 gc_db = GameCycleDatabase(db_path)
                 bye_api = ByeWeekAPI(gc_db)
                 teams_on_bye = bye_api.get_teams_on_bye(dynasty_id, season, week_number)
@@ -1533,10 +2115,17 @@ class RegularSeasonHandler:
         Returns:
             Number of posts generated (0 on failure)
         """
+        print(f"[SOCIAL METHOD ENTRY] _generate_game_social_posts called for game {game_id}")
         try:
-            from ..services.social_post_generator import SocialPostGenerator
-            from ..database.social_posts_api import SocialPostsAPI
+            from ..services.social_generators.factory import SocialPostGeneratorFactory
+            from ..models.social_event_types import SocialEventType
             from ..database.connection import GameCycleDatabase
+            from ..database.social_personalities_api import SocialPersonalityAPI
+
+            # Entry logging
+            print(f"[SOCIAL] Inside try block - about to generate posts")
+            logger.info(f"[SOCIAL] Generating posts for game {game_id}, dynasty {dynasty_id}, "
+                       f"teams {home_team_id} vs {away_team_id}, score {home_score}-{away_score}")
 
             # Determine winner/loser
             if home_score > away_score:
@@ -1569,45 +2158,44 @@ class RegularSeasonHandler:
                         if top_player:
                             star_players[team_id] = top_player.get('player_name', 'Unknown')
 
-            # Generate posts
-            post_generator = SocialPostGenerator(GameCycleDatabase(db_path), dynasty_id)
-            generated_posts = post_generator.generate_game_posts(
-                season=season,
-                week=week,
-                winning_team_id=winner_id,
-                losing_team_id=loser_id,
-                winning_score=winner_score,
-                losing_score=loser_score,
-                game_id=game_id,
-                is_upset=is_upset,
-                is_blowout=is_blowout,
-                star_players=star_players if star_players else None
-            )
+            # Check personalities exist before attempting generation
+            gc_db_check = GameCycleDatabase(db_path)
+            pers_api = SocialPersonalityAPI(gc_db_check)
+            home_fans = pers_api.get_personalities_by_team(dynasty_id, home_team_id, 'FAN')
+            away_fans = pers_api.get_personalities_by_team(dynasty_id, away_team_id, 'FAN')
+            gc_db_check.close()
+            logger.info(f"[SOCIAL] Found {len(home_fans)} fans for team {home_team_id}, "
+                       f"{len(away_fans)} fans for team {away_team_id}")
 
-            if not generated_posts:
-                logger.debug("No social posts generated for game %s", game_id)
-                return 0
+            # Build event data for generator
+            event_data = {
+                'winning_team_id': winner_id,
+                'losing_team_id': loser_id,
+                'winning_score': winner_score,
+                'losing_score': loser_score,
+                'game_id': game_id,
+                'is_upset': is_upset,
+                'is_blowout': is_blowout,
+                'star_players': star_players if star_players else None,
+                'season_type': 'regular'  # Regular season game
+            }
 
-            # Persist posts to database
+            # Generate and persist posts using factory (NEW ARCHITECTURE)
             gc_db = GameCycleDatabase(db_path)
             try:
-                posts_api = SocialPostsAPI(gc_db)
-                for post in generated_posts:
-                    posts_api.create_post(
-                        dynasty_id=dynasty_id,
-                        season=season,
-                        week=week,
-                        personality_id=post.personality_id,
-                        post_text=post.post_text,
-                        sentiment=post.sentiment,
-                        likes=post.likes,
-                        retweets=post.retweets,
-                        event_type='GAME_RESULT',
-                        event_metadata=post.event_metadata
-                    )
-                logger.info("Generated %d social posts for game %s", len(generated_posts), game_id)
-                return len(generated_posts)
+                posts_created = SocialPostGeneratorFactory.generate_posts(
+                    event_type=SocialEventType.GAME_RESULT,
+                    db=gc_db,
+                    dynasty_id=dynasty_id,
+                    season=season,
+                    week=week,
+                    event_data=event_data
+                )
+
+                logger.info(f"[SOCIAL] ✓ Successfully generated and saved {posts_created} posts for game {game_id}")
+                return posts_created
             finally:
+                gc_db.commit()  # CRITICAL: Flush WAL to main DB before closing
                 gc_db.close()
 
         except Exception as e:
