@@ -554,6 +554,90 @@ class DraftClassAPI_IMPL:
 
             return None
 
+    def find_prospect_by_name(
+        self,
+        dynasty_id: str,
+        season: int,
+        name: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Find a prospect by name (for resolving owner wishlists).
+
+        Performs fuzzy matching: searches first_name + last_name or last_name only.
+        Returns first matching prospect (best match by overall if multiple).
+
+        Args:
+            dynasty_id: Dynasty identifier
+            season: Season year (draft class year)
+            name: Full name ("John Doe") or last name ("Doe")
+
+        Returns:
+            Prospect dict or None if not found
+        """
+        draft_class_id = f"DRAFT_{dynasty_id}_{season}"
+
+        # Parse name into parts
+        name_parts = name.strip().split()
+
+        with sqlite3.connect(self.database_path, timeout=30.0) as conn:
+            conn.row_factory = sqlite3.Row
+
+            # Try exact full name match first (first + last)
+            if len(name_parts) >= 2:
+                first_name = name_parts[0]
+                last_name = " ".join(name_parts[1:])  # Handle multi-word last names
+
+                cursor = conn.execute('''
+                    SELECT * FROM draft_prospects
+                    WHERE draft_class_id = ?
+                    AND LOWER(first_name) = LOWER(?)
+                    AND LOWER(last_name) = LOWER(?)
+                    AND is_drafted = FALSE
+                    ORDER BY overall DESC
+                    LIMIT 1
+                ''', (draft_class_id, first_name, last_name))
+
+                row = cursor.fetchone()
+                if row:
+                    prospect = dict(row)
+                    prospect['attributes'] = json.loads(prospect['attributes'])
+                    return prospect
+
+            # Try last name only match (single word or full string)
+            last_name_search = name_parts[-1] if name_parts else name
+            cursor = conn.execute('''
+                SELECT * FROM draft_prospects
+                WHERE draft_class_id = ?
+                AND LOWER(last_name) = LOWER(?)
+                AND is_drafted = FALSE
+                ORDER BY overall DESC
+                LIMIT 1
+            ''', (draft_class_id, last_name_search))
+
+            row = cursor.fetchone()
+            if row:
+                prospect = dict(row)
+                prospect['attributes'] = json.loads(prospect['attributes'])
+                return prospect
+
+            # Try partial match on last name (LIKE search)
+            cursor = conn.execute('''
+                SELECT * FROM draft_prospects
+                WHERE draft_class_id = ?
+                AND LOWER(last_name) LIKE LOWER(?)
+                AND is_drafted = FALSE
+                ORDER BY overall DESC
+                LIMIT 1
+            ''', (draft_class_id, f"%{last_name_search}%"))
+
+            row = cursor.fetchone()
+            if row:
+                prospect = dict(row)
+                prospect['attributes'] = json.loads(prospect['attributes'])
+                return prospect
+
+            return None
+
     def get_top_prospects(
         self,
         dynasty_id: str,
@@ -588,7 +672,7 @@ class DraftClassAPI_IMPL:
                 query += " AND position = ?"
                 params.append(position)
 
-            query += " ORDER BY overall DESC LIMIT ?"
+            query += " ORDER BY overall DESC, player_id ASC LIMIT ?"
             params.append(limit)
 
             cursor = conn.execute(query, params)

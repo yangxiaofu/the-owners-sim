@@ -173,6 +173,7 @@ class MediaCoverageView(QWidget):
         self._season: int = 2025
         self._current_stage: str = "REGULAR_WEEK_1"
         self._current_week: int = 1
+        self._is_historical_view: bool = False  # Track if viewing historical week vs current stage
 
         # Data storage
         self._headlines: List[Dict[str, Any]] = []
@@ -539,12 +540,17 @@ class MediaCoverageView(QWidget):
 
     def set_current_stage(self, stage: str, week: int = 1):
         """
-        Set the current stage for display.
+        Set the current stage for display (not historical navigation).
+
+        This method is called when the actual game stage advances (e.g., after
+        simulating a week). It resets historical navigation mode to show the
+        "last completed week" behavior.
 
         Args:
             stage: Stage name (e.g., "REGULAR_WEEK_12", "WILD_CARD", "OFFSEASON_DRAFT")
             week: Week number (for regular season stages)
         """
+        self._is_historical_view = False  # Reset to current stage mode
         self._current_stage = stage
         self._current_week = week
         self._update_stage_badge()
@@ -557,6 +563,23 @@ class MediaCoverageView(QWidget):
         Args:
             week: Week number (1-18)
         """
+        self._current_week = week
+        self._current_stage = f"REGULAR_WEEK_{week}"
+        self._update_stage_badge()
+        self.refresh_data()
+
+    def navigate_to_week(self, week: int):
+        """
+        Navigate to a specific historical week for viewing.
+
+        This is distinct from set_current_stage() - it enables historical
+        navigation mode where the user can view past weeks' data without
+        the "last completed week" offset.
+
+        Args:
+            week: Week number to navigate to (1-18 for regular season)
+        """
+        self._is_historical_view = True
         self._current_week = week
         self._current_stage = f"REGULAR_WEEK_{week}"
         self._update_stage_badge()
@@ -738,23 +761,31 @@ class MediaCoverageView(QWidget):
         return self._current_stage.startswith("OFFSEASON_")
 
     def _get_display_week(self) -> int:
-        """Get week number for media content (last completed week).
+        """Get week number for media content.
 
-        After simulating Week N, the stage advances to REGULAR_WEEK_{N+1}.
-        Headlines are stored for Week N (the completed week), so we need to
-        query for the previous week to show content for completed games.
+        Handles two modes:
+        1. Current stage mode: Show last completed week (week - 1)
+           - After simulating Week N, stage advances to REGULAR_WEEK_{N+1}
+           - Headlines stored for Week N, so query week - 1
+        2. Historical navigation mode: Show exact week navigated to
+           - User clicked prev/next week buttons to view historical data
 
         For offseason/playoffs, query the database for the most recent week
         with headlines to show the latest content.
 
         Returns:
-            The week number of the most recently completed games (0 if none).
+            The week number to query (0 if none).
         """
         if self._is_regular_season():
             current_week = self._get_current_week_from_stage()
-            # Headlines are for completed games (previous week)
-            # At Week 1, no games have been played yet - return 0
-            return max(0, current_week - 1)
+
+            if self._is_historical_view:
+                # Historical navigation: show exact week user navigated to
+                return current_week
+            else:
+                # Current stage mode: show last completed week
+                # At Week 1, no games have been played yet - return 0
+                return max(0, current_week - 1)
 
         # For offseason/playoffs, get the most recent week with headlines
         # This ensures we show the latest content (e.g., Week 18 + awards)
@@ -1647,7 +1678,7 @@ class MediaCoverageView(QWidget):
             featured_headline = self._headlines[0]
             player_data = self._fetch_player_data_for_headline(featured_headline)
             if player_data:
-                logger.debug(f"_populate_headlines: Fetched player data for {player_data.get('name')}")
+                logger.debug(f"_populate_headlines: Fetched player data for {player_data.get('player_name')}")
             else:
                 logger.debug("_populate_headlines: No player data available for featured headline")
 

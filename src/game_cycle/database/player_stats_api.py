@@ -478,7 +478,7 @@ class PlayerSeasonStatsAPI:
             for row in cursor.fetchall():
                 results.append({
                     'player_id': row['player_id'],
-                    'player_name': row['player_name'] or f"Player {row['player_id']}",
+                    'name': row['player_name'] or f"Player {row['player_id']}",
                     'position': row['position'] or "PLAYER",
                     'team_id': row['team_id'],
                     'passing_yards': row['passing_yards'] or 0,
@@ -582,7 +582,7 @@ class PlayerSeasonStatsAPI:
             for row in cursor.fetchall():
                 results.append({
                     'player_id': row['player_id'],
-                    'player_name': row['player_name'] or f"Player {row['player_id']}",
+                    'name': row['player_name'] or f"Player {row['player_id']}",
                     'position': row['position'] or "PLAYER",
                     'team_id': row['team_id'],
                     'passing_yards': row['passing_yards'] or 0,
