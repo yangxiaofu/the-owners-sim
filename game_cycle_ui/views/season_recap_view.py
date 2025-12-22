@@ -26,7 +26,7 @@ from game_cycle_ui.widgets.retirement_card_widget import RetirementCardWidget
 from game_cycle_ui.dialogs.retirement_detail_dialog import RetirementDetailDialog
 from game_cycle_ui.theme import (
     TAB_STYLE, PRIMARY_BUTTON_STYLE, Typography, FontSizes, Colors, TextColors,
-    apply_table_style
+    apply_table_style, GROUPBOX_DARK_STYLE
 )
 
 logger = logging.getLogger(__name__)
@@ -117,9 +117,46 @@ class SeasonRecapView(QWidget):
         layout.addWidget(self.super_bowl_widget)
 
     def _on_view_box_score(self, game_id: str):
-        """Handle View Box Score button click."""
-        # TODO: Navigate to box score view
-        logger.info(f"View box score for game {game_id}")
+        """Handle View Box Score button click - show BoxScoreDialog."""
+        try:
+            from game_cycle_ui.dialogs.box_score_dialog import BoxScoreDialog
+            from team_management.teams.team_loader import TeamDataLoader
+
+            # Get team data from cached super bowl result
+            home_team_id = self._super_bowl_result.get('home_team_id')
+            away_team_id = self._super_bowl_result.get('away_team_id')
+            home_score = self._super_bowl_result.get('home_score', 0)
+            away_score = self._super_bowl_result.get('away_score', 0)
+
+            # Build team info dicts
+            team_loader = TeamDataLoader()
+            home_team_obj = team_loader.get_team_by_id(home_team_id)
+            away_team_obj = team_loader.get_team_by_id(away_team_id)
+
+            home_team = {
+                'id': home_team_id,
+                'name': home_team_obj.full_name if home_team_obj else f'Team {home_team_id}'
+            }
+            away_team = {
+                'id': away_team_id,
+                'name': away_team_obj.full_name if away_team_obj else f'Team {away_team_id}'
+            }
+
+            # Show dialog
+            dialog = BoxScoreDialog(
+                game_id=game_id,
+                home_team=home_team,
+                away_team=away_team,
+                home_score=home_score,
+                away_score=away_score,
+                dynasty_id=self._dynasty_id,
+                db_path=self._db_path,
+                parent=self
+            )
+            dialog.exec()
+
+        except Exception as e:
+            logger.error(f"Error showing box score dialog: {e}")
 
     # ============================================
     # Tab 2: Awards
@@ -215,24 +252,7 @@ class SeasonRecapView(QWidget):
     def _create_notable_section(self):
         """Create the notable retirements section with cards."""
         self.notable_group = QGroupBox("Notable Retirements")
-        self.notable_group.setStyleSheet(f"""
-            QGroupBox {{
-                font-weight: bold;
-                font-size: {FontSizes.H5};
-                color: {TextColors.ON_DARK};
-                background-color: #263238;
-                border: 1px solid #37474f;
-                border-radius: 6px;
-                margin-top: 12px;
-                padding-top: 10px;
-            }}
-            QGroupBox::title {{
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-                color: {TextColors.ON_DARK};
-            }}
-        """)
+        self.notable_group.setStyleSheet(GROUPBOX_DARK_STYLE)
 
         self.notable_layout = QVBoxLayout(self.notable_group)
         self.notable_layout.setSpacing(12)
@@ -246,24 +266,7 @@ class SeasonRecapView(QWidget):
     def _create_other_retirements_table(self):
         """Create the other retirements table."""
         self.other_retirements_group = QGroupBox("Other Retirements")
-        self.other_retirements_group.setStyleSheet(f"""
-            QGroupBox {{
-                font-weight: bold;
-                font-size: {FontSizes.H5};
-                color: {TextColors.ON_DARK};
-                background-color: #263238;
-                border: 1px solid #37474f;
-                border-radius: 6px;
-                margin-top: 12px;
-                padding-top: 10px;
-            }}
-            QGroupBox::title {{
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-                color: {TextColors.ON_DARK};
-            }}
-        """)
+        self.other_retirements_group.setStyleSheet(GROUPBOX_DARK_STYLE)
 
         layout = QVBoxLayout(self.other_retirements_group)
 
@@ -351,8 +354,8 @@ class SeasonRecapView(QWidget):
     # ============================================
 
     def _create_continue_button(self, parent_layout: QVBoxLayout):
-        """Create the Continue to Franchise Tag button."""
-        self.continue_btn = QPushButton("Continue to Franchise Tag")
+        """Create the Proceed to Offseason button."""
+        self.continue_btn = QPushButton("Proceed to Offseason")
         self.continue_btn.setStyleSheet(PRIMARY_BUTTON_STYLE)
         self.continue_btn.setMinimumHeight(50)
         self.continue_btn.setVisible(False)  # Hidden by default
@@ -424,37 +427,94 @@ class SeasonRecapView(QWidget):
         self._load_super_bowl_data()
         self._load_retirements_data()
 
-        # AwardsView handles its own refresh via set_context
+        # Refresh awards view (embeds its own data loading)
+        if hasattr(self, 'awards_view'):
+            self.awards_view.refresh_data()
+
+        # Hide loading indicator if showing
+        if hasattr(self, '_loading_label') and self._loading_label is not None:
+            self.hide_loading()
+
+    def show_loading(self, message: str = "Loading..."):
+        """
+        Show loading message while awards/retirements are being calculated.
+
+        Args:
+            message: Loading message to display
+        """
+        if not hasattr(self, '_loading_label') or self._loading_label is None:
+            from PySide6.QtWidgets import QLabel
+            from PySide6.QtCore import Qt
+
+            self._loading_label = QLabel(message, self)
+            self._loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self._loading_label.setStyleSheet("""
+                QLabel {
+                    background-color: rgba(26, 26, 26, 200);
+                    color: white;
+                    font-size: 16px;
+                    font-weight: bold;
+                    padding: 20px;
+                    border-radius: 8px;
+                }
+            """)
+            self._loading_label.setGeometry(
+                self.width() // 2 - 200,
+                self.height() // 2 - 30,
+                400,
+                60
+            )
+            self._loading_label.show()
+            self._loading_label.raise_()
+        else:
+            self._loading_label.setText(message)
+            self._loading_label.show()
+
+    def hide_loading(self):
+        """Remove loading indicator after processing completes."""
+        if hasattr(self, '_loading_label') and self._loading_label is not None:
+            self._loading_label.hide()
+            self._loading_label.deleteLater()
+            self._loading_label = None
 
     def _load_super_bowl_data(self):
         """Load Super Bowl champion and MVP data."""
         try:
             from game_cycle.database.connection import GameCycleDatabase
-            from game_cycle.database.schedule_api import ScheduleAPI
             from game_cycle.database.awards_api import AwardsAPI
-            from team_management.teams.team_loader import TeamLoader
+            from database.unified_api import UnifiedDatabaseAPI
+            from team_management.teams.team_loader import TeamDataLoader
 
+            # Use UnifiedDatabaseAPI to get Super Bowl game (week 22, playoffs)
+            unified_api = UnifiedDatabaseAPI(self._db_path, self._dynasty_id)
+            sb_games = unified_api.games_get_by_week(self._season, 22, 'playoffs')
+
+            if sb_games:
+                sb_game = sb_games[0]
+                home_score = sb_game.get('home_score', 0)
+                away_score = sb_game.get('away_score', 0)
+                home_team = sb_game.get('home_team_id')
+                away_team = sb_game.get('away_team_id')
+                winner_team_id = home_team if home_score > away_score else away_team
+
+                self._super_bowl_result = {
+                    'winner_team_id': winner_team_id,
+                    'home_team_id': home_team,
+                    'away_team_id': away_team,
+                    'home_score': home_score,
+                    'away_score': away_score,
+                    'game_id': sb_game.get('game_id'),
+                }
+            else:
+                self._super_bowl_result = {}
+
+            # Get Super Bowl MVP and League MVP using AwardsAPI
+            league_mvp_data = None
             with GameCycleDatabase(self._db_path) as conn:
-                schedule_api = ScheduleAPI(conn, self._dynasty_id)
-                awards_api = AwardsAPI(conn, self._dynasty_id)
+                awards_api = AwardsAPI(conn)
 
-                # Get Super Bowl game
-                playoff_games = schedule_api.get_playoff_games(self._season, "super_bowl")
-                if playoff_games:
-                    sb_game = playoff_games[0]
-                    self._super_bowl_result = {
-                        'winner_team_id': sb_game.get('winner_team_id'),
-                        'home_team_id': sb_game.get('home_team_id'),
-                        'away_team_id': sb_game.get('away_team_id'),
-                        'home_score': sb_game.get('home_score', 0),
-                        'away_score': sb_game.get('away_score', 0),
-                        'game_id': sb_game.get('game_id'),
-                    }
-                else:
-                    self._super_bowl_result = {}
-
-                # Get Super Bowl MVP
-                mvp_record = awards_api.get_super_bowl_mvp(self._season)
+                # Super Bowl MVP
+                mvp_record = awards_api.get_super_bowl_mvp(self._dynasty_id, self._season)
                 if mvp_record:
                     self._super_bowl_mvp = {
                         'player_name': mvp_record.get('player_name', ''),
@@ -465,13 +525,43 @@ class SeasonRecapView(QWidget):
                 else:
                     self._super_bowl_mvp = {}
 
+                # League MVP
+                mvp_awards = awards_api.get_award_winners(self._dynasty_id, self._season, 'mvp')
+                if mvp_awards:
+                    # Find the winner (is_winner=True)
+                    winner = next((a for a in mvp_awards if a.is_winner), None)
+                    if winner:
+                        # Look up player name and position
+                        player_data = self._get_player_data(winner.player_id)
+                        if player_data:
+                            player_name = f"{player_data.get('first_name', '')} {player_data.get('last_name', '')}".strip()
+                            # Get position from positions JSON
+                            positions = player_data.get('positions', '[]')
+                            if isinstance(positions, str):
+                                import json
+                                try:
+                                    positions = json.loads(positions)
+                                except:
+                                    positions = []
+                            position = positions[0] if positions else ''
+                        else:
+                            player_name = f"Player {winner.player_id}"
+                            position = ''
+
+                        league_mvp_data = {
+                            'player_name': player_name,
+                            'position': position,
+                            'team_id': winner.team_id,
+                        }
+
             # Populate Super Bowl widget
-            team_loader = TeamLoader()
+            team_loader = TeamDataLoader()
             self.super_bowl_widget.set_data(
                 self._super_bowl_result,
                 self._super_bowl_mvp,
                 team_loader,
-                self._season
+                self._season,
+                league_mvp=league_mvp_data
             )
 
         except Exception as e:
@@ -539,7 +629,7 @@ class SeasonRecapView(QWidget):
             cursor = conn.cursor()
 
             cursor.execute("""
-                SELECT player_id, first_name, last_name, position, team_id
+                SELECT player_id, first_name, last_name, team_id
                 FROM players
                 WHERE dynasty_id = ? AND player_id = ?
             """, (self._dynasty_id, player_id))
@@ -721,7 +811,7 @@ class SeasonRecapView(QWidget):
         Set Super Bowl data for display.
 
         Args:
-            data: Dict with champion_team_id, runner_up_team_id, scores, mvp, etc.
+            data: Dict with champion_team_id, runner_up_team_id, scores, mvp, league_mvp, etc.
                   Or None to show empty state.
         """
         if data is None:
@@ -740,12 +830,27 @@ class SeasonRecapView(QWidget):
             'game_id': data.get('game_id'),
         }
 
+        # Super Bowl MVP
         mvp = data.get('mvp', {})
         if mvp:
             stats = mvp.get('stats', {})
             stat_summary = ""
             if stats:
-                stat_summary = f"{stats.get('completions', 0)}/{stats.get('attempts', 0)}, {stats.get('passing_yards', 0)} YDS, {stats.get('passing_tds', 0)} TD"
+                # Format stat summary based on what stats are available
+                parts = []
+                if stats.get('rushing_yards'):
+                    parts.append(f"{stats.get('rushing_yards')} rush yds")
+                if stats.get('rushing_tds'):
+                    parts.append(f"{stats.get('rushing_tds')} rush TD")
+                if stats.get('receiving_yards'):
+                    parts.append(f"{stats.get('receiving_yards')} rec yds")
+                if stats.get('receiving_tds'):
+                    parts.append(f"{stats.get('receiving_tds')} rec TD")
+                if stats.get('passing_yards'):
+                    parts.append(f"{stats.get('passing_yards')} pass yds")
+                if stats.get('passing_tds'):
+                    parts.append(f"{stats.get('passing_tds')} pass TD")
+                stat_summary = ", ".join(parts)
             self._super_bowl_mvp = {
                 'player_name': mvp.get('name', ''),
                 'position': mvp.get('position', ''),
@@ -755,10 +860,20 @@ class SeasonRecapView(QWidget):
         else:
             self._super_bowl_mvp = {}
 
+        # League MVP
+        league_mvp = data.get('league_mvp', {})
+        league_mvp_data = None
+        if league_mvp:
+            league_mvp_data = {
+                'player_name': league_mvp.get('player_name', ''),
+                'position': league_mvp.get('position', ''),
+                'team_id': league_mvp.get('team_id'),
+            }
+
         # Update widget
         try:
-            from team_management.teams.team_loader import TeamLoader
-            team_loader = TeamLoader()
+            from team_management.teams.team_loader import TeamDataLoader
+            team_loader = TeamDataLoader()
         except Exception:
             team_loader = None
 
@@ -766,7 +881,8 @@ class SeasonRecapView(QWidget):
             self._super_bowl_result,
             self._super_bowl_mvp,
             team_loader,
-            data.get('season', self._season)
+            data.get('season', self._season),
+            league_mvp=league_mvp_data
         )
 
     def set_retirements(self, retirements: List[Dict[str, Any]]):
