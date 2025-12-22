@@ -230,6 +230,10 @@ def setup_service_mocks(service, mock_candidates, voting_results=None):
     # Mock eligibility checker
     mock_checker = MagicMock()
     mock_checker.get_eligible_candidates.return_value = mock_candidates
+    # Also mock get_eligible_candidates_fast for All-Pro/Pro Bowl selection
+    mock_checker.get_eligible_candidates_fast.return_value = mock_candidates
+    # Mock check_all_pro_stat_minimums to return (True, None) for all candidates
+    mock_checker.check_all_pro_stat_minimums.return_value = (True, None)
     service._eligibility_checker = mock_checker
 
     # Mock voting engine

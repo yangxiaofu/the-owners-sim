@@ -62,33 +62,68 @@ ALL_PRO_SLOTS: Dict[str, int] = {
     'CB': 2,
     'FS': 1,
     'SS': 1,
+    # Special Teams (2)
+    'K': 1,
+    'P': 1,
 }
 
-# Pro Bowl slots per position per conference
+# Pro Bowl slots per position per conference (matches real NFL: 44 per conference)
 PRO_BOWL_SLOTS: Dict[str, int] = {
-    # Offense
+    # Offense (21)
     'QB': 3,
     'RB': 3,
     'FB': 1,
     'WR': 4,
     'TE': 2,
-    'LT': 2,
-    'LG': 2,
-    'C': 2,
-    'RG': 2,
-    'RT': 2,
-    # Defense
-    'EDGE': 4,
-    'DT': 4,
-    'LOLB': 2,
-    'MLB': 2,
-    'ROLB': 2,
-    'CB': 4,
-    'FS': 2,
-    'SS': 2,
+    'OT': 3,     # Offensive Tackles (was LT: 2, RT: 2 = 4 total)
+    'OG': 3,     # Offensive Guards (was LG: 2, RG: 2 = 4 total)
+    'C': 2,      # Centers (unchanged)
+    # Defense (18)
+    'DE': 3,     # Defensive Ends (was EDGE: 4)
+    'DT': 3,     # Defensive Tackles (was 4)
+    'OLB': 3,    # Outside Linebackers (was LOLB: 2, ROLB: 2 = 4 total)
+    'ILB': 2,    # Inside Linebackers (was MLB: 2)
+    'CB': 4,     # Cornerbacks (unchanged)
+    'FS': 1,     # Free Safety (was 2)
+    'SS': 2,     # Strong Safeties (unchanged)
+    # Special Teams (5)
+    'K': 1,      # Kicker (unchanged)
+    'P': 1,      # Punter (unchanged)
+    'LS': 1,     # Long Snapper (NEW)
+    'RS': 1,     # Return Specialist (NEW)
+    'ST': 1,     # Special Teamer (NEW)
+}
+# Total: 44 per conference, 88 total (matches real NFL Pro Bowl)
+
+# Maps Pro Bowl slot positions to actual player positions
+# This allows consolidated Pro Bowl positions (OT, OG, OLB) to include multiple player positions
+PRO_BOWL_POSITION_MAPPING: Dict[str, List[str]] = {
+    # Offensive Line (consolidated)
+    'OT': ['LT', 'RT', 'T', 'OT'],           # Offensive Tackles
+    'OG': ['LG', 'RG', 'G', 'OG'],           # Offensive Guards
+    'C': ['C'],                               # Centers
+    # Defensive Line (consolidated)
+    'DE': ['DE', 'EDGE', 'LE', 'RE'],        # Defensive Ends
+    'DT': ['DT', 'NT'],                       # Defensive Tackles
+    # Linebackers (consolidated)
+    'OLB': ['OLB', 'LOLB', 'ROLB'],          # Outside Linebackers
+    'ILB': ['ILB', 'MLB', 'LB'],             # Inside Linebackers
+    # Defensive Backs
+    'FS': ['FS'],                             # Free Safeties
+    'SS': ['SS'],                             # Strong Safeties
+    'CB': ['CB'],                             # Cornerbacks
     # Special Teams
-    'K': 1,
-    'P': 1,
+    'LS': ['LS'],                             # Long Snappers
+    'RS': ['KR', 'PR'],                       # Return Specialists (kick/punt returners)
+    'ST': ['ST'],                             # Special Teamers (non-primary position)
+    # Direct position mappings (unchanged positions)
+    'QB': ['QB'],                             # Quarterbacks
+    'RB': ['RB'],                             # Running Backs
+    'FB': ['FB'],                             # Fullbacks
+    'WR': ['WR'],                             # Wide Receivers
+    'TE': ['TE'],                             # Tight Ends
+    'K': ['K'],                               # Kickers
+    'P': ['P'],                               # Punters
 }
 
 # Position name mapping (full name -> abbreviation for Pro Bowl/All-Pro matching)
@@ -618,7 +653,8 @@ class AwardsService:
             if row:
                 return f"{row[0]} {row[1]}"
             return f"Player {player_id}"
-        except Exception:
+        except Exception as e:
+            logging.getLogger(__name__).debug(f"Failed to get player name for {player_id}: {e}")
             return f"Player {player_id}"
 
     def _get_player_position(self, player_id: int) -> str:
@@ -638,7 +674,8 @@ class AwardsService:
                     pos_name = positions[0].lower()
                     return POSITION_TO_ABBREVIATION.get(pos_name, pos_name.upper())
             return ''
-        except Exception:
+        except Exception as e:
+            logging.getLogger(__name__).debug(f"Failed to get player position for {player_id}: {e}")
             return ''
 
     def _get_player_grade(self, player_id: int) -> float:
@@ -650,7 +687,8 @@ class AwardsService:
                 (self._dynasty_id, self._season, player_id)
             )
             return row[0] if row else 0.0
-        except Exception:
+        except Exception as e:
+            logging.getLogger(__name__).error(f"Failed to get player grade for {player_id}: {e}", exc_info=True)
             return 0.0
 
     def _calculate_award(self, award_type: AwardType, award_id: str) -> AwardResult:
@@ -938,8 +976,11 @@ class AwardsService:
             selection_date = date.today().isoformat()
 
             for position, slots in ALL_PRO_SLOTS.items():
-                # Get candidates for this position
-                position_candidates = self._get_position_candidates(position)
+                # Get candidates for this position (with All-Pro stat minimums)
+                position_candidates = self._get_position_candidates(
+                    position,
+                    apply_all_pro_stat_minimums=True
+                )
 
                 if not position_candidates:
                     self._logger.warning(f"No candidates for All-Pro {position}")
@@ -1030,18 +1071,25 @@ class AwardsService:
             self._logger.error(f"Failed to select All-Pro teams: {e}", exc_info=True)
             return AllProTeam(season=self._season, total_selections=0)
 
-    def _get_position_candidates(self, position: str) -> List[PlayerCandidate]:
+    def _get_position_candidates(
+        self,
+        position: str,
+        apply_all_pro_stat_minimums: bool = False
+    ) -> List[PlayerCandidate]:
         """
-        Get eligible candidates for a specific position.
+        Get eligible candidates for a Pro Bowl/All-Pro position slot.
 
+        Uses position mapping to handle consolidated positions (e.g., OT includes LT and RT).
         Uses cached candidate list to avoid repeated database queries.
         Normalizes position names to handle different formats (e.g., "wide_receiver" -> "WR").
 
         Args:
-            position: Position abbreviation to filter for (e.g., "WR", "QB")
+            position: Pro Bowl/All-Pro position slot (e.g., "OT", "OG", "OLB", "QB")
+            apply_all_pro_stat_minimums: If True, apply position-specific stat minimums
+                                         (e.g., RB needs 100 carries). Used for All-Pro only.
 
         Returns:
-            List of PlayerCandidate for that position
+            List of PlayerCandidate for that position (duplicates removed)
         """
         # Use cached candidates if available (for Pro Bowl/All-Pro efficiency)
         if self._cached_all_candidates is None:
@@ -1052,14 +1100,54 @@ class AwardsService:
             )
             self._logger.info(f"Cached {len(self._cached_all_candidates)} eligible candidates (fast)")
 
+        # Get actual player positions that map to this Pro Bowl slot
+        mapped_positions = PRO_BOWL_POSITION_MAPPING.get(
+            position,
+            [position]  # Fallback to direct match if not in mapping
+        )
+
         position_candidates = []
+        seen_players = set()  # Track player IDs to avoid duplicates
+
         for c in self._cached_all_candidates:
+            # Skip if we've already added this player
+            if c.player_id in seen_players:
+                continue
+
             # Normalize candidate's position to abbreviation for comparison
             candidate_pos = c.position.lower() if c.position else ''
             normalized_pos = POSITION_TO_ABBREVIATION.get(candidate_pos, c.position.upper())
 
-            if normalized_pos == position:
+            # Check if candidate's position matches any of the mapped positions
+            if normalized_pos in mapped_positions:
                 position_candidates.append(c)
+                seen_players.add(c.player_id)
+
+        # Apply All-Pro stat minimums if requested
+        if apply_all_pro_stat_minimums:
+            filtered_candidates = []
+
+            for candidate in position_candidates:
+                # Check position-specific stat minimums
+                is_eligible, reason = self.eligibility_checker.check_all_pro_stat_minimums(
+                    player_id=candidate.player_id,
+                    position=position
+                )
+
+                if not is_eligible:
+                    self._logger.debug(
+                        f"[All-Pro] {candidate.player_name} ({position}) filtered: {reason}"
+                    )
+                    continue
+
+                filtered_candidates.append(candidate)
+
+            self._logger.info(
+                f"[All-Pro] {position}: {len(filtered_candidates)}/{len(position_candidates)} "
+                f"candidates passed stat minimums"
+            )
+
+            return filtered_candidates
 
         return position_candidates
 
@@ -1381,7 +1469,7 @@ class AwardsService:
             # Map category to SQL column and position filter
             position_clause = ""
             if position_filter == 'QB':
-                position_clause = "AND pgs.position = 'quarterback'"
+                position_clause = "AND pgs.position = 'QB'"
 
             # Handle passer_rating specially - it's calculated, not stored
             if category == 'passer_rating':
@@ -1408,7 +1496,7 @@ class AwardsService:
                     WHERE pgs.dynasty_id = ?
                         AND g.season = ?
                         AND pgs.season_type = 'regular_season'
-                        AND pgs.position = 'quarterback'
+                        AND pgs.position = 'QB'
                     GROUP BY pgs.player_id, pgs.player_name, pgs.team_id, pgs.position
                     HAVING SUM(pgs.passing_attempts) >= 250
                     ORDER BY stat_value DESC
@@ -1471,7 +1559,8 @@ class AwardsService:
                 season=self._season
             )
             return len(existing) > 0
-        except Exception:
+        except Exception as e:
+            logging.getLogger(__name__).error(f"Failed to check if awards already calculated: {e}", exc_info=True)
             return False
 
     def clear_season_awards(self) -> Dict[str, int]:

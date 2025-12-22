@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from src.constants.position_abbreviations import get_position_abbreviation
 from src.game_cycle.models.injury_models import Injury
-from utils.player_field_extractors import extract_overall_rating
+from src.utils.player_field_extractors import extract_overall_rating
 
 logger = logging.getLogger(__name__)
 
@@ -244,6 +244,10 @@ class MockStatsGenerator:
             roster, fgs, xps, game_id
         )
         player_stats.extend(kicker_stats)
+
+        # Allocate punter stats
+        punter_stats = self._allocate_punter_stats(roster, game_id)
+        player_stats.extend(punter_stats)
 
         # Allocate OL stats (basic placeholders)
         ol_stats = self._allocate_ol_stats(roster, game_id)
@@ -1146,15 +1150,132 @@ class MockStatsGenerator:
             'double_team_blocks': 0,
             'chip_blocks': 0,
 
-            # Snap counts
+            # Snap counts - include kickoffs (typically 5-8 per game)
             'snap_counts_offense': 0,
             'snap_counts_defense': 0,
-            'snap_counts_special_teams': fg_attempts + xp_attempts,
+            'snap_counts_special_teams': fg_attempts + xp_attempts + random.randint(4, 8),
 
             'fantasy_points': fgs * 3  # Simple: 3 pts per FG
         }
 
         return [kicker_stats]
+
+    def _allocate_punter_stats(
+        self,
+        roster: List[Dict],
+        game_id: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Allocate punting stats to punter.
+
+        Args:
+            roster: Team roster
+            game_id: Game identifier
+
+        Returns:
+            List with single punter stat dictionary
+        """
+        punters = [p for p in roster if p['primary_position'] == 'punter']
+
+        if not punters:
+            return []
+
+        punter = punters[0]
+
+        # NFL average: 4-6 punts per game
+        punts = random.randint(3, 7)
+
+        # Punt yards: NFL average 45-48 yards per punt
+        avg_punt_distance = random.randint(42, 50)
+        punt_yards = punts * avg_punt_distance
+
+        # Punt long: best punt of the game
+        punt_long = avg_punt_distance + random.randint(5, 15)
+
+        # Inside 20: roughly 40% of punts
+        punts_inside_20 = int(punts * random.uniform(0.3, 0.5))
+
+        # Touchbacks: roughly 10% of punts
+        touchbacks = int(punts * random.uniform(0.05, 0.15))
+
+        punter_stats = {
+            'dynasty_id': self.dynasty_id,
+            'game_id': game_id,
+            'player_id': punter['player_id'],
+            'player_name': punter['player_name'],
+            'team_id': punter['team_id'],
+            'position': 'P',
+            'season_type': self.season_type,
+
+            # No offensive stats
+            'passing_yards': 0,
+            'passing_tds': 0,
+            'passing_attempts': 0,
+            'passing_completions': 0,
+            'passing_interceptions': 0,
+            'passing_sacks': 0,
+            'passing_sack_yards': 0,
+            'passing_rating': 0.0,
+
+            'rushing_yards': 0,
+            'rushing_tds': 0,
+            'rushing_attempts': 0,
+            'rushing_long': 0,
+            'rushing_fumbles': 0,
+            'fumbles_lost': 0,
+            'rushing_20_plus': 0,
+
+            'receiving_yards': 0,
+            'receiving_tds': 0,
+            'receptions': 0,
+            'targets': 0,
+            'receiving_long': 0,
+            'receiving_drops': 0,
+
+            # No defensive stats
+            'tackles_total': 0,
+            'tackles_solo': 0,
+            'tackles_assist': 0,
+            'sacks': 0.0,
+            'interceptions': 0,
+            'forced_fumbles': 0,
+            'fumbles_recovered': 0,
+            'passes_defended': 0,
+
+            # Kicking stats - punting only
+            'field_goals_made': 0,
+            'field_goals_attempted': 0,
+            'extra_points_made': 0,
+            'extra_points_attempted': 0,
+            'punts': punts,
+            'punt_yards': punt_yards,
+            'punt_long': punt_long,
+            'punts_inside_20': punts_inside_20,
+            'punt_touchbacks': touchbacks,
+
+            # OL stats
+            'pancakes': 0,
+            'sacks_allowed': 0,
+            'hurries_allowed': 0,
+            'pressures_allowed': 0,
+            'run_blocking_grade': 0.0,
+            'pass_blocking_efficiency': 0.0,
+            'missed_assignments': 0,
+            'holding_penalties': 0,
+            'false_start_penalties': 0,
+            'downfield_blocks': 0,
+            'double_team_blocks': 0,
+            'chip_blocks': 0,
+
+            # Snap counts
+            'snap_counts_offense': 0,
+            'snap_counts_defense': 0,
+            'snap_counts_special_teams': punts,
+
+            'fantasy_points': 0.0  # Punters don't get fantasy points in standard scoring
+        }
+
+        return [punter_stats]
 
     def _allocate_ol_stats(
         self,

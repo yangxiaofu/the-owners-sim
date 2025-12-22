@@ -1194,7 +1194,7 @@ class AnalyticsAPI:
         dynasty_id: str,
         season: int,
         min_games: int = 12,
-        min_snaps: int = 100,
+        min_snaps: int = 50,  # Lowered to 50 to allow K/P through; Python handles position-specific limits
         per_position_limit: int = 15,  # Kept for API compatibility but not used in SQL
     ) -> List[Dict[str, Any]]:
         """
