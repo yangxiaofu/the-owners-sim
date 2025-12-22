@@ -15,6 +15,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont
 
 from game_cycle import Stage, StageType
+from game_cycle.stage_definitions import ROSTER_LIMITS
+from game_cycle_ui.theme import SECONDARY_BUTTON_STYLE, Typography, FontSizes, TextColors
 from .resigning_view import ResigningView
 from .free_agency_view import FreeAgencyView
 from .draft_view import DraftView
@@ -23,6 +25,7 @@ from .waiver_wire_view import WaiverWireView
 from .training_camp_view import TrainingCampView
 from .franchise_tag_view import FranchiseTagView
 from .trading_view import TradingView
+from .preseason_view import PreseasonView
 
 
 class OffseasonView(QWidget):
@@ -33,10 +36,9 @@ class OffseasonView(QWidget):
     - Re-signing: ResigningView with expiring contracts table
     - Free Agency: FreeAgencyView with available free agents
     - Draft: DraftView with prospect selection
-    - Roster Cuts: RosterCutsView with cut suggestions and dead money tracking
+    - Preseason W1/W2/W3: RosterCutsView with staged cuts (90→85→80→53)
     - Waiver Wire: WaiverWireView with priority-based claims
     - Training Camp: TrainingCampView with player development results
-    - Preseason: Placeholder (coming soon)
     """
 
     # Signals
@@ -61,6 +63,32 @@ class OffseasonView(QWidget):
 
     # Franchise tag signals (forward from FranchiseTagView)
     tag_applied = Signal(int, str)  # player_id, tag_type ("franchise" or "transition")
+    tag_proposal_approved = Signal(str)  # proposal_id
+    tag_proposal_rejected = Signal(str, str)  # proposal_id, notes
+
+    # Re-signing GM proposals signal (Tollgate 6)
+    resigning_proposals_reviewed = Signal(list)  # List of (proposal_id, approved: bool)
+
+    # Cap relief signals (forward from ResigningView)
+    resigning_restructure_completed = Signal(int, int)  # contract_id, cap_savings
+    resigning_early_cut_completed = Signal(int, int, int)  # player_id, dead_money, cap_savings
+
+    # Trading GM proposals signals (Tollgate 8)
+    trade_proposal_approved = Signal(str)   # proposal_id
+    trade_proposal_rejected = Signal(str)   # proposal_id
+
+    # Free Agency GM proposal signals (Tollgate 7)
+    fa_proposal_approved = Signal(str)   # proposal_id
+    fa_proposal_rejected = Signal(str)   # proposal_id
+    fa_proposal_retracted = Signal(str)  # proposal_id (undo support)
+
+    # Draft GM proposal signals (Tollgate 9)
+    draft_proposal_approved = Signal(str)   # proposal_id
+    draft_proposal_rejected = Signal(str)   # proposal_id
+    draft_alternative_requested = Signal(str, int)  # proposal_id, prospect_id
+
+    # Stage advancement signal
+    advance_requested = Signal()  # Request to advance to next stage
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -86,16 +114,18 @@ class OffseasonView(QWidget):
         header_frame.setStyleSheet("background-color: #1e3a5f; border-radius: 4px;")
 
         header_layout = QVBoxLayout(header_frame)
-        header_layout.setContentsMargins(16, 12, 16, 12)
+        header_layout.setContentsMargins(12, 6, 12, 6)
+        header_layout.setSpacing(4)
 
-        # Stage name (large)
+        # Stage name (compact)
         self.stage_label = QLabel("Offseason")
-        self.stage_label.setFont(QFont("Arial", 20, QFont.Bold))
+        self.stage_label.setFont(Typography.H3)
         self.stage_label.setStyleSheet("color: white;")
         header_layout.addWidget(self.stage_label)
 
-        # Description
+        # Description (compact)
         self.description_label = QLabel("")
+        self.description_label.setFont(Typography.SMALL)
         self.description_label.setWordWrap(True)
         self.description_label.setStyleSheet("color: #e0e0e0;")
         header_layout.addWidget(self.description_label)
@@ -105,14 +135,10 @@ class OffseasonView(QWidget):
         button_layout.addStretch()
 
         self.process_button = QPushButton("Process Stage")
-        self.process_button.setMinimumHeight(40)
-        self.process_button.setMinimumWidth(200)
-        self.process_button.setFont(QFont("Arial", 12, QFont.Bold))
-        self.process_button.setStyleSheet(
-            "QPushButton { background-color: #1976D2; color: white; border-radius: 4px; padding: 8px 16px; }"
-            "QPushButton:hover { background-color: #1565C0; }"
-            "QPushButton:disabled { background-color: #ccc; }"
-        )
+        self.process_button.setMinimumHeight(32)
+        self.process_button.setMinimumWidth(180)
+        self.process_button.setFont(Typography.BODY)
+        self.process_button.setStyleSheet(SECONDARY_BUTTON_STYLE)
         self.process_button.clicked.connect(self._on_process_clicked)
         button_layout.addWidget(self.process_button)
 
@@ -129,6 +155,8 @@ class OffseasonView(QWidget):
         # Franchise Tag view (index 0) - FIRST offseason stage
         self.franchise_tag_view = FranchiseTagView()
         self.franchise_tag_view.tag_applied.connect(self.tag_applied.emit)
+        self.franchise_tag_view.proposal_approved.connect(self.tag_proposal_approved.emit)
+        self.franchise_tag_view.proposal_rejected.connect(self.tag_proposal_rejected.emit)
         self.stack.addWidget(self.franchise_tag_view)
 
         # Re-signing view (index 1)
@@ -136,6 +164,11 @@ class OffseasonView(QWidget):
         self.resigning_view.player_resigned.connect(self.player_resigned.emit)
         self.resigning_view.player_released.connect(self.player_released.emit)
         self.resigning_view.cap_validation_changed.connect(self._on_cap_validation_changed)
+        # Tollgate 6: Forward GM proposal decisions
+        self.resigning_view.proposals_reviewed.connect(self.resigning_proposals_reviewed.emit)
+        # Cap relief signals
+        self.resigning_view.restructure_completed.connect(self.resigning_restructure_completed.emit)
+        self.resigning_view.early_cut_completed.connect(self.resigning_early_cut_completed.emit)
         self.stack.addWidget(self.resigning_view)
 
         # Free Agency view (index 2)
@@ -143,11 +176,17 @@ class OffseasonView(QWidget):
         self.free_agency_view.player_signed.connect(self.player_signed_fa.emit)
         self.free_agency_view.player_unsigned.connect(self.player_unsigned_fa.emit)
         self.free_agency_view.cap_validation_changed.connect(self._on_fa_cap_validation_changed)
+        # Tollgate 7: Forward GM FA signing proposal signals
+        self.free_agency_view.proposal_approved.connect(self.fa_proposal_approved.emit)
+        self.free_agency_view.proposal_rejected.connect(self.fa_proposal_rejected.emit)
+        self.free_agency_view.proposal_retracted.connect(self.fa_proposal_retracted.emit)
         self.stack.addWidget(self.free_agency_view)
 
-        # Trading view (index 3) - read-only, shows GM trade activity
+        # Trading view (index 3) - GM trade proposals (Tollgate 8)
         self.trading_view = TradingView()
         self.trading_view.cap_validation_changed.connect(self._on_trading_cap_validation_changed)
+        self.trading_view.proposal_approved.connect(self.trade_proposal_approved.emit)
+        self.trading_view.proposal_rejected.connect(self.trade_proposal_rejected.emit)
         self.stack.addWidget(self.trading_view)
 
         # Draft view (index 4)
@@ -155,6 +194,12 @@ class OffseasonView(QWidget):
         self.draft_view.prospect_drafted.connect(self.prospect_drafted.emit)
         self.draft_view.simulate_to_pick_requested.connect(self.simulate_to_pick_requested.emit)
         self.draft_view.auto_draft_all_requested.connect(self.auto_draft_all_requested.emit)
+        # Tollgate 9: Forward GM proposal signals
+        self.draft_view.proposal_approved.connect(self.draft_proposal_approved.emit)
+        self.draft_view.proposal_rejected.connect(self.draft_proposal_rejected.emit)
+        self.draft_view.alternative_requested.connect(self.draft_alternative_requested.emit)
+        # Forward advance stage signal
+        self.draft_view.advance_requested.connect(self.advance_requested.emit)
         self.stack.addWidget(self.draft_view)
 
         # Roster Cuts view (index 5)
@@ -175,44 +220,14 @@ class OffseasonView(QWidget):
         self.training_camp_view.continue_clicked.connect(self.process_stage_requested.emit)
         self.stack.addWidget(self.training_camp_view)
 
-        # Preseason placeholder (index 8)
-        self.preseason_placeholder = self._create_placeholder_view(
-            "Preseason",
-            "The Preseason stage completes offseason preparations. Click 'Simulate' to advance to the regular season. "
-            "Preseason games are coming in a future update."
-        )
-        self.stack.addWidget(self.preseason_placeholder)
+        # Preseason view (index 8) - game simulation for W1/W2/W3
+        self.preseason_view = PreseasonView()
+        self.preseason_view.advance_requested.connect(self.advance_requested.emit)
+        self.preseason_view.process_cuts_requested.connect(self._on_preseason_cuts_requested)
+        self.preseason_view.game_selected.connect(self._on_preseason_game_selected)
+        self.stack.addWidget(self.preseason_view)
 
         parent_layout.addWidget(self.stack, stretch=1)
-
-    def _create_placeholder_view(self, title: str, message: str) -> QWidget:
-        """Create a placeholder view for stages not yet implemented."""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setAlignment(Qt.AlignCenter)
-
-        # Icon or placeholder graphic
-        icon_label = QLabel("Coming Soon")
-        icon_label.setFont(QFont("Arial", 24, QFont.Bold))
-        icon_label.setStyleSheet("color: #ccc;")
-        icon_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(icon_label)
-
-        # Message
-        message_label = QLabel(message)
-        message_label.setWordWrap(True)
-        message_label.setMaximumWidth(500)
-        message_label.setAlignment(Qt.AlignCenter)
-        message_label.setStyleSheet("color: #666; font-size: 14px; padding: 20px;")
-        layout.addWidget(message_label)
-
-        # Hint
-        hint_label = QLabel("Click 'Simulate' or 'Process' to advance to the next stage.")
-        hint_label.setAlignment(Qt.AlignCenter)
-        hint_label.setStyleSheet("color: #999; font-style: italic; padding-top: 20px;")
-        layout.addWidget(hint_label)
-
-        return widget
 
     def set_stage(self, stage: Stage, preview_data: Dict[str, Any]):
         """
@@ -224,6 +239,10 @@ class OffseasonView(QWidget):
         """
         self._current_stage = stage
 
+        # Store dynasty context for BoxScoreDialog (needed for preseason games)
+        self._dynasty_id = preview_data.get("dynasty_id")
+        self._db_path = preview_data.get("db_path")
+
         # Update header
         stage_name = preview_data.get("stage_name", stage.display_name)
         description = preview_data.get("description", "")
@@ -231,31 +250,38 @@ class OffseasonView(QWidget):
         self.stage_label.setText(stage_name)
         self.description_label.setText(description)
 
-        # Update process button text
-        self.process_button.setText(f"Process {stage.display_name}")
+        # Get stage type for switching logic
+        stage_type = stage.stage_type
+
+        # Update process button text based on stage
+        if stage_type == StageType.OFFSEASON_PRESEASON_W1:
+            self.process_button.setText("Process Preseason Week 1")
+        elif stage_type == StageType.OFFSEASON_PRESEASON_W2:
+            self.process_button.setText("Process Preseason Week 2")
+        elif stage_type == StageType.OFFSEASON_PRESEASON_W3:
+            self.process_button.setText("Process Final Roster Cuts")
+        else:
+            self.process_button.setText(f"Process {stage.display_name}")
         self.process_button.setEnabled(True)
 
         # Switch to appropriate sub-view
-        stage_type = stage.stage_type
 
-        # Hide header for Free Agency, show for all other stages
-        if stage_type == StageType.OFFSEASON_FREE_AGENCY:
-            self.header_frame.setVisible(False)
+        # Always show header for all offseason stages
+        self.header_frame.setVisible(True)
+
+        # Show process button by default
+        # Hidden for: Draft (has own controls), Free Agency (has wave controls)
+        if stage_type in (StageType.OFFSEASON_DRAFT, StageType.OFFSEASON_FREE_AGENCY):
+            self.process_button.setVisible(False)
         else:
-            self.header_frame.setVisible(True)
-
-        # Show process button by default (hidden for draft which has its own controls)
-        self.process_button.setVisible(True)
+            self.process_button.setVisible(True)
 
         if stage_type == StageType.OFFSEASON_FRANCHISE_TAG:
             self.stack.setCurrentIndex(0)
             taggable_players = preview_data.get("taggable_players", [])
             tag_used = preview_data.get("tag_used", False)
 
-            if taggable_players:
-                self.franchise_tag_view.set_taggable_players(taggable_players)
-            else:
-                self.franchise_tag_view.show_no_taggable_message()
+            self.franchise_tag_view.set_taggable_players(taggable_players)
 
             self.franchise_tag_view.set_tag_used(tag_used)
 
@@ -274,17 +300,40 @@ class OffseasonView(QWidget):
             if projected_cap_data:
                 self.franchise_tag_view.set_projected_cap_data(projected_cap_data)
 
+            # Set GM proposal if available (Tollgate 5)
+            gm_proposals = preview_data.get("gm_proposals", [])
+            gm_proposal = gm_proposals[0] if gm_proposals else None
+            self.franchise_tag_view.set_gm_proposal(gm_proposal)
+
         elif stage_type == StageType.OFFSEASON_RESIGNING:
             self.stack.setCurrentIndex(1)
-            expiring_players = preview_data.get("expiring_players", [])
-            if expiring_players:
-                self.resigning_view.set_expiring_players(expiring_players)
-            else:
-                self.resigning_view.show_no_expiring_message()
-            # Update cap data if available
-            cap_data = preview_data.get("cap_data")
-            if cap_data:
-                self.resigning_view.set_cap_data(cap_data)
+
+            # Use consolidated data update method
+            from game_cycle_ui.models.stage_data import ResigningStageData
+
+            # Get all required data from preview
+            cap_data = preview_data.get("cap_data", {})
+            all_player_recs = preview_data.get("all_player_recommendations", [])
+            roster_players = preview_data.get("roster_players", [])
+            expiring_ids = preview_data.get("expiring_player_ids", set())
+
+            # Restructure proposals are loaded separately by _handle_resigning_stage
+            # (not in preview_data), so start with empty list
+            stage_data = ResigningStageData(
+                recommendations=all_player_recs,
+                restructure_proposals=[],  # Loaded separately by stage_controller
+                cap_data=cap_data,
+                roster_players=roster_players,
+                expiring_ids=expiring_ids,
+                is_reevaluation=False
+            )
+            self.resigning_view.update_stage_data(stage_data)
+
+            # Legacy fallback for old format (if all_player_recs empty)
+            if not all_player_recs:
+                gm_proposals = preview_data.get("gm_proposals", [])
+                if gm_proposals:
+                    self.resigning_view.set_gm_proposals(gm_proposals)
 
         elif stage_type == StageType.OFFSEASON_FREE_AGENCY:
             self.stack.setCurrentIndex(2)
@@ -306,6 +355,10 @@ class OffseasonView(QWidget):
                     day=wave_state.get("current_day", 1),
                     days_total=wave_state.get("days_in_wave", 1),
                 )
+            # Load owner directives on initial entry (mirrors pattern in stage_controller.py:1372-1374)
+            owner_directives = preview_data.get("owner_directives")
+            if owner_directives and hasattr(self.free_agency_view, 'set_owner_directives'):
+                self.free_agency_view.set_owner_directives(owner_directives)
 
         elif stage_type == StageType.OFFSEASON_TRADING:
             self.stack.setCurrentIndex(3)
@@ -347,26 +400,48 @@ class OffseasonView(QWidget):
             if cap_data:
                 self.draft_view.set_cap_data(cap_data)
 
-        elif stage_type == StageType.OFFSEASON_ROSTER_CUTS:
-            self.stack.setCurrentIndex(5)
-            # Populate roster cuts data
-            roster_data = preview_data.get("roster_cuts_data", {})
-            if roster_data:
-                self.roster_cuts_view.set_roster_data(roster_data)
+            # Tollgate 9: Set GM proposal if available
+            gm_proposals = preview_data.get("gm_proposals", [])
+            gm_proposal = gm_proposals[0] if gm_proposals else None
+            trust_gm = preview_data.get("trust_gm", False)
+            self.draft_view.set_gm_proposal(gm_proposal, trust_gm)
+
+        elif stage_type in (StageType.OFFSEASON_PRESEASON_W1,
+                            StageType.OFFSEASON_PRESEASON_W2,
+                            StageType.OFFSEASON_PRESEASON_W3):
+            # Use PreseasonView (index 8) for game simulation
+            self.stack.setCurrentIndex(8)
+
+            # Set context for BoxScoreDialog access
+            user_team_id = preview_data.get("user_team_id", 1)
+            if self._dynasty_id and self._db_path:
+                self.preseason_view.set_context(
+                    dynasty_id=self._dynasty_id,
+                    db_path=self._db_path,
+                    season=stage.season_year,
+                    user_team_id=user_team_id
+                )
+
+            # Determine week number
+            if stage_type == StageType.OFFSEASON_PRESEASON_W1:
+                week = 1
+            elif stage_type == StageType.OFFSEASON_PRESEASON_W2:
+                week = 2
             else:
-                # Show with data from preview (handler returns roster_count, not current_size)
-                self.roster_cuts_view.set_roster_data({
-                    "roster": preview_data.get("roster", []),
-                    "current_size": preview_data.get("roster_count", preview_data.get("current_size", 0)),
-                    "target_size": preview_data.get("target_size", 53),
-                    "cuts_needed": preview_data.get("cuts_needed", 0),
-                    "ai_suggestions": preview_data.get("cut_suggestions", preview_data.get("ai_suggestions", [])),
-                    "protected_players": preview_data.get("protected_players", [])
-                })
-            # Update cap data if available
-            cap_data = preview_data.get("cap_data")
-            if cap_data:
-                self.roster_cuts_view.set_cap_data(cap_data)
+                week = 3
+
+            # Configure preseason view for this week
+            self.preseason_view.set_week(week)
+
+            # Set preseason games from preview data
+            preseason_games = preview_data.get("preseason_games", [])
+            self.preseason_view.set_games(preseason_games)
+
+            # For Week 3, also set roster status for cuts
+            if week == 3:
+                current_size = preview_data.get("roster_count", preview_data.get("current_size", 90))
+                target_size = preview_data.get("target_size", 53)
+                self.preseason_view.set_roster_status(current_size, target_size)
 
         elif stage_type == StageType.OFFSEASON_WAIVER_WIRE:
             self.stack.setCurrentIndex(6)
@@ -378,7 +453,9 @@ class OffseasonView(QWidget):
                 self.waiver_wire_view.set_waiver_data({
                     "waiver_players": preview_data.get("waiver_players", []),
                     "user_priority": preview_data.get("user_priority", 16),
-                    "user_claims": preview_data.get("user_claims", [])
+                    "user_claims": preview_data.get("user_claims", []),
+                    "roster_players": preview_data.get("roster_players", []),
+                    "expiring_player_ids": preview_data.get("expiring_player_ids", [])
                 })
             # Show no waivers message if empty
             if not preview_data.get("waiver_players") and not preview_data.get("waiver_data", {}).get("waiver_players"):
@@ -401,9 +478,6 @@ class OffseasonView(QWidget):
             training_camp_results = preview_data.get("training_camp_results")
             if training_camp_results:
                 self.training_camp_view.set_training_camp_data(training_camp_results)
-
-        elif stage_type == StageType.OFFSEASON_PRESEASON:
-            self.stack.setCurrentIndex(8)
 
         else:
             # Default to first view
@@ -451,6 +525,16 @@ class OffseasonView(QWidget):
         """Handle process button click."""
         self.process_button.setEnabled(False)
         self.process_button.setText("Processing...")
+
+        # For re-signing stage, collect extension decisions and emit them
+        if self._current_stage and self._current_stage.stage_type == StageType.OFFSEASON_RESIGNING:
+            decisions = self.resigning_view.get_extension_decisions()
+            if decisions:
+                # Emit decisions for batch processing
+                self.resigning_proposals_reviewed.emit(decisions)
+                return
+
+        # For other stages, just emit the generic process signal
         self.process_stage_requested.emit()
 
     def set_process_enabled(self, enabled: bool):
@@ -518,17 +602,30 @@ class OffseasonView(QWidget):
         Validate roster cuts stage for progression.
 
         Allow processing if:
-        1. Cap compliant (can advance to next stage), OR
-        2. There are pending cuts marked (let user process them even if still over cap)
+        1. No cuts needed (roster already at or below target), OR
+        2. Cap compliant (can advance to next stage), OR
+        3. There are pending cuts marked (let user process them even if still over cap)
 
         This allows users to make progress by processing marked cuts even when
         they need multiple rounds of cuts to become cap-compliant.
         """
-        if self._current_stage and self._current_stage.stage_type == StageType.OFFSEASON_ROSTER_CUTS:
-            # Check if there are pending cuts to process
+        if self._current_stage and self._current_stage.stage_type in (
+            StageType.OFFSEASON_PRESEASON_W1,
+            StageType.OFFSEASON_PRESEASON_W2,
+            StageType.OFFSEASON_PRESEASON_W3
+        ):
+            # Check roster size requirement first
+            cuts_needed = self.roster_cuts_view.get_cuts_needed()
             has_pending_cuts = bool(self.roster_cuts_view.get_cut_player_ids())
 
-            # Enable if cap compliant OR there are pending cuts to process
+            # If no cuts needed, can always advance (roster already under target)
+            if cuts_needed <= 0:
+                can_process = True
+                self.process_button.setEnabled(True)
+                self.process_button.setToolTip("Roster is at or below target. Ready to advance.")
+                return
+
+            # Otherwise, enable if cap compliant OR there are pending cuts to process
             can_process = is_compliant or has_pending_cuts
 
             self.process_button.setEnabled(can_process)
@@ -545,3 +642,33 @@ class OffseasonView(QWidget):
                     )
             else:
                 self.process_button.setToolTip("")
+
+    def _on_preseason_cuts_requested(self):
+        """
+        Handle preseason cuts request from PreseasonView.
+
+        This is called when the user clicks "Open Full Roster Cuts View" on
+        Preseason Week 3. Switches to the RosterCutsView for the full cuts interface.
+        """
+        # Switch to roster cuts view (index 5)
+        self.stack.setCurrentIndex(5)
+
+        # Signal that roster cuts are being processed
+        self.get_suggestions_requested.emit()
+
+    def _on_preseason_game_selected(self, game_id: str):
+        """Handle preseason game selection - show box score."""
+        from game_cycle_ui.dialogs import BoxScoreDialog
+
+        # Need dynasty_id and db_path from parent
+        if not hasattr(self, '_dynasty_id') or not hasattr(self, '_db_path'):
+            print("[OffseasonView] Cannot show box score - missing dynasty/db context")
+            return
+
+        dialog = BoxScoreDialog(
+            game_id=game_id,
+            dynasty_id=self._dynasty_id,
+            db_path=self._db_path,
+            parent=self
+        )
+        dialog.exec()

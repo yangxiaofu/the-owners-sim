@@ -24,81 +24,68 @@ def _create_regular_season_actions() -> Dict[StageType, dict]:
     }
 
 
+def _create_playoff_actions() -> Dict[StageType, dict]:
+    """Generate action configs for playoff stages."""
+    stages = {
+        StageType.WILD_CARD: "View Wild Card ▶",
+        StageType.DIVISIONAL: "View Divisional ▶",
+        StageType.CONFERENCE_CHAMPIONSHIP: "View Conference Finals ▶",
+        StageType.SUPER_BOWL: "View Super Bowl ▶",
+    }
+
+    base_config = {
+        "target_view": "playoffs",
+        "category": "Game Day",
+        "style": "urgent",
+    }
+
+    return {
+        stage_type: {**base_config, "text": text}
+        for stage_type, text in stages.items()
+    }
+
+
+def _create_offseason_actions() -> Dict[StageType, dict]:
+    """Generate action configs for standard offseason stages."""
+    stages = {
+        "FRANCHISE_TAG": "Franchise Tag ▶",
+        "RESIGNING": "Re-signing ▶",
+        "FREE_AGENCY": "Free Agency ▶",
+        "TRADING": "Trading ▶",
+        "DRAFT": "Draft ▶",
+        "TRAINING_CAMP": "Training Camp ▶",
+        "PRESEASON_W1": "Preseason Week 1 ▶",
+        "PRESEASON_W2": "Preseason Week 2 ▶",
+        "PRESEASON_W3": "Final Roster Cuts ▶",  # W3 has cuts (90→53)
+        "WAIVER_WIRE": "Waiver Wire ▶",
+    }
+
+    base_config = {
+        "target_view": "offseason_overview",
+        "category": "Front Office",
+        "style": "action",
+    }
+
+    return {
+        getattr(StageType, f"OFFSEASON_{stage}"): {
+            **base_config,
+            "text": text,
+            "style": "urgent" if stage == "DRAFT" else "action"
+        }
+        for stage, text in stages.items()
+    }
+
+
 # Complete mapping of all stage types to suggested actions
 STAGE_ACTIONS = {
-    **_create_regular_season_actions(),  # Generates all 18 weeks
-    # Playoffs
-    StageType.WILD_CARD: {
-        "text": "View Wild Card ▶",
-        "target_view": "playoffs",
-        "category": "Game Day",
-        "style": "urgent",
-    },
-    StageType.DIVISIONAL: {
-        "text": "View Divisional ▶",
-        "target_view": "playoffs",
-        "category": "Game Day",
-        "style": "urgent",
-    },
-    StageType.CONFERENCE_CHAMPIONSHIP: {
-        "text": "View Conference Finals ▶",
-        "target_view": "playoffs",
-        "category": "Game Day",
-        "style": "urgent",
-    },
-    StageType.SUPER_BOWL: {
-        "text": "View Super Bowl ▶",
-        "target_view": "playoffs",
-        "category": "Game Day",
-        "style": "urgent",
-    },
-    # Offseason
+    **_create_regular_season_actions(),  # Generates all 18 regular season weeks
+    **_create_playoff_actions(),          # Generates all 4 playoff stages
+    **_create_offseason_actions(),        # Generates all 10 standard offseason stages
+    # Special offseason stages (don't follow standard pattern)
     StageType.OFFSEASON_HONORS: {
         "text": "Awards ▶",
         "target_view": "season_recap",
         "category": "Offseason",
-        "style": "action",
-    },
-    StageType.OFFSEASON_FRANCHISE_TAG: {
-        "text": "Franchise Tag ▶",
-        "target_view": "owner",  # Placeholder - update when franchise tag view exists
-        "category": "Front Office",
-        "style": "action",
-    },
-    StageType.OFFSEASON_RESIGNING: {
-        "text": "Re-signing ▶",
-        "target_view": "owner",  # Placeholder - update when resigning view exists
-        "category": "Front Office",
-        "style": "action",
-    },
-    StageType.OFFSEASON_FREE_AGENCY: {
-        "text": "Free Agency ▶",
-        "target_view": "owner",  # Placeholder - update when FA view exists
-        "category": "Front Office",
-        "style": "action",
-    },
-    StageType.OFFSEASON_TRADING: {
-        "text": "Trading ▶",
-        "target_view": "owner",  # Placeholder - update when trading view exists
-        "category": "Front Office",
-        "style": "action",
-    },
-    StageType.OFFSEASON_DRAFT: {
-        "text": "Draft ▶",
-        "target_view": "owner",  # Placeholder - update when draft view exists
-        "category": "Front Office",
-        "style": "urgent",
-    },
-    StageType.OFFSEASON_TRAINING_CAMP: {
-        "text": "Training Camp ▶",
-        "target_view": "owner",  # Placeholder - update when training camp view exists
-        "category": "Front Office",
-        "style": "action",
-    },
-    StageType.OFFSEASON_WAIVER_WIRE: {
-        "text": "Waiver Wire ▶",
-        "target_view": "owner",  # Placeholder - update when waiver wire view exists
-        "category": "Front Office",
         "style": "action",
     },
     StageType.OFFSEASON_OWNER: {
