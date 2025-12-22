@@ -1194,22 +1194,27 @@ class AnalyticsAPI:
         dynasty_id: str,
         season: int,
         min_games: int = 12,
-        per_position_limit: int = 15,
+        min_snaps: int = 100,
+        per_position_limit: int = 15,  # Kept for API compatibility but not used in SQL
     ) -> List[Dict[str, Any]]:
         """
-        Get top candidates per position with SQL-level filtering.
+        Get all eligible candidates with SQL-level filtering.
 
         This is a FAST alternative to get_all_season_grades() that:
         1. Filters by minimum games played
-        2. Limits to top N per position by grade
+        2. Filters by minimum snaps played
         3. JOINs player info in single query
         4. Aggregates season stats from player_game_stats
+
+        NOTE: Does NOT pre-rank by grade. Python-side scoring handles ranking
+        to ensure top statistical performers aren't filtered out before scoring.
 
         Args:
             dynasty_id: Dynasty identifier
             season: Season year
             min_games: Minimum games played (default 12 = 67% of season)
-            per_position_limit: Max candidates per position (default 15)
+            min_snaps: Minimum snaps played (default 100)
+            per_position_limit: Kept for API compatibility (ranking done in Python)
 
         Returns:
             List of candidate dicts with all needed fields for awards
@@ -1247,7 +1252,7 @@ class AnalyticsAPI:
                         AND pgs.season_type = 'regular_season'
                     GROUP BY pgs.player_id
                 ),
-                ranked AS (
+                eligible_candidates AS (
                     SELECT
                         psg.player_id,
                         psg.team_id,
@@ -1284,11 +1289,7 @@ class AnalyticsAPI:
                         COALESCE(ss.sacks, 0) as sacks,
                         COALESCE(ss.interceptions, 0) as interceptions,
                         COALESCE(ss.tackles_total, 0) as tackles_total,
-                        COALESCE(ss.forced_fumbles, 0) as forced_fumbles,
-                        ROW_NUMBER() OVER (
-                            PARTITION BY psg.position
-                            ORDER BY psg.overall_grade DESC
-                        ) as pos_rank
+                        COALESCE(ss.forced_fumbles, 0) as forced_fumbles
                     FROM player_season_grades psg
                     JOIN players p ON psg.dynasty_id = p.dynasty_id
                         AND psg.player_id = p.player_id
@@ -1296,13 +1297,13 @@ class AnalyticsAPI:
                     WHERE psg.dynasty_id = ?
                         AND psg.season = ?
                         AND psg.games_graded >= ?
+                        AND psg.total_snaps >= ?
                         AND psg.overall_grade >= 50
                 )
-                SELECT * FROM ranked
-                WHERE pos_rank <= ?
+                SELECT * FROM eligible_candidates
                 ORDER BY overall_grade DESC
                 """,
-                (dynasty_id, season, dynasty_id, season, min_games, per_position_limit),
+                (dynasty_id, season, dynasty_id, season, min_games, min_snaps),
             )
 
             results = []

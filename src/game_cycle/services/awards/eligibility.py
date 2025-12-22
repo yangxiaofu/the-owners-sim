@@ -26,8 +26,66 @@ logger = logging.getLogger(__name__)
 
 # Eligibility constants
 MINIMUM_GAMES = 12  # 67% of 18-game season
-MINIMUM_SNAPS = 100  # Minimum snaps for season grades
+MINIMUM_SNAPS = 100  # Base minimum snaps (used as floor for SQL query)
 FULL_SEASON_GAMES = 18
+
+# Position-specific snap minimums for All-Pro/Pro Bowl eligibility
+# These reflect that starters at different positions have vastly different snap counts
+# OL/QB starters average 950-1100 snaps; RB committee backs average 300-500
+POSITION_SNAP_MINIMUMS = {
+    # Offense - High volume (starters play nearly every snap)
+    'QB': 500,
+    'LT': 500,
+    'LG': 500,
+    'C': 500,
+    'RG': 500,
+    'RT': 500,
+    # Offense - Medium volume
+    'WR': 400,
+    'TE': 150,
+    'RB': 150,
+    'FB': 100,
+    # Defense - High volume
+    'EDGE': 400,
+    'DE': 400,
+    'DT': 400,
+    'CB': 400,
+    'FS': 400,
+    'SS': 400,
+    # Defense - Medium volume (scheme-dependent)
+    'LOLB': 300,
+    'MLB': 300,
+    'ROLB': 300,
+    'LB': 300,
+    'ILB': 300,
+    'OLB': 300,
+    # Special teams - minimal snaps by design
+    'K': 50,
+    'P': 50,
+    'LS': 50,
+}
+
+# All-Pro Minimum Stat Thresholds
+# These prevent backup players from making All-Pro without meaningful production
+
+# Offense
+MIN_PASS_ATTEMPTS = 224        # QB: ~14 attempts per game
+MIN_CARRIES = 100              # RB: ~6 carries per game
+MIN_TOTAL_TOUCHES = 150        # RB alternative: rush attempts + receptions
+MIN_RECEPTIONS_WR = 28         # WR: ~2 per game
+MIN_TARGETS_WR = 50            # WR alternative for deep threats
+MIN_RECEPTIONS_TE = 20         # TE: ~1.5 per game
+
+# Defense
+MIN_TACKLES_EDGE = 25          # EDGE: ~2 per game
+MIN_SACKS_EDGE = 3.0           # EDGE alternative for specialists
+MIN_TACKLES_DT = 30            # DT: ~2 per game
+MIN_SACKS_DT = 2.0             # DT alternative
+MIN_TACKLES_LB = 40            # LB: ~3 per game
+MIN_COVERAGE_SNAPS_CB = 400    # CB: ~25 per game
+MIN_INTERCEPTIONS_CB = 1       # CB alternative
+MIN_TACKLES_S = 30             # S: ~2 per game
+MIN_INTERCEPTIONS_S = 1        # S alternative
 
 
 class EligibilityChecker:
@@ -240,22 +298,25 @@ class EligibilityChecker:
     def get_eligible_candidates_fast(
         self,
         award_type: AwardType,
-        per_position_limit: int = 15,
+        per_position_limit: int = 30,  # Not used in SQL - kept for API compatibility
     ) -> List[PlayerCandidate]:
         """
         FAST version of get_eligible_candidates using SQL-level filtering.
 
         This method:
-        1. Uses a single SQL query to get top N candidates per position
+        1. Uses a single SQL query to get ALL eligible candidates
         2. Filters by games played at the database level
         3. JOINs player info in the same query
         4. Avoids individual lookups for each player
+
+        NOTE: Returns ALL eligible candidates. Python-side scoring handles
+        ranking to ensure top statistical performers aren't filtered out.
 
         Performance: ~0.5s vs ~44s for the standard method.
 
         Args:
             award_type: Type of award to get candidates for
-            per_position_limit: Max candidates per position (default 15)
+            per_position_limit: Kept for API compatibility (not used in SQL)
 
         Returns:
             List of PlayerCandidate objects sorted by overall_grade descending
@@ -268,6 +329,7 @@ class EligibilityChecker:
                 dynasty_id=self._dynasty_id,
                 season=self._season,
                 min_games=MINIMUM_GAMES,
+                min_snaps=MINIMUM_SNAPS,
                 per_position_limit=per_position_limit,
             )
         except Exception as e:
@@ -284,9 +346,19 @@ class EligibilityChecker:
             player_id = data['player_id']
             raw_position = data.get('position', '')
             years_pro = data.get('years_pro', 0)
+            total_snaps = data.get('total_snaps', 0)
 
             # Convert full position name to abbreviation for group detection
             position = self._normalize_position(raw_position)
+
+            # Check position-specific snap minimum
+            min_snaps_for_position = POSITION_SNAP_MINIMUMS.get(position, MINIMUM_SNAPS)
+            if total_snaps < min_snaps_for_position:
+                logger.debug(
+                    f"Filtered {data.get('player_name', player_id)} ({position}): "
+                    f"{total_snaps} snaps < {min_snaps_for_position} minimum"
+                )
+                continue
 
             # Quick eligibility checks based on award type
             position_group = self._get_position_group(position)
@@ -645,6 +717,126 @@ class EligibilityChecker:
             logger.warning(f"Error checking CPOY eligibility for player {player_id}: {e}")
             # Allow through if we can't verify
             return True, ""
+
+    def _check_all_pro_stat_minimums(
+        self,
+        player_id: int,
+        position: str
+    ) -> tuple:
+        """
+        Check position-specific minimum stat thresholds for All-Pro eligibility.
+
+        Args:
+            player_id: Player ID to check
+            position: Player position (abbreviation)
+
+        Returns:
+            Tuple of (is_eligible, reason_if_not)
+        """
+        # Get player stats
+        try:
+            stats = self.stats_api.get_player_season_stats(str(player_id), self._season) or {}
+        except Exception as e:
+            logger.warning(f"Error getting stats for All-Pro check {player_id}: {e}")
+            # Allow through if we can't verify
+            return True, ""
+
+        pos = position.upper()
+
+        # QB - Minimum pass attempts
+        if pos == 'QB':
+            attempts = stats.get('passing_attempts', 0)
+            if attempts < MIN_PASS_ATTEMPTS:
+                return False, f"Pass attempts {attempts} < minimum {MIN_PASS_ATTEMPTS}"
+
+        # RB - Minimum carries OR total touches
+        elif pos == 'RB':
+            carries = stats.get('rushing_attempts', 0)
+            receptions = stats.get('receptions', 0)
+            total_touches = carries + receptions
+
+            if carries < MIN_CARRIES and total_touches < MIN_TOTAL_TOUCHES:
+                return False, f"Carries {carries} < {MIN_CARRIES} AND touches {total_touches} < {MIN_TOTAL_TOUCHES}"
+
+        # FB - Use existing snap threshold (no additional check)
+        elif pos == 'FB':
+            pass  # Covered by MINIMUM_SNAPS
+
+        # WR - Minimum receptions OR targets
+        elif pos == 'WR':
+            receptions = stats.get('receptions', 0)
+            targets = stats.get('receiving_targets', 0)
+
+            if receptions < MIN_RECEPTIONS_WR and targets < MIN_TARGETS_WR:
+                return False, f"Receptions {receptions} < {MIN_RECEPTIONS_WR} AND targets {targets} < {MIN_TARGETS_WR}"
+
+        # TE - Minimum receptions
+        elif pos == 'TE':
+            receptions = stats.get('receptions', 0)
+            if receptions < MIN_RECEPTIONS_TE:
+                return False, f"Receptions {receptions} < minimum {MIN_RECEPTIONS_TE}"
+
+        # OL - Use existing snap threshold (no additional check)
+        elif pos in ('LT', 'LG', 'C', 'RG', 'RT', 'OL'):
+            pass  # Covered by MINIMUM_SNAPS
+
+        # EDGE - Minimum tackles OR sacks
+        elif pos == 'EDGE':
+            tackles = stats.get('tackles_total', 0)
+            sacks = stats.get('sacks', 0.0)
+
+            if tackles < MIN_TACKLES_EDGE and sacks < MIN_SACKS_EDGE:
+                return False, f"Tackles {tackles} < {MIN_TACKLES_EDGE} AND sacks {sacks} < {MIN_SACKS_EDGE}"
+
+        # DT - Minimum tackles OR sacks
+        elif pos == 'DT':
+            tackles = stats.get('tackles_total', 0)
+            sacks = stats.get('sacks', 0.0)
+
+            if tackles < MIN_TACKLES_DT and sacks < MIN_SACKS_DT:
+                return False, f"Tackles {tackles} < {MIN_TACKLES_DT} AND sacks {sacks} < {MIN_SACKS_DT}"
+
+        # LB - Minimum tackles
+        elif pos in ('LOLB', 'MLB', 'ROLB', 'LB', 'ILB', 'OLB'):
+            tackles = stats.get('tackles_total', 0)
+            if tackles < MIN_TACKLES_LB:
+                return False, f"Tackles {tackles} < minimum {MIN_TACKLES_LB}"
+
+        # CB - Minimum coverage snaps OR interceptions
+        elif pos == 'CB':
+            # Note: coverage_snaps might not be available, use defensive_snaps as proxy
+            coverage_snaps = stats.get('coverage_snaps', stats.get('defensive_snaps', 0))
+            interceptions = stats.get('interceptions', 0)
+
+            if coverage_snaps < MIN_COVERAGE_SNAPS_CB and interceptions < MIN_INTERCEPTIONS_CB:
+                return False, f"Coverage snaps {coverage_snaps} < {MIN_COVERAGE_SNAPS_CB} AND INTs {interceptions} < {MIN_INTERCEPTIONS_CB}"
+
+        # S (FS, SS) - Minimum tackles OR interceptions
+        elif pos in ('FS', 'SS', 'S'):
+            tackles = stats.get('tackles_total', 0)
+            interceptions = stats.get('interceptions', 0)
+
+            if tackles < MIN_TACKLES_S and interceptions < MIN_INTERCEPTIONS_S:
+                return False, f"Tackles {tackles} < {MIN_TACKLES_S} AND INTs {interceptions} < {MIN_INTERCEPTIONS_S}"
+
+        # Unknown position - allow through
+        else:
+            logger.debug(f"No All-Pro stat minimums defined for position {pos}")
+
+        return True, ""
+
+    def check_all_pro_stat_minimums(
+        self,
+        player_id: int,
+        position: str
+    ) -> tuple:
+        """
+        Public API for checking All-Pro stat minimums.
+
+        Returns:
+            Tuple of (is_eligible, reason_if_not)
+        """
+        return self._check_all_pro_stat_minimums(player_id, position)
 
     def _populate_candidate_data(
         self,
