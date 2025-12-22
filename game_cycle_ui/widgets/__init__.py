@@ -46,8 +46,13 @@ from .ai_pick_display_widget import AIPickDisplayWidget
 from .draft_trade_offers_panel import DraftTradeOffersPanel, TradeOfferCard
 from .retirement_table_widget import RetirementTableWidget
 from .category_nav_bar import CategoryNavBar, NAVIGATION_STRUCTURE, CATEGORY_ORDER
+from .empty_state_widget import EmptyStateWidget
 from .roster_health_widget import RosterHealthWidget
 from .hof_ballot_widget import HOFBallotWidget
+from .awards_grid_widget import AwardsGridWidget, AwardTileWidget
+from .confidence_bar import ConfidenceBar
+from .asset_list_widget import AssetListWidget
+from .trade_proposal_card import TradeProposalCard
 
 __all__ = [
     "CapSummaryWidget",
@@ -101,6 +106,12 @@ __all__ = [
     "CategoryNavBar",
     "NAVIGATION_STRUCTURE",
     "CATEGORY_ORDER",
+    "EmptyStateWidget",
     "RosterHealthWidget",
     "HOFBallotWidget",
+    "AwardsGridWidget",
+    "AwardTileWidget",
+    "ConfidenceBar",
+    "AssetListWidget",
+    "TradeProposalCard",
 ]

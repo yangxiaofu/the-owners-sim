@@ -1,692 +1,473 @@
 """
-Trading View - Shows trade history and team assets during offseason.
+Trading View - Executive Memo Style for GM Trade Proposals.
 
-Read-only view showing AI GM trade activity and tradeable assets.
-Future feature: Owner can direct GM to pursue specific trades.
+Redesigned to make GM trade proposals the hero component.
+Features large, rich cards with narrative-driven justification.
+
+Layout:
+- Filter bar (status, priority, sort)
+- Scrollable card container (TradeProposalCard widgets)
+- Empty state when no proposals match filters
 """
 
-import json
 from typing import Dict, List, Optional, Any
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox,
-    QTableWidget, QTableWidgetItem, QHeaderView,
-    QFrame, QSplitter, QPushButton
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel,
+    QScrollArea, QPushButton, QComboBox, QFrame
 )
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtGui import QCursor
 
-from game_cycle_ui.theme import (
-    UITheme, TABLE_HEADER_STYLE, Typography, FontSizes, TextColors,
-    apply_table_style, PRIMARY_BUTTON_STYLE, DANGER_BUTTON_STYLE
-)
-from constants.position_abbreviations import get_position_abbreviation
-from utils.player_field_extractors import extract_overall_rating
+from game_cycle_ui.widgets.trade_proposal_card import TradeProposalCard
+from game_cycle_ui.theme import Colors, TextColors, Typography, ESPN_CARD_BG, ESPN_BORDER
 
 
 class TradingView(QWidget):
     """
-    View for the trading stage.
+    View for GM trade proposals in executive memo style.
 
-    Shows:
-    - Summary panel with cap space and trade count
-    - GM Trade Recommendations (Tollgate 8)
-    - User's tradeable assets (players and picks)
-    - Trade history (AI GM activity)
+    Displays trade proposals as large, rich cards with:
+    - Priority indicators
+    - GM confidence levels
+    - Deal summaries
+    - Strategic justification
+    - Approve/reject actions
+
+    Removes roster views to focus on GM recommendations.
     """
 
-    # Signals
+    # Signals (maintain compatibility with existing integration)
     cap_validation_changed = Signal(bool, int)  # (is_valid, over_cap_amount)
-    proposal_approved = Signal(str)   # proposal_id - emitted when owner approves trade
-    proposal_rejected = Signal(str)   # proposal_id - emitted when owner rejects trade
-
-    # Default NFL salary cap (2024 value)
-    DEFAULT_CAP_LIMIT = 255_400_000
+    proposal_approved = Signal(str)   # proposal_id
+    proposal_rejected = Signal(str)   # proposal_id
 
     def __init__(self, parent: Optional[QWidget] = None):
         super().__init__(parent)
-        self._user_players: List[Dict] = []
-        self._user_picks: List[Dict] = []
-        self._trade_history: List[Dict] = []
-        self._available_teams: List[Dict] = []
-        self._gm_proposals: List[Dict] = []  # GM trade recommendations
-        self._cap_limit: int = self.DEFAULT_CAP_LIMIT
-        self._available_cap_space: int = 0
+
+        # Data
+        self._proposals: List[Dict[str, Any]] = []
+        self._card_widgets: List[TradeProposalCard] = []
+        self._dynasty_id: Optional[str] = None
+        self._db_path: Optional[str] = None
+        self._season: Optional[int] = None
+        self._team_id: Optional[int] = None
+
+        # Filter state
+        self._status_filter = "ALL"  # ALL, PENDING, APPROVED, REJECTED
+        self._priority_filter = "ALL"  # ALL, HIGH, MEDIUM, LOW
+        self._sort_by = "priority"  # priority, confidence, value
+
         self._setup_ui()
 
     def _setup_ui(self):
-        """Build the UI layout.
-
-        Layout structure:
-        ┌─────────────────────────────────────────┐
-        │ Summary Panel (top)                     │
-        ├──────────────────┬──────────────────────┤
-        │ Left Column (60%)│ Right Column (40%)   │
-        │ • Your Tradeable │ • GM Trade Recs      │
-        │   Players Table  │                      │
-        │                  │ • Recent Trades      │
-        │ • Your Draft     │   (League-Wide)      │
-        │   Picks Table    │                      │
-        └──────────────────┴──────────────────────┘
-        """
+        """Build the UI layout."""
         layout = QVBoxLayout(self)
-        layout.setSpacing(16)
         layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(16)
 
-        # Summary panel at top
-        self._create_summary_panel(layout)
+        # Filter bar
+        filter_bar = self._create_filter_bar()
+        layout.addWidget(filter_bar)
 
-        # Main content splitter: Left (assets) / Right (GM recs + history)
-        splitter = QSplitter(Qt.Horizontal)
+        # Scroll area for cards
+        self._scroll_area = QScrollArea()
+        self._scroll_area.setWidgetResizable(True)
+        self._scroll_area.setFrameShape(QFrame.NoFrame)
+        self._scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-        # Left: User's tradeable assets (players + picks)
-        assets_widget = self._create_assets_panel()
-        splitter.addWidget(assets_widget)
+        # Card container
+        self._card_container = QWidget()
+        self._card_layout = QVBoxLayout(self._card_container)
+        self._card_layout.setContentsMargins(0, 0, 0, 0)
+        self._card_layout.setSpacing(16)
+        self._card_layout.setAlignment(Qt.AlignTop)
 
-        # Right: GM recommendations + Trade history (stacked)
-        right_panel = QWidget()
-        right_layout = QVBoxLayout(right_panel)
-        right_layout.setContentsMargins(0, 0, 0, 0)
-        right_layout.setSpacing(12)
+        self._scroll_area.setWidget(self._card_container)
+        layout.addWidget(self._scroll_area)
 
-        # GM Trade Recommendations (Tollgate 8)
-        self._create_gm_proposals_section(right_layout)
+        # Empty state widget (hidden by default)
+        self._empty_state = self._create_empty_state()
+        self._empty_state.hide()
+        layout.addWidget(self._empty_state)
 
-        # Trade history
-        history_widget = self._create_history_panel()
-        right_layout.addWidget(history_widget, stretch=1)
+    def _create_filter_bar(self) -> QWidget:
+        """Create filter and sort controls."""
+        filter_bar = QFrame()
+        filter_bar.setStyleSheet(f"""
+            QFrame {{
+                background-color: {ESPN_CARD_BG};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 6px;
+                padding: 8px;
+            }}
+        """)
 
-        splitter.addWidget(right_panel)
+        filter_layout = QHBoxLayout(filter_bar)
+        filter_layout.setContentsMargins(8, 8, 8, 8)
+        filter_layout.setSpacing(12)
 
-        # Set initial sizes (60/40 split)
-        splitter.setSizes([600, 400])
+        # Status filter label
+        status_label = QLabel("Status:")
+        status_label.setFont(Typography.BODY)
+        status_label.setStyleSheet(f"color: {TextColors.ON_DARK_SECONDARY}; font-weight: 500;")
+        filter_layout.addWidget(status_label)
 
-        layout.addWidget(splitter, stretch=1)
+        # Status filter buttons
+        self._status_buttons = {}
+        for status in ["All", "Pending", "Approved", "Rejected"]:
+            btn = QPushButton(status)
+            btn.setCheckable(True)
+            btn.setChecked(status == "All")
+            btn.setCursor(QCursor(Qt.PointingHandCursor))
+            btn.setStyleSheet(self._get_filter_button_style(status == "All"))
+            btn.clicked.connect(lambda checked, s=status.upper(): self._on_status_filter_changed(s))
+            self._status_buttons[status.upper()] = btn
+            filter_layout.addWidget(btn)
 
-        # Instructions
-        self._create_instructions(layout)
+        filter_layout.addSpacing(16)
 
-    def _create_summary_metric(self, title: str, attr_name: str,
-                               initial_value: str = "0", color: str = None) -> QFrame:
-        """Create a summary metric frame with title and value label.
+        # Priority filter label
+        priority_label = QLabel("Priority:")
+        priority_label.setFont(Typography.BODY)
+        priority_label.setStyleSheet(f"color: {TextColors.ON_DARK_SECONDARY}; font-weight: 500;")
+        filter_layout.addWidget(priority_label)
+
+        # Priority filter dropdown
+        self._priority_combo = QComboBox()
+        self._priority_combo.addItems(["All", "High", "Medium", "Low"])
+        self._priority_combo.setStyleSheet(self._get_combo_style())
+        self._priority_combo.currentTextChanged.connect(
+            lambda text: self._on_priority_filter_changed(text.upper())
+        )
+        filter_layout.addWidget(self._priority_combo)
+
+        filter_layout.addStretch()
+
+        # Sort dropdown
+        sort_label = QLabel("Sort by:")
+        sort_label.setFont(Typography.BODY)
+        sort_label.setStyleSheet(f"color: {TextColors.ON_DARK_SECONDARY}; font-weight: 500;")
+        filter_layout.addWidget(sort_label)
+
+        self._sort_combo = QComboBox()
+        self._sort_combo.addItems(["Priority", "Confidence", "Value"])
+        self._sort_combo.setStyleSheet(self._get_combo_style())
+        self._sort_combo.currentTextChanged.connect(
+            lambda text: self._on_sort_changed(text.lower())
+        )
+        filter_layout.addWidget(self._sort_combo)
+
+        return filter_bar
+
+    def _get_filter_button_style(self, is_active: bool) -> str:
+        """Get stylesheet for filter buttons."""
+        if is_active:
+            return f"""
+                QPushButton {{
+                    background-color: {Colors.INFO};
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    padding: 6px 16px;
+                    font-weight: 500;
+                }}
+                QPushButton:hover {{
+                    background-color: {Colors.INFO};
+                    opacity: 0.9;
+                }}
+            """
+        else:
+            return f"""
+                QPushButton {{
+                    background-color: transparent;
+                    color: {TextColors.ON_DARK_SECONDARY};
+                    border: 1px solid {Colors.BORDER};
+                    border-radius: 4px;
+                    padding: 6px 16px;
+                }}
+                QPushButton:hover {{
+                    background-color: {Colors.BG_SECONDARY};
+                    border: 1px solid {Colors.INFO};
+                }}
+                QPushButton:checked {{
+                    background-color: {Colors.INFO};
+                    color: white;
+                    border: none;
+                }}
+            """
+
+    def _get_combo_style(self) -> str:
+        """Get stylesheet for combo boxes."""
+        return f"""
+            QComboBox {{
+                background-color: {ESPN_CARD_BG};
+                color: {TextColors.ON_DARK};
+                border: 1px solid {Colors.BORDER};
+                border-radius: 4px;
+                padding: 6px 12px;
+                min-width: 120px;
+            }}
+            QComboBox:hover {{
+                border: 1px solid {Colors.INFO};
+            }}
+            QComboBox::drop-down {{
+                border: none;
+            }}
+            QComboBox::down-arrow {{
+                image: none;
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 6px solid {TextColors.ON_DARK_SECONDARY};
+                margin-right: 8px;
+            }}
+        """
+
+    def _create_empty_state(self) -> QWidget:
+        """Create empty state widget shown when no proposals match filters."""
+        empty = QFrame()
+        empty.setStyleSheet(f"""
+            QFrame {{
+                background-color: {Colors.BG_SECONDARY};
+                border: 2px dashed {Colors.BORDER};
+                border-radius: 8px;
+            }}
+        """)
+
+        empty_layout = QVBoxLayout(empty)
+        empty_layout.setContentsMargins(40, 40, 40, 40)
+        empty_layout.setSpacing(12)
+        empty_layout.setAlignment(Qt.AlignCenter)
+
+        # Icon placeholder
+        icon = QLabel("📋")
+        icon.setStyleSheet("font-size: 48px;")
+        icon.setAlignment(Qt.AlignCenter)
+        empty_layout.addWidget(icon)
+
+        # Message
+        message = QLabel("No trade proposals match your filters")
+        message.setFont(Typography.H4)
+        message.setStyleSheet(f"""
+            color: {TextColors.ON_DARK_SECONDARY};
+            font-weight: 500;
+        """)
+        message.setAlignment(Qt.AlignCenter)
+        empty_layout.addWidget(message)
+
+        # Hint
+        hint = QLabel("Try adjusting your filter settings or check back later")
+        hint.setFont(Typography.BODY)
+        hint.setStyleSheet(f"""
+            color: {TextColors.ON_DARK_SECONDARY};
+        """)
+        hint.setAlignment(Qt.AlignCenter)
+        empty_layout.addWidget(hint)
+
+        return empty
+
+    @Slot(str)
+    def _on_status_filter_changed(self, status: str):
+        """Handle status filter button click."""
+        self._status_filter = status
+
+        # Update button states
+        for s, btn in self._status_buttons.items():
+            is_active = (s == status)
+            btn.setChecked(is_active)
+            btn.setStyleSheet(self._get_filter_button_style(is_active))
+
+        self._apply_filters()
+
+    @Slot(str)
+    def _on_priority_filter_changed(self, priority: str):
+        """Handle priority filter change."""
+        self._priority_filter = priority
+        self._apply_filters()
+
+    @Slot(str)
+    def _on_sort_changed(self, sort_by: str):
+        """Handle sort change."""
+        self._sort_by = sort_by
+        self._apply_filters()  # Re-apply to trigger re-sort
+
+    def _apply_filters(self):
+        """Apply current filters and sorting to proposals."""
+        # Filter proposals
+        filtered = self._proposals.copy()
+
+        # Status filter
+        if self._status_filter != "ALL":
+            filtered = [
+                p for p in filtered
+                if p.get("status", "PENDING").upper() == self._status_filter
+            ]
+
+        # Priority filter
+        if self._priority_filter != "ALL":
+            filtered = [
+                p for p in filtered
+                if p.get("priority", "MEDIUM").upper() == self._priority_filter
+            ]
+
+        # Sort proposals
+        if self._sort_by == "priority":
+            priority_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+            filtered.sort(
+                key=lambda p: priority_order.get(p.get("priority", "MEDIUM").upper(), 1)
+            )
+        elif self._sort_by == "confidence":
+            filtered.sort(key=lambda p: p.get("confidence", 0.0), reverse=True)
+        elif self._sort_by == "value":
+            filtered.sort(key=lambda p: p.get("value_differential", 0), reverse=True)
+
+        # Rebuild cards
+        self._rebuild_cards(filtered)
+
+    def _rebuild_cards(self, proposals: List[Dict[str, Any]]):
+        """Rebuild card widgets from filtered/sorted proposals."""
+        # Clear existing cards
+        for card in self._card_widgets:
+            card.deleteLater()
+        self._card_widgets.clear()
+
+        # Show empty state if no proposals
+        if not proposals:
+            self._scroll_area.hide()
+            self._empty_state.show()
+            return
+
+        # Hide empty state, show cards
+        self._empty_state.hide()
+        self._scroll_area.show()
+
+        # Create new cards
+        for proposal in proposals:
+            card = TradeProposalCard(proposal)
+
+            # Connect signals
+            card.proposal_approved.connect(self._on_card_approved)
+            card.proposal_rejected.connect(self._on_card_rejected)
+
+            self._card_layout.addWidget(card)
+            self._card_widgets.append(card)
+
+        # Add stretch at end
+        self._card_layout.addStretch()
+
+    @Slot(str)
+    def _on_card_approved(self, proposal_id: str):
+        """Handle card approval."""
+        print(f"[TradingView] Approved proposal: {proposal_id}")
+
+        # Emit signal for external handlers
+        self.proposal_approved.emit(proposal_id)
+
+        # Remove card from view
+        self._remove_card_by_id(proposal_id)
+
+    @Slot(str)
+    def _on_card_rejected(self, proposal_id: str):
+        """Handle card rejection."""
+        print(f"[TradingView] Rejected proposal: {proposal_id}")
+
+        # Emit signal for external handlers
+        self.proposal_rejected.emit(proposal_id)
+
+        # Remove card from view
+        self._remove_card_by_id(proposal_id)
+
+    def _remove_card_by_id(self, proposal_id: str):
+        """Remove a card from the view by proposal ID."""
+        # Find and remove card widget
+        for card in self._card_widgets:
+            if card.get_proposal_id() == proposal_id:
+                card.deleteLater()
+                self._card_widgets.remove(card)
+                break
+
+        # Update proposals list
+        self._proposals = [
+            p for p in self._proposals
+            if p.get("proposal_id") != proposal_id
+        ]
+
+        # If no cards left, show empty state
+        if not self._card_widgets:
+            self._scroll_area.hide()
+            self._empty_state.show()
+
+    # Public API
+
+    def set_context(
+        self,
+        dynasty_id: str,
+        db_path: str,
+        season: int,
+        team_id: Optional[int] = None
+    ):
+        """
+        Set context for the view.
 
         Args:
-            title: Display title for the metric
-            attr_name: Attribute name to store the value label on self
-            initial_value: Initial display value
-            color: Optional text color for the value
-
-        Returns:
-            QFrame containing the metric display
+            dynasty_id: Dynasty identifier
+            db_path: Path to game database
+            season: Current season year
+            team_id: Team ID (optional)
         """
-        frame = QFrame()
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(0, 0, 0, 0)
+        self._dynasty_id = dynasty_id
+        self._db_path = db_path
+        self._season = season
+        self._team_id = team_id
 
-        title_label = QLabel(title)
-        title_label.setStyleSheet(
-            f"color: {TextColors.ON_LIGHT_SECONDARY}; font-size: {FontSizes.CAPTION};"
-        )
-        layout.addWidget(title_label)
-
-        value_label = QLabel(initial_value)
-        value_label.setFont(Typography.H4)
-        if color:
-            value_label.setStyleSheet(f"color: {color};")
-        layout.addWidget(value_label)
-
-        setattr(self, attr_name, value_label)
-        return frame
-
-    def _create_summary_panel(self, parent_layout: QVBoxLayout):
-        """Create the summary panel showing cap space and trade counts."""
-        summary_group = QGroupBox("Trading Summary")
-        summary_layout = QHBoxLayout(summary_group)
-        summary_layout.setSpacing(30)
-
-        # Create all summary metrics using helper
-        summary_layout.addWidget(
-            self._create_summary_metric("Available Cap Space", "cap_space_label",
-                                       "$0", TextColors.SUCCESS)
-        )
-        summary_layout.addWidget(
-            self._create_summary_metric("Tradeable Players", "players_count_label")
-        )
-        summary_layout.addWidget(
-            self._create_summary_metric("Tradeable Picks", "picks_count_label")
-        )
-        summary_layout.addWidget(
-            self._create_summary_metric("Trades This Season", "trades_count_label",
-                                       "0", TextColors.INFO)
-        )
-        summary_layout.addWidget(
-            self._create_summary_metric("Trade Partners", "partners_count_label", "31")
-        )
-
-        summary_layout.addStretch()
-        parent_layout.addWidget(summary_group)
-
-    def _create_assets_panel(self) -> QWidget:
-        """Create panel showing user's tradeable assets."""
-        assets_widget = QWidget()
-        assets_layout = QVBoxLayout(assets_widget)
-        assets_layout.setContentsMargins(0, 0, 0, 0)
-
-        # Players table
-        players_group = QGroupBox("Your Tradeable Players")
-        players_layout = QVBoxLayout(players_group)
-
-        self.players_table = QTableWidget()
-        self.players_table.setColumnCount(5)
-        self.players_table.setHorizontalHeaderLabels([
-            "Player", "Position", "Age", "OVR", "Trade Value"
-        ])
-
-        # Apply standard table styling
-        apply_table_style(self.players_table)
-
-        header = self.players_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-
-        players_layout.addWidget(self.players_table)
-        assets_layout.addWidget(players_group, stretch=2)
-
-        # Draft picks table
-        picks_group = QGroupBox("Your Draft Picks")
-        picks_layout = QVBoxLayout(picks_group)
-
-        self.picks_table = QTableWidget()
-        self.picks_table.setColumnCount(4)
-        self.picks_table.setHorizontalHeaderLabels([
-            "Year", "Round", "Original Team", "Trade Value"
-        ])
-
-        # Apply standard table styling
-        apply_table_style(self.picks_table)
-
-        header = self.picks_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-
-        picks_layout.addWidget(self.picks_table)
-        assets_layout.addWidget(picks_group, stretch=1)
-
-        return assets_widget
-
-    def _create_history_panel(self) -> QWidget:
-        """Create panel showing trade history."""
-        history_group = QGroupBox("Recent Trades (League-Wide)")
-        history_layout = QVBoxLayout(history_group)
-
-        self.history_table = QTableWidget()
-        self.history_table.setColumnCount(4)
-        self.history_table.setHorizontalHeaderLabels([
-            "Date", "Team 1", "Team 2", "Summary"
-        ])
-
-        # Apply standard table styling
-        apply_table_style(self.history_table)
-
-        header = self.history_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.Stretch)
-
-        history_layout.addWidget(self.history_table)
-
-        return history_group
-
-    def _create_gm_proposals_section(self, parent_layout: QVBoxLayout):
-        """Create GM Trade Recommendations section (Tollgate 8)."""
-        self._gm_proposals_group = QGroupBox("GM TRADE RECOMMENDATIONS")
-        self._gm_proposals_group.setStyleSheet(
-            "QGroupBox { font-weight: bold; color: #1976D2; }"
-        )
-        proposals_layout = QVBoxLayout(self._gm_proposals_group)
-        proposals_layout.setContentsMargins(10, 10, 10, 10)
-        proposals_layout.setSpacing(8)
-
-        # Proposals table
-        self._proposals_table = QTableWidget()
-        self._proposals_table.setColumnCount(6)
-        self._proposals_table.setHorizontalHeaderLabels([
-            "Trade Partner", "We Send", "We Receive", "Value", "Confidence", "Action"
-        ])
-
-        # Apply standard table styling
-        apply_table_style(self._proposals_table)
-
-        # Configure column widths
-        header = self._proposals_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # Partner
-        header.setSectionResizeMode(1, QHeaderView.Stretch)  # We Send
-        header.setSectionResizeMode(2, QHeaderView.Stretch)  # We Receive
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # Value
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Confidence
-        header.setSectionResizeMode(5, QHeaderView.Fixed)  # Action
-        header.resizeSection(5, 150)
-
-        # Set taller rows for buttons
-        self._proposals_table.verticalHeader().setDefaultSectionSize(50)
-
-        proposals_layout.addWidget(self._proposals_table)
-
-        # GM reasoning display area
-        self._gm_reasoning_label = QLabel()
-        self._gm_reasoning_label.setWordWrap(True)
-        self._gm_reasoning_label.setStyleSheet(
-            f"background-color: #f5f5f5; padding: 10px; border-radius: 4px; "
-            f"color: #333; font-size: {FontSizes.BODY}; font-style: italic;"
-        )
-        self._gm_reasoning_label.setMinimumHeight(60)
-        self._gm_reasoning_label.hide()
-        proposals_layout.addWidget(self._gm_reasoning_label)
-
-        # Initially hidden
-        self._gm_proposals_group.hide()
-
-        parent_layout.addWidget(self._gm_proposals_group)
-
-    def set_gm_proposals(self, proposals: List[Dict]) -> None:
+    def set_gm_proposals(self, proposals: List[Dict[str, Any]]):
         """
         Set GM trade proposals for display.
 
         Args:
-            proposals: List of proposal dicts with:
-                - proposal_id: str
-                - details: dict with trade_partner, sending, receiving,
-                           value_differential, cap_impact
-                - gm_reasoning: str
-                - confidence: float (0-1)
-                - auto_approved: bool (optional)
+            proposals: List of proposal dictionaries with structure:
+                {
+                    "proposal_id": str,
+                    "priority": str ("HIGH"/"MEDIUM"/"LOW"),
+                    "title": str,
+                    "trade_partner": str,
+                    "confidence": float (0.0-1.0),
+                    "sending": List[Dict],
+                    "receiving": List[Dict],
+                    "value_differential": int,
+                    "cap_impact": int,
+                    "gm_reasoning": str,
+                    "strategic_fit": List[str],
+                    "status": str ("PENDING"/"APPROVED"/"REJECTED")
+                }
         """
-        self._gm_proposals = proposals
+        self._proposals = proposals
+        self._apply_filters()
 
-        if not proposals:
-            self._gm_proposals_group.hide()
-            return
+    def remove_proposal(self, proposal_id: str):
+        """
+        Remove a proposal from the view (used by demo script).
 
-        # Show the section
-        self._gm_proposals_group.show()
+        Args:
+            proposal_id: ID of proposal to remove
+        """
+        self._remove_card_by_id(proposal_id)
 
-        # Populate table
-        self._proposals_table.setRowCount(len(proposals))
-
-        for row, proposal in enumerate(proposals):
-            self._populate_trade_proposal_row(row, proposal)
-
-        # Show reasoning for first proposal by default
-        if proposals:
-            self._show_trade_reasoning(proposals[0])
-
-    def _populate_trade_proposal_row(self, row: int, proposal: Dict):
-        """Populate a single row in the proposals table."""
-        details = proposal.get("details", {})
-        proposal_id = proposal.get("proposal_id", "")
-        auto_approved = proposal.get("auto_approved", False)
-
-        # Trade partner
-        partner = details.get("trade_partner", "Unknown")
-        partner_item = QTableWidgetItem(partner)
-        partner_item.setData(Qt.UserRole, proposal_id)
-        self._proposals_table.setItem(row, 0, partner_item)
-
-        # We Send - format as compact list
-        sending = details.get("sending", [])
-        send_text = self._format_assets(sending)
-        send_item = QTableWidgetItem(send_text)
-        send_item.setToolTip(send_text)  # Full text on hover
-        self._proposals_table.setItem(row, 1, send_item)
-
-        # We Receive
-        receiving = details.get("receiving", [])
-        recv_text = self._format_assets(receiving)
-        recv_item = QTableWidgetItem(recv_text)
-        recv_item.setToolTip(recv_text)
-        self._proposals_table.setItem(row, 2, recv_item)
-
-        # Value differential
-        value_diff = details.get("value_differential", 0)
-        if value_diff > 0:
-            value_text = f"+{value_diff:,}"
-            value_color = QColor("#2E7D32")  # Green - favorable
-        elif value_diff < 0:
-            value_text = f"{value_diff:,}"
-            value_color = QColor("#C62828")  # Red - unfavorable
-        else:
-            value_text = "Even"
-            value_color = QColor("#666")
-        value_item = QTableWidgetItem(value_text)
-        value_item.setTextAlignment(Qt.AlignCenter)
-        value_item.setForeground(value_color)
-        self._proposals_table.setItem(row, 3, value_item)
-
-        # Confidence
-        confidence = proposal.get("confidence", 0.5)
-        conf_pct = int(confidence * 100)
-        conf_item = QTableWidgetItem(f"{conf_pct}%")
-        conf_item.setTextAlignment(Qt.AlignCenter)
-        if conf_pct >= 80:
-            conf_item.setForeground(QColor("#2E7D32"))
-        elif conf_pct >= 60:
-            conf_item.setForeground(QColor("#1976D2"))
-        else:
-            conf_item.setForeground(QColor("#F57C00"))
-        self._proposals_table.setItem(row, 4, conf_item)
-
-        # Action buttons
-        action_widget = QWidget()
-        action_layout = QHBoxLayout(action_widget)
-        action_layout.setContentsMargins(4, 2, 4, 2)
-        action_layout.setSpacing(4)
-
-        if auto_approved:
-            # Already auto-approved in Trust GM mode
-            approved_label = QLabel("Auto-Approved")
-            approved_label.setStyleSheet(
-                f"color: {TextColors.SUCCESS}; font-weight: bold;"
-            )
-            approved_label.setAlignment(Qt.AlignCenter)
-            action_layout.addWidget(approved_label)
-        else:
-            approve_btn = QPushButton("Approve")
-            approve_btn.setStyleSheet(PRIMARY_BUTTON_STYLE)
-            approve_btn.setToolTip("Approve this trade recommendation")
-            approve_btn.clicked.connect(
-                lambda checked, pid=proposal_id: self._on_proposal_approved(pid)
-            )
-            action_layout.addWidget(approve_btn)
-
-            reject_btn = QPushButton("Reject")
-            reject_btn.setStyleSheet(DANGER_BUTTON_STYLE)
-            reject_btn.setToolTip("Reject this trade recommendation")
-            reject_btn.clicked.connect(
-                lambda checked, pid=proposal_id: self._on_proposal_rejected(pid)
-            )
-            action_layout.addWidget(reject_btn)
-
-        self._proposals_table.setCellWidget(row, 5, action_widget)
-
-        # Connect row click to show reasoning
-        self._proposals_table.cellClicked.connect(self._on_trade_row_clicked)
-
-    def _format_assets(self, assets: List[Dict]) -> str:
-        """Format list of trade assets as readable string."""
-        parts = []
-        for asset in assets:
-            asset_type = asset.get("type", "")
-            name = asset.get("name", "Unknown")
-            if asset_type == "player":
-                pos = asset.get("position", "")
-                ovr = extract_overall_rating(asset, default=0)
-                parts.append(f"{name} ({pos} {ovr})")
-            elif asset_type == "pick":
-                parts.append(name)
-            else:
-                parts.append(name)
-        return ", ".join(parts) if parts else "Nothing"
-
-    def _on_trade_row_clicked(self, row: int, column: int):
-        """Handle click on proposal row to show reasoning."""
-        if row < len(self._gm_proposals):
-            self._show_trade_reasoning(self._gm_proposals[row])
-
-    def _show_trade_reasoning(self, proposal: Dict):
-        """Show GM reasoning for a trade proposal."""
-        reasoning = proposal.get("gm_reasoning", "")
-        if reasoning:
-            self._gm_reasoning_label.setText(f"GM says: \"{reasoning}\"")
-            self._gm_reasoning_label.show()
-        else:
-            self._gm_reasoning_label.hide()
-
-    def _on_proposal_approved(self, proposal_id: str):
-        """Handle approve button click."""
-        self.proposal_approved.emit(proposal_id)
-
-        # Remove from local list and refresh display
-        self._gm_proposals = [
-            p for p in self._gm_proposals
-            if p.get("proposal_id") != proposal_id
-        ]
-        self.set_gm_proposals(self._gm_proposals)
-
-    def _on_proposal_rejected(self, proposal_id: str):
-        """Handle reject button click."""
-        self.proposal_rejected.emit(proposal_id)
-
-        # Remove from local list and refresh display
-        self._gm_proposals = [
-            p for p in self._gm_proposals
-            if p.get("proposal_id") != proposal_id
-        ]
-        self.set_gm_proposals(self._gm_proposals)
-
-    def clear_gm_proposals(self):
-        """Clear all GM proposals."""
-        self._gm_proposals = []
-        self._proposals_table.setRowCount(0)
-        self._gm_reasoning_label.hide()
-        self._gm_proposals_group.hide()
-
-    def _create_instructions(self, parent_layout: QVBoxLayout):
-        """Create instruction text at the bottom."""
-        instructions = QLabel(
-            "Your GM is actively evaluating trade opportunities with other teams. "
-            "Click 'Process Trading' to advance and see completed trades."
-        )
-        instructions.setWordWrap(True)
-        instructions.setStyleSheet(f"color: {TextColors.ON_LIGHT_SECONDARY}; font-style: italic; padding: 8px;")
-        parent_layout.addWidget(instructions)
+    # Legacy compatibility methods (may be called by existing integration)
 
     def set_trading_data(self, preview_data: Dict[str, Any]):
         """
-        Populate all trading data from preview.
+        Legacy method for backward compatibility.
 
-        Args:
-            preview_data: Dict from OffseasonHandler._get_trading_preview()
+        Extracts GM proposals from preview data if present.
         """
-        # Store data
-        self._user_players = preview_data.get("user_players", [])
-        self._user_picks = preview_data.get("user_picks", [])
-        self._trade_history = preview_data.get("trade_history", [])
-        self._available_teams = preview_data.get("available_teams", [])
-
-        # Update summary
-        self.players_count_label.setText(str(len(self._user_players)))
-        self.picks_count_label.setText(str(len(self._user_picks)))
-        self.trades_count_label.setText(str(preview_data.get("trade_count_this_season", 0)))
-        self.partners_count_label.setText(str(len(self._available_teams)))
-
-        # Populate tables
-        self._populate_players_table()
-        self._populate_picks_table()
-        self._populate_history_table()
-
-        # Set GM trade proposals if present (Tollgate 8)
-        gm_proposals = preview_data.get("gm_proposals", [])
-        self.set_gm_proposals(gm_proposals)
+        if "gm_proposals" in preview_data:
+            self.set_gm_proposals(preview_data["gm_proposals"])
 
     def set_cap_data(self, cap_data: Dict[str, Any]):
         """
-        Update the view with cap data.
+        Legacy method for backward compatibility.
 
-        Args:
-            cap_data: Dict with available_space, salary_cap_limit, etc.
+        Cap data no longer displayed in redesigned view.
         """
-        available = cap_data.get("available_space", 0)
-        self._available_cap_space = available
-
-        formatted = f"${available:,}"
-        self.cap_space_label.setText(formatted)
-
-        # Color based on cap space
-        if available < 0:
-            self.cap_space_label.setStyleSheet(f"color: {TextColors.ERROR};")  # Red
-        else:
-            self.cap_space_label.setStyleSheet(f"color: {TextColors.SUCCESS};")  # Green
-
-        if "salary_cap_limit" in cap_data:
-            self._cap_limit = cap_data["salary_cap_limit"]
-
-        # Emit cap validation
-        is_over_cap = available < 0
-        over_cap_amount = abs(available) if is_over_cap else 0
-        self.cap_validation_changed.emit(not is_over_cap, over_cap_amount)
-
-    def _populate_players_table(self):
-        """Populate the players table with tradeable players."""
-        self.players_table.setRowCount(len(self._user_players))
-
-        for row, player in enumerate(self._user_players):
-            # Player name
-            name = player.get("name", f"Player {player.get('player_id', 0)}")
-            name_item = QTableWidgetItem(name)
-            name_item.setData(Qt.UserRole, player.get("player_id"))
-            self.players_table.setItem(row, 0, name_item)
-
-            # Position - parse JSON list and get first position
-            position_data = player.get("position", "")
-            if isinstance(position_data, str) and position_data.startswith("["):
-                # Parse JSON list
-                try:
-                    positions = json.loads(position_data)
-                    position = positions[0] if positions else ""
-                except (json.JSONDecodeError, IndexError, TypeError):
-                    position = position_data
-            elif isinstance(position_data, list):
-                position = position_data[0] if position_data else ""
-            else:
-                position = position_data
-
-            pos_item = QTableWidgetItem(get_position_abbreviation(position))
-            pos_item.setTextAlignment(Qt.AlignCenter)
-            self.players_table.setItem(row, 1, pos_item)
-
-            # Age
-            age = player.get("age", 0)
-            age_item = QTableWidgetItem(str(age))
-            age_item.setTextAlignment(Qt.AlignCenter)
-            if age >= 30:
-                age_item.setForeground(QColor("#C62828"))  # Red for older players
-            self.players_table.setItem(row, 2, age_item)
-
-            # Overall
-            overall = extract_overall_rating(player, default=0)
-            ovr_item = QTableWidgetItem(str(overall))
-            ovr_item.setTextAlignment(Qt.AlignCenter)
-            if overall >= 85:
-                ovr_item.setForeground(QColor("#2E7D32"))  # Green - Elite
-            elif overall >= 75:
-                ovr_item.setForeground(QColor("#1976D2"))  # Blue - Solid
-            self.players_table.setItem(row, 3, ovr_item)
-
-            # Trade value
-            trade_value = player.get("trade_value", 0)
-            value_item = QTableWidgetItem(f"{trade_value:,}" if trade_value else "N/A")
-            value_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.players_table.setItem(row, 4, value_item)
-
-        if not self._user_players:
-            self._show_empty_state(self.players_table, 5, "No tradeable players available")
-
-    def _populate_picks_table(self):
-        """Populate the picks table with tradeable draft picks."""
-        self.picks_table.setRowCount(len(self._user_picks))
-
-        for row, pick in enumerate(self._user_picks):
-            # Year
-            year_item = QTableWidgetItem(str(pick.get("season", "")))
-            year_item.setTextAlignment(Qt.AlignCenter)
-            year_item.setData(Qt.UserRole, pick.get("id"))
-            self.picks_table.setItem(row, 0, year_item)
-
-            # Round
-            round_item = QTableWidgetItem(f"Round {pick.get('round', 0)}")
-            round_item.setTextAlignment(Qt.AlignCenter)
-            self.picks_table.setItem(row, 1, round_item)
-
-            # Original team
-            orig_team = pick.get("original_team_name", f"Team {pick.get('original_team_id', 0)}")
-            team_item = QTableWidgetItem(orig_team)
-            self.picks_table.setItem(row, 2, team_item)
-
-            # Trade value
-            trade_value = pick.get("trade_value", 0)
-            value_item = QTableWidgetItem(f"{trade_value:,}" if trade_value else "N/A")
-            value_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.picks_table.setItem(row, 3, value_item)
-
-        if not self._user_picks:
-            self._show_empty_state(self.picks_table, 4, "No draft picks available for trade")
-
-    def _populate_history_table(self):
-        """Populate the trade history table."""
-        self.history_table.setRowCount(len(self._trade_history))
-
-        for row, trade in enumerate(self._trade_history):
-            # Date
-            date_item = QTableWidgetItem(trade.get("trade_date", ""))
-            date_item.setTextAlignment(Qt.AlignCenter)
-            self.history_table.setItem(row, 0, date_item)
-
-            # Team 1
-            team1_name = trade.get("team1_name", f"Team {trade.get('team1_id', 0)}")
-            team1_item = QTableWidgetItem(team1_name)
-            self.history_table.setItem(row, 1, team1_item)
-
-            # Team 2
-            team2_name = trade.get("team2_name", f"Team {trade.get('team2_id', 0)}")
-            team2_item = QTableWidgetItem(team2_name)
-            self.history_table.setItem(row, 2, team2_item)
-
-            # Summary (players/picks traded)
-            summary = trade.get("summary", "Trade details unavailable")
-            summary_item = QTableWidgetItem(summary)
-            self.history_table.setItem(row, 3, summary_item)
-
-        if not self._trade_history:
-            self._show_empty_state(self.history_table, 4, "No trades have been made this season yet")
-
-    def _show_empty_state(self, table: QTableWidget, col_count: int, message: str):
-        """Show empty state message in a table.
-
-        Args:
-            table: The QTableWidget to show message in
-            col_count: Number of columns to span
-            message: Message to display
-        """
-        table.setRowCount(1)
-        table.setSpan(0, 0, 1, col_count)
-
-        message_item = QTableWidgetItem(message)
-        message_item.setTextAlignment(Qt.AlignCenter)
-        message_item.setForeground(QColor(TextColors.ON_LIGHT_SECONDARY))
-        message_item.setFont(Typography.CAPTION)
-
-        table.setItem(0, 0, message_item)
-
-    def show_no_trading_message(self):
-        """Show message when trading is not available."""
-        self._show_empty_state(self.players_table, 5, "No tradeable players available")
-        self._show_empty_state(self.picks_table, 4, "No draft picks available for trade")
-        self._show_empty_state(self.history_table, 4, "No trades have been made this season yet")
-
-    def get_user_players(self) -> List[Dict]:
-        """Get the list of user's tradeable players."""
-        return self._user_players
-
-    def get_user_picks(self) -> List[Dict]:
-        """Get the list of user's tradeable picks."""
-        return self._user_picks
-
-    def get_available_teams(self) -> List[Dict]:
-        """Get the list of available trade partners."""
-        return self._available_teams
+        pass  # No-op in redesigned view
