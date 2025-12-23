@@ -10,10 +10,40 @@ Generates headlines for:
 - Active trade period summary
 """
 
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import List, Optional, Dict, Any
 
 from .base_generator import BaseHeadlineGenerator, GeneratedHeadline
 from game_cycle.models.transaction_event import TransactionEvent, TransactionType
+
+
+@dataclass
+class TradeComponents:
+    """Extracted trade components for easier processing."""
+    incoming: List[Dict[str, Any]]
+    outgoing: List[Dict[str, Any]]
+    incoming_picks: List[Dict[str, Any]]
+    outgoing_picks: List[Dict[str, Any]]
+
+    @property
+    def total_players(self) -> int:
+        return len(self.incoming) + len(self.outgoing)
+
+    @property
+    def total_picks(self) -> int:
+        return len(self.incoming_picks) + len(self.outgoing_picks)
+
+    @property
+    def has_players(self) -> bool:
+        return len(self.incoming) > 0 or len(self.outgoing) > 0
+
+    @property
+    def has_picks(self) -> bool:
+        return self.total_picks > 0
+
+    @property
+    def all_player_ids(self) -> List[int]:
+        return [p.get('player_id') for p in self.outgoing + self.incoming if p.get('player_id')]
 
 
 class TradeGenerator(BaseHeadlineGenerator):
@@ -29,6 +59,20 @@ class TradeGenerator(BaseHeadlineGenerator):
     Limits: 5 max individual headlines
     """
 
+    # OVR thresholds for headline tiers
+    BLOCKBUSTER_OVR = 90
+    STAR_OVR = 85
+    NOTABLE_OVR = 80
+    MULTI_PLAYER_THRESHOLD = 3
+
+    # Priority ranges by tier
+    BLOCKBUSTER_PRIORITY_BASE = 85
+    BLOCKBUSTER_PRIORITY_MAX = 95
+    STAR_PRIORITY_BASE = 75
+    STAR_PRIORITY_MAX = 84
+    NOTABLE_PRIORITY = 75
+    SUMMARY_PRIORITY = 80
+
     @property
     def max_headlines(self) -> int:
         """Max 5 individual trade headlines per batch."""
@@ -38,6 +82,130 @@ class TradeGenerator(BaseHeadlineGenerator):
     def summary_threshold(self) -> int:
         """Generate summary if 5+ trades occurred."""
         return 5
+
+    def _extract_trade_components(self, event: TransactionEvent) -> TradeComponents:
+        """
+        Extract trade components from event.
+
+        Args:
+            event: TransactionEvent containing trade data
+
+        Returns:
+            TradeComponents dataclass with all trade assets
+        """
+        return TradeComponents(
+            incoming=getattr(event, 'incoming_players', []) or [],
+            outgoing=getattr(event, 'outgoing_players', []) or [],
+            incoming_picks=getattr(event, 'incoming_picks', []) or [],
+            outgoing_picks=getattr(event, 'outgoing_picks', []) or [],
+        )
+
+    def _build_headline_text(
+        self,
+        event: TransactionEvent,
+        components: TradeComponents,
+        prefix: str = "",
+        default_name: str = "Player"
+    ) -> str:
+        """
+        Build headline text based on trade direction.
+
+        Args:
+            event: TransactionEvent with team names
+            components: Extracted trade components
+            prefix: Optional prefix (e.g., "BLOCKBUSTER: ")
+            default_name: Default player name if not found
+
+        Returns:
+            Formatted headline string
+        """
+        if components.outgoing:
+            player_name = components.outgoing[0].get('player_name', default_name)
+            return f"{prefix}{event.team_name} Trade {player_name} to {event.secondary_team_name}"
+        elif components.incoming:
+            player_name = components.incoming[0].get('player_name', default_name)
+            return f"{prefix}{event.team_name} Acquire {player_name} from {event.secondary_team_name}"
+        else:
+            action = "Complete Major Trade" if prefix else "Complete Trade"
+            return f"{prefix}{event.team_name} and {event.secondary_team_name} {action}"
+
+    def _build_body_text(
+        self,
+        event: TransactionEvent,
+        components: TradeComponents,
+        intro: str = "",
+        include_season: bool = True
+    ) -> str:
+        """
+        Build body text for trade headline.
+
+        Args:
+            event: TransactionEvent with team/season info
+            components: Extracted trade components
+            intro: Opening sentence (if empty, uses default)
+            include_season: Whether to include season in closing
+
+        Returns:
+            Formatted body text string
+        """
+        body_parts = []
+
+        # Opening
+        if intro:
+            body_parts.append(intro)
+        else:
+            body_parts.append(f"The {event.team_name} and {event.secondary_team_name} have agreed to a trade.")
+
+        # Outgoing players
+        if components.outgoing:
+            players_str = self._format_player_list(components.outgoing)
+            body_parts.append(f"The {event.team_name} send {players_str} to {event.secondary_team_name}.")
+
+        # Incoming players
+        if components.incoming:
+            players_str = self._format_player_list(components.incoming)
+            body_parts.append(f"In return, they receive {players_str}.")
+
+        # Picks
+        if components.has_picks:
+            body_parts.append("Draft picks are also included in the deal.")
+
+        # Closing
+        if include_season:
+            body_parts.append(f"This move signals both teams' intentions heading into the {event.season} season.")
+        else:
+            body_parts.append("This move signals both teams' intentions heading into the season.")
+
+        return " ".join(body_parts)
+
+    def _format_player_list(self, players: List[Dict[str, Any]], max_named: int = 2) -> str:
+        """
+        Format a list of players for body text.
+
+        Args:
+            players: List of player dicts with 'player_name' key
+            max_named: Maximum number of players to name explicitly
+
+        Returns:
+            Formatted string like "Player A, Player B and 2 others"
+        """
+        if not players:
+            return ""
+
+        names = [p.get('player_name', '') for p in players[:max_named]]
+        players_str = ", ".join(names)
+
+        remaining = len(players) - max_named
+        if remaining > 0:
+            players_str += f" and {remaining} other{'s' if remaining > 1 else ''}"
+
+        return players_str
+
+    def _get_team_ids(self, event: TransactionEvent) -> List[int]:
+        """Get list of team IDs involved in trade."""
+        if event.secondary_team_id:
+            return [event.team_id, event.secondary_team_id]
+        return [event.team_id]
 
     def _generate_headline(
         self,
@@ -53,80 +221,51 @@ class TradeGenerator(BaseHeadlineGenerator):
             GeneratedHeadline appropriate to trade significance
         """
         overall = event.player_overall
-        incoming = getattr(event, 'incoming_players', []) or []
-        outgoing = getattr(event, 'outgoing_players', []) or []
-        total_players = len(incoming) + len(outgoing)
+        components = self._extract_trade_components(event)
 
         # Blockbuster trade (90+ OVR or multi-player deal with 3+ total)
-        if overall >= 90 or total_players >= 3:
-            return self._generate_blockbuster_headline(event)
+        if overall >= self.BLOCKBUSTER_OVR or components.total_players >= self.MULTI_PLAYER_THRESHOLD:
+            return self._generate_blockbuster_headline(event, components)
 
         # Star trade (85+ OVR)
-        if overall >= 85:
-            return self._generate_star_trade_headline(event)
+        if overall >= self.STAR_OVR:
+            return self._generate_star_trade_headline(event, components)
 
         # Notable trade (80+ OVR)
-        if overall >= 80:
-            return self._generate_notable_trade_headline(event)
+        if overall >= self.NOTABLE_OVR:
+            return self._generate_notable_trade_headline(event, components)
 
         # Below threshold - no headline
         return None
 
     def _generate_blockbuster_headline(
         self,
-        event: TransactionEvent
+        event: TransactionEvent,
+        components: TradeComponents
     ) -> GeneratedHeadline:
         """Generate breaking news headline for blockbuster trade."""
-        incoming = getattr(event, 'incoming_players', []) or []
-        outgoing = getattr(event, 'outgoing_players', []) or []
-        incoming_picks = getattr(event, 'incoming_picks', []) or []
-        outgoing_picks = getattr(event, 'outgoing_picks', []) or []
+        headline = self._build_headline_text(event, components, prefix="BLOCKBUSTER: ", default_name="Star")
 
-        # Determine primary direction based on player movement
-        if outgoing:
-            primary_player = outgoing[0]
-            headline = f"BLOCKBUSTER: {event.team_name} Trade {primary_player.get('player_name', 'Star')} to {event.secondary_team_name}"
-        elif incoming:
-            primary_player = incoming[0]
-            headline = f"BLOCKBUSTER: {event.team_name} Acquire {primary_player.get('player_name', 'Star')} from {event.secondary_team_name}"
-        else:
-            headline = f"BLOCKBUSTER: {event.team_name} and {event.secondary_team_name} Complete Major Trade"
-
-        # Build subheadline
-        total_players = len(incoming) + len(outgoing)
-        total_picks = len(incoming_picks) + len(outgoing_picks)
-
-        if total_players >= 3:
+        # Build subheadline based on trade composition
+        if components.total_players >= self.MULTI_PLAYER_THRESHOLD:
             subheadline = "Multi-player deal reshapes rosters for both teams"
-        elif total_picks > 0:
+        elif components.has_picks:
             subheadline = "Players and draft picks exchanged in blockbuster deal"
         else:
             subheadline = "Franchise-altering move sends shockwaves through league"
 
-        # Build body text
-        body_parts = [f"In a blockbuster trade, the {event.team_name} and {event.secondary_team_name} have agreed to a major deal."]
+        body_text = self._build_body_text(
+            event,
+            components,
+            intro=f"In a blockbuster trade, the {event.team_name} and {event.secondary_team_name} have agreed to a major deal.",
+            include_season=False
+        )
 
-        if outgoing:
-            players_str = ", ".join([p.get('player_name', '') for p in outgoing[:2]])
-            if len(outgoing) > 2:
-                players_str += f" and {len(outgoing) - 2} other{'s' if len(outgoing) > 3 else ''}"
-            body_parts.append(f"The {event.team_name} send {players_str} to {event.secondary_team_name}.")
-
-        if incoming:
-            players_str = ", ".join([p.get('player_name', '') for p in incoming[:2]])
-            if len(incoming) > 2:
-                players_str += f" and {len(incoming) - 2} other{'s' if len(incoming) > 3 else ''}"
-            body_parts.append(f"In return, they receive {players_str}.")
-
-        if total_picks > 0:
-            body_parts.append("Draft picks are also included in the deal.")
-
-        body_parts.append("This move signals both teams' intentions heading into the season.")
-
-        body_text = " ".join(body_parts)
-
-        # Priority based on best player OVR (90-95)
-        priority = min(95, 85 + (event.player_overall - 90))
+        # Priority based on best player OVR (85-95)
+        priority = min(
+            self.BLOCKBUSTER_PRIORITY_MAX,
+            self.BLOCKBUSTER_PRIORITY_BASE + (event.player_overall - self.BLOCKBUSTER_OVR)
+        )
 
         return GeneratedHeadline(
             headline_type="TRADE",
@@ -135,64 +274,44 @@ class TradeGenerator(BaseHeadlineGenerator):
             body_text=body_text,
             sentiment="HYPE",
             priority=priority,
-            team_ids=[event.team_id, event.secondary_team_id] if event.secondary_team_id else [event.team_id],
-            player_ids=[p.get('player_id') for p in outgoing + incoming if p.get('player_id')],
+            team_ids=self._get_team_ids(event),
+            player_ids=components.all_player_ids,
             metadata={
                 'event_type': 'trade',
                 'trade_type': 'blockbuster',
-                'total_players': total_players,
-                'total_picks': total_picks,
+                'total_players': components.total_players,
+                'total_picks': components.total_picks,
                 'best_overall': event.player_overall
             }
         )
 
     def _generate_star_trade_headline(
         self,
-        event: TransactionEvent
+        event: TransactionEvent,
+        components: TradeComponents
     ) -> GeneratedHeadline:
         """Generate headline for star player trade."""
-        incoming = getattr(event, 'incoming_players', []) or []
-        outgoing = getattr(event, 'outgoing_players', []) or []
-        incoming_picks = getattr(event, 'incoming_picks', []) or []
-        outgoing_picks = getattr(event, 'outgoing_picks', []) or []
+        headline = self._build_headline_text(event, components, default_name="Star")
 
-        # Determine primary direction
-        if outgoing:
-            primary_player = outgoing[0]
-            player_name = primary_player.get('player_name', 'Star')
-            position = primary_player.get('position', '')
-            headline = f"{event.team_name} Trade {player_name} to {event.secondary_team_name}"
+        # Build subheadline with player details
+        if components.outgoing:
+            primary = components.outgoing[0]
+            position = primary.get('position', '')
             subheadline = f"{event.player_overall} OVR {position} heads to {event.secondary_team_name} in major deal"
-        elif incoming:
-            primary_player = incoming[0]
-            player_name = primary_player.get('player_name', 'Star')
-            position = primary_player.get('position', '')
-            headline = f"{event.team_name} Acquire {player_name} from {event.secondary_team_name}"
+        elif components.incoming:
+            primary = components.incoming[0]
+            position = primary.get('position', '')
             subheadline = f"{event.player_overall} OVR {position} joins {event.team_name} in trade"
         else:
-            headline = f"{event.team_name} and {event.secondary_team_name} Complete Trade"
             subheadline = "Draft picks exchanged between teams"
 
-        # Build body text
-        body_parts = [f"The {event.team_name} and {event.secondary_team_name} have agreed to a trade."]
+        body_text = self._build_body_text(event, components)
 
-        if outgoing:
-            players_str = ", ".join([p.get('player_name', '') for p in outgoing])
-            body_parts.append(f"The {event.team_name} send {players_str} to {event.secondary_team_name}.")
-
-        if incoming:
-            return_str = ", ".join([p.get('player_name', '') for p in incoming])
-            body_parts.append(f"In return, the {event.team_name} receive {return_str}.")
-
-        if incoming_picks or outgoing_picks:
-            body_parts.append("Draft picks are also part of the deal.")
-
-        body_parts.append(f"This move signals both teams' intentions heading into the {event.season} season.")
-
-        body_text = " ".join(body_parts)
-
-        # Priority for star trades (80-84)
-        priority = min(84, 75 + (event.player_overall - 85))
+        # Priority for star trades (75-84)
+        priority = min(
+            self.STAR_PRIORITY_MAX,
+            self.STAR_PRIORITY_BASE + (event.player_overall - self.STAR_OVR)
+        )
 
         return GeneratedHeadline(
             headline_type="TRADE",
@@ -201,8 +320,8 @@ class TradeGenerator(BaseHeadlineGenerator):
             body_text=body_text,
             sentiment="NEUTRAL",
             priority=priority,
-            team_ids=[event.team_id, event.secondary_team_id] if event.secondary_team_id else [event.team_id],
-            player_ids=[p.get('player_id') for p in outgoing + incoming if p.get('player_id')],
+            team_ids=self._get_team_ids(event),
+            player_ids=components.all_player_ids,
             metadata={
                 'event_type': 'trade',
                 'trade_type': 'star',
@@ -212,31 +331,16 @@ class TradeGenerator(BaseHeadlineGenerator):
 
     def _generate_notable_trade_headline(
         self,
-        event: TransactionEvent
+        event: TransactionEvent,
+        components: TradeComponents
     ) -> GeneratedHeadline:
         """Generate headline for notable trade."""
-        incoming = getattr(event, 'incoming_players', []) or []
-        outgoing = getattr(event, 'outgoing_players', []) or []
-        incoming_picks = getattr(event, 'incoming_picks', []) or []
-        outgoing_picks = getattr(event, 'outgoing_picks', []) or []
+        headline = self._build_headline_text(event, components, default_name="Player")
 
-        has_players = len(incoming) > 0 or len(outgoing) > 0
-
-        if outgoing:
-            primary_player = outgoing[0]
-            player_name = primary_player.get('player_name', 'Player')
-            headline = f"{event.team_name} Trade {player_name} to {event.secondary_team_name}"
-        elif incoming:
-            primary_player = incoming[0]
-            player_name = primary_player.get('player_name', 'Player')
-            headline = f"{event.team_name} Acquire {player_name} from {event.secondary_team_name}"
-        else:
-            headline = f"{event.team_name} and {event.secondary_team_name} Complete Trade"
-
-        # Build subheadline
-        if has_players and (incoming_picks or outgoing_picks):
+        # Build subheadline based on trade composition
+        if components.has_players and components.has_picks:
             subheadline = "Players and picks exchanged in offseason deal"
-        elif has_players:
+        elif components.has_players:
             subheadline = "Trade reshapes rosters for both teams"
         else:
             subheadline = "Draft picks exchanged between teams"
@@ -252,9 +356,9 @@ class TradeGenerator(BaseHeadlineGenerator):
             subheadline=subheadline,
             body_text=body_text,
             sentiment="NEUTRAL",
-            priority=75,
-            team_ids=[event.team_id, event.secondary_team_id] if event.secondary_team_id else [event.team_id],
-            player_ids=[p.get('player_id') for p in outgoing + incoming if p.get('player_id')],
+            priority=self.NOTABLE_PRIORITY,
+            team_ids=self._get_team_ids(event),
+            player_ids=components.all_player_ids,
             metadata={
                 'event_type': 'trade',
                 'trade_type': 'notable'
@@ -289,7 +393,7 @@ class TradeGenerator(BaseHeadlineGenerator):
                 f"Teams continue to position themselves for the upcoming {season} season with strategic roster moves."
             ),
             sentiment="NEUTRAL",
-            priority=80,
+            priority=self.SUMMARY_PRIORITY,
             team_ids=[],
             player_ids=[],
             metadata={
