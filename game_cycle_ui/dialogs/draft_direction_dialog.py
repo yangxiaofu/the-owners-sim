@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal
 
 from game_cycle.models import DraftDirection, DraftStrategy
+from game_cycle_ui.theme import Colors, FontSizes
 
 
 class DraftDirectionDialog(QDialog):
@@ -124,7 +125,7 @@ class DraftDirectionDialog(QDialog):
         # BPA
         bpa_radio = QRadioButton("Best Player Available (BPA)")
         bpa_desc = QLabel("   → Ignore needs, always pick highest-rated prospect")
-        bpa_desc.setStyleSheet("color: #888; font-size: 11px;")
+        bpa_desc.setStyleSheet(f"color: {Colors.MUTED}; font-size: {FontSizes.CAPTION};")
 
         self._strategy_group.addButton(bpa_radio, 0)  # ID 0
         layout.addWidget(bpa_radio)
@@ -134,7 +135,7 @@ class DraftDirectionDialog(QDialog):
         # Balanced
         balanced_radio = QRadioButton("Balanced (Recommended)")
         balanced_desc = QLabel("   → Balance talent and need - current system behavior")
-        balanced_desc.setStyleSheet("color: #888; font-size: 11px;")
+        balanced_desc.setStyleSheet(f"color: {Colors.MUTED}; font-size: {FontSizes.CAPTION};")
 
         self._strategy_group.addButton(balanced_radio, 1)  # ID 1
         layout.addWidget(balanced_radio)
@@ -144,7 +145,7 @@ class DraftDirectionDialog(QDialog):
         # Needs-Based
         needs_radio = QRadioButton("Needs-Based")
         needs_desc = QLabel("   → Aggressively fill holes, willing to reach for needed positions")
-        needs_desc.setStyleSheet("color: #888; font-size: 11px;")
+        needs_desc.setStyleSheet(f"color: {Colors.MUTED}; font-size: {FontSizes.CAPTION};")
 
         self._strategy_group.addButton(needs_radio, 2)  # ID 2
         layout.addWidget(needs_radio)
@@ -154,7 +155,7 @@ class DraftDirectionDialog(QDialog):
         # Position Focus (Phase 2)
         focus_radio = QRadioButton("Position Focus")
         focus_desc = QLabel("   → Only consider specific positions (requires priority list)")
-        focus_desc.setStyleSheet("color: #888; font-size: 11px;")
+        focus_desc.setStyleSheet(f"color: {Colors.MUTED}; font-size: {FontSizes.CAPTION};")
 
         self._strategy_group.addButton(focus_radio, 3)  # ID 3
         layout.addWidget(focus_radio)
@@ -173,7 +174,7 @@ class DraftDirectionDialog(QDialog):
         layout = QVBoxLayout()
 
         note_label = QLabel("Note: Required for Position Focus strategy")
-        note_label.setStyleSheet("color: #888; font-style: italic;")
+        note_label.setStyleSheet(f"color: {Colors.MUTED}; font-style: italic;")
         layout.addWidget(note_label)
 
         # Position options for dropdowns

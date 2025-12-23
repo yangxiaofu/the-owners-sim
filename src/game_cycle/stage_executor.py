@@ -162,15 +162,24 @@ class StageExecutor:
             StageType.OFFSEASON_DRAFT: [
                 "NFL Draft (Rounds 1-7)",
             ],
-            StageType.OFFSEASON_ROSTER_CUTS: [
-                "Cut roster from 90 to 53",
-            ],
             StageType.OFFSEASON_TRAINING_CAMP: [
+                "Player development and progression",
                 "Finalize depth charts",
-                "Final roster preparations",
             ],
-            StageType.OFFSEASON_PRESEASON: [
-                "Exhibition games (optional)",
+            StageType.OFFSEASON_PRESEASON_W1: [
+                "Preseason Week 1 game simulation",
+                "No roster cuts this week",
+            ],
+            StageType.OFFSEASON_PRESEASON_W2: [
+                "Preseason Week 2 game simulation",
+                "No roster cuts this week",
+            ],
+            StageType.OFFSEASON_PRESEASON_W3: [
+                "Preseason Week 3 game simulation",
+                "Final roster cuts (90 → 53)",
+            ],
+            StageType.OFFSEASON_WAIVER_WIRE: [
+                "Process waiver claims for cut players",
             ],
         }
 

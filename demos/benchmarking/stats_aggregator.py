@@ -280,15 +280,20 @@ class BenchmarkStatsAggregator:
         player_stats_list = player_statistics.get('all_players', [])
 
         if player_stats_list:
-            self._process_player_stats(player_stats_list, home_team_id, away_team_id)
+            self._process_player_stats(player_stats_list, home_team_id, away_team_id, game_id)
 
     def _process_player_stats(
         self,
         player_stats: List[Dict[str, Any]],
         home_team_id: int,
-        away_team_id: int
+        away_team_id: int,
+        game_id: int
     ):
         """Process and categorize player stats by position."""
+        # Add game_id to each player stat for later aggregation
+        for ps in player_stats:
+            ps['game_id'] = game_id
+
         # Store raw stats
         self._raw_player_stats.extend(player_stats)
 
@@ -343,11 +348,10 @@ class BenchmarkStatsAggregator:
         if not players:
             return
 
-        # Sort by the key stat
+        # Sort by depth chart order first, then by stat (for true WR1/TE1 identification)
         sorted_players = sorted(
             players,
-            key=lambda p: p.get(sort_stat, 0),
-            reverse=True
+            key=lambda p: (p.get('depth_chart_order', 99), -p.get(sort_stat, 0))
         )
 
         leader = sorted_players[0]
@@ -741,6 +745,174 @@ class BenchmarkStatsAggregator:
             'def_passes_defended_per_game': total_passes_defended / n if n > 0 else 0,
             'def_tackles_for_loss_per_game': total_tfl / n if n > 0 else 0,
             'def_qb_hits_per_game': total_qb_hits / n if n > 0 else 0,
+        }
+
+    def get_sacks_by_position_group(self) -> Dict[str, float]:
+        """
+        Get sacks broken down by position group (DL, LB, DB).
+
+        This tracks whether the blitz system is working correctly:
+        - DL (DE+DT): Should get ~60-65% of sacks (primary pass rushers)
+        - LB (OLB+ILB/MLB): Should get ~25-30% of sacks (including edge OLBs)
+        - DB (CB+S): Should get ~8-12% of sacks (blitzing DBs)
+
+        Returns:
+            Dictionary with sacks per game by position group and percentages
+        """
+        if not self._raw_player_stats:
+            return {}
+
+        num_games = len(self.game_summaries) if self.game_summaries else 1
+        team_games = 2 * num_games  # Both teams per game
+
+        # Define position groups (using full position names from player stats)
+        dl_positions = {'defensive_end', 'defensive_tackle', 'nose_tackle', 'edge', 'leo'}
+        lb_positions = {'outside_linebacker', 'inside_linebacker', 'middle_linebacker',
+                       'mike_linebacker', 'will_linebacker', 'sam_linebacker', 'linebacker'}
+        db_positions = {'cornerback', 'nickel_cornerback', 'free_safety', 'strong_safety', 'safety'}
+
+        # Sum sacks by position group
+        dl_sacks = sum(
+            ps.get('sacks', 0)
+            for ps in self._raw_player_stats
+            if ps.get('position', '').lower() in dl_positions
+        )
+        lb_sacks = sum(
+            ps.get('sacks', 0)
+            for ps in self._raw_player_stats
+            if ps.get('position', '').lower() in lb_positions
+        )
+        db_sacks = sum(
+            ps.get('sacks', 0)
+            for ps in self._raw_player_stats
+            if ps.get('position', '').lower() in db_positions
+        )
+
+        total_sacks = dl_sacks + lb_sacks + db_sacks
+
+        # Calculate percentages
+        dl_pct = (dl_sacks / total_sacks * 100) if total_sacks > 0 else 0
+        lb_pct = (lb_sacks / total_sacks * 100) if total_sacks > 0 else 0
+        db_pct = (db_sacks / total_sacks * 100) if total_sacks > 0 else 0
+
+        return {
+            'dl_sacks_per_game': dl_sacks / team_games if team_games > 0 else 0,
+            'lb_sacks_per_game': lb_sacks / team_games if team_games > 0 else 0,
+            'db_sacks_per_game': db_sacks / team_games if team_games > 0 else 0,
+            'dl_sack_pct': dl_pct,
+            'lb_sack_pct': lb_pct,
+            'db_sack_pct': db_pct,
+            # Debug info
+            '_dl_sacks_total': dl_sacks,
+            '_lb_sacks_total': lb_sacks,
+            '_db_sacks_total': db_sacks,
+            '_total_sacks': total_sacks,
+        }
+
+    def get_team_lng_drops_averages(self) -> Dict[str, float]:
+        """
+        Get aggregate team-level longest plays, drops, fumbles, and explosive plays statistics.
+
+        Calculates per-team per-game averages for:
+        - Total drops by all receivers (WR/TE/RB)
+        - Longest reception across all receivers (MAX per team per game)
+        - Longest rush across all RBs (MAX per team per game)
+        - Fumbles (rushing and receiving combined)
+        - Explosive plays (20+ yards for rushing and receiving)
+
+        These are TEAM-level aggregates, not per-player averages.
+        """
+        if not self._raw_player_stats:
+            return {}
+
+        num_games = len(self.game_summaries) if self.game_summaries else 1
+        team_games = 2 * num_games  # Both teams per game
+
+        # Aggregate drops from all pass catchers (WR, TE, RB)
+        pass_catcher_positions = {'wide_receiver', 'tight_end', 'running_back'}
+        total_drops = sum(
+            ps.get('drops', 0)
+            for ps in self._raw_player_stats
+            if ps.get('position') in pass_catcher_positions
+        )
+
+        # Longest reception per team per game (MAX across all receivers)
+        # Group by (game_id, team_id), take max, then collect all maxes
+        rec_long_by_team_game = defaultdict(int)
+        for ps in self._raw_player_stats:
+            if ps.get('position') in pass_catcher_positions:
+                game_id = ps.get('game_id', 'unknown')
+                team_id = ps.get('team_id', 'unknown')
+                key = (game_id, team_id)
+                rec_long_by_team_game[key] = max(
+                    rec_long_by_team_game[key],
+                    ps.get('receiving_long', 0)
+                )
+        rec_long_values = [v for v in rec_long_by_team_game.values() if v > 0]
+
+        # Longest rush per team per game (MAX across all RBs)
+        rush_long_by_team_game = defaultdict(int)
+        for ps in self._raw_player_stats:
+            if ps.get('position') == 'running_back':
+                game_id = ps.get('game_id', 'unknown')
+                team_id = ps.get('team_id', 'unknown')
+                key = (game_id, team_id)
+                rush_long_by_team_game[key] = max(
+                    rush_long_by_team_game[key],
+                    ps.get('rushing_long', 0)
+                )
+        rush_long_values = [v for v in rush_long_by_team_game.values() if v > 0]
+
+        # Fumbles (rushing + receiving)
+        total_rushing_fumbles = sum(
+            ps.get('rushing_fumbles', 0)
+            for ps in self._raw_player_stats
+            if ps.get('position') == 'running_back'
+        )
+        total_receiving_fumbles = sum(
+            ps.get('receiving_fumbles', 0)
+            for ps in self._raw_player_stats
+            if ps.get('position') in pass_catcher_positions
+        )
+        total_fumbles = total_rushing_fumbles + total_receiving_fumbles
+
+        # Explosive plays (20+ yards)
+        total_rushing_explosive = sum(
+            ps.get('rushing_20_plus', 0)
+            for ps in self._raw_player_stats
+            if ps.get('position') == 'running_back'
+        )
+        total_receiving_explosive = sum(
+            ps.get('receiving_20_plus', 0)
+            for ps in self._raw_player_stats
+            if ps.get('position') in pass_catcher_positions
+        )
+        total_explosive = total_rushing_explosive + total_receiving_explosive
+
+        # Team total tackles (solo + assisted)
+        total_tackles = sum(
+            ps.get('tackles', 0) + ps.get('assisted_tackles', 0)
+            for ps in self._raw_player_stats
+        )
+
+        # Calculate averages
+        drops_per_game = total_drops / team_games if team_games > 0 else 0
+        receiving_long_avg = sum(rec_long_values) / len(rec_long_values) if rec_long_values else 0
+        rushing_long_avg = sum(rush_long_values) / len(rush_long_values) if rush_long_values else 0
+        fumbles_per_game = total_fumbles / team_games if team_games > 0 else 0
+        explosive_plays_per_game = total_explosive / team_games if team_games > 0 else 0
+        rushing_explosive_per_game = total_rushing_explosive / team_games if team_games > 0 else 0
+        receiving_explosive_per_game = total_receiving_explosive / team_games if team_games > 0 else 0
+
+        return {
+            'drops_per_game': drops_per_game,
+            'receiving_long_per_game': receiving_long_avg,
+            'rushing_long_per_game': rushing_long_avg,
+            'fumbles_per_game': fumbles_per_game,
+            'explosive_plays_per_game': explosive_plays_per_game,
+            'rushing_explosive_plays_per_game': rushing_explosive_per_game,
+            'receiving_explosive_plays_per_game': receiving_explosive_per_game,
+            'team_tackles_per_game': total_tackles / team_games if team_games > 0 else 0,
         }
 
     def get_distribution_stats(self, metric: str) -> Dict[str, float]:

@@ -198,7 +198,7 @@ class UnifiedDatabaseAPI:
 
     def __init__(
         self,
-        database_path: str = "data/database/nfl_simulation.db",
+        database_path: str = "data/database/game_cycle/game_cycle.db",
         dynasty_id: str = "default",
         pool_size: int = 10
     ):
@@ -250,6 +250,10 @@ class UnifiedDatabaseAPI:
             else:
                 # Database exists - check for pending migrations
                 self._run_pending_migrations(conn)
+
+            # ALWAYS ensure events table exists (required for schedule storage)
+            # This is critical because ScheduleService uses this API to store game events
+            self._ensure_events_table(conn)
 
         except Exception as e:
             self.logger.error(f"Error ensuring schemas: {e}", exc_info=True)
@@ -304,6 +308,41 @@ class UnifiedDatabaseAPI:
                 conn.commit()
         except Exception as e:
             self.logger.warning(f"Could not check migrations: {e}")
+
+    def _ensure_events_table(self, conn: sqlite3.Connection) -> None:
+        """
+        Ensure events table exists for schedule and game event storage.
+
+        This is critical for ScheduleService which stores regular season,
+        preseason, and playoff game events in this table.
+
+        Args:
+            conn: Active database connection
+        """
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='events'"
+        )
+        if cursor.fetchone() is None:
+            self.logger.info("Creating events table for schedule storage...")
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS events (
+                    event_id TEXT PRIMARY KEY,
+                    event_type TEXT NOT NULL,
+                    timestamp INTEGER NOT NULL,
+                    game_id TEXT NOT NULL,
+                    dynasty_id TEXT NOT NULL,
+                    data TEXT NOT NULL,
+                    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE
+                )
+            ''')
+            # Create indexes for performance
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_events_game_id ON events(game_id)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_events_dynasty ON events(dynasty_id)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_events_dynasty_type ON events(dynasty_id, event_type)')
+            conn.execute('CREATE INDEX IF NOT EXISTS idx_events_dynasty_timestamp ON events(dynasty_id, timestamp)')
+            conn.commit()
+            self.logger.info("Events table created successfully")
 
     def _get_connection(self) -> sqlite3.Connection:
         """
@@ -902,8 +941,8 @@ class UnifiedDatabaseAPI:
         query = """
             SELECT event_id, game_id, data FROM events
             WHERE dynasty_id = ? AND event_type = 'GAME'
-            AND json_extract(data, '$.parameters.season') = ?
-            AND json_extract(data, '$.parameters.week') = ?
+            AND CAST(json_extract(data, '$.parameters.season') AS INTEGER) = ?
+            AND CAST(json_extract(data, '$.parameters.week') AS INTEGER) = ?
             AND json_extract(data, '$.parameters.season_type') = ?
             ORDER BY json_extract(data, '$.parameters.game_date')
         """
@@ -927,6 +966,44 @@ class UnifiedDatabaseAPI:
                 'game_date': params.get('game_date'),
                 'home_score': results_data.get('home_score') if results_data else None,
                 'away_score': results_data.get('away_score') if results_data else None,
+            })
+
+        return games
+
+    def events_get_games_by_season(
+        self,
+        season: int,
+        season_type: str = 'regular_season'
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all scheduled games from events table for an entire season.
+
+        Used for copying schedules between seasons.
+
+        Args:
+            season: Season year (e.g., 2025)
+            season_type: Type of season ('regular_season', 'preseason', 'playoffs')
+
+        Returns:
+            List of game dictionaries with full event data for copying
+        """
+        query = """
+            SELECT event_id, game_id, data FROM events
+            WHERE dynasty_id = ? AND event_type = 'GAME'
+            AND json_extract(data, '$.parameters.season') = ?
+            AND json_extract(data, '$.parameters.season_type') = ?
+            ORDER BY json_extract(data, '$.parameters.week'), game_id
+        """
+        results = self._execute_query(query, (self.dynasty_id, season, season_type))
+
+        # Parse JSON data field
+        games = []
+        for row in results:
+            data = json.loads(row['data']) if isinstance(row['data'], str) else row['data']
+            games.append({
+                'event_id': row['event_id'],
+                'game_id': row['game_id'],
+                'data': data
             })
 
         return games
@@ -1054,17 +1131,27 @@ class UnifiedDatabaseAPI:
 
     def events_insert_batch(self, events: List[Any]) -> List[Any]:
         """
-        Insert multiple events in a single transaction.
+        Insert or update multiple events in a single transaction (idempotent upsert).
 
         All inserts succeed or all fail (atomic operation).
         Significantly faster than multiple events_insert() calls.
+
+        Behavior:
+        - New events are inserted normally
+        - Duplicate events (same dynasty_id + game_id) are updated with new data/timestamp
+        - Uses UNIQUE constraint on (dynasty_id, game_id) for GAME events
+
+        This allows:
+        - Safe re-generation of schedules (upserts instead of duplicates)
+        - Updating game results after simulation
+        - Idempotent schedule generation
 
         Args:
             events: List of event objects implementing BaseEvent interface
                    (or list of dicts with event_id, event_type, timestamp, game_id, data)
 
         Returns:
-            List of inserted events
+            List of inserted/updated events
 
         Raises:
             Exception: If database operation fails (rolls back transaction)
@@ -1081,35 +1168,54 @@ class UnifiedDatabaseAPI:
             if manually_managed:
                 conn.execute('BEGIN TRANSACTION')
 
-            # Insert all events
+            # Insert all events with upsert semantics
+            # Note: ON CONFLICT can't reference partial indexes, so we use manual upsert logic
             for event in events:
                 # Support both BaseEvent objects and dict format
                 if hasattr(event, 'to_database_format'):
                     event_data = event.to_database_format()
-                    conn.execute('''
-                        INSERT INTO events (event_id, event_type, timestamp, game_id, dynasty_id, data)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    ''', (
-                        event_data['event_id'],
-                        event_data['event_type'],
-                        int(event_data['timestamp'].timestamp() * 1000),
-                        event_data['game_id'],
-                        event_data['dynasty_id'],
-                        json.dumps(event_data['data'])
-                    ))
+                    event_id = event_data['event_id']
+                    event_type = event_data['event_type']
+                    timestamp = int(event_data['timestamp'].timestamp() * 1000)
+                    game_id = event_data['game_id']
+                    dynasty_id = event_data['dynasty_id']
+                    data = json.dumps(event_data['data'])
                 else:
                     # Assume dict format
+                    event_id = event['event_id']
+                    event_type = event['event_type']
+                    timestamp = event['timestamp']
+                    game_id = event['game_id']
+                    dynasty_id = self.dynasty_id
+                    data = event['data'] if isinstance(event['data'], str) else json.dumps(event['data'])
+
+                # For GAME events with game_id, check if exists and update, otherwise insert
+                if event_type == 'GAME' and game_id:
+                    # Check if game already exists
+                    cursor = conn.execute(
+                        'SELECT event_id FROM events WHERE dynasty_id = ? AND game_id = ? AND event_type = "GAME"',
+                        (dynasty_id, game_id)
+                    )
+                    existing = cursor.fetchone()
+
+                    if existing:
+                        # Update existing event
+                        conn.execute('''
+                            UPDATE events SET data = ?, timestamp = ?
+                            WHERE dynasty_id = ? AND game_id = ? AND event_type = "GAME"
+                        ''', (data, timestamp, dynasty_id, game_id))
+                    else:
+                        # Insert new event
+                        conn.execute('''
+                            INSERT INTO events (event_id, event_type, timestamp, game_id, dynasty_id, data)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        ''', (event_id, event_type, timestamp, game_id, dynasty_id, data))
+                else:
+                    # For non-GAME events or events without game_id, just insert (or ignore duplicates)
                     conn.execute('''
-                        INSERT INTO events (event_id, event_type, timestamp, game_id, dynasty_id, data)
+                        INSERT OR IGNORE INTO events (event_id, event_type, timestamp, game_id, dynasty_id, data)
                         VALUES (?, ?, ?, ?, ?, ?)
-                    ''', (
-                        event['event_id'],
-                        event['event_type'],
-                        event['timestamp'],
-                        event['game_id'],
-                        self.dynasty_id,
-                        event['data'] if isinstance(event['data'], str) else json.dumps(event['data'])
-                    ))
+                    ''', (event_id, event_type, timestamp, game_id, dynasty_id, data))
 
             # Commit transaction if we started it
             if manually_managed:
@@ -1122,8 +1228,24 @@ class UnifiedDatabaseAPI:
             # Rollback on error if we started the transaction
             if manually_managed:
                 conn.execute('ROLLBACK')
-            self.logger.error(f"Error in batch insert: {e}", exc_info=True)
-            raise
+
+            # If events table doesn't exist, create it and retry
+            if "no such table: events" in str(e):
+                self.logger.warning(f"Events table doesn't exist - creating it now...")
+                try:
+                    # Get a fresh connection for table creation
+                    create_conn = self._get_connection()
+                    self._ensure_events_table(create_conn)
+                    self._return_connection(create_conn)
+                    # Retry the batch insert
+                    self.logger.info("Retrying batch insert after creating events table...")
+                    return self.events_insert_batch(events)
+                except Exception as retry_error:
+                    self.logger.error(f"Failed to create events table and retry: {retry_error}", exc_info=True)
+                    raise
+            else:
+                self.logger.error(f"Error in batch insert: {e}", exc_info=True)
+                raise
 
         finally:
             if manually_managed:
@@ -1191,11 +1313,14 @@ class UnifiedDatabaseAPI:
 
         Useful for regenerating the schedule for a new season.
 
+        NOTE: This is for legacy calendar-based system. Game cycle system uses
+        the 'games' table instead and doesn't need this.
+
         Args:
             season: Season year
 
         Returns:
-            Number of events deleted
+            Number of events deleted (0 if events table doesn't exist)
         """
         try:
             # Delete all regular season games for this dynasty/season
@@ -1215,8 +1340,16 @@ class UnifiedDatabaseAPI:
             return deleted_count
 
         except Exception as e:
-            self.logger.error(f"Error deleting regular season events: {e}", exc_info=True)
-            raise
+            # If events table doesn't exist, create it and return 0 (nothing to delete)
+            if "no such table: events" in str(e):
+                self.logger.warning(f"Events table doesn't exist - creating it now...")
+                create_conn = self._get_connection()
+                self._ensure_events_table(create_conn)
+                self._return_connection(create_conn)
+                return 0  # Nothing to delete from empty table
+            else:
+                self.logger.error(f"Error deleting regular season events: {e}", exc_info=True)
+                raise
 
     def events_update(self, event: Any) -> bool:
         """
@@ -3318,7 +3451,7 @@ class UnifiedDatabaseAPI:
                         team_id, position,
                         passing_yards, passing_tds, passing_attempts, passing_completions,
                         passing_interceptions, passing_sacks, passing_sack_yards, passing_rating, air_yards,
-                        rushing_yards, rushing_tds, rushing_attempts, rushing_long, rushing_fumbles,
+                        rushing_yards, rushing_tds, rushing_attempts, rushing_long, rushing_20_plus, rushing_fumbles, fumbles_lost,
                         receiving_yards, receiving_tds, receptions, targets, receiving_long, receiving_drops, yards_after_catch,
                         tackles_total, tackles_solo, tackles_assist, sacks, interceptions,
                         forced_fumbles, fumbles_recovered, passes_defended, tackles_for_loss, qb_hits, qb_pressures,
@@ -3340,7 +3473,7 @@ class UnifiedDatabaseAPI:
                         ?, ?,
                         ?, ?, ?, ?,
                         ?, ?, ?, ?, ?,
-                        ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?, ?,
                         ?, ?, ?, ?, ?, ?, ?,
                         ?, ?, ?, ?, ?,
                         ?, ?, ?, ?, ?, ?,
@@ -3383,7 +3516,9 @@ class UnifiedDatabaseAPI:
                     stats.get('rushing_tds', 0),
                     stats.get('rushing_attempts', 0),
                     stats.get('rushing_long', 0),
+                    stats.get('rushing_20_plus', 0),
                     stats.get('rushing_fumbles', 0),
+                    stats.get('fumbles_lost', 0),
                     # Receiving stats
                     stats.get('receiving_yards', 0),
                     stats.get('receiving_tds', 0),
@@ -3996,6 +4131,8 @@ class UnifiedDatabaseAPI:
                 SUM(pgs.rushing_attempts) as rushing_attempts,
                 MAX(pgs.rushing_long) as rushing_long,
                 SUM(pgs.rushing_fumbles) as rushing_fumbles,
+                SUM(pgs.fumbles_lost) as fumbles_lost,
+                SUM(pgs.rushing_20_plus) as rushing_20_plus,
                 SUM(pgs.snap_counts_offense) as snap_counts_offense
             FROM player_game_stats pgs
             INNER JOIN games g ON pgs.game_id = g.game_id AND pgs.dynasty_id = g.dynasty_id

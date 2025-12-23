@@ -64,6 +64,16 @@ class GMArchetype:
     premium_position_focus: float = 0.6
     """Prioritization of QB/Edge/OT over other positions"""
 
+    # Valuation Style Traits (0.0-1.0)
+    analytics_preference: float = 0.5
+    """How much GM trusts stats/analytics (0.0 = ignores, 1.0 = primary driver)"""
+
+    scouting_preference: float = 0.5
+    """How much GM trusts scouting reports (0.0 = ignores, 1.0 = primary driver)"""
+
+    market_awareness: float = 0.5
+    """How much GM tracks market rates (0.0 = ignores, 1.0 = market-driven)"""
+
     def __post_init__(self):
         """Validate all trait values are within acceptable ranges"""
         self._validate_traits()
@@ -74,7 +84,8 @@ class GMArchetype:
             'risk_tolerance', 'win_now_mentality', 'draft_pick_value',
             'cap_management', 'trade_frequency', 'veteran_preference',
             'star_chasing', 'loyalty', 'desperation_threshold',
-            'deadline_activity', 'premium_position_focus'
+            'deadline_activity', 'premium_position_focus',
+            'analytics_preference', 'scouting_preference', 'market_awareness'
         ]
 
         for trait_name in float_traits:
@@ -106,7 +117,10 @@ class GMArchetype:
             'desperation_threshold': self.desperation_threshold,
             'patience_years': self.patience_years,
             'deadline_activity': self.deadline_activity,
-            'premium_position_focus': self.premium_position_focus
+            'premium_position_focus': self.premium_position_focus,
+            'analytics_preference': self.analytics_preference,
+            'scouting_preference': self.scouting_preference,
+            'market_awareness': self.market_awareness
         }
 
     @classmethod
@@ -136,3 +150,16 @@ class GMArchetype:
         archetype_dict = self.to_dict()
         archetype_dict.update(customizations)
         return GMArchetype.from_dict(archetype_dict)
+
+    @classmethod
+    def get_default(cls) -> 'GMArchetype':
+        """
+        Get a default balanced GM archetype.
+
+        Returns:
+            GMArchetype with balanced traits (0.5 for most values)
+        """
+        return cls(
+            name="Default GM",
+            description="Balanced general manager with moderate tendencies across all decision-making areas",
+        )

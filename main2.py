@@ -17,7 +17,17 @@ Usage:
 
 import sys
 import os
+import logging
 from pathlib import Path
+
+# Configure logging to show INFO and above
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 
 # Add project root to path
 project_root = os.path.dirname(os.path.abspath(__file__))
@@ -31,6 +41,19 @@ if src_path not in sys.path:
 
 from PySide6.QtWidgets import QApplication, QMessageBox
 from PySide6.QtCore import Qt
+
+# === RUNTIME VERIFICATION (TEMPORARY DEBUG) ===
+import game_cycle.handlers.regular_season as rs_module
+print("=" * 80)
+print("[DEBUG] RUNTIME VERIFICATION")
+print("=" * 80)
+print(f"[DEBUG] Loaded regular_season from: {rs_module.__file__}")
+print(f"[DEBUG] Method signature: {rs_module.RegularSeasonHandler._generate_game_social_posts.__code__.co_varnames[:12]}")
+print(f"[DEBUG] Parameter count: {rs_module.RegularSeasonHandler._generate_game_social_posts.__code__.co_argcount}")
+print("=" * 80)
+print("[DEBUG] Expected: 11 params (self + 10 args including sim_result)")
+print("=" * 80)
+# === END DEBUG ===
 
 from game_cycle_ui.main_window import GameCycleMainWindow
 from game_cycle_ui.dialogs.dynasty_selection_dialog import GameCycleDynastySelectionDialog

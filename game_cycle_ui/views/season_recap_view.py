@@ -24,6 +24,7 @@ from game_cycle_ui.views.awards_view import AwardsView
 from game_cycle_ui.widgets.super_bowl_result_widget import SuperBowlResultWidget
 from game_cycle_ui.widgets.retirement_card_widget import RetirementCardWidget
 from game_cycle_ui.dialogs.retirement_detail_dialog import RetirementDetailDialog
+from constants.position_abbreviations import get_position_abbreviation
 from game_cycle_ui.theme import (
     TAB_STYLE, PRIMARY_BUTTON_STYLE, Typography, FontSizes, Colors, TextColors,
     apply_table_style, GROUPBOX_DARK_STYLE
@@ -735,9 +736,10 @@ class SeasonRecapView(QWidget):
             name_item.setData(Qt.UserRole, retirement.get('player_id'))
             self.other_retirements_table.setItem(row, 0, name_item)
 
-            # Position
+            # Position (convert to NFL abbreviation)
             pos = retirement.get('position', '')
-            pos_item = QTableWidgetItem(pos)
+            pos_abbrev = get_position_abbreviation(pos)
+            pos_item = QTableWidgetItem(pos_abbrev)
             pos_item.setTextAlignment(Qt.AlignCenter)
             self.other_retirements_table.setItem(row, 1, pos_item)
 

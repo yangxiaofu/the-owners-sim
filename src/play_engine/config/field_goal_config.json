@@ -8,7 +8,7 @@
     "ranges": {
       "0-30": {"base_accuracy": 0.995, "variance": 0.01, "description": "Extra point range - target 98%"},
       "31-40": {"base_accuracy": 0.98, "variance": 0.02, "description": "High confidence range - target 95%"},
-      "41-50": {"base_accuracy": 0.92, "variance": 0.04, "description": "Standard NFL range - target 85%"},
+      "41-50": {"base_accuracy": 0.96, "variance": 0.04, "description": "Standard NFL range - target 85%"},
       "51-60": {"base_accuracy": 0.75, "variance": 0.06, "description": "Long range - target 65%"},
       "61+": {"base_accuracy": 0.40, "variance": 0.10, "description": "Record attempts - target 32%"}
     },

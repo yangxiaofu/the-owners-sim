@@ -21,6 +21,7 @@ import json
 from pathlib import Path
 from typing import Any, Optional
 import logging
+from PySide6.QtGui import QFont
 
 
 class UITheme:
@@ -183,6 +184,113 @@ class UITheme:
         cls._ensure_loaded()
 
 
+# =============================================================================
+# TYPOGRAPHY & FONT CLASSES (Must be defined before style constants use them)
+# =============================================================================
+
+class Typography:
+    """
+    Standardized fonts for consistent UI appearance.
+
+    Usage:
+        from game_cycle_ui.theme import Typography
+        label.setFont(Typography.H1)
+    """
+    FAMILY = "Arial"
+
+    # HEADINGS (Bold)
+    DISPLAY = QFont("Arial", 28, QFont.Bold)     # Team abbrevs, large records
+    H1 = QFont("Arial", 24, QFont.Bold)          # Page titles, stage labels
+    H2 = QFont("Arial", 20, QFont.Bold)          # Major section headers
+    H3 = QFont("Arial", 18, QFont.Bold)          # Sub-section headers
+    H4 = QFont("Arial", 16, QFont.Bold)          # Card headers, stat values
+    H5 = QFont("Arial", 14, QFont.Bold)          # Minor headers
+    H6 = QFont("Arial", 12, QFont.Bold)          # Small headers
+
+    # BODY TEXT
+    BODY_LARGE = QFont("Arial", 14)              # Prominent body
+    BODY = QFont("Arial", 12)                    # Standard body
+    BODY_SMALL = QFont("Arial", 11)              # Compact body
+    BODY_LARGE_BOLD = QFont("Arial", 14, QFont.Bold)
+    BODY_BOLD = QFont("Arial", 12, QFont.Bold)
+    BODY_SMALL_BOLD = QFont("Arial", 11, QFont.Bold)
+
+    # DETAIL TEXT
+    CAPTION = QFont("Arial", 11)                 # Stat labels
+    CAPTION_BOLD = QFont("Arial", 11, QFont.Bold)
+    SMALL = QFont("Arial", 10)                   # Tertiary text
+    SMALL_BOLD = QFont("Arial", 10, QFont.Bold)
+    TINY = QFont("Arial", 9)                     # Meta info
+    TINY_BOLD = QFont("Arial", 9, QFont.Bold)
+
+    # SPECIAL PURPOSE
+    TABLE = QFont("Arial", 11)                   # Table cells
+    TABLE_HEADER = QFont("Arial", 10, QFont.Bold)
+    TABLE_LARGE = QFont("Arial", 18)             # Large table displays
+    ICON_LARGE = QFont("Arial", 48)              # Emoji displays
+
+    @staticmethod
+    def apply(widget, font: QFont) -> None:
+        """
+        Apply a typography style to a widget.
+
+        Usage:
+            Typography.apply(label, Typography.H1)
+
+        Args:
+            widget: Any QWidget with setFont() method
+            font: A QFont from Typography constants
+        """
+        widget.setFont(font)
+
+
+class FontSizes:
+    """Font sizes as strings for CSS stylesheets."""
+    DISPLAY = "28px"
+    H1 = "24px"
+    H2 = "20px"
+    H3 = "18px"
+    H4 = "16px"
+    H5 = "14px"
+    H6 = "12px"
+    BODY = "12px"
+    BODY_SMALL = "11px"
+    CAPTION = "11px"
+    SMALL = "10px"
+    TINY = "9px"
+
+
+class TextColors:
+    """
+    Text colors organized by background context.
+
+    Usage:
+        label.setStyleSheet(f"color: {TextColors.ON_DARK};")
+    """
+    # FOR DARK BACKGROUNDS (ESPN theme: #1a1a1a, #2a2a2a, #333333)
+    ON_DARK = "#FFFFFF"           # Primary text on dark bg
+    ON_DARK_SECONDARY = "#CCCCCC" # Secondary text on dark bg
+    ON_DARK_MUTED = "#888888"     # Tertiary/muted text on dark bg
+    ON_DARK_DISABLED = "#666666"  # Disabled text on dark bg
+
+    # FOR LIGHT BACKGROUNDS (#FFFFFF, #F5F5F5)
+    ON_LIGHT = "#212121"          # Primary text on light bg
+    ON_LIGHT_SECONDARY = "#666666" # Secondary text on light bg
+    ON_LIGHT_MUTED = "#999999"    # Tertiary/muted text on light bg
+    ON_LIGHT_DISABLED = "#CCCCCC" # Disabled text on light bg
+
+    # SEMANTIC (work on both themes)
+    SUCCESS = "#2E7D32"           # Green - victories, positive
+    ERROR = "#C62828"             # Red - losses, negative
+    WARNING = "#F57C00"           # Orange - caution
+    INFO = "#1976D2"              # Blue - informational
+    NEUTRAL = "#757575"           # Gray - neutral
+
+
+# =============================================================================
+# STYLE CONSTANTS (Using classes defined above)
+# =============================================================================
+
 # Table header style constant for consistent white text on dark background
 TABLE_HEADER_STYLE = """
     QHeaderView::section {
@@ -195,13 +303,177 @@ TABLE_HEADER_STYLE = """
     }
 """
 
-# Rivalry intensity colors (light backgrounds for table rows)
+# Table body styling (ESPN dark theme)
+TABLE_STYLE = """
+    QTableWidget {
+        background-color: #1a1a1a;
+        gridline-color: #333333;
+        color: white;
+        border: none;
+    }
+    QTableWidget::item {
+        padding: 4px;
+        border-bottom: 1px solid #333333;
+    }
+    QTableWidget::item:selected {
+        background-color: #2a4a6a;
+    }
+    QTableWidget::item:alternate {
+        background-color: #222222;
+    }
+"""
+
+# Table dimensions
+TABLE_ROW_HEIGHT = 32  # Standard row height in pixels (matches standings)
+
+
+def apply_table_style(table, row_height: int = TABLE_ROW_HEIGHT):
+    """
+    Apply standard ESPN dark table styling to a QTableWidget.
+
+    Usage:
+        from game_cycle_ui.theme import apply_table_style
+        table = QTableWidget()
+        apply_table_style(table)
+
+    Args:
+        table: QTableWidget instance to style
+        row_height: Row height in pixels (default: 32)
+    """
+    from PySide6.QtWidgets import QTableWidget
+    table.setStyleSheet(TABLE_STYLE)
+    table.horizontalHeader().setStyleSheet(TABLE_HEADER_STYLE)
+    table.setFont(Typography.TABLE)
+    table.verticalHeader().setDefaultSectionSize(row_height)
+    table.setAlternatingRowColors(True)
+    table.verticalHeader().setVisible(False)
+    table.setEditTriggers(QTableWidget.NoEditTriggers)
+    table.setSelectionBehavior(QTableWidget.SelectRows)
+
+
+# =============================================================================
+# TAB WIDGET STYLING (ESPN Dark Theme)
+# =============================================================================
+# Standardized tab styling for all QTabWidget instances.
+# Based on team_view.py reference implementation.
+
+TAB_STYLE = """
+    QTabWidget::pane { border: none; background: transparent; }
+    QTabBar::tab {
+        background: #333333;
+        color: #888888;
+        padding: 8px 16px;
+        border-top-left-radius: 4px;
+        border-top-right-radius: 4px;
+        margin-right: 2px;
+    }
+    QTabBar::tab:selected { background: #444444; color: #FFFFFF; }
+    QTabBar::tab:hover { background: #3a3a3a; }
+"""
+
+# Main navigation tabs (larger padding for top-level navigation in main_window)
+MAIN_NAV_TAB_STYLE = """
+    QTabWidget::pane { border: none; background: transparent; }
+    QTabBar::tab {
+        background: #333333;
+        color: #888888;
+        padding: 10px 20px;
+        border-top-left-radius: 4px;
+        border-top-right-radius: 4px;
+        margin-right: 2px;
+        font-weight: bold;
+    }
+    QTabBar::tab:selected { background: #444444; color: #FFFFFF; }
+    QTabBar::tab:hover { background: #3a3a3a; }
+"""
+
+# =============================================================================
+# BUTTON STYLING
+# =============================================================================
+# Standardized button styles for consistent appearance across all views.
+# Use these constants instead of inline stylesheets.
+
+
+def _generate_button_style(
+    bg: str, hover: str, pressed: str, *, bold: bool = True, compact: bool = False
+) -> str:
+    """
+    Generate button stylesheet with consistent structure.
+
+    Args:
+        bg: Background color (hex)
+        hover: Hover background color (hex)
+        pressed: Pressed background color (hex)
+        bold: Whether to use bold font weight (default True)
+        compact: Use compact sizing for table cells (default False)
+    """
+    if compact:
+        padding = "4px 12px"
+        radius = "3px"
+        extra = "font-size: 12px; min-width: 60px;"
+    else:
+        padding = "8px 16px"
+        radius = "4px"
+        extra = ""
+
+    weight = "font-weight: bold;" if bold else ""
+
+    return f"""
+    QPushButton {{
+        background-color: {bg};
+        color: white;
+        border: none;
+        border-radius: {radius};
+        padding: {padding};
+        {weight}
+        {extra}
+    }}
+    QPushButton:hover {{ background-color: {hover}; }}
+    QPushButton:pressed {{ background-color: {pressed}; }}
+    QPushButton:disabled {{ background-color: #CCCCCC; color: #666666; }}
+"""
+
+
+# Standard button styles
+PRIMARY_BUTTON_STYLE = _generate_button_style("#2E7D32", "#1B5E20", "#145214")
+SECONDARY_BUTTON_STYLE = _generate_button_style("#1976D2", "#1565C0", "#0D47A1")
+DANGER_BUTTON_STYLE = _generate_button_style("#C62828", "#B71C1C", "#8E0000")
+WARNING_BUTTON_STYLE = _generate_button_style("#F57C00", "#E65100", "#BF360C")
+NEUTRAL_BUTTON_STYLE = _generate_button_style("#666666", "#555555", "#444444", bold=False)
+
+# Compact button styles for table cells (reduced padding for 32px row height)
+TABLE_BUTTON_STYLE = _generate_button_style("#1976D2", "#1565C0", "#0D47A1", compact=True)
+TABLE_BUTTON_NEUTRAL_STYLE = _generate_button_style(
+    "#666666", "#555555", "#444444", bold=False, compact=True
+)
+
+# Dark-themed GroupBox styling for consistent section headers
+GROUPBOX_DARK_STYLE = f"""
+    QGroupBox {{
+        font-weight: bold;
+        font-size: {FontSizes.H5};
+        color: {TextColors.ON_DARK};
+        background-color: #263238;
+        border: 1px solid #37474f;
+        border-radius: 6px;
+        margin-top: 12px;
+        padding-top: 10px;
+    }}
+    QGroupBox::title {{
+        subcontrol-origin: margin;
+        left: 10px;
+        padding: 0 5px;
+        color: {TextColors.ON_DARK};
+    }}
+"""
+
+# Rivalry intensity colors (dark backgrounds for ESPN theme - use white text)
 RIVALRY_INTENSITY_COLORS = {
-    "legendary": "#FFCDD2",   # Light red (90-100 intensity)
-    "intense": "#FFE0B2",     # Light orange (75-89)
-    "competitive": "#FFF9C4", # Light yellow (50-74)
-    "developing": "#C8E6C9",  # Light green (25-49)
-    "mild": "#FFFFFF",        # White (1-24)
+    "legendary": "#4a2020",   # Dark red (90-100 intensity)
+    "intense": "#4a3520",     # Dark orange (75-89)
+    "competitive": "#3a3a20", # Dark olive (50-74)
+    "developing": "#203a20",  # Dark green (25-49)
+    "mild": "#2a2a2a",        # Dark gray (1-24)
 }
 
 # Rivalry type badge colors
@@ -430,3 +702,159 @@ def get_intensity_label(intensity: int) -> str:
         return "Developing"
     else:
         return "Mild"
+
+
+# =============================================================================
+# SPACING SYSTEM
+# =============================================================================
+
+class Spacing:
+    """Standardized spacing for consistent layouts."""
+    MAJOR = 16   # Between major sections
+    MINOR = 8    # Between related items
+    MICRO = 4    # Between tightly coupled items
+
+
+# =============================================================================
+# GRADE/RATING COLORS
+# =============================================================================
+
+GRADE_THRESHOLDS = {
+    "elite": 85,      # 85+ = Green
+    "solid": 75,      # 75-84 = Blue
+    "average": 65,    # 65-74 = Gray
+    "below": 50,      # 50-64 = Orange
+    "poor": 0,        # <50 = Red
+}
+
+GRADE_COLORS = {
+    "elite": "#2E7D32",      # Green
+    "solid": "#1976D2",      # Blue
+    "average": "#666666",    # Gray
+    "below": "#F57C00",      # Orange
+    "poor": "#C62828",       # Red
+}
+
+# Grade tier colors (simplified 5-tier system for performance display)
+GRADE_TIER_COLORS = {
+    "elite": "#2E7D32",       # 90+
+    "excellent": "#4CAF50",   # 80-89
+    "good": "#1976D2",        # 70-79
+    "average": "#FF9800",     # 60-69
+    "below_average": "#f44336",  # <60
+}
+
+
+def get_grade_color(value: int) -> str:
+    """Return color hex string for a grade/rating value (0-100)."""
+    if value >= GRADE_THRESHOLDS["elite"]:
+        return GRADE_COLORS["elite"]
+    elif value >= GRADE_THRESHOLDS["solid"]:
+        return GRADE_COLORS["solid"]
+    elif value >= GRADE_THRESHOLDS["average"]:
+        return GRADE_COLORS["average"]
+    elif value >= GRADE_THRESHOLDS["below"]:
+        return GRADE_COLORS["below"]
+    return GRADE_COLORS["poor"]
+
+
+# =============================================================================
+# PROSPECT/PLAYER RATING COLORIZER
+# =============================================================================
+
+class RatingColorizer:
+    """
+    Color coding for player/prospect ratings (0-100).
+
+    Uses draft-specific thresholds optimized for prospect evaluation.
+    Different from general grade thresholds to reflect draft context.
+    """
+
+    # Draft prospect thresholds (more optimistic than general grading)
+    ELITE_THRESHOLD = 80      # Elite prospect - franchise potential
+    SOLID_THRESHOLD = 70      # Solid prospect - starter quality
+    PROJECT_THRESHOLD = 60    # Project - developmental upside
+    # Below 60 = Backup/depth
+
+    @staticmethod
+    def get_color_for_rating(rating: int) -> str:
+        """
+        Get color hex string for a player/prospect rating.
+
+        Args:
+            rating: Player overall rating (0-100)
+
+        Returns:
+            Hex color string
+
+        Examples:
+            >>> RatingColorizer.get_color_for_rating(85)
+            '#2E7D32'  # Green (elite)
+            >>> RatingColorizer.get_color_for_rating(72)
+            '#1976D2'  # Blue (solid)
+            >>> RatingColorizer.get_color_for_rating(65)
+            '#F57C00'  # Orange (project)
+            >>> RatingColorizer.get_color_for_rating(55)
+            '#666666'  # Gray (backup)
+        """
+        if rating >= RatingColorizer.ELITE_THRESHOLD:
+            return Colors.SUCCESS  # Green - Elite prospect
+        elif rating >= RatingColorizer.SOLID_THRESHOLD:
+            return Colors.INFO     # Blue - Solid prospect
+        elif rating >= RatingColorizer.PROJECT_THRESHOLD:
+            return Colors.WARNING  # Orange - Project
+        else:
+            return Colors.MUTED    # Gray - Backup/depth
+
+
+# =============================================================================
+# DIRECT COLOR ACCESSORS
+# =============================================================================
+
+class Colors:
+    """Direct access to common colors without category lookup."""
+    SUCCESS = "#2E7D32"
+    SUCCESS_DARK = "#1B3D1B"
+    ERROR = "#C62828"
+    WARNING = "#F57C00"
+    WARNING_DARK = "#3D2B1B"
+    INFO = "#1976D2"
+    INFO_DARK = "#1B2D3D"
+    MUTED = "#666666"
+    DISABLED = "#CCCCCC"
+
+    # Cap space
+    CAP_HEALTHY = "#2E7D32"
+    CAP_PROJECTED = "#1976D2"
+    CAP_TIGHT = "#F57C00"
+    CAP_OVER = "#C62828"
+
+    # Text
+    TEXT_PRIMARY = "#212121"
+    TEXT_SECONDARY = "#666666"
+    TEXT_MUTED = "#999999"
+    TEXT_INVERSE = "#FFFFFF"
+
+    # Backgrounds (ESPN dark theme)
+    BG_PRIMARY = "#1a1a1a"
+    BG_SECONDARY = "#2a2a2a"
+    BG_HOVER = "#333333"
+    BORDER = "#444444"
+
+    # Staff performance widget colors
+    STAFF_HEADER = "#1e88e5"
+    STAFF_CONTRACT_INFO = "#bbbbbb"
+    STAFF_PERFORMANCE_METRIC = "#999999"
+    STAFF_KEEP_BUTTON = "#4caf50"
+    STAFF_KEEP_BUTTON_HOVER = "#66bb6a"
+    STAFF_FIRE_BUTTON = "#f44336"
+    STAFF_FIRE_BUTTON_HOVER = "#e57373"
+    STAFF_TAB_BACKGROUND = "#37474F"
+    STAFF_TAB_SELECTED = "#1e88e5"
+    STAFF_CARD_BACKGROUND = "#263238"
+
+    # Transaction type colors
+    TRANSACTION_TRADE = "#2196f3"
+    TRANSACTION_FA_SIGNING = "#4caf50"
+    TRANSACTION_DRAFT_PICK = "#ff9800"
+    TRANSACTION_CUT = "#f44336"

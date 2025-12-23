@@ -1,8 +1,39 @@
 {
   "team_id": 21,
   "team_name": "Chicago Bears",
-  "total_players": 52,
+  "total_players": 53,
   "players": {
+    "1418": {
+      "player_id": 1418,
+      "first_name": "Joe",
+      "last_name": "Thuney",
+      "number": 63,
+      "birthdate": "1993-02-21",
+      "positions": [
+        "guard"
+      ],
+      "team_id": 21,
+      "attributes": {
+        "overall": 86,
+        "speed": 75,
+        "strength": 85,
+        "pass_blocking": 88,
+        "run_blocking": 85,
+        "awareness": 88,
+        "discipline": 90,
+        "composure": 88,
+        "experience": 90,
+        "penalty_technique": 88
+      },
+      "contract": {
+        "contract_years": 2,
+        "annual_salary": 17500000,
+        "signing_bonus": 15000000,
+        "guaranteed_money": 34000000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 8000000
+      }
+    },
     "2100": {
       "player_id": 2100,
       "first_name": "Caleb",

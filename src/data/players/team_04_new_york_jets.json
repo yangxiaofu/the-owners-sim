@@ -1,40 +1,8 @@
 {
   "team_id": 4,
   "team_name": "New York Jets",
-  "total_players": 56,
+  "total_players": 53,
   "players": {
-    "5001": {
-      "player_id": 5001,
-      "first_name": "Aaron",
-      "last_name": "Rodgers",
-      "number": 8,
-      "birthdate": "1987-05-28",
-      "positions": [
-        "quarterback"
-      ],
-      "team_id": 4,
-      "attributes": {
-        "overall": 88,
-        "speed": 72,
-        "accuracy": 95,
-        "arm_strength": 90,
-        "awareness": 95,
-        "discipline": 85,
-        "composure": 95,
-        "experience": 98,
-        "penalty_technique": 92,
-        "leadership": 90,
-        "pocket_presence": 95
-      },
-      "contract": {
-        "contract_years": 3,
-        "annual_salary": 37500000,
-        "signing_bonus": 35000000,
-        "guaranteed_money": 75000000,
-        "contract_type": "free_agent",
-        "cap_hit_2025": 23500000
-      }
-    },
     "5002": {
       "player_id": 5002,
       "first_name": "Breece",
@@ -229,39 +197,6 @@
         "cap_hit_2025": 2459879
       }
     },
-    "5008": {
-      "player_id": 5008,
-      "first_name": "Quinnen",
-      "last_name": "Williams",
-      "number": 95,
-      "birthdate": "1996-02-22",
-      "positions": [
-        "defensive_tackle"
-      ],
-      "team_id": 4,
-      "attributes": {
-        "overall": 92,
-        "speed": 78,
-        "strength": 95,
-        "pass_rush": 90,
-        "run_defense": 92,
-        "agility": 82,
-        "awareness": 88,
-        "discipline": 88,
-        "composure": 88,
-        "experience": 82,
-        "penalty_technique": 85,
-        "power_moves": 95
-      },
-      "contract": {
-        "contract_years": 4,
-        "annual_salary": 24000000,
-        "signing_bonus": 20000000,
-        "guaranteed_money": 66000000,
-        "contract_type": "extension",
-        "cap_hit_2025": 20400000
-      }
-    },
     "5009": {
       "player_id": 5009,
       "first_name": "C.J.",
@@ -294,39 +229,6 @@
         "guaranteed_money": 13000000,
         "contract_type": "restructure",
         "cap_hit_2025": 0
-      }
-    },
-    "5010": {
-      "player_id": 5010,
-      "first_name": "Sauce",
-      "last_name": "Gardner",
-      "number": 1,
-      "birthdate": "2002-05-17",
-      "positions": [
-        "cornerback"
-      ],
-      "team_id": 4,
-      "attributes": {
-        "overall": 92,
-        "speed": 88,
-        "strength": 82,
-        "coverage": 95,
-        "agility": 90,
-        "awareness": 88,
-        "discipline": 92,
-        "composure": 90,
-        "experience": 78,
-        "penalty_technique": 90,
-        "man_coverage": 95,
-        "zone_coverage": 92
-      },
-      "contract": {
-        "contract_years": 4,
-        "annual_salary": 30100000,
-        "signing_bonus": 13750000,
-        "guaranteed_money": 85403473,
-        "contract_type": "extension",
-        "cap_hit_2025": 16500000
       }
     },
     "5011": {

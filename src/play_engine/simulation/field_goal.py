@@ -694,7 +694,7 @@ class FieldGoalSimulator(BasePlaySimulator):
         if self.kicker:
             kicker_stats = create_player_stats_from_player(self.kicker)
             kicker_stats.field_goal_attempts = 1
-            
+
             if result.outcome == "made":
                 kicker_stats.field_goals_made = 1
                 kicker_stats.longest_field_goal = result.distance
@@ -717,19 +717,22 @@ class FieldGoalSimulator(BasePlaySimulator):
                     kicker_stats.fg_attempts_50_plus = 1
                     if result.outcome == "made":
                         kicker_stats.fg_made_50_plus = 1
-            
+
             # Fake run stats for kicker
             if result.is_fake and result.fake_type == "run":
                 kicker_stats.carries = 1 if "kicker" in str(result.outcome) else 0
                 kicker_stats.rushing_yards = result.yards_gained if kicker_stats.carries else 0
-            
+
+            # Add special teams snap credit for kicker
+            kicker_stats.add_special_teams_snap()
+
             player_stats.append(kicker_stats)
         
         # Holder statistics
         if self.holder:
             holder_stats = create_player_stats_from_player(self.holder)
             holder_stats.field_goal_holds = 1
-            
+
             if result.is_fake:
                 if result.fake_type == "pass":
                     holder_stats.pass_attempts = 1
@@ -743,13 +746,20 @@ class FieldGoalSimulator(BasePlaySimulator):
                     holder_stats.rushing_yards = result.yards_gained
                     if result.points_scored == 6:
                         holder_stats.rushing_touchdowns = 1
-            
+
+            # Add special teams snap credit for holder
+            holder_stats.add_special_teams_snap()
+
             player_stats.append(holder_stats)
         
         # Long snapper statistics
         if self.long_snapper:
             ls_stats = create_player_stats_from_player(self.long_snapper)
             ls_stats.long_snaps = 1
+
+            # Add special teams snap credit for long snapper
+            ls_stats.add_special_teams_snap()
+
             player_stats.append(ls_stats)
         
         # Comprehensive Field Goal Protection Statistics

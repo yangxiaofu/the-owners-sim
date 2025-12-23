@@ -20,7 +20,9 @@ from PySide6.QtGui import QFont, QColor
 from game_cycle_ui.theme import (
     UITheme, TABLE_HEADER_STYLE, get_intensity_label,
     PRIMETIME_BADGES, TIME_SLOT_BADGES,
-    SCHEDULE_ROW_COLORS, get_rivalry_symbol
+    SCHEDULE_ROW_COLORS, get_rivalry_symbol,
+    Typography, FontSizes, TextColors,
+    apply_table_style
 )
 
 
@@ -93,7 +95,7 @@ class ScheduleView(QWidget):
         nav_layout.addWidget(self.prev_btn)
 
         self.week_label = QLabel("Week 1")
-        self.week_label.setFont(QFont("Arial", 16, QFont.Bold))
+        Typography.apply(self.week_label, Typography.H4)
         self.week_label.setAlignment(Qt.AlignCenter)
         self.week_label.setMinimumWidth(100)
         nav_layout.addWidget(self.week_label)
@@ -139,9 +141,11 @@ class ScheduleView(QWidget):
             "Time", "Away", "Record", "@", "Home", "Record", "Result", "Rivalry"
         ])
 
-        # Configure header
+        # Apply standard table styling
+        apply_table_style(self.games_table)
+
+        # Configure header column resize modes
         header = self.games_table.horizontalHeader()
-        header.setStyleSheet(TABLE_HEADER_STYLE)
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # Time
         header.setSectionResizeMode(1, QHeaderView.Stretch)           # Away
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Away Record
@@ -152,11 +156,7 @@ class ScheduleView(QWidget):
         header.setSectionResizeMode(6, QHeaderView.ResizeToContents)  # Result
         header.setSectionResizeMode(7, QHeaderView.ResizeToContents)  # Rivalry
 
-        # Configure table
-        self.games_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.games_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.games_table.setAlternatingRowColors(True)
-        self.games_table.verticalHeader().setVisible(False)
+        # Connect double-click handler
         self.games_table.cellDoubleClicked.connect(self._on_game_double_clicked)
 
         parent_layout.addWidget(self.games_table, stretch=1)
@@ -175,8 +175,8 @@ class ScheduleView(QWidget):
         bye_layout.setContentsMargins(12, 8, 12, 8)
 
         bye_icon = QLabel("BYE")
-        bye_icon.setFont(QFont("Arial", 10, QFont.Bold))
-        bye_icon.setStyleSheet("color: #666;")
+        Typography.apply(bye_icon, Typography.SMALL_BOLD)
+        bye_icon.setStyleSheet(f"color: {TextColors.ON_LIGHT_SECONDARY};")
         bye_layout.addWidget(bye_icon)
 
         self.bye_label = QLabel("Teams on bye: None")
@@ -257,6 +257,9 @@ class ScheduleView(QWidget):
             self._schedule_data.clear()
             self._primetime_assignments.clear()
 
+            # Debug logging
+            print(f"[DEBUG ScheduleView] Loading schedule for dynasty={self._dynasty_id}, season={self._season}")
+
             # Track completed game_ids to avoid duplicates
             completed_game_ids = set()
 
@@ -267,13 +270,18 @@ class ScheduleView(QWidget):
                               home_score, away_score
                        FROM games
                        WHERE dynasty_id = ? AND season = ? AND week = ?
-                         AND season_type = 'regular_season'
+                         AND season_type IN ('regular_season', 'preseason')
+                         AND home_team_id IS NOT NULL
+                         AND away_team_id IS NOT NULL
                        ORDER BY game_id""",
                     (self._dynasty_id, self._season, week)
                 )
                 # Convert rows to game-like objects
                 games = []
                 for row in rows:
+                    # Double-check: skip malformed games missing team IDs
+                    if not row['home_team_id'] or not row['away_team_id']:
+                        continue
                     completed_game_ids.add(row['id'])
                     game = SimpleNamespace(
                         id=row['id'],
@@ -289,12 +297,16 @@ class ScheduleView(QWidget):
 
             # Step 2: Load scheduled (unplayed) games from events table
             # These are games where results is null (not yet simulated)
+            # Filter out malformed events with NULL week/team IDs at SQL level
             scheduled_rows = db.query_all(
                 """SELECT event_id, game_id, data
                    FROM events
                    WHERE dynasty_id = ?
                      AND json_extract(data, '$.parameters.season') = ?
-                     AND json_extract(data, '$.parameters.season_type') = 'regular_season'
+                     AND json_extract(data, '$.parameters.season_type') IN ('regular_season', 'preseason')
+                     AND json_extract(data, '$.parameters.week') IS NOT NULL
+                     AND json_extract(data, '$.parameters.home_team_id') IS NOT NULL
+                     AND json_extract(data, '$.parameters.away_team_id') IS NOT NULL
                    ORDER BY json_extract(data, '$.parameters.week'), game_id""",
                 (self._dynasty_id, self._season)
             )
@@ -314,8 +326,13 @@ class ScheduleView(QWidget):
 
                 params = data.get('parameters', {})
                 week = params.get('week')
+                home_team_id = params.get('home_team_id')
+                away_team_id = params.get('away_team_id')
 
+                # Skip malformed events: require valid week AND both team IDs
                 if not week or week < 1 or week > 18:
+                    continue
+                if not home_team_id or not away_team_id:
                     continue
 
                 # Initialize week list if needed
@@ -365,6 +382,16 @@ class ScheduleView(QWidget):
                 for assignment in assignments:
                     # Store full assignment (includes slot, flexed_from, appeal_score)
                     self._primetime_assignments[assignment.game_id] = assignment
+
+            # Debug logging: Show loaded data summary
+            total_games = sum(len(games) for games in self._schedule_data.values())
+            print(f"[DEBUG ScheduleView] Loaded {total_games} total games across {len(self._schedule_data)} weeks")
+            for week in sorted(self._schedule_data.keys())[:3]:  # First 3 weeks
+                games = self._schedule_data[week]
+                print(f"[DEBUG ScheduleView]   Week {week}: {len(games)} games")
+                if games:
+                    g = games[0]
+                    print(f"[DEBUG ScheduleView]     First game: id={g.id}, home={g.home_team_id}, away={g.away_team_id}")
 
         finally:
             db.close()
@@ -440,7 +467,7 @@ class ScheduleView(QWidget):
         time_item.setData(Qt.UserRole, game.id)  # Store game_id
         time_item.setBackground(QColor(badge.get("bg", "#455A64")))
         time_item.setForeground(QColor(badge.get("fg", "#FFFFFF")))
-        time_item.setFont(QFont("Arial", 9, QFont.Bold))
+        time_item.setFont(Typography.TINY_BOLD)
         if tooltip_text:
             time_item.setToolTip(tooltip_text)
         self.games_table.setItem(row, 0, time_item)
@@ -502,7 +529,7 @@ class ScheduleView(QWidget):
             symbol = get_rivalry_symbol(rivalry.intensity)
             rivalry_item = QTableWidgetItem(symbol)
             rivalry_item.setTextAlignment(Qt.AlignCenter)
-            rivalry_item.setFont(QFont("Arial", 11, QFont.Bold))
+            rivalry_item.setFont(Typography.CAPTION_BOLD)
             rivalry_item.setForeground(text_primary)
             rivalry_item.setToolTip(
                 f"{rivalry.rivalry_name}\n"
@@ -521,8 +548,8 @@ class ScheduleView(QWidget):
 
         message_item = QTableWidgetItem("No games scheduled for this week")
         message_item.setTextAlignment(Qt.AlignCenter)
-        message_item.setForeground(QColor("#666"))
-        message_item.setFont(QFont("Arial", 12, QFont.Normal, True))  # Italic
+        message_item.setForeground(QColor(TextColors.ON_LIGHT_SECONDARY))
+        message_item.setFont(Typography.BODY)  # Note: Italic not supported via Typography
 
         self.games_table.setItem(0, 0, message_item)
 

@@ -1,0 +1,720 @@
+{
+  "fan_name_templates": {
+    "OPTIMIST": {
+      "handles": [
+        "AlwaysBelievin{nickname}",
+        "{nickname}ForLife",
+        "Eternal{nickname}Faith",
+        "Never{nickname}Doubt",
+        "{nickname}TrueBeliever",
+        "Faithful{nickname}Fan",
+        "{nickname}Loyalist",
+        "Ride{nickname}Die",
+        "{nickname}UntilIDie",
+        "Die{nickname}Die",
+        "Forever{nickname}",
+        "{nickname}NoMatterWhat",
+        "Trust{nickname}Process",
+        "{nickname}Faithful",
+        "Optimistic{nickname}Guy"
+      ],
+      "display_names": [
+        "Always Believin' {nickname}",
+        "{nickname} For Life",
+        "Eternal {nickname} Faith",
+        "Never Doubt {nickname}",
+        "{nickname} True Believer",
+        "Faithful {nickname} Fan",
+        "The {nickname} Loyalist",
+        "Ride {nickname} Die",
+        "{nickname} Until I Die",
+        "Die {nickname} Die",
+        "Forever {nickname}",
+        "{nickname} No Matter What",
+        "Trust {nickname} Process",
+        "{nickname} Faithful",
+        "Optimistic {nickname} Guy"
+      ]
+    },
+    "PESSIMIST": {
+      "handles": [
+        "SameOld{nickname}",
+        "{nickname}Misery",
+        "Why{nickname}Why",
+        "Cursed{nickname}Fan",
+        "{nickname}Suffering",
+        "Pain{nickname}Pain",
+        "{nickname}Agony",
+        "Hopeless{nickname}Fan",
+        "{nickname}Disappointment",
+        "Tortured{nickname}Soul",
+        "{nickname}NeverWin",
+        "Doomed{nickname}",
+        "{nickname}Pessimist",
+        "Sad{nickname}Fan",
+        "{nickname}Depression"
+      ],
+      "display_names": [
+        "Same Old {nickname}",
+        "{nickname} Misery",
+        "Why {nickname} Why",
+        "Cursed {nickname} Fan",
+        "{nickname} Suffering",
+        "Pain {nickname} Pain",
+        "{nickname} Agony",
+        "Hopeless {nickname} Fan",
+        "{nickname} Disappointment",
+        "Tortured {nickname} Soul",
+        "{nickname} Never Win",
+        "Doomed {nickname}",
+        "The {nickname} Pessimist",
+        "Sad {nickname} Fan",
+        "{nickname} Depression"
+      ]
+    },
+    "BANDWAGON": {
+      "handles": [
+        "NewFan{nickname}",
+        "{nickname}Since{recent_year}",
+        "Just{nickname}Things",
+        "Bandwagon{nickname}",
+        "Fair{nickname}Weather",
+        "{nickname}WhenWinning",
+        "Casual{nickname}Fan",
+        "{nickname}Hopper",
+        "{nickname}BandwagonRider",
+        "New{nickname}Fan",
+        "{nickname}Frontrunner",
+        "{nickname}Since{recent_year_alt}"
+      ],
+      "display_names": [
+        "New Fan {nickname}",
+        "{nickname} Since {recent_year}",
+        "Just {nickname} Things",
+        "Bandwagon {nickname}",
+        "Fair {nickname} Weather",
+        "{nickname} When Winning",
+        "Casual {nickname} Fan",
+        "The {nickname} Hopper",
+        "{nickname} Bandwagon Rider",
+        "New {nickname} Fan",
+        "{nickname} Frontrunner",
+        "{nickname} Since {recent_year_alt}"
+      ]
+    },
+    "STATS_NERD": {
+      "handles": [
+        "{nickname}Analytics",
+        "AdvancedMetrics{nickname}",
+        "{nickname}FilmRoom",
+        "{nickname}StatHead",
+        "{nickname}ByTheNumbers",
+        "Data{nickname}",
+        "{nickname}Metrics",
+        "{nickname}FilmJunkie",
+        "{nickname}XsAndOs",
+        "{nickname}TapeWatcher",
+        "{nickname}AnalyticsGuy",
+        "{nickname}StatGuru",
+        "{nickname}FilmBreakdown",
+        "{nickname}NumbersCruncher"
+      ],
+      "display_names": [
+        "{nickname} Analytics",
+        "Advanced Metrics {nickname}",
+        "{nickname} Film Room",
+        "{nickname} StatHead",
+        "{nickname} By The Numbers",
+        "Data {nickname}",
+        "{nickname} Metrics",
+        "{nickname} Film Junkie",
+        "{nickname} Xs And Os",
+        "{nickname} Tape Watcher",
+        "{nickname} Analytics Guy",
+        "{nickname} Stat Guru",
+        "{nickname} Film Breakdown",
+        "{nickname} Numbers Cruncher"
+      ]
+    },
+    "OLD_TIMER": {
+      "handles": [
+        "Since{founded_year}{nickname}",
+        "Old{nickname}Fan",
+        "Remember{legend_name}",
+        "{nickname}OldSchool",
+        "Vintage{nickname}Fan",
+        "{nickname}Since{early_year}",
+        "Classic{nickname}",
+        "{nickname}Historian",
+        "OG{nickname}Fan",
+        "{nickname}Veteran",
+        "{nickname}Purist",
+        "{nickname}TraditionKeeper",
+        "Old{nickname}Guy"
+      ],
+      "display_names": [
+        "Since {founded_year} {nickname}",
+        "Old {nickname} Fan",
+        "Remember {legend_name}",
+        "{nickname} Old School",
+        "Vintage {nickname} Fan",
+        "{nickname} Since {early_year}",
+        "Classic {nickname}",
+        "The {nickname} Historian",
+        "OG {nickname} Fan",
+        "{nickname} Veteran",
+        "{nickname} Purist",
+        "{nickname} Tradition Keeper",
+        "Old {nickname} Guy"
+      ]
+    },
+    "HOT_HEAD": {
+      "handles": [
+        "FIRETHECOACH{nickname}",
+        "{nickname}RAGE",
+        "ANGRY{nickname}FAN",
+        "{nickname}FURIOUS",
+        "MAD{nickname}FAN",
+        "{nickname}MELTDOWN",
+        "FIRE{coach_last}",
+        "{nickname}OUTRAGE",
+        "{nickname}ANGER",
+        "IRATE{nickname}",
+        "{nickname}LIVID",
+        "SEETHING{nickname}",
+        "{nickname}TANTRUM"
+      ],
+      "display_names": [
+        "FIRE THE COACH {nickname}",
+        "{nickname} RAGE",
+        "ANGRY {nickname} FAN",
+        "{nickname} FURIOUS",
+        "MAD {nickname} FAN",
+        "{nickname} MELTDOWN",
+        "FIRE {coach_last}",
+        "{nickname} OUTRAGE",
+        "{nickname} ANGER",
+        "IRATE {nickname}",
+        "{nickname} LIVID",
+        "SEETHING {nickname}",
+        "{nickname} TANTRUM"
+      ]
+    },
+    "MEME_LORD": {
+      "handles": [
+        "{nickname}Mafia",
+        "{nickname}Memes",
+        "Dank{nickname}Memes",
+        "{nickname}Shitposter",
+        "{nickname}MemeKing",
+        "{nickname}Trolls",
+        "Meme{nickname}",
+        "{nickname}MemeLord",
+        "{nickname}Circlejerk",
+        "{nickname}Joker",
+        "{nickname}MemeMachine",
+        "{nickname}Roasts"
+      ],
+      "display_names": [
+        "{nickname} Mafia",
+        "{nickname} Memes",
+        "Dank {nickname} Memes",
+        "{nickname} Shitposter",
+        "{nickname} Meme King",
+        "{nickname} Trolls",
+        "Meme {nickname}",
+        "{nickname} Meme Lord",
+        "{nickname} Circlejerk",
+        "The {nickname} Joker",
+        "{nickname} Meme Machine",
+        "{nickname} Roasts"
+      ]
+    },
+    "TRADE_ANALYST": {
+      "handles": [
+        "CapExpert{abbrev}",
+        "{nickname}TradeWatch",
+        "{nickname}Insider",
+        "{nickname}CapGuru",
+        "{nickname}ContractGuy",
+        "{nickname}TradeAnalyst",
+        "{nickname}CapSpace",
+        "{nickname}GMWatch",
+        "{nickname}RosterMoves",
+        "{nickname}Transactions",
+        "{nickname}FrontOffice"
+      ],
+      "display_names": [
+        "Cap Expert {abbrev}",
+        "{nickname} Trade Watch",
+        "{nickname} Insider",
+        "{nickname} Cap Guru",
+        "{nickname} Contract Guy",
+        "{nickname} Trade Analyst",
+        "{nickname} Cap Space",
+        "{nickname} GM Watch",
+        "{nickname} Roster Moves",
+        "{nickname} Transactions",
+        "{nickname} Front Office"
+      ]
+    },
+    "CONSPIRACY": {
+      "handles": [
+        "RefWatch{abbrev}",
+        "{nickname}Conspiracy",
+        "Rigged{nickname}",
+        "{nickname}GetsCheated",
+        "{nickname}NeverGetCalls",
+        "NFL{nickname}Bias",
+        "{nickname}ScamWatch",
+        "{nickname}RiggedLeague",
+        "{nickname}VsTheRefs",
+        "{nickname}Robbed",
+        "Always{nickname}Screwed"
+      ],
+      "display_names": [
+        "Ref Watch {abbrev}",
+        "{nickname} Conspiracy",
+        "Rigged {nickname}",
+        "{nickname} Gets Cheated",
+        "{nickname} Never Get Calls",
+        "NFL {nickname} Bias",
+        "{nickname} Scam Watch",
+        "{nickname} Rigged League",
+        "{nickname} Vs The Refs",
+        "{nickname} Robbed",
+        "Always {nickname} Screwed"
+      ]
+    },
+    "BALANCED": {
+      "handles": [
+        "Rational{nickname}",
+        "Fair{nickname}Fan",
+        "Objective{nickname}",
+        "Honest{nickname}Fan",
+        "Realistic{nickname}",
+        "{nickname}Realist",
+        "Level{nickname}Fan",
+        "{nickname}BalancedView",
+        "{nickname}FairTakes",
+        "Reasonable{nickname}",
+        "{nickname}ObjectiveFan"
+      ],
+      "display_names": [
+        "Rational {nickname}",
+        "Fair {nickname} Fan",
+        "Objective {nickname}",
+        "Honest {nickname} Fan",
+        "Realistic {nickname}",
+        "{nickname} Realist",
+        "Level {nickname} Fan",
+        "{nickname} Balanced View",
+        "{nickname} Fair Takes",
+        "Reasonable {nickname}",
+        "{nickname} Objective Fan"
+      ]
+    }
+  },
+  "media_name_templates": {
+    "BEAT_REPORTER": {
+      "handles": [
+        "{abbrev}BeatReporter",
+        "{abbrev}Insider",
+        "{abbrev}NewsDesk",
+        "{abbrev}Reporter",
+        "{abbrev}BeatWriter"
+      ],
+      "display_names": [
+        "{abbrev} Beat Reporter",
+        "{abbrev} Insider",
+        "{abbrev} News Desk",
+        "{abbrev} Reporter",
+        "{abbrev} Beat Writer"
+      ]
+    },
+    "HOT_TAKE": {
+      "handles": [
+        "HotTakeTom",
+        "FirstTakeNFL",
+        "SkipAnalogNFL",
+        "BoldPredictionsNFL",
+        "ControversialTakesNFL",
+        "NFLHotTakes",
+        "SpicyNFLTakes",
+        "NFLClickbait"
+      ],
+      "display_names": [
+        "Hot Take Tom",
+        "First Take NFL",
+        "Skip Analog NFL",
+        "Bold Predictions NFL",
+        "Controversial Takes NFL",
+        "NFL Hot Takes",
+        "Spicy NFL Takes",
+        "NFL Clickbait"
+      ]
+    },
+    "STATS_ANALYST": {
+      "handles": [
+        "PFFAnalyst",
+        "NFLStatHead",
+        "AdvancedNFLMetrics",
+        "NFLAnalytics",
+        "NFLDataGuru"
+      ],
+      "display_names": [
+        "PFF Analyst",
+        "NFL StatHead",
+        "Advanced NFL Metrics",
+        "NFL Analytics",
+        "NFL Data Guru"
+      ]
+    }
+  },
+  "archetype_posting_frequencies": {
+    "OPTIMIST": "ALL_EVENTS",
+    "PESSIMIST": "LOSS_ONLY",
+    "BANDWAGON": "WIN_ONLY",
+    "STATS_NERD": "ALL_EVENTS",
+    "OLD_TIMER": "ALL_EVENTS",
+    "HOT_HEAD": "EMOTIONAL_MOMENTS",
+    "MEME_LORD": "WIN_ONLY",
+    "TRADE_ANALYST": "ALL_EVENTS",
+    "CONSPIRACY": "LOSS_ONLY",
+    "BALANCED": "ALL_EVENTS"
+  },
+  "archetype_sentiment_biases": {
+    "OPTIMIST": 0.7,
+    "PESSIMIST": -0.6,
+    "BANDWAGON": 0.6,
+    "STATS_NERD": 0.0,
+    "OLD_TIMER": 0.1,
+    "HOT_HEAD": 0.0,
+    "MEME_LORD": 0.5,
+    "TRADE_ANALYST": 0.0,
+    "CONSPIRACY": -0.5,
+    "BALANCED": 0.0
+  },
+  "team_data": {
+    "1": {
+      "nickname": "Bills",
+      "abbrev": "BUF",
+      "founded_year": 1960,
+      "early_year": 1970,
+      "recent_year": 2020,
+      "recent_year_alt": 2018,
+      "legend_name": "Kelly",
+      "coach_last": "McDermott"
+    },
+    "2": {
+      "nickname": "Dolphins",
+      "abbrev": "MIA",
+      "founded_year": 1966,
+      "early_year": 1972,
+      "recent_year": 2022,
+      "recent_year_alt": 2020,
+      "legend_name": "Marino",
+      "coach_last": "McDaniel"
+    },
+    "3": {
+      "nickname": "Patriots",
+      "abbrev": "NE",
+      "founded_year": 1960,
+      "early_year": 1970,
+      "recent_year": 2021,
+      "recent_year_alt": 2019,
+      "legend_name": "Brady",
+      "coach_last": "Mayo"
+    },
+    "4": {
+      "nickname": "Jets",
+      "abbrev": "NYJ",
+      "founded_year": 1960,
+      "early_year": 1969,
+      "recent_year": 2023,
+      "recent_year_alt": 2021,
+      "legend_name": "Namath",
+      "coach_last": "Saleh"
+    },
+    "5": {
+      "nickname": "Ravens",
+      "abbrev": "BAL",
+      "founded_year": 1996,
+      "early_year": 2000,
+      "recent_year": 2023,
+      "recent_year_alt": 2021,
+      "legend_name": "Lewis",
+      "coach_last": "Harbaugh"
+    },
+    "6": {
+      "nickname": "Bengals",
+      "abbrev": "CIN",
+      "founded_year": 1968,
+      "early_year": 1981,
+      "recent_year": 2022,
+      "recent_year_alt": 2020,
+      "legend_name": "Anderson",
+      "coach_last": "Taylor"
+    },
+    "7": {
+      "nickname": "Browns",
+      "abbrev": "CLE",
+      "founded_year": 1946,
+      "early_year": 1964,
+      "recent_year": 2023,
+      "recent_year_alt": 2020,
+      "legend_name": "Brown",
+      "coach_last": "Stefanski"
+    },
+    "8": {
+      "nickname": "Steelers",
+      "abbrev": "PIT",
+      "founded_year": 1933,
+      "early_year": 1970,
+      "recent_year": 2023,
+      "recent_year_alt": 2021,
+      "legend_name": "Bradshaw",
+      "coach_last": "Tomlin"
+    },
+    "9": {
+      "nickname": "Texans",
+      "abbrev": "HOU",
+      "founded_year": 2002,
+      "early_year": 2006,
+      "recent_year": 2023,
+      "recent_year_alt": 2021,
+      "legend_name": "Johnson",
+      "coach_last": "Ryans"
+    },
+    "10": {
+      "nickname": "Colts",
+      "abbrev": "IND",
+      "founded_year": 1953,
+      "early_year": 1970,
+      "recent_year": 2023,
+      "recent_year_alt": 2020,
+      "legend_name": "Manning",
+      "coach_last": "Steichen"
+    },
+    "11": {
+      "nickname": "Jaguars",
+      "abbrev": "JAX",
+      "founded_year": 1995,
+      "early_year": 1999,
+      "recent_year": 2023,
+      "recent_year_alt": 2021,
+      "legend_name": "Taylor",
+      "coach_last": "Pederson"
+    },
+    "12": {
+      "nickname": "Titans",
+      "abbrev": "TEN",
+      "founded_year": 1960,
+      "early_year": 1999,
+      "recent_year": 2023,
+      "recent_year_alt": 2021,
+      "legend_name": "George",
+      "coach_last": "Vrabel"
+    },
+    "13": {
+      "nickname": "Broncos",
+      "abbrev": "DEN",
+      "founded_year": 1960,
+      "early_year": 1977,
+      "recent_year": 2023,
+      "recent_year_alt": 2021,
+      "legend_name": "Elway",
+      "coach_last": "Payton"
+    },
+    "14": {
+      "nickname": "Chiefs",
+      "abbrev": "KC",
+      "founded_year": 1960,
+      "early_year": 1970,
+      "recent_year": 2023,
+      "recent_year_alt": 2022,
+      "legend_name": "Montana",
+      "coach_last": "Reid"
+    },
+    "15": {
+      "nickname": "Raiders",
+      "abbrev": "LV",
+      "founded_year": 1960,
+      "early_year": 1976,
+      "recent_year": 2023,
+      "recent_year_alt": 2021,
+      "legend_name": "Stabler",
+      "coach_last": "McDaniels"
+    },
+    "16": {
+      "nickname": "Chargers",
+      "abbrev": "LAC",
+      "founded_year": 1960,
+      "early_year": 1979,
+      "recent_year": 2023,
+      "recent_year_alt": 2021,
+      "legend_name": "Fouts",
+      "coach_last": "Staley"
+    },
+    "17": {
+      "nickname": "Cowboys",
+      "abbrev": "DAL",
+      "founded_year": 1960,
+      "early_year": 1971,
+      "recent_year": 2023,
+      "recent_year_alt": 2021,
+      "legend_name": "Staubach",
+      "coach_last": "McCarthy"
+    },
+    "18": {
+      "nickname": "Giants",
+      "abbrev": "NYG",
+      "founded_year": 1925,
+      "early_year": 1956,
+      "recent_year": 2023,
+      "recent_year_alt": 2021,
+      "legend_name": "Taylor",
+      "coach_last": "Daboll"
+    },
+    "19": {
+      "nickname": "Eagles",
+      "abbrev": "PHI",
+      "founded_year": 1933,
+      "early_year": 1960,
+      "recent_year": 2023,
+      "recent_year_alt": 2022,
+      "legend_name": "Dawkins",
+      "coach_last": "Sirianni"
+    },
+    "20": {
+      "nickname": "Commanders",
+      "abbrev": "WAS",
+      "founded_year": 1932,
+      "early_year": 1972,
+      "recent_year": 2023,
+      "recent_year_alt": 2021,
+      "legend_name": "Theismann",
+      "coach_last": "Rivera"
+    },
+    "21": {
+      "nickname": "Bears",
+      "abbrev": "CHI",
+      "founded_year": 1920,
+      "early_year": 1963,
+      "recent_year": 2023,
+      "recent_year_alt": 2021,
+      "legend_name": "Payton",
+      "coach_last": "Eberflus"
+    },
+    "22": {
+      "nickname": "Lions",
+      "abbrev": "DET",
+      "founded_year": 1930,
+      "early_year": 1957,
+      "recent_year": 2023,
+      "recent_year_alt": 2022,
+      "legend_name": "Sanders",
+      "coach_last": "Campbell"
+    },
+    "23": {
+      "nickname": "Packers",
+      "abbrev": "GB",
+      "founded_year": 1919,
+      "early_year": 1967,
+      "recent_year": 2023,
+      "recent_year_alt": 2021,
+      "legend_name": "Favre",
+      "coach_last": "LaFleur"
+    },
+    "24": {
+      "nickname": "Vikings",
+      "abbrev": "MIN",
+      "founded_year": 1961,
+      "early_year": 1969,
+      "recent_year": 2023,
+      "recent_year_alt": 2022,
+      "legend_name": "Moss",
+      "coach_last": "OConnell"
+    },
+    "25": {
+      "nickname": "Falcons",
+      "abbrev": "ATL",
+      "founded_year": 1966,
+      "early_year": 1980,
+      "recent_year": 2023,
+      "recent_year_alt": 2021,
+      "legend_name": "Ryan",
+      "coach_last": "Smith"
+    },
+    "26": {
+      "nickname": "Panthers",
+      "abbrev": "CAR",
+      "founded_year": 1995,
+      "early_year": 2003,
+      "recent_year": 2023,
+      "recent_year_alt": 2021,
+      "legend_name": "Smith",
+      "coach_last": "Reich"
+    },
+    "27": {
+      "nickname": "Saints",
+      "abbrev": "NO",
+      "founded_year": 1967,
+      "early_year": 2009,
+      "recent_year": 2023,
+      "recent_year_alt": 2021,
+      "legend_name": "Brees",
+      "coach_last": "Allen"
+    },
+    "28": {
+      "nickname": "Buccaneers",
+      "abbrev": "TB",
+      "founded_year": 1976,
+      "early_year": 2002,
+      "recent_year": 2023,
+      "recent_year_alt": 2021,
+      "legend_name": "Brooks",
+      "coach_last": "Bowles"
+    },
+    "29": {
+      "nickname": "Cardinals",
+      "abbrev": "ARI",
+      "founded_year": 1898,
+      "early_year": 1947,
+      "recent_year": 2023,
+      "recent_year_alt": 2021,
+      "legend_name": "Wehrli",
+      "coach_last": "Gannon"
+    },
+    "30": {
+      "nickname": "Rams",
+      "abbrev": "LAR",
+      "founded_year": 1936,
+      "early_year": 1951,
+      "recent_year": 2023,
+      "recent_year_alt": 2022,
+      "legend_name": "Warner",
+      "coach_last": "McVay"
+    },
+    "31": {
+      "nickname": "49ers",
+      "abbrev": "SF",
+      "founded_year": 1946,
+      "early_year": 1981,
+      "recent_year": 2023,
+      "recent_year_alt": 2022,
+      "legend_name": "Rice",
+      "coach_last": "Shanahan"
+    },
+    "32": {
+      "nickname": "Seahawks",
+      "abbrev": "SEA",
+      "founded_year": 1976,
+      "early_year": 2005,
+      "recent_year": 2023,
+      "recent_year_alt": 2022,
+      "legend_name": "Wilson",
+      "coach_last": "Carroll"
+    }
+  }
+}

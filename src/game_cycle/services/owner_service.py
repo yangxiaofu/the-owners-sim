@@ -8,10 +8,13 @@ Coordinates staff hire/fire, directive management, and database persistence.
 import random
 import uuid
 import logging
+from dataclasses import asdict
 from typing import Dict, List, Any, Optional
 
+from ..database.connection import GameCycleDatabase
 from ..database.owner_directives_api import OwnerDirectivesAPI
 from ..database.staff_api import StaffAPI
+from ..models.staff_member import StaffType
 from .staff_generator_service import StaffGeneratorService
 
 
@@ -52,20 +55,27 @@ class OwnerService:
         self._logger = logging.getLogger(__name__)
 
         # Lazy-loaded components
+        self._db: Optional[GameCycleDatabase] = None
         self._directives_api: Optional[OwnerDirectivesAPI] = None
         self._staff_api: Optional[StaffAPI] = None
         self._generator: Optional[StaffGeneratorService] = None
 
+    def _get_db(self) -> GameCycleDatabase:
+        """Get or create database connection."""
+        if self._db is None:
+            self._db = GameCycleDatabase(self._db_path)
+        return self._db
+
     def _get_directives_api(self) -> OwnerDirectivesAPI:
         """Get or create directives API."""
         if self._directives_api is None:
-            self._directives_api = OwnerDirectivesAPI(self._db_path)
+            self._directives_api = OwnerDirectivesAPI(self._get_db())
         return self._directives_api
 
     def _get_staff_api(self) -> StaffAPI:
         """Get or create staff API."""
         if self._staff_api is None:
-            self._staff_api = StaffAPI(self._db_path)
+            self._staff_api = StaffAPI(self._get_db())
         return self._staff_api
 
     def _get_generator(self) -> StaffGeneratorService:
@@ -84,11 +94,18 @@ class OwnerService:
             team_id: Team ID (1-32)
 
         Returns:
-            Dict with 'gm' and 'hc' keys, or None if no assignment
+            Dict with 'gm' and 'hc' keys (as dicts), or None if no assignment
         """
-        return self._get_staff_api().get_staff_assignment(
+        result = self._get_staff_api().get_staff_assignment(
             self._dynasty_id, team_id, self._season
         )
+        if result is None:
+            return None
+        # Convert StaffMember objects to dicts for UI consumption
+        return {
+            "gm": self._staff_member_to_dict(result["gm"]) if result.get("gm") else {},
+            "hc": self._staff_member_to_dict(result["hc"]) if result.get("hc") else {},
+        }
 
     def fire_gm(self, team_id: int) -> List[Dict[str, Any]]:
         """
@@ -106,7 +123,7 @@ class OwnerService:
         current = self.get_current_staff(team_id)
         exclude = []
         if current:
-            exclude = [current["gm"]["archetype_key"]]
+            exclude = [current["gm"].archetype_key]
 
         count = random.randint(3, 5)
         candidates = self._get_generator().generate_gm_candidates(
@@ -115,7 +132,7 @@ class OwnerService:
         )
 
         # Save candidates to database
-        self._get_staff_api().save_candidates(
+        self._get_staff_api().save_candidates_dict(
             self._dynasty_id, team_id, self._season, "GM", candidates
         )
 
@@ -138,7 +155,7 @@ class OwnerService:
         current = self.get_current_staff(team_id)
         exclude = []
         if current:
-            exclude = [current["hc"]["archetype_key"]]
+            exclude = [current["hc"].archetype_key]
 
         count = random.randint(3, 5)
         candidates = self._get_generator().generate_hc_candidates(
@@ -147,7 +164,7 @@ class OwnerService:
         )
 
         # Save candidates to database
-        self._get_staff_api().save_candidates(
+        self._get_staff_api().save_candidates_dict(
             self._dynasty_id, team_id, self._season, "HC", candidates
         )
 
@@ -167,9 +184,10 @@ class OwnerService:
         Returns:
             List of candidate dicts
         """
-        return self._get_staff_api().get_candidates(
-            self._dynasty_id, team_id, self._season, "GM"
+        candidates = self._get_staff_api().get_candidates(
+            self._dynasty_id, team_id, self._season, StaffType.GM
         )
+        return [self._candidate_to_dict(c) for c in candidates]
 
     def get_hc_candidates(self, team_id: int) -> List[Dict[str, Any]]:
         """
@@ -181,9 +199,10 @@ class OwnerService:
         Returns:
             List of candidate dicts
         """
-        return self._get_staff_api().get_candidates(
-            self._dynasty_id, team_id, self._season, "HC"
+        candidates = self._get_staff_api().get_candidates(
+            self._dynasty_id, team_id, self._season, StaffType.HEAD_COACH
         )
+        return [self._candidate_to_dict(c) for c in candidates]
 
     def hire_gm(self, team_id: int, candidate_id: str) -> Dict[str, Any]:
         """
@@ -200,39 +219,44 @@ class OwnerService:
             ValueError: If candidate not found
         """
         candidates = self._get_staff_api().get_candidates(
-            self._dynasty_id, team_id, self._season, "GM"
+            self._dynasty_id, team_id, self._season, StaffType.GM
         )
 
         selected = next(
-            (c for c in candidates if c["staff_id"] == candidate_id),
+            (c for c in candidates if c.staff_id == candidate_id),
             None
         )
 
         if not selected:
             raise ValueError(f"GM candidate {candidate_id} not found")
 
-        selected["hire_season"] = self._season
+        # Convert to dict and add hire_season
+        gm_data = self._candidate_to_dict(selected)
+        gm_data["hire_season"] = self._season
 
         # Get current HC (or create default)
         current = self.get_current_staff(team_id)
-        hc_data = current["hc"] if current else self._create_default_hc()
+        if current:
+            hc_data = self._staff_member_to_dict(current["hc"])
+        else:
+            hc_data = self._create_default_hc()
 
         # Update assignment
-        self._get_staff_api().save_staff_assignment(
+        self._get_staff_api().save_staff_assignment_dict(
             self._dynasty_id, team_id, self._season,
-            selected, hc_data
+            gm_data, hc_data
         )
 
         # Clear GM candidates
         self._get_staff_api().clear_candidates(
-            self._dynasty_id, team_id, self._season, "GM"
+            self._dynasty_id, team_id, self._season, StaffType.GM
         )
 
         self._logger.info(
-            f"Hired GM {selected['name']} ({selected['archetype_key']}) for team {team_id}"
+            f"Hired GM {gm_data['name']} ({gm_data['archetype_key']}) for team {team_id}"
         )
 
-        return selected
+        return gm_data
 
     def hire_hc(self, team_id: int, candidate_id: str) -> Dict[str, Any]:
         """
@@ -249,39 +273,44 @@ class OwnerService:
             ValueError: If candidate not found
         """
         candidates = self._get_staff_api().get_candidates(
-            self._dynasty_id, team_id, self._season, "HC"
+            self._dynasty_id, team_id, self._season, StaffType.HEAD_COACH
         )
 
         selected = next(
-            (c for c in candidates if c["staff_id"] == candidate_id),
+            (c for c in candidates if c.staff_id == candidate_id),
             None
         )
 
         if not selected:
             raise ValueError(f"HC candidate {candidate_id} not found")
 
-        selected["hire_season"] = self._season
+        # Convert to dict and add hire_season
+        hc_data = self._candidate_to_dict(selected)
+        hc_data["hire_season"] = self._season
 
         # Get current GM (or create default)
         current = self.get_current_staff(team_id)
-        gm_data = current["gm"] if current else self._create_default_gm()
+        if current:
+            gm_data = self._staff_member_to_dict(current["gm"])
+        else:
+            gm_data = self._create_default_gm()
 
         # Update assignment
-        self._get_staff_api().save_staff_assignment(
+        self._get_staff_api().save_staff_assignment_dict(
             self._dynasty_id, team_id, self._season,
-            gm_data, selected
+            gm_data, hc_data
         )
 
         # Clear HC candidates
         self._get_staff_api().clear_candidates(
-            self._dynasty_id, team_id, self._season, "HC"
+            self._dynasty_id, team_id, self._season, StaffType.HEAD_COACH
         )
 
         self._logger.info(
-            f"Hired HC {selected['name']} ({selected['archetype_key']}) for team {team_id}"
+            f"Hired HC {hc_data['name']} ({hc_data['archetype_key']}) for team {team_id}"
         )
 
-        return selected
+        return hc_data
 
     # ==================== Directives Management ====================
 
@@ -297,9 +326,12 @@ class OwnerService:
         Returns:
             Dict with directive fields, or None if not set
         """
-        return self._get_directives_api().get_directives(
+        directives = self._get_directives_api().get_directives(
             self._dynasty_id, team_id, self._season + 1  # For NEXT season
         )
+        if directives is None:
+            return None
+        return asdict(directives)
 
     def save_directives(self, team_id: int, directives: Dict[str, Any]) -> bool:
         """
@@ -312,7 +344,7 @@ class OwnerService:
         Returns:
             True if successful
         """
-        success = self._get_directives_api().save_directives(
+        success = self._get_directives_api().save_directives_dict(
             self._dynasty_id, team_id, self._season + 1,  # For NEXT season
             directives
         )
@@ -339,7 +371,7 @@ class OwnerService:
         gm_data = self._create_default_gm()
         hc_data = self._create_default_hc()
 
-        self._get_staff_api().save_staff_assignment(
+        self._get_staff_api().save_staff_assignment_dict(
             self._dynasty_id, team_id, self._season,
             gm_data, hc_data
         )
@@ -424,7 +456,7 @@ class OwnerService:
         prev_directives = self._get_directives_api().get_directives(
             self._dynasty_id, team_id, self._season
         )
-        target_wins = prev_directives.get("target_wins") if prev_directives else None
+        target_wins = prev_directives.target_wins if prev_directives else None
 
         # Note: Actual wins/losses should be fetched from standings
         # This is a placeholder - integrate with StandingsAPI
@@ -433,4 +465,28 @@ class OwnerService:
             "target_wins": target_wins,
             "wins": None,  # TODO: Get from standings
             "losses": None,  # TODO: Get from standings
+        }
+
+    # ==================== Helper Methods ====================
+
+    def _candidate_to_dict(self, candidate) -> Dict[str, Any]:
+        """Convert StaffCandidate to dict."""
+        return {
+            "staff_id": candidate.staff_id,
+            "name": candidate.name,
+            "archetype_key": candidate.archetype_key,
+            "custom_traits": candidate.custom_traits,
+            "history": candidate.history,
+            "is_selected": candidate.is_selected,
+        }
+
+    def _staff_member_to_dict(self, member) -> Dict[str, Any]:
+        """Convert StaffMember to dict."""
+        return {
+            "staff_id": member.staff_id,
+            "name": member.name,
+            "archetype_key": member.archetype_key,
+            "custom_traits": member.custom_traits,
+            "history": member.history,
+            "hire_season": member.hire_season,
         }

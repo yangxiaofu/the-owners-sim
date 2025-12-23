@@ -24,6 +24,7 @@ class RealPlayer:
     attributes: Dict[str, Any]
     birthdate: Optional[str] = None  # Birthdate in YYYY-MM-DD format
     contract: Optional[Dict[str, Any]] = None  # Contract data from JSON
+    years_pro: int = 0  # Years of professional experience
     
     @property
     def full_name(self) -> str:
@@ -182,6 +183,11 @@ class PlayerDataLoader:
 
     def _create_and_index_player(self, player_id_str: str, player_data: Dict[str, Any]):
         """Create a RealPlayer object and index it"""
+        # Calculate years_pro from birthdate if not explicitly provided
+        years_pro = player_data.get('years_pro', 0)
+        if years_pro == 0 and player_data.get('birthdate'):
+            years_pro = self._calculate_years_pro_from_birthdate(player_data['birthdate'])
+
         player = RealPlayer(
             player_id=player_data['player_id'],
             first_name=player_data['first_name'],
@@ -191,7 +197,8 @@ class PlayerDataLoader:
             team_id=player_data['team_id'],
             attributes=player_data['attributes'],
             birthdate=player_data.get('birthdate'),  # Include birthdate if present
-            contract=player_data.get('contract')  # Include contract data if present
+            contract=player_data.get('contract'),  # Include contract data if present
+            years_pro=years_pro
         )
 
         # Index by ID
@@ -207,7 +214,30 @@ class PlayerDataLoader:
             if position not in self._players_by_position:
                 self._players_by_position[position] = []
             self._players_by_position[position].append(player)
-    
+
+    def _calculate_years_pro_from_birthdate(self, birthdate: str) -> int:
+        """
+        Calculate years of professional experience from birthdate.
+
+        Assumes players enter the NFL at approximately 22 years old (after college).
+        Uses 2025 as the current season year.
+
+        Args:
+            birthdate: Date string in YYYY-MM-DD format
+
+        Returns:
+            Estimated years of professional experience (minimum 0)
+        """
+        try:
+            birth_year = int(birthdate.split('-')[0])
+            # Typical NFL entry age is 22 (after 4 years of college)
+            entry_year = birth_year + 22
+            current_season = 2025
+            years_pro = current_season - entry_year
+            return max(0, years_pro)  # Minimum 0 for rookies
+        except (ValueError, IndexError):
+            return 0  # Default to 0 if birthdate parsing fails
+
     def get_player_by_id(self, player_id: int) -> Optional[RealPlayer]:
         """
         Get player by numerical ID

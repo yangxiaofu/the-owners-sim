@@ -17,6 +17,12 @@ from .awards_api import (
 )
 from .owner_directives_api import OwnerDirectivesAPI
 from .staff_api import StaffAPI
+from .proposal_api import ProposalAPI
+from .retired_players_api import (
+    RetiredPlayersAPI,
+    RetiredPlayer,
+    CareerSummary,
+)
 
 __all__ = [
     "GameCycleDatabase",
@@ -30,4 +36,8 @@ __all__ = [
     "StatisticalLeader",
     "OwnerDirectivesAPI",
     "StaffAPI",
+    "ProposalAPI",
+    "RetiredPlayersAPI",
+    "RetiredPlayer",
+    "CareerSummary",
 ]

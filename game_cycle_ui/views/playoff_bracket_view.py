@@ -17,7 +17,11 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor
 
 from game_cycle_ui.dialogs.box_score_dialog import BoxScoreDialog
-from game_cycle_ui.theme import TABLE_HEADER_STYLE
+from game_cycle_ui.theme import (
+    PRIMARY_BUTTON_STYLE,
+    Typography,
+    apply_table_style
+)
 
 
 class PlayoffBracketView(QWidget):
@@ -86,17 +90,13 @@ class PlayoffBracketView(QWidget):
         header_layout = QHBoxLayout()
 
         header = QLabel("NFL PLAYOFFS")
-        header.setFont(QFont("Arial", 18, QFont.Weight.Bold))
+        header.setFont(Typography.H3)
         header_layout.addWidget(header)
 
         header_layout.addStretch()
 
         self.simulate_btn = QPushButton("Simulate Round")
-        self.simulate_btn.setStyleSheet(
-            "QPushButton { background-color: #388E3C; color: white; "
-            "border-radius: 4px; padding: 8px 16px; font-weight: bold; }"
-            "QPushButton:hover { background-color: #2E7D32; }"
-        )
+        self.simulate_btn.setStyleSheet(PRIMARY_BUTTON_STYLE)
         self.simulate_btn.clicked.connect(self.simulate_round_requested.emit)
         header_layout.addWidget(self.simulate_btn)
 
@@ -135,7 +135,7 @@ class PlayoffBracketView(QWidget):
     def _create_round_table(self, title: str, num_games: int) -> QGroupBox:
         """Create a grouped table for one round."""
         group = QGroupBox(title)
-        group.setFont(QFont("Arial", 12, QFont.Weight.Bold))
+        group.setFont(Typography.H6)
         group.setMinimumWidth(280)
 
         layout = QVBoxLayout(group)
@@ -145,12 +145,12 @@ class PlayoffBracketView(QWidget):
         table.setHorizontalHeaderLabels(["Away", "Home", "Score", "Status"])
         table.setObjectName("round_table")
 
-        # Configure table
-        table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        # Apply standard table styling
+        apply_table_style(table, row_height=35)
+
+        # Configure selection mode and grid
         table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
-        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         table.setShowGrid(True)
-        table.setAlternatingRowColors(True)
 
         # Connect double-click to open box score
         table.cellDoubleClicked.connect(
@@ -165,10 +165,6 @@ class PlayoffBracketView(QWidget):
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)    # Status
         table.setColumnWidth(2, 60)
         table.setColumnWidth(3, 50)
-
-        # Row height
-        table.verticalHeader().setDefaultSectionSize(35)
-        table.verticalHeader().setVisible(False)
 
         # Calculate height based on games
         table_height = num_games * 35 + 30  # rows + header
@@ -336,17 +332,14 @@ class PlayoffBracketView(QWidget):
                 status_item = QTableWidgetItem("TBD")
                 status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 status_item.setForeground(self.PLACEHOLDER_COLOR)
-                font = status_item.font()
-                font.setPointSize(8)
+                font = Typography.TINY
                 font.setItalic(True)
                 status_item.setFont(font)
             elif is_played:
                 status_item = QTableWidgetItem("FINAL")
                 status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
                 status_item.setForeground(QColor("#666"))
-                font = status_item.font()
-                font.setPointSize(8)
-                status_item.setFont(font)
+                status_item.setFont(Typography.TINY)
             else:
                 status_item = QTableWidgetItem("")
                 status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)

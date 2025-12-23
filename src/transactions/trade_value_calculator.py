@@ -214,6 +214,14 @@ class TradeValueCalculator:
             base_value = ((overall_rating - TradeValueScaling.BASE_VALUE_OFFSET) ** TradeValueScaling.BASE_VALUE_EXPONENT) / TradeValueScaling.BASE_VALUE_DIVISOR
         base_value = max(0, base_value)  # No negative values
 
+        # Step 1b: Elite/Star player premium (v1.2 - trade realism)
+        # Elite players (90+ OVR) are franchise cornerstones worth 2.5x
+        # Star players (85-89 OVR) are high-value assets worth 1.5x
+        if overall_rating >= TradeValueScaling.ELITE_THRESHOLD:
+            base_value *= TradeValueScaling.ELITE_MULTIPLIER
+        elif overall_rating >= TradeValueScaling.STAR_THRESHOLD:
+            base_value *= TradeValueScaling.STAR_MULTIPLIER
+
         # Step 2: Position tier multiplier
         position_multiplier = self._get_position_multiplier(position)
 

@@ -1,6 +1,6 @@
 # Milestone: Free Agency Depth
 
-> **Status:** 🔄 In Progress (Tollgates 1-5 Complete, 165 tests)
+> **Status:** ✅ Complete (All 7 Tollgates, 186+ tests)
 > **Dependencies:** Player Personas (done), Salary Cap (done)
 
 ## Overview
@@ -16,10 +16,10 @@ Transform the current monolithic free agency stage into a **5-wave system** with
 | 3 | Offer System Integration | ✅ Complete (28 tests) |
 | 4 | UI Controller Integration | ✅ Complete (31 tests) |
 | 5 | UI Wave Display | ✅ Complete (33 tests) |
-| 6 | Offer Dialog | Not Started |
-| 7 | Integration Testing | Not Started |
+| 6 | Contract Modification Dialog | ✅ Complete |
+| 7 | Integration Testing | ✅ Complete (21 tests) |
 
-**Total Tests:** 165 passing
+**Total Tests:** 186+ passing
 
 ---
 
@@ -209,39 +209,64 @@ class FAWaveExecutor:
 
 ---
 
-## Tollgate 6: UI Updates - Offer Dialog
+## Tollgate 6: Contract Modification Dialog ✅
 
-**Goal**: Create `OfferDialog` for custom offer submission
+**Goal**: Allow Owner to modify GM's proposed contract terms before approval
 
-**File**: `game_cycle_ui/dialogs/offer_dialog.py`
+**File**: `game_cycle_ui/dialogs/contract_modification_dialog.py`
+
+### Design Philosophy
+Owner does NOT make direct offers — GM proposes, Owner can modify terms before approval.
+
+### Deliverables
+
+- [x] `ContractModificationDialog` - Modal dialog for modifying GM proposal terms
+- [x] `ModifiedContractTerms` - Dataclass for modified contract data
+- [x] Add `proposal_modify_clicked` signal to `GMProposalCard`
+- [x] Add `proposal_modify_clicked` signal to `GMProposalsPanel`
+- [x] Add `proposal_modify_clicked` signal to `GMProposalNotificationDialog`
+- [x] Add "Modify" button to GMProposalCard (between Approve/Reject)
+- [x] Add "Modify Terms" button to GMProposalNotificationDialog
+- [x] Register dialog in `game_cycle_ui/dialogs/__init__.py`
 
 ### UI Elements
 
-- Player header (name, position, overall, age)
-- Market value reference display
-- AAV slider (70%-150% of market)
-- Years slider (1-5)
+- Player header (name, position, age, OVR, market AAV)
+- GM's original proposal (read-only reference)
+- Years slider (1-5, default = GM's proposal)
+- AAV slider (70%-150% of market value)
 - Guaranteed % slider (30%-100%)
-- Live acceptance probability (updates as values change)
-- Cap impact display
-- Submit/Cancel buttons
+- Live acceptance probability bar (color-coded)
+- Cap impact display with compliance warnings
+- "Approve with Changes" / "Cancel" buttons
+
+### Signals
+
+- `terms_modified(proposal_id, ModifiedContractTerms)` - Emitted when owner approves with changes
 
 ---
 
-## Tollgate 7: Integration Testing
+## Tollgate 7: Integration Testing ✅
 
 **Goal**: End-to-end testing and edge cases
 
-### Test Scenarios
+**File**: `tests/test_game_cycle/integration/test_fa_wave_integration.py`
 
-- Full wave cycle (Legal Tampering → Wave 3)
-- Post-draft wave activation
-- User wins bidding war
-- Surprise signing steals target
-- No offers on player (remains FA)
-- Money-first persona behavior
-- Ring chaser persona behavior
-- App restart persistence
+### Deliverables
+
+- [x] Full wave cycle test (Legal Tampering → Wave 3)
+- [x] Post-draft wave activation test
+- [x] User wins bidding war test
+- [x] Surprise signing steals target test
+- [x] No offers on player (remains FA) test
+- [x] Money-first persona behavior test
+- [x] Ring chaser persona behavior test
+- [x] App restart persistence test
+- [x] Dynasty isolation test
+- [x] FA completion status tests
+- [x] Executor integration tests
+
+**Total Integration Tests:** 21 passing
 
 ---
 

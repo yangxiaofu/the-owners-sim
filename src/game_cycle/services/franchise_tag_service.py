@@ -132,8 +132,15 @@ class FranchiseTagService:
                     dynasty_id=self._dynasty_id
                 )
 
-                # Current cap hit for reference
-                current_cap_hit = contract.get("cap_hit", 0)
+                # Current cap hit for reference - fetch from contract_year_details
+                contract_id = contract.get("contract_id")
+                current_cap_hit = 0
+                if contract_id:
+                    year_details = self._cap_api.get_contract_year_details(
+                        contract_id, self._season
+                    )
+                    if year_details:
+                        current_cap_hit = year_details[0].get("total_cap_hit", 0)
 
                 taggable_players.append({
                     "player_id": player_id,
@@ -145,7 +152,7 @@ class FranchiseTagService:
                     "current_cap_hit": current_cap_hit,
                     "franchise_tag_cost": franchise_tag_cost,
                     "transition_tag_cost": transition_tag_cost,
-                    "contract_id": contract.get("contract_id"),
+                    "contract_id": contract_id,
                 })
 
             # Sort by overall rating (highest first)

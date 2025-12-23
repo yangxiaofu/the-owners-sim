@@ -26,7 +26,7 @@ Usage:
 """
 
 from typing import List, Optional, Tuple, Any
-from src.constants.player_stats_fields import PlayerStatField
+from constants.player_stats_fields import PlayerStatField
 
 
 def generate_player_stats_insert(

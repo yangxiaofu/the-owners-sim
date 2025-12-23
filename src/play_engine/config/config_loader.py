@@ -135,7 +135,82 @@ class PlayEngineConfig:
         """Get variance ranges configuration"""
         config = self._configs.get(config_type, {})
         return config.get('variance_ranges', {})
-    
+
+    def get_receiver_targeting_config(self) -> Dict[str, Any]:
+        """
+        Get receiver targeting weights configuration (Tier 1 refactoring).
+
+        Raises:
+            ValueError: If receiver_targeting section is missing from pass_play_config.json
+        """
+        config = self._configs.get('pass_play', {})
+        if 'receiver_targeting' not in config:
+            raise ValueError(
+                "Missing required config section: receiver_targeting in pass_play_config.json. "
+                "This section is required for WR/TE/RB target distribution."
+            )
+        return config['receiver_targeting']
+
+    def get_environmental_modifiers_config(self) -> Dict[str, Any]:
+        """
+        Get environmental modifiers configuration (Tier 1 refactoring).
+
+        Raises:
+            ValueError: If environmental_modifiers section is missing from pass_play_config.json
+        """
+        config = self._configs.get('pass_play', {})
+        if 'environmental_modifiers' not in config:
+            raise ValueError(
+                "Missing required config section: environmental_modifiers in pass_play_config.json. "
+                "This section is required for weather and field position effects."
+            )
+        return config['environmental_modifiers']
+
+    def get_qb_scramble_config(self) -> Dict[str, Any]:
+        """
+        Get QB scramble mechanics configuration (Tier 1 refactoring).
+
+        Raises:
+            ValueError: If qb_scramble section is missing from pass_play_config.json
+        """
+        config = self._configs.get('pass_play', {})
+        if 'qb_scramble' not in config:
+            raise ValueError(
+                "Missing required config section: qb_scramble in pass_play_config.json. "
+                "This section is required for mobile QB scramble mechanics."
+            )
+        return config['qb_scramble']
+
+    def get_breakaway_run_config(self) -> Dict[str, Any]:
+        """
+        Get breakaway run mechanics configuration.
+
+        Raises:
+            ValueError: If breakaway_run section is missing from run_play_config.json
+        """
+        config = self._configs.get('run_play', {})
+        if 'breakaway_run' not in config:
+            raise ValueError(
+                "Missing required config section: breakaway_run in run_play_config.json. "
+                "This section is required for explosive rushing play mechanics."
+            )
+        return config['breakaway_run']
+
+    def get_situational_modifiers_config(self) -> Dict[str, Any]:
+        """
+        Get situational modifiers configuration (Tier 1 refactoring).
+
+        Raises:
+            ValueError: If situational_modifiers section is missing from pass_play_config.json
+        """
+        config = self._configs.get('pass_play', {})
+        if 'situational_modifiers' not in config:
+            raise ValueError(
+                "Missing required config section: situational_modifiers in pass_play_config.json. "
+                "This section is required for down/distance/field position modifiers."
+            )
+        return config['situational_modifiers']
+
     def reload_configs(self):
         """Reload all configuration files (useful for runtime config changes)"""
         self._configs.clear()

@@ -1,7 +1,7 @@
 {
   "team_id": 3,
   "team_name": "New England Patriots",
-  "total_players": 52,
+  "total_players": 53,
   "players": {
     "4001": {
       "player_id": 4001,
@@ -1635,6 +1635,42 @@
         "guaranteed_money": 0,
         "contract_type": "practice_squad",
         "cap_hit_2025": 915000
+      }
+    },
+    "1243": {
+      "player_id": 1243,
+      "first_name": "Quandre",
+      "last_name": "Diggs",
+      "number": 6,
+      "birthdate": "1987-04-19",
+      "positions": [
+        "safety"
+      ],
+      "team_id": 3,
+      "attributes": {
+        "overall": 84,
+        "speed": 85,
+        "strength": 75,
+        "coverage": 88,
+        "agility": 85,
+        "awareness": 92,
+        "discipline": 88,
+        "composure": 88,
+        "experience": 95,
+        "penalty_technique": 88,
+        "man_coverage": 85,
+        "zone_coverage": 88,
+        "ball_skills": 90,
+        "tackling": 82,
+        "leadership": 90
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 3000000,
+        "signing_bonus": 500000,
+        "guaranteed_money": 1500000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 3000000
       }
     },
     "35166": {

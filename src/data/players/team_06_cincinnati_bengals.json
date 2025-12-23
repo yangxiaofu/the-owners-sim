@@ -1,8 +1,41 @@
 {
   "team_id": 6,
   "team_name": "Cincinnati Bengals",
-  "total_players": 50,
+  "total_players": 51,
   "players": {
+    "7001": {
+      "player_id": 7001,
+      "first_name": "Joe",
+      "last_name": "Flacco",
+      "number": 15,
+      "birthdate": "1987-05-03",
+      "positions": [
+        "quarterback"
+      ],
+      "team_id": 6,
+      "attributes": {
+        "overall": 78,
+        "speed": 45,
+        "accuracy": 75,
+        "arm_strength": 85,
+        "awareness": 92,
+        "discipline": 90,
+        "composure": 88,
+        "experience": 95,
+        "penalty_technique": 92,
+        "leadership": 90,
+        "pocket_presence": 85,
+        "mobility": 45
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 3500000,
+        "signing_bonus": 750000,
+        "guaranteed_money": 2000000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 3500000
+      }
+    },
     "8001": {
       "player_id": 8001,
       "first_name": "Joe",

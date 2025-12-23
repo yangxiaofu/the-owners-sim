@@ -93,6 +93,38 @@ class NFLBenchmarks2023:
             'time_of_possession', 'game', 30.0, 25.0, 35.0,
             'minutes', True, 'Time of possession in minutes'
         ),
+        'drops_per_game': NFLBenchmark(
+            'drops_per_game', 'game', 2.8, 1.5, 4.5,
+            'count', True, 'Dropped passes per team per game (all receivers)'
+        ),
+        'receiving_long_per_game': NFLBenchmark(
+            'receiving_long_per_game', 'game', 38.0, 25.0, 55.0,
+            'yards', True, 'Longest reception per team per game'
+        ),
+        'rushing_long_per_game': NFLBenchmark(
+            'rushing_long_per_game', 'game', 18.0, 10.0, 28.0,
+            'yards', True, 'Longest rush per team per game'
+        ),
+        'fumbles_per_game': NFLBenchmark(
+            'fumbles_per_game', 'game', 0.9, 0.5, 1.5,
+            'count', True, 'Fumbles per team per game (rushing and receiving)'
+        ),
+        'explosive_plays_per_game': NFLBenchmark(
+            'explosive_plays_per_game', 'game', 4.5, 3.0, 6.5,
+            'count', True, 'Explosive plays (20+ yards) per team per game'
+        ),
+        'rushing_explosive_plays_per_game': NFLBenchmark(
+            'rushing_explosive_plays_per_game', 'game', 1.2, 0.5, 2.0,
+            'count', True, 'Rushing explosive plays (20+ yards) per team per game'
+        ),
+        'receiving_explosive_plays_per_game': NFLBenchmark(
+            'receiving_explosive_plays_per_game', 'game', 3.3, 2.0, 5.0,
+            'count', True, 'Receiving explosive plays (20+ yards) per team per game'
+        ),
+        'team_tackles_per_game': NFLBenchmark(
+            'team_tackles_per_game', 'game', 65.0, 55.0, 75.0,
+            'count', True, 'Total tackles per team per game (all defensive players)'
+        ),
     }
 
     # =========================================================================
@@ -254,6 +286,37 @@ class NFLBenchmarks2023:
         'def_qb_hits_per_game': NFLBenchmark(
             'def_qb_hits_per_game', 'defense', 0.3, 0.1, 0.6,
             'count', True, 'QB hits per pass rusher per game'
+        ),
+        # =========================================================================
+        # SACKS BY POSITION GROUP (NFL 2023 data)
+        # Total sacks per game: ~2.3, distributed roughly:
+        # - DL (DE+DT): ~60-65% = 1.4-1.5 sacks/game
+        # - LB (OLB+ILB): ~25-30% = 0.6-0.7 sacks/game
+        # - DB (CB+S): ~8-12% = 0.2-0.3 sacks/game
+        # =========================================================================
+        'dl_sacks_per_game': NFLBenchmark(
+            'dl_sacks_per_game', 'defense', 1.45, 1.0, 2.0,
+            'count', True, 'Sacks by D-Line (DE+DT) per team per game'
+        ),
+        'lb_sacks_per_game': NFLBenchmark(
+            'lb_sacks_per_game', 'defense', 0.65, 0.3, 1.0,
+            'count', True, 'Sacks by Linebackers (OLB+ILB/MLB) per team per game'
+        ),
+        'db_sacks_per_game': NFLBenchmark(
+            'db_sacks_per_game', 'defense', 0.20, 0.05, 0.4,
+            'count', True, 'Sacks by DBs (CB+S) per team per game - blitz sacks'
+        ),
+        'dl_sack_pct': NFLBenchmark(
+            'dl_sack_pct', 'defense', 63.0, 55.0, 72.0,
+            'percentage', True, 'Percentage of sacks by D-Line'
+        ),
+        'lb_sack_pct': NFLBenchmark(
+            'lb_sack_pct', 'defense', 28.0, 20.0, 38.0,
+            'percentage', True, 'Percentage of sacks by Linebackers'
+        ),
+        'db_sack_pct': NFLBenchmark(
+            'db_sack_pct', 'defense', 9.0, 3.0, 15.0,
+            'percentage', True, 'Percentage of sacks by DBs (blitzes)'
         ),
     }
 

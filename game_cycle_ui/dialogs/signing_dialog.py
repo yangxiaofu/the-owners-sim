@@ -5,14 +5,25 @@ Displays detailed persona information, preference weights, team fit analysis,
 and concerns to help users make informed signing decisions.
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional, TYPE_CHECKING
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QProgressBar,
     QPushButton, QFrame, QGridLayout, QGroupBox, QWidget
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+
+from game_cycle_ui.theme import (
+    Colors, PRIMARY_BUTTON_STYLE, NEUTRAL_BUTTON_STYLE,
+    Typography, FontSizes, TextColors
+)
+from game_cycle_ui.widgets import (
+    ValuationBreakdownWidget,
+    CollapsibleSection,
+)
+
+if TYPE_CHECKING:
+    from contract_valuation.models import ValuationResult
 
 
 class SigningDialog(QDialog):
@@ -24,7 +35,8 @@ class SigningDialog(QDialog):
         player_info: Dict[str, Any],
         interest_data: Dict[str, Any],
         persona_data: Dict[str, Any],
-        team_name: str
+        team_name: str,
+        valuation_result: Optional["ValuationResult"] = None
     ):
         """
         Initialize the signing dialog.
@@ -35,6 +47,7 @@ class SigningDialog(QDialog):
             interest_data: Interest evaluation results
             persona_data: Full persona preference weights
             team_name: User's team name
+            valuation_result: Optional contract valuation breakdown for transparency
         """
         super().__init__(parent)
         self.setWindowTitle(f"Sign {player_info.get('name', 'Player')}?")
@@ -46,6 +59,7 @@ class SigningDialog(QDialog):
         self._interest_data = interest_data
         self._persona_data = persona_data
         self._team_name = team_name
+        self._valuation_result = valuation_result
 
         self._setup_ui()
 
@@ -74,6 +88,11 @@ class SigningDialog(QDialog):
         concerns_group = self._create_concerns_section()
         layout.addWidget(concerns_group)
 
+        # Contract Valuation Section (if available)
+        if self._valuation_result is not None:
+            valuation_section = self._create_valuation_section()
+            layout.addWidget(valuation_section)
+
         # Acceptance Probability Bar
         prob_widget = self._create_probability_bar()
         layout.addWidget(prob_widget)
@@ -94,10 +113,10 @@ class SigningDialog(QDialog):
         overall = self._player_info.get("overall", 0)
 
         name_label = QLabel(f"<b>{name}</b>")
-        name_label.setFont(QFont("Arial", 14, QFont.Bold))
+        name_label.setFont(Typography.H5)
 
         pos_ovr = QLabel(f"{position} | OVR: {overall}")
-        pos_ovr.setStyleSheet("color: #666;")
+        pos_ovr.setStyleSheet(f"color: {Colors.MUTED};")
 
         layout.addWidget(name_label)
         layout.addStretch()
@@ -114,12 +133,12 @@ class SigningDialog(QDialog):
         hint = self._get_persona_hint(persona_type)
 
         type_label = QLabel(f"<b>{persona_type.replace('_', ' ').title()}</b>")
-        type_label.setFont(QFont("Arial", 11, QFont.Bold))
+        type_label.setFont(Typography.CAPTION_BOLD)
         layout.addWidget(type_label)
 
         if hint:
             hint_label = QLabel(hint)
-            hint_label.setStyleSheet("color: #666; font-style: italic;")
+            hint_label.setStyleSheet(f"color: {Colors.MUTED}; font-style: italic;")
             layout.addWidget(hint_label)
 
         return group
@@ -154,17 +173,17 @@ class SigningDialog(QDialog):
             if value >= 70:
                 bar.setStyleSheet(
                     "QProgressBar { border: 1px solid #ccc; border-radius: 3px; }"
-                    "QProgressBar::chunk { background-color: #2E7D32; }"  # Green
+                    f"QProgressBar::chunk {{ background-color: {Colors.SUCCESS}; }}"
                 )
             elif value >= 40:
                 bar.setStyleSheet(
                     "QProgressBar { border: 1px solid #ccc; border-radius: 3px; }"
-                    "QProgressBar::chunk { background-color: #1976D2; }"  # Blue
+                    f"QProgressBar::chunk {{ background-color: {Colors.INFO}; }}"
                 )
             else:
                 bar.setStyleSheet(
                     "QProgressBar { border: 1px solid #ccc; border-radius: 3px; }"
-                    "QProgressBar::chunk { background-color: #666666; }"  # Gray
+                    f"QProgressBar::chunk {{ background-color: {Colors.MUTED}; }}"
                 )
 
             layout.addWidget(label, row, 0)
@@ -193,15 +212,15 @@ class SigningDialog(QDialog):
 
         # Color based on interest
         if interest_score >= 80:
-            color = "#2E7D32"  # Green
+            color = Colors.SUCCESS
         elif interest_score >= 65:
-            color = "#1976D2"  # Blue
+            color = Colors.INFO
         elif interest_score >= 50:
-            color = "#666666"  # Gray
+            color = Colors.MUTED
         elif interest_score >= 35:
-            color = "#F57C00"  # Orange
+            color = Colors.WARNING
         else:
-            color = "#C62828"  # Red
+            color = Colors.ERROR
 
         score_bar.setStyleSheet(
             f"QProgressBar {{ border: 1px solid #ccc; border-radius: 3px; }}"
@@ -224,12 +243,12 @@ class SigningDialog(QDialog):
         if concerns:
             for concern in concerns[:4]:  # Show max 4 concerns
                 concern_label = QLabel(f"• {concern}")
-                concern_label.setStyleSheet("color: #C62828;")
+                concern_label.setStyleSheet(f"color: {Colors.ERROR};")
                 concern_label.setWordWrap(True)
                 layout.addWidget(concern_label)
         else:
             no_concerns = QLabel("No significant concerns")
-            no_concerns.setStyleSheet("color: #2E7D32; font-style: italic;")
+            no_concerns.setStyleSheet(f"color: {Colors.SUCCESS}; font-style: italic;")
             layout.addWidget(no_concerns)
 
         return group
@@ -256,11 +275,11 @@ class SigningDialog(QDialog):
 
         # Color based on probability
         if prob_pct >= 70:
-            color = "#2E7D32"  # Green
+            color = Colors.SUCCESS
         elif prob_pct >= 50:
-            color = "#1976D2"  # Blue
+            color = Colors.INFO
         else:
-            color = "#F57C00"  # Orange
+            color = Colors.WARNING
 
         bar.setStyleSheet(
             f"QProgressBar {{ border: 1px solid #ccc; border-radius: 3px; }}"
@@ -274,7 +293,7 @@ class SigningDialog(QDialog):
         if suggested_premium > 1.0:
             premium_pct = int((suggested_premium - 1.0) * 100)
             suggestion = QLabel(f"Tip: Offer {premium_pct}% above market value to improve chances")
-            suggestion.setStyleSheet("color: #666; font-style: italic; font-size: 10px;")
+            suggestion.setStyleSheet(f"color: {Colors.MUTED}; font-style: italic; font-size: {FontSizes.SMALL};")
             suggestion.setAlignment(Qt.AlignCenter)
             layout.addWidget(suggestion)
 
@@ -285,18 +304,12 @@ class SigningDialog(QDialog):
         layout = QHBoxLayout()
 
         cancel_btn = QPushButton("Cancel")
-        cancel_btn.setStyleSheet(
-            "QPushButton { background-color: #ccc; color: #333; border-radius: 3px; padding: 8px 20px; }"
-            "QPushButton:hover { background-color: #bbb; }"
-        )
+        cancel_btn.setStyleSheet(NEUTRAL_BUTTON_STYLE)
         cancel_btn.clicked.connect(self.reject)
 
         proceed_btn = QPushButton("Proceed to Sign")
         proceed_btn.setDefault(True)
-        proceed_btn.setStyleSheet(
-            "QPushButton { background-color: #2E7D32; color: white; border-radius: 3px; padding: 8px 20px; }"
-            "QPushButton:hover { background-color: #1B5E20; }"
-        )
+        proceed_btn.setStyleSheet(PRIMARY_BUTTON_STYLE)
         proceed_btn.clicked.connect(self.accept)
 
         layout.addStretch()
@@ -304,6 +317,20 @@ class SigningDialog(QDialog):
         layout.addWidget(proceed_btn)
 
         return layout
+
+    def _create_valuation_section(self) -> QFrame:
+        """Create collapsible section showing contract valuation breakdown."""
+        container = QFrame()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        section = CollapsibleSection("Contract Valuation Details", expanded=False)
+        widget = ValuationBreakdownWidget()
+        widget.set_valuation_result(self._valuation_result)
+        section.content_layout().addWidget(widget)
+        layout.addWidget(section)
+
+        return container
 
     def _get_persona_hint(self, persona_type: str) -> str:
         """Get user-friendly description for persona type."""

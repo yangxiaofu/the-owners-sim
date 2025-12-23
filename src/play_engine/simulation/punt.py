@@ -843,15 +843,15 @@ class PuntSimulator(BasePlaySimulator):
                 punter_stats.punts = 1
                 punter_stats.punt_yards = result.punt_yards
                 punter_stats.net_punt_yards = result.net_yards
-                
+
                 if result.punt_yards >= 55:  # Long punt threshold
                     punter_stats.long_punts = 1
-                    
+
                 if result.outcome in [PuntOutcome.COFFIN_CORNER, PuntOutcome.DOWNED]:
                     punter_stats.punts_inside_20 = 1  # Assume good placement
 
-            # Track special teams snap for punter (ensures punter appears in box score)
-            punter_stats.special_teams_snaps = 1
+            # Add special teams snap credit for punter (ensures punter appears in box score)
+            punter_stats.add_special_teams_snap()
 
             result.player_stats[self.punter.name] = punter_stats
 
@@ -863,37 +863,42 @@ class PuntSimulator(BasePlaySimulator):
         # Returner statistics
         if self.returner and result.outcome in [PuntOutcome.PUNT_RETURN, PuntOutcome.FAIR_CATCH, PuntOutcome.MUFFED]:
             returner_stats = create_player_stats_from_player(self.returner)
-            
+
             if result.outcome == PuntOutcome.PUNT_RETURN:
                 returner_stats.punt_returns = 1
                 returner_stats.punt_return_yards = result.return_yards
-                
+
                 if result.return_yards >= 20:  # Long return threshold
                     returner_stats.long_punt_returns = 1
-                    
+
             elif result.outcome == PuntOutcome.FAIR_CATCH:
                 returner_stats.fair_catches = 1
-                
+
             elif result.outcome == PuntOutcome.MUFFED:
                 returner_stats.muffed_punts = 1
-            
+
+            # Add special teams snap credit for returner
+            returner_stats.add_special_teams_snap()
+
             result.player_stats[self.returner.name] = returner_stats
         
         # Coverage team statistics
         for player in self.coverage_unit[:3]:  # Top 3 coverage players get credit
             coverage_stats = create_player_stats_from_player(player)
-            coverage_stats.special_teams_snaps = 1
-            
+
+            # Add special teams snap credit for coverage player
+            coverage_stats.add_special_teams_snap()
+
             if result.outcome == PuntOutcome.DOWNED:
                 # Randomly assign downed punt credit
                 if random.random() < 0.3:  # 30% chance any coverage player gets credit
                     coverage_stats.punts_downed = 1
-                    
+
             if result.outcome == PuntOutcome.PUNT_RETURN:
                 # Coverage tackle attribution
                 if random.random() < 0.4:  # 40% chance coverage player gets tackle
                     coverage_stats.tackles = 1  # Solo tackle (use 'tackles' field, not 'solo_tackles')
-            
+
             result.player_stats[player.name] = coverage_stats
 
         # Track special teams snaps for ALL 22 players on the field

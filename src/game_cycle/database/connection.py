@@ -500,6 +500,34 @@ class GameCycleDatabase:
         except sqlite3.OperationalError:
             pass  # Ignore errors during migration
 
+        # Migration 13: Add events table for schedule storage
+        # CRITICAL: This table is required for ScheduleService and RegularSeasonHandler
+        # Without it, schedule generation silently fails and no games are created
+        try:
+            cursor = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='events'"
+            )
+            if cursor.fetchone() is None:
+                conn.executescript('''
+                    CREATE TABLE IF NOT EXISTS events (
+                        event_id TEXT PRIMARY KEY,
+                        event_type TEXT NOT NULL,
+                        timestamp INTEGER NOT NULL,
+                        game_id TEXT,
+                        dynasty_id TEXT,
+                        data TEXT NOT NULL,
+                        FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_events_dynasty ON events(dynasty_id);
+                    CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
+                    CREATE INDEX IF NOT EXISTS idx_events_game_id ON events(game_id);
+                    CREATE INDEX IF NOT EXISTS idx_events_dynasty_game ON events(dynasty_id, game_id);
+                ''')
+                conn.commit()
+                print("[Migration 13] Created events table for schedule storage")
+        except sqlite3.OperationalError:
+            pass  # Ignore errors during migration
+
     def _migrate_pass_blocks_column(self, conn: sqlite3.Connection) -> None:
         """Add pass_blocks column to player_game_stats if missing."""
         try:

@@ -497,6 +497,30 @@ class TradeValueScaling:
     NEED_MULTIPLIER_DEFAULT = 1.0
     """Default multiplier when team needs unknown"""
 
+    # Elite/Star player value multipliers (v1.2 - trade realism)
+    ELITE_THRESHOLD = 90
+    """Overall rating threshold for elite player premium"""
+
+    ELITE_MULTIPLIER = 2.5
+    """
+    Multiplier for elite players (90+ OVR).
+
+    Elite players are franchise cornerstones requiring massive trade packages.
+    Real NFL examples:
+    - Myles Garrett (91 OVR): Would need 2-3 firsts + player
+    - Ja'Marr Chase (93 OVR): Would need 3+ firsts
+    """
+
+    STAR_THRESHOLD = 85
+    """Overall rating threshold for star player premium"""
+
+    STAR_MULTIPLIER = 1.5
+    """
+    Multiplier for star players (85-89 OVR).
+
+    Star players are high-value trade targets requiring significant packages.
+    """
+
 
 class FairnessRatings:
     """

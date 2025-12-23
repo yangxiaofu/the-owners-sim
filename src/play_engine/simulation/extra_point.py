@@ -560,24 +560,37 @@ class ExtraPointSimulator(BasePlaySimulator):
                 pass
             # else: pat_missed counts as attempt but not made
 
+            # Add special teams snap credit for kicker
+            kicker_stats.add_special_teams_snap()
+
             player_stats.append(kicker_stats)
 
         # Holder statistics
         if self.holder:
             holder_stats = create_player_stats_from_player(self.holder)
             holder_stats.field_goal_holds = 1  # Track holds for PATs too
+
+            # Add special teams snap credit for holder
+            holder_stats.add_special_teams_snap()
+
             player_stats.append(holder_stats)
 
         # Long snapper statistics
         if self.long_snapper:
             ls_stats = create_player_stats_from_player(self.long_snapper)
             ls_stats.long_snaps = 1
+
+            # Add special teams snap credit for long snapper
+            ls_stats.add_special_teams_snap()
+
             player_stats.append(ls_stats)
 
         # Protection unit statistics
         for protector in self.protection_unit:
             protector_stats = create_player_stats_from_player(protector)
-            protector_stats.special_teams_snaps = 1
+
+            # Add special teams snap credit for protector
+            protector_stats.add_special_teams_snap()
 
             if result.outcome == "pat_blocked":
                 # Random assignment of block responsibility
@@ -589,7 +602,9 @@ class ExtraPointSimulator(BasePlaySimulator):
         # Track special teams snaps for all defensive players
         for defender in self.defensive_players:
             defender_stats = create_player_stats_from_player(defender)
-            defender_stats.special_teams_snaps = 1
+
+            # Add special teams snap credit for defender
+            defender_stats.add_special_teams_snap()
 
             # Credit block if applicable
             if result.outcome == "pat_blocked":

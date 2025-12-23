@@ -28,7 +28,7 @@ from game_cycle_ui.theme import (
     NEUTRAL_BUTTON_STYLE, Typography, FontSizes, TextColors,
     apply_table_style
 )
-from game_cycle_ui.widgets import HOFBallotWidget
+from game_cycle_ui.widgets import HOFBallotWidget, AwardsGridWidget
 from game_cycle_ui.dialogs import HOFInducteeDialog
 
 logger = logging.getLogger(__name__)
@@ -76,6 +76,23 @@ STAT_CATEGORIES = [
     ('tackles_total', 'Total Tackles'),
     ('forced_fumbles', 'Forced Fumbles'),
 ]
+
+
+class AllProTableColumns:
+    """Column indices for All-Pro tables."""
+    POSITION = 0
+    PLAYER = 1
+    TEAM = 2
+    GRADE = 3
+
+
+class ProBowlTableColumns:
+    """Column indices for Pro Bowl tables."""
+    POSITION = 0
+    PLAYER = 1
+    TEAM = 2
+    SELECTION_TYPE = 3
+    SCORE = 4
 
 
 class AwardsView(QWidget):
@@ -214,9 +231,9 @@ class AwardsView(QWidget):
         self._create_stat_leaders_tab()
         self.tabs.addTab(self.stat_leaders_tab, "Stat Leaders")
 
-        # Tab 5: Award Race (mid-season tracking)
-        self._create_award_race_tab()
-        self.tabs.addTab(self.award_race_tab, "Award Race")
+        # Tab 5: Award History (past seasons)
+        self._create_award_history_tab()
+        self.tabs.addTab(self.award_history_tab, "Award History")
 
         # Tab 6: Hall of Fame
         self._create_hall_of_fame_tab()
@@ -229,179 +246,25 @@ class AwardsView(QWidget):
     # ============================================
 
     def _create_major_awards_tab(self):
-        """Create the Major Awards tab with all 6 awards."""
+        """Create the Major Awards tab with compact 2x3 grid."""
         self.major_awards_tab = QWidget()
 
-        # Use scroll area for many awards
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.NoFrame)
-
-        content = QWidget()
-        layout = QVBoxLayout(content)
-        layout.setSpacing(16)
-
-        # Create a group box for each award
-        self.award_widgets = {}
-        for award_id in ['mvp', 'opoy', 'dpoy', 'oroy', 'droy', 'cpoy']:
-            award_widget = self._create_award_widget(award_id)
-            self.award_widgets[award_id] = award_widget
-            layout.addWidget(award_widget)
-
-        layout.addStretch()
-        scroll.setWidget(content)
-
         tab_layout = QVBoxLayout(self.major_awards_tab)
-        tab_layout.setContentsMargins(0, 0, 0, 0)
-        tab_layout.addWidget(scroll)
+        tab_layout.setContentsMargins(10, 10, 10, 10)
+        tab_layout.setSpacing(12)
 
-    def _create_award_widget(self, award_id: str) -> QGroupBox:
-        """Create a widget for displaying a single award."""
-        icon = AWARD_ICONS.get(award_id, '')
-        name = AWARD_NAMES.get(award_id, award_id.upper())
+        # Compact 2x3 grid widget
+        self.awards_grid = AwardsGridWidget()
+        self.awards_grid.player_selected.connect(self.player_selected.emit)
+        self.awards_grid.award_clicked.connect(self._on_award_tile_clicked)
+        tab_layout.addWidget(self.awards_grid)
 
-        group = QGroupBox(f"{icon} {name}")
-        group.setStyleSheet(f"""
-            QGroupBox {{
-                font-weight: bold;
-                font-size: {FontSizes.H5};
-                color: {TextColors.ON_DARK};
-                background-color: #263238;
-                border: 1px solid #37474f;
-                border-radius: 6px;
-                margin-top: 12px;
-                padding-top: 10px;
-            }}
-            QGroupBox::title {{
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-                color: {TextColors.ON_DARK};
-            }}
-        """)
+        # Keep legacy dict for compatibility (but won't be used)
+        self.award_widgets = {}
 
-        layout = QVBoxLayout(group)
-        layout.setSpacing(8)
-
-        # Winner section - use dark background for better readability
-        winner_frame = QFrame()
-        winner_frame.setStyleSheet("background-color: #1e3a5f; border-radius: 4px; padding: 8px;")
-        winner_layout = QVBoxLayout(winner_frame)
-        winner_layout.setContentsMargins(12, 12, 12, 12)
-
-        # Winner name - white text on dark background
-        winner_name = QLabel("No winner yet")
-        winner_name.setObjectName(f"{award_id}_winner_name")
-        winner_name.setFont(Typography.H5)
-        winner_name.setStyleSheet(f"color: {TextColors.ON_DARK};")
-        winner_name.setCursor(Qt.PointingHandCursor)
-        winner_layout.addWidget(winner_name)
-
-        # Winner details (team, position) - light gray text
-        winner_details = QLabel("")
-        winner_details.setObjectName(f"{award_id}_winner_details")
-        winner_details.setStyleSheet("color: #b0bec5;")
-        winner_layout.addWidget(winner_details)
-
-        # Vote share progress bar - styled for dark background
-        vote_share_layout = QHBoxLayout()
-        vote_share_label = QLabel("Vote Share:")
-        vote_share_label.setStyleSheet("color: #b0bec5;")
-        vote_share_layout.addWidget(vote_share_label)
-
-        vote_progress = QProgressBar()
-        vote_progress.setObjectName(f"{award_id}_vote_progress")
-        vote_progress.setRange(0, 100)
-        vote_progress.setValue(0)
-        vote_progress.setTextVisible(False)
-        vote_progress.setFixedHeight(16)
-        vote_progress.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid #2c5282;
-                border-radius: 3px;
-                background: #0d2137;
-            }
-            QProgressBar::chunk {
-                background: #4CAF50;
-                border-radius: 2px;
-            }
-        """)
-        vote_share_layout.addWidget(vote_progress, stretch=1)
-
-        vote_percent = QLabel("0%")
-        vote_percent.setObjectName(f"{award_id}_vote_percent")
-        vote_percent.setStyleSheet(f"color: {TextColors.ON_DARK}; font-weight: bold;")
-        vote_percent.setMinimumWidth(80)
-        vote_share_layout.addWidget(vote_percent)
-
-        winner_layout.addLayout(vote_share_layout)
-        layout.addWidget(winner_frame)
-
-        # Finalists section - 2x2 card grid
-        finalists_label = QLabel("Finalists:")
-        finalists_label.setStyleSheet(f"font-weight: bold; margin-top: 8px; color: {TextColors.ON_DARK};")
-        layout.addWidget(finalists_label)
-
-        finalists_grid = QWidget()
-        finalists_grid.setObjectName(f"{award_id}_finalists_grid")
-        grid_layout = QGridLayout(finalists_grid)
-        grid_layout.setSpacing(8)
-        grid_layout.setContentsMargins(0, 0, 0, 0)
-
-        # Create 4 finalist card placeholders (2x2 grid)
-        for i in range(4):
-            card = self._create_finalist_card(award_id, i)
-            row, col = divmod(i, 2)
-            grid_layout.addWidget(card, row, col)
-
-        layout.addWidget(finalists_grid)
-
-        return group
-
-    def _create_finalist_card(self, award_id: str, index: int) -> QFrame:
-        """Create a compact finalist card for the 2x2 grid."""
-        card = QFrame()
-        card.setObjectName(f"{award_id}_finalist_card_{index}")
-        card.setStyleSheet("""
-            QFrame {
-                background-color: #2a3441;
-                border: 1px solid #3a4451;
-                border-radius: 6px;
-            }
-            QFrame:hover {
-                background-color: #3a4451;
-                border-color: #4a5461;
-            }
-        """)
-        card.setFixedHeight(50)
-        card.setCursor(Qt.PointingHandCursor)
-
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(8, 4, 8, 4)
-        card_layout.setSpacing(2)
-
-        # Line 1: Rank + Name (e.g., "#2 Nick Chubb")
-        name_label = QLabel()
-        name_label.setObjectName(f"{award_id}_finalist_name_{index}")
-        name_label.setStyleSheet(f"font-weight: bold; color: {TextColors.ON_DARK}; font-size: {FontSizes.CAPTION};")
-        card_layout.addWidget(name_label)
-
-        # Line 2: Position - Team · Vote% (e.g., "RB - CLE · 26.0%")
-        details_label = QLabel()
-        details_label.setObjectName(f"{award_id}_finalist_details_{index}")
-        details_label.setStyleSheet(f"color: #aaaaaa; font-size: {FontSizes.SMALL};")
-        card_layout.addWidget(details_label)
-
-        # Connect click handler
-        card.mousePressEvent = lambda e, c=card: self._on_finalist_card_clicked(c)
-
-        return card
-
-    def _on_finalist_card_clicked(self, card: QFrame):
-        """Handle click on finalist card - show player details."""
-        player_id = card.property("player_id")
-        if player_id:
-            self._show_player_dialog(player_id)
+    def _on_award_tile_clicked(self, award_id: str):
+        """Handle click on award tile - finalists popup is shown by the tile."""
+        pass  # Popup is handled internally by AwardTileWidget
 
     # ============================================
     # Tab 2: All-Pro Teams
@@ -541,170 +404,185 @@ class AwardsView(QWidget):
         layout.addWidget(self.stat_leaders_table)
 
     # ============================================
-    # Tab 5: Award Race (Mid-Season Tracking)
+    # Tab 5: Award History (Past Seasons)
     # ============================================
 
-    def _create_award_race_tab(self):
-        """Create the Award Race tab showing mid-season tracking."""
-        self.award_race_tab = QWidget()
-        layout = QVBoxLayout(self.award_race_tab)
+    def _create_award_history_tab(self):
+        """Create the Award History tab showing past seasons' award winners."""
+        self.award_history_tab = QWidget()
+        layout = QVBoxLayout(self.award_history_tab)
 
-        # Header with explanation
-        header_label = QLabel(
-            "Award Race shows current leaders based on weekly tracking (Weeks 10-18). "
-            "These are not final awards - see Major Awards for end-of-season results."
-        )
-        header_label.setStyleSheet("color: #666; font-style: italic; margin-bottom: 8px;")
-        header_label.setWordWrap(True)
-        layout.addWidget(header_label)
-
-        # Award type selector
+        # Season selector
         selector_layout = QHBoxLayout()
-        selector_layout.addWidget(QLabel("Award:"))
+        selector_layout.addWidget(QLabel("Season:"))
 
-        self.award_race_combo = QComboBox()
-        self.award_race_combo.setMinimumWidth(250)
-        for award_id in ['mvp', 'opoy', 'dpoy', 'oroy', 'droy']:
-            name = AWARD_NAMES.get(award_id, award_id.upper())
-            icon = AWARD_ICONS.get(award_id, '')
-            self.award_race_combo.addItem(f"{icon} {name}", award_id)
-        self.award_race_combo.currentIndexChanged.connect(self._on_award_race_type_changed)
-        selector_layout.addWidget(self.award_race_combo)
+        self.history_season_combo = QComboBox()
+        self.history_season_combo.setMinimumWidth(100)
+        self.history_season_combo.currentIndexChanged.connect(self._on_history_season_changed)
+        selector_layout.addWidget(self.history_season_combo)
 
         selector_layout.addStretch()
         layout.addLayout(selector_layout)
 
-        # Award Race table
-        self.award_race_table = QTableWidget()
-        self.award_race_table.setColumnCount(6)
-        self.award_race_table.setHorizontalHeaderLabels(
-            ["Rank", "Player", "Team", "Position", "Score", "Trend"]
+        # Award History table
+        self.award_history_table = QTableWidget()
+        self.award_history_table.setColumnCount(5)
+        self.award_history_table.setHorizontalHeaderLabels(
+            ["Award", "Winner", "Position", "Team", "Vote %"]
         )
 
         # Apply centralized table styling
-        apply_table_style(self.award_race_table)
+        apply_table_style(self.award_history_table)
 
-        # Keep column resize mode settings
-        self.award_race_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        # Column sizing
+        self.award_history_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        self.award_history_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+        self.award_history_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.award_history_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.award_history_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
 
-        self.award_race_table.cellClicked.connect(
-            lambda row, col: self._on_table_player_clicked(self.award_race_table, row)
+        self.award_history_table.cellClicked.connect(
+            lambda row, col: self._on_table_player_clicked(self.award_history_table, row)
         )
 
-        layout.addWidget(self.award_race_table)
+        layout.addWidget(self.award_history_table)
 
         # Status label
-        self.award_race_status = QLabel("")
-        self.award_race_status.setStyleSheet(f"color: {TextColors.ON_DARK_MUTED}; margin-top: 8px;")
-        layout.addWidget(self.award_race_status)
+        self.award_history_status = QLabel("")
+        self.award_history_status.setStyleSheet(f"color: {TextColors.ON_DARK_MUTED}; margin-top: 8px;")
+        layout.addWidget(self.award_history_status)
 
-    def _on_award_race_type_changed(self):
-        """Handle award type change in Award Race tab."""
-        self._populate_award_race()
+    def _on_history_season_changed(self):
+        """Handle season change in Award History tab."""
+        self._populate_award_history()
 
-    def _populate_award_race(self):
-        """Populate Award Race table with tracking data."""
+    def _populate_award_history(self):
+        """Populate Award History table with past award winners."""
         if not self._dynasty_id or not self._db_path:
-            self.award_race_status.setText("No dynasty context")
+            self.award_history_status.setText("No dynasty context")
             return
 
-        award_type = self.award_race_combo.currentData()
-        if not award_type:
+        selected_season = self.history_season_combo.currentData()
+        if not selected_season:
             return
 
         try:
-            from game_cycle.services.awards.award_race_tracker import AwardRaceTracker
-            from game_cycle.services.awards.models import AwardType
+            import sqlite3
 
-            # Map string to AwardType enum
-            award_type_enum = {
-                'mvp': AwardType.MVP,
-                'opoy': AwardType.OPOY,
-                'dpoy': AwardType.DPOY,
-                'oroy': AwardType.OROY,
-                'droy': AwardType.DROY,
-            }.get(award_type)
+            conn = sqlite3.connect(self._db_path)
+            cursor = conn.cursor()
 
-            if not award_type_enum:
+            # Query award winners for selected season
+            cursor.execute("""
+                SELECT aw.award_id, aw.player_id, aw.team_id, aw.vote_share,
+                       p.first_name, p.last_name, p.positions
+                FROM award_winners aw
+                LEFT JOIN players p ON aw.player_id = p.player_id AND aw.dynasty_id = p.dynasty_id
+                WHERE aw.dynasty_id = ? AND aw.season = ? AND aw.is_winner = 1
+                ORDER BY CASE aw.award_id
+                    WHEN 'mvp' THEN 1 WHEN 'opoy' THEN 2 WHEN 'dpoy' THEN 3
+                    WHEN 'oroy' THEN 4 WHEN 'droy' THEN 5 WHEN 'cpoy' THEN 6
+                    ELSE 7
+                END
+            """, (self._dynasty_id, selected_season))
+
+            rows = cursor.fetchall()
+            conn.close()
+
+            if not rows:
+                self.award_history_table.setRowCount(0)
+                self.award_history_status.setText(f"No awards recorded for {selected_season} season")
                 return
 
-            tracker = AwardRaceTracker(self._db_path, self._dynasty_id, self._season)
-            standings = tracker.get_current_standings(award_type_enum)
+            self.award_history_table.setRowCount(len(rows))
 
-            if not standings:
-                self.award_race_table.setRowCount(0)
-                self.award_race_status.setText(
-                    "No tracking data yet. Award race tracking begins at Week 10."
-                )
-                return
+            import json
 
-            self.award_race_table.setRowCount(len(standings))
+            for row_idx, (award_id, player_id, team_id, vote_share, first_name, last_name, positions_json) in enumerate(rows):
+                # Award name with icon
+                icon = AWARD_ICONS.get(award_id, '')
+                name = AWARD_NAMES.get(award_id, award_id.upper())
+                award_item = QTableWidgetItem(f"{icon} {name}")
+                award_item.setFont(Typography.SMALL_BOLD)
+                self.award_history_table.setItem(row_idx, 0, award_item)
 
-            for row, entry in enumerate(standings):
-                # Rank
-                rank_item = QTableWidgetItem(str(entry.get('rank', row + 1)))
-                rank_item.setTextAlignment(Qt.AlignCenter)
-                if row < 3:
-                    rank_item.setFont(Typography.SMALL_BOLD)
-                self.award_race_table.setItem(row, 0, rank_item)
+                # Winner name
+                player_name = f"{first_name or ''} {last_name or ''}".strip() or f"Player {player_id}"
+                name_item = QTableWidgetItem(player_name)
+                name_item.setData(Qt.UserRole, player_id)
+                self.award_history_table.setItem(row_idx, 1, name_item)
 
-                # Player name
-                name = f"{entry.get('first_name', '')} {entry.get('last_name', '')}".strip()
-                name_item = QTableWidgetItem(name or f"Player {entry.get('player_id', '?')}")
-                name_item.setData(Qt.UserRole, entry.get('player_id'))
-                if row < 3:
-                    name_item.setFont(Typography.SMALL_BOLD)
-                self.award_race_table.setItem(row, 1, name_item)
+                # Position (parse JSON positions list, get first)
+                position = ""
+                if positions_json:
+                    try:
+                        positions_list = json.loads(positions_json)
+                        position = positions_list[0] if positions_list else ""
+                    except (json.JSONDecodeError, IndexError):
+                        position = ""
+                pos_item = QTableWidgetItem(position)
+                pos_item.setTextAlignment(Qt.AlignCenter)
+                self.award_history_table.setItem(row_idx, 2, pos_item)
 
                 # Team
-                team_item = QTableWidgetItem(self._get_team_abbrev(entry.get('team_id', 0)))
+                team_item = QTableWidgetItem(self._get_team_abbrev(team_id))
                 team_item.setTextAlignment(Qt.AlignCenter)
-                self.award_race_table.setItem(row, 2, team_item)
+                self.award_history_table.setItem(row_idx, 3, team_item)
 
-                # Position
-                pos_item = QTableWidgetItem(entry.get('position', ''))
-                pos_item.setTextAlignment(Qt.AlignCenter)
-                self.award_race_table.setItem(row, 3, pos_item)
+                # Vote percentage
+                vote_pct = (vote_share or 0) * 100
+                vote_item = QTableWidgetItem(f"{vote_pct:.1f}%")
+                vote_item.setTextAlignment(Qt.AlignCenter)
+                self._color_grade(vote_item, vote_pct)
+                self.award_history_table.setItem(row_idx, 4, vote_item)
 
-                # Score
-                score = entry.get('cumulative_score', 0)
-                score_item = QTableWidgetItem(f"{score:.1f}")
-                score_item.setTextAlignment(Qt.AlignCenter)
-                self._color_grade(score_item, score)
-                self.award_race_table.setItem(row, 4, score_item)
+            self.award_history_status.setText(f"{len(rows)} awards for {selected_season} season")
 
-                # Trend indicator (compare week_score to cumulative)
-                week_score = entry.get('week_score', 0)
-                if week_score and score:
-                    if week_score > score * 1.1:
-                        trend = "\u2191"  # Up arrow (hot)
-                        trend_color = "#4CAF50"
-                    elif week_score < score * 0.9:
-                        trend = "\u2193"  # Down arrow (cooling)
-                        trend_color = "#f44336"
-                    else:
-                        trend = "\u2194"  # Steady
-                        trend_color = "#888"
-                else:
-                    trend = "-"
-                    trend_color = "#888"
-
-                trend_item = QTableWidgetItem(trend)
-                trend_item.setTextAlignment(Qt.AlignCenter)
-                trend_item.setForeground(QColor(trend_color))
-                self.award_race_table.setItem(row, 5, trend_item)
-
-            # Update status
-            week = standings[0].get('week', 0) if standings else 0
-            self.award_race_status.setText(f"Week {week} standings - {len(standings)} players tracked")
-
-        except ImportError:
-            self.award_race_table.setRowCount(0)
-            self.award_race_status.setText("Award Race tracking not available")
         except Exception as e:
-            logger.error(f"Error loading award race data: {e}")
-            self.award_race_table.setRowCount(0)
-            self.award_race_status.setText(f"Error loading data: {e}")
+            logger.error(f"Error loading award history: {e}")
+            self.award_history_table.setRowCount(0)
+            self.award_history_status.setText(f"Error loading data: {e}")
+
+    def _populate_history_season_combo(self):
+        """Populate the season dropdown for Award History tab."""
+        if not self._dynasty_id or not self._db_path:
+            return
+
+        try:
+            import sqlite3
+
+            conn = sqlite3.connect(self._db_path)
+            cursor = conn.cursor()
+
+            # Get all seasons with award winners
+            cursor.execute("""
+                SELECT DISTINCT season FROM award_winners
+                WHERE dynasty_id = ? AND is_winner = 1
+                ORDER BY season DESC
+            """, (self._dynasty_id,))
+
+            seasons = [row[0] for row in cursor.fetchall()]
+            conn.close()
+
+            # Update combo if seasons changed
+            current_seasons = [self.history_season_combo.itemData(i)
+                               for i in range(self.history_season_combo.count())]
+
+            if seasons != current_seasons:
+                self.history_season_combo.blockSignals(True)
+                self.history_season_combo.clear()
+
+                for season in seasons:
+                    self.history_season_combo.addItem(str(season), season)
+
+                # If no seasons with awards, add current season as placeholder
+                if not seasons and self._season:
+                    self.history_season_combo.addItem(str(self._season), self._season)
+
+                self.history_season_combo.blockSignals(False)
+
+        except Exception as e:
+            logger.error(f"Error populating history season combo: {e}")
 
     # ============================================
     # Tab 6: Hall of Fame
@@ -833,8 +711,9 @@ class AwardsView(QWidget):
             # Check if awards exist for this season
             if not service.awards_already_calculated():
                 self._show_no_awards_state()
-                # Still populate Award Race - it tracks mid-season data (weeks 10-18)
-                self._populate_award_race()
+                # Still populate Award History - shows past seasons
+                self._populate_history_season_combo()
+                self._populate_award_history()
                 return
 
             # Load award data from DATABASE (fast, no recalculation)
@@ -849,7 +728,8 @@ class AwardsView(QWidget):
             self._populate_all_pro()
             self._populate_pro_bowl()
             self._populate_stat_leaders()
-            self._populate_award_race()  # Mid-season tracking data
+            self._populate_history_season_combo()
+            self._populate_award_history()  # Past seasons' awards
             self._populate_hof_ballot()  # Hall of Fame voting results
             self._update_summary()
 
@@ -872,40 +752,17 @@ class AwardsView(QWidget):
         self.pro_bowl_count_label.setText("0")
         self.stat_leaders_count_label.setText("0")
 
-        # Clear all award widgets
-        for award_id, widget in self.award_widgets.items():
-            winner_name = widget.findChild(QLabel, f"{award_id}_winner_name")
-            if winner_name:
-                winner_name.setText("No awards calculated for this season")
-
-            winner_details = widget.findChild(QLabel, f"{award_id}_winner_details")
-            if winner_details:
-                winner_details.setText("")
-
-            vote_progress = widget.findChild(QProgressBar, f"{award_id}_vote_progress")
-            if vote_progress:
-                vote_progress.setValue(0)
-
-            vote_percent = widget.findChild(QLabel, f"{award_id}_vote_percent")
-            if vote_percent:
-                vote_percent.setText("")
-
-            # Clear finalist cards
-            finalists_grid = widget.findChild(QWidget, f"{award_id}_finalists_grid")
-            if finalists_grid:
-                for i in range(4):
-                    name_label = finalists_grid.findChild(QLabel, f"{award_id}_finalist_name_{i}")
-                    details_label = finalists_grid.findChild(QLabel, f"{award_id}_finalist_details_{i}")
-                    if name_label:
-                        name_label.setText("")
-                    if details_label:
-                        details_label.setText("")
+        # Clear the compact awards grid
+        if hasattr(self, 'awards_grid'):
+            self.awards_grid.clear()
 
         # Clear other tables
         self.first_team_table.setRowCount(0)
         self.second_team_table.setRowCount(0)
         self.pro_bowl_table.setRowCount(0)
         self.stat_leaders_table.setRowCount(0)
+
+        # Note: Award History table is NOT cleared here - it can still show past seasons
 
     def _update_summary(self):
         """Update summary panel counts."""
@@ -930,68 +787,9 @@ class AwardsView(QWidget):
     # ============================================
 
     def _populate_major_awards(self):
-        """Populate all major award widgets."""
-        for award_id, result in self._awards_data.items():
-            if award_id not in self.award_widgets:
-                continue
-
-            widget = self.award_widgets[award_id]
-
-            # Get components
-            winner_name = widget.findChild(QLabel, f"{award_id}_winner_name")
-            winner_details = widget.findChild(QLabel, f"{award_id}_winner_details")
-            vote_progress = widget.findChild(QProgressBar, f"{award_id}_vote_progress")
-            vote_percent = widget.findChild(QLabel, f"{award_id}_vote_percent")
-
-            if not result.has_winner:
-                if winner_name:
-                    winner_name.setText("No winner")
-                continue
-
-            winner = result.winner
-
-            # Set winner info
-            if winner_name:
-                winner_name.setText(winner.player_name)
-                winner_name.setProperty("player_id", winner.player_id)
-
-            if winner_details:
-                team_abbrev = self._get_team_abbrev(winner.team_id)
-                winner_details.setText(f"{winner.position} - {team_abbrev}")
-
-            # Set vote share
-            vote_share_pct = int(winner.vote_share * 100)
-            if vote_progress:
-                vote_progress.setValue(vote_share_pct)
-
-            if vote_percent:
-                vote_percent.setText(f"{winner.vote_share:.1%} ({winner.total_points} pts)")
-
-            # Populate finalists cards (top 4 for 2x2 grid)
-            finalists_grid = widget.findChild(QWidget, f"{award_id}_finalists_grid")
-            if finalists_grid:
-                top_4 = result.top_5[:4]  # Show top 4 for 2x2 grid
-
-                for i, finalist in enumerate(top_4):
-                    name_label = finalists_grid.findChild(QLabel, f"{award_id}_finalist_name_{i}")
-                    details_label = finalists_grid.findChild(QLabel, f"{award_id}_finalist_details_{i}")
-                    card = finalists_grid.findChild(QFrame, f"{award_id}_finalist_card_{i}")
-
-                    if name_label:
-                        name_label.setText(f"#{i+2} {finalist.player_name}")
-                    if details_label:
-                        team = self._get_team_abbrev(finalist.team_id)
-                        details_label.setText(f"{finalist.position} - {team} · {finalist.vote_share:.1%}")
-                    if card:
-                        # Store player_id for click handling
-                        card.setProperty("player_id", finalist.player_id)
-                        card.setVisible(True)
-
-                # Hide unused cards if fewer than 4 finalists
-                for i in range(len(top_4), 4):
-                    card = finalists_grid.findChild(QFrame, f"{award_id}_finalist_card_{i}")
-                    if card:
-                        card.setVisible(False)
+        """Populate the compact awards grid with data."""
+        if hasattr(self, 'awards_grid') and self._awards_data:
+            self.awards_grid.set_awards_data(self._awards_data, self._get_team_abbrev)
 
     def _populate_all_pro(self):
         """Populate All-Pro team tables."""
@@ -1151,6 +949,32 @@ class AwardsView(QWidget):
     # ============================================
     # Helper Methods
     # ============================================
+
+    def _add_table_item(self, table: QTableWidget, row: int, col: int,
+                       text: str, align_center: bool = False) -> QTableWidgetItem:
+        """Helper to create and add a table item with optional centering."""
+        item = QTableWidgetItem(str(text))
+        if align_center:
+            item.setTextAlignment(Qt.AlignCenter)
+        table.setItem(row, col, item)
+        return item
+
+    def _color_grade_item(self, item: QTableWidgetItem, grade: float) -> None:
+        """Apply grade-based color to a table item."""
+        from game_cycle_ui.theme import GRADE_TIER_COLORS
+
+        if grade >= 90:
+            color = GRADE_TIER_COLORS["elite"]
+        elif grade >= 80:
+            color = GRADE_TIER_COLORS["excellent"]
+        elif grade >= 70:
+            color = GRADE_TIER_COLORS["good"]
+        elif grade >= 60:
+            color = GRADE_TIER_COLORS["average"]
+        else:
+            color = GRADE_TIER_COLORS["below_average"]
+
+        item.setForeground(QColor(color))
 
     def _on_table_player_clicked(self, table: QTableWidget, row: int):
         """Handle click on a player in any table."""

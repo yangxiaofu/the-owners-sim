@@ -7,7 +7,7 @@ phases: weeks during regular season, rounds during playoffs, and
 distinct periods during the offseason.
 """
 
-from .stage_definitions import Stage, StageType, SeasonPhase
+from .stage_definitions import Stage, StageType, SeasonPhase, ROSTER_LIMITS, INTERACTIVE_OFFSEASON_STAGES
 from .stage_controller import StageController
 
 __all__ = [
@@ -15,4 +15,6 @@ __all__ = [
     "StageType",
     "SeasonPhase",
     "StageController",
+    "ROSTER_LIMITS",
+    "INTERACTIVE_OFFSEASON_STAGES",
 ]

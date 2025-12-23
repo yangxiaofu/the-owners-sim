@@ -62,7 +62,7 @@ class ScheduleService:
         with open(teams_path, 'r') as f:
             self._teams_data = json.load(f).get("teams", {})
 
-    def generate_schedule(self, clear_existing: bool = True) -> int:
+    def generate_schedule(self, clear_existing: bool = True, copy_from_previous: bool = True) -> int:
         """
         Generate an 18-week NFL schedule as game events.
 
@@ -70,6 +70,8 @@ class ScheduleService:
 
         Args:
             clear_existing: If True, clears existing regular season game events first
+            copy_from_previous: If True, copy schedule from previous season (same matchups)
+                               If False, generate new random schedule
 
         Returns:
             Number of games created (288 = 18 weeks × 16 games)
@@ -84,6 +86,13 @@ class ScheduleService:
             if deleted > 0:
                 print(f"[ScheduleService] Cleared {deleted} existing game events")
 
+        # Try to copy from previous season first (if enabled)
+        if copy_from_previous:
+            games_copied = self._copy_from_previous_season(api)
+            if games_copied > 0:
+                return games_copied
+            print(f"[ScheduleService] No previous schedule to copy, generating new")
+
         # Generate game events
         game_events = self._generate_all_game_events()
 
@@ -92,6 +101,63 @@ class ScheduleService:
 
         print(f"[ScheduleService] Created {len(game_events)} game events for season {self._season}")
         return len(game_events)
+
+    def _copy_from_previous_season(self, api) -> int:
+        """
+        Copy schedule from previous season (season - 1) to current season.
+
+        Preserves exact matchups (home/away teams, week assignments) but updates
+        the season year and game_ids. Used to maintain consistent schedules across
+        seasons for testing and predictable gameplay.
+
+        Args:
+            api: UnifiedDatabaseAPI instance
+
+        Returns:
+            Number of games copied (0 if no previous schedule found)
+        """
+        previous_season = self._season - 1
+        previous_games = api.events_get_games_by_season(previous_season)
+
+        if not previous_games:
+            print(f"[ScheduleService] No schedule found for season {previous_season}")
+            return 0
+
+        # Copy events with updated season and game_ids
+        new_events = []
+        for game in previous_games:
+            data = game['data']
+            params = data.get('parameters', {})
+            week = params.get('week', 0)
+
+            # Create new game_id for new season (preserve week-relative ordering)
+            old_game_id = game['game_id']
+            # Replace season in game_id: "regular_2025_1_1" -> "regular_2026_1_1"
+            new_game_id = old_game_id.replace(f"regular_{previous_season}_", f"regular_{self._season}_")
+
+            new_events.append({
+                "event_id": str(uuid.uuid4()),
+                "event_type": "GAME",
+                "timestamp": int(datetime.now().timestamp() * 1000),
+                "game_id": new_game_id,
+                "data": {
+                    "parameters": {
+                        "away_team_id": params.get("away_team_id"),
+                        "home_team_id": params.get("home_team_id"),
+                        "week": week,
+                        "season": self._season,  # Updated to new season
+                        "season_type": "regular_season",
+                        "game_date": params.get("game_date")
+                    },
+                    "results": None,  # Reset results for new season
+                    "metadata": data.get("metadata", {})
+                }
+            })
+
+        # Insert copied events
+        api.events_insert_batch(new_events)
+        print(f"[ScheduleService] Copied {len(new_events)} games from season {previous_season} to {self._season}")
+        return len(new_events)
 
     def _generate_all_game_events(self) -> List[Dict[str, Any]]:
         """

@@ -574,24 +574,29 @@ class KickoffSimulator(BasePlaySimulator):
         if self.kicker:
             kicker_stats = create_player_stats_from_player(self.kicker, self.offensive_team_id)
             kicker_stats.kickoff_attempts = 1
-            
+
             if result.outcome in [KickoffOutcome.TOUCHBACK_END_ZONE, KickoffOutcome.TOUCHBACK_LANDING_ZONE]:
                 kicker_stats.touchbacks = 1
             elif result.outcome == KickoffOutcome.ONSIDE_RECOVERY:
                 kicker_stats.onside_recoveries = 1
-            
+
+            # Add special teams snap credit for kicker
+            kicker_stats.add_special_teams_snap()
+
             result.player_stats[self.kicker.name] = kicker_stats
         
         # Coverage team statistics
         for player in self.coverage_unit:
             coverage_stats = create_player_stats_from_player(player, self.offensive_team_id)
-            coverage_stats.special_teams_snaps = 1
-            
+
+            # Add special teams snap credit for coverage player
+            coverage_stats.add_special_teams_snap()
+
             if result.outcome == KickoffOutcome.REGULAR_RETURN:
                 # Randomly assign tackle credit
                 if random.random() < 0.15:  # 15% chance any coverage player gets tackle
                     coverage_stats.tackles = 1
-            
+
             result.player_stats[player.name] = coverage_stats
         
         # Returner statistics
@@ -600,16 +605,22 @@ class KickoffSimulator(BasePlaySimulator):
             returner_stats = create_player_stats_from_player(returner, self.defensive_team_id)
             returner_stats.kickoff_returns = 1
             returner_stats.kickoff_return_yards = result.yards_gained
-            
+
             if result.outcome == KickoffOutcome.RETURN_TOUCHDOWN:
                 returner_stats.kickoff_return_touchdowns = 1
-            
+
+            # Add special teams snap credit for returner
+            returner_stats.add_special_teams_snap()
+
             result.player_stats[returner.name] = returner_stats
         
         # Return blocking unit statistics
         for player in self.return_blockers:
             blocker_stats = create_player_stats_from_player(player, self.defensive_team_id)
-            blocker_stats.special_teams_snaps = 1
+
+            # Add special teams snap credit for return blocker
+            blocker_stats.add_special_teams_snap()
+
             result.player_stats[player.name] = blocker_stats
 
         # Track special teams snaps for ALL 22 players on the field

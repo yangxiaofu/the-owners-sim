@@ -26,14 +26,30 @@ CREATE TABLE IF NOT EXISTS standings (
     points_against INTEGER DEFAULT 0,
     division_wins INTEGER DEFAULT 0,
     division_losses INTEGER DEFAULT 0,
+    division_ties INTEGER DEFAULT 0,
     conference_wins INTEGER DEFAULT 0,
     conference_losses INTEGER DEFAULT 0,
+    conference_ties INTEGER DEFAULT 0,
     home_wins INTEGER DEFAULT 0,
     home_losses INTEGER DEFAULT 0,
+    home_ties INTEGER DEFAULT 0,
     away_wins INTEGER DEFAULT 0,
     away_losses INTEGER DEFAULT 0,
+    away_ties INTEGER DEFAULT 0,
     playoff_seed INTEGER,
-    FOREIGN KEY (team_id) REFERENCES teams(team_id),
+    point_differential INTEGER DEFAULT 0,
+    current_streak TEXT,
+    division_rank INTEGER,
+    conference_rank INTEGER,
+    league_rank INTEGER,
+    made_playoffs BOOLEAN DEFAULT FALSE,
+    made_wild_card BOOLEAN DEFAULT FALSE,
+    won_wild_card BOOLEAN DEFAULT FALSE,
+    won_division_round BOOLEAN DEFAULT FALSE,
+    won_conference BOOLEAN DEFAULT FALSE,
+    won_super_bowl BOOLEAN DEFAULT FALSE,
+    last_updated TIMESTAMP,
+    -- Note: No FK on team_id because teams table uses team_id 1-32 as reference data
     FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE,
     UNIQUE(dynasty_id, season, team_id, season_type)
 );
@@ -80,8 +96,7 @@ CREATE TABLE IF NOT EXISTS playoff_bracket (
     winner INTEGER,                         -- team_id of winner (NULL until played)
     home_score INTEGER,
     away_score INTEGER,
-    -- Note: Foreign keys removed because teams table is empty in game_cycle.db
-    -- Team data lives in nfl_simulation.db
+    -- Note: Foreign keys removed; team_id values (1-32) are validated by CHECK constraints
     UNIQUE(dynasty_id, season, round_name, conference, game_number)
 );
 
@@ -92,6 +107,124 @@ CREATE INDEX IF NOT EXISTS idx_schedule_teams ON schedule(home_team_id, away_tea
 CREATE INDEX IF NOT EXISTS idx_schedule_played ON schedule(is_played);
 CREATE INDEX IF NOT EXISTS idx_playoff_round ON playoff_bracket(round_name);
 CREATE INDEX IF NOT EXISTS idx_playoff_bracket_dynasty_season ON playoff_bracket(dynasty_id, season);
+
+-- ============================================
+-- Games Table
+-- Individual game results
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS games (
+    game_id TEXT PRIMARY KEY,
+    dynasty_id TEXT NOT NULL,
+    season INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    season_type TEXT NOT NULL DEFAULT 'regular_season',
+    game_type TEXT DEFAULT 'regular',
+    home_team_id INTEGER NOT NULL,
+    away_team_id INTEGER NOT NULL,
+    home_score INTEGER NOT NULL DEFAULT 0,
+    away_score INTEGER NOT NULL DEFAULT 0,
+    total_plays INTEGER,
+    total_yards_home INTEGER,
+    total_yards_away INTEGER,
+    turnovers_home INTEGER DEFAULT 0,
+    turnovers_away INTEGER DEFAULT 0,
+    time_of_possession_home INTEGER,
+    time_of_possession_away INTEGER,
+    game_duration_minutes INTEGER,
+    overtime_periods INTEGER DEFAULT 0,
+    game_date INTEGER,
+    weather_conditions TEXT,
+    attendance INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_games_dynasty_season ON games(dynasty_id, season, week);
+CREATE INDEX IF NOT EXISTS idx_games_teams ON games(home_team_id, away_team_id);
+
+-- ============================================
+-- Events Table
+-- Generic event storage for schedule and game events
+-- Required by ScheduleService and RegularSeasonHandler
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS events (
+    event_id TEXT PRIMARY KEY,
+    event_type TEXT NOT NULL,
+    timestamp INTEGER NOT NULL,
+    game_id TEXT,
+    dynasty_id TEXT,
+    data TEXT NOT NULL,
+    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE,
+    -- Ensure GAME events always have a game_id
+    CHECK (event_type != 'GAME' OR game_id IS NOT NULL)
+);
+
+-- Basic indexes
+CREATE INDEX IF NOT EXISTS idx_events_dynasty ON events(dynasty_id);
+CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);
+CREATE INDEX IF NOT EXISTS idx_events_game_id ON events(game_id);
+CREATE INDEX IF NOT EXISTS idx_events_dynasty_game ON events(dynasty_id, game_id);
+
+-- UNIQUE constraint: Prevent duplicate games within a dynasty
+-- Uses partial index to apply only to GAME events with non-NULL game_id
+CREATE UNIQUE INDEX IF NOT EXISTS idx_events_unique_game
+ON events(dynasty_id, game_id)
+WHERE event_type = 'GAME' AND game_id IS NOT NULL;
+
+-- Composite indexes for common query patterns (week/season filtering)
+CREATE INDEX IF NOT EXISTS idx_events_dynasty_type_timestamp
+ON events(dynasty_id, event_type, timestamp)
+WHERE event_type = 'GAME';
+
+-- ============================================
+-- Box Scores Table
+-- Team-level game statistics
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS box_scores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dynasty_id TEXT NOT NULL,
+    game_id TEXT NOT NULL,
+    team_id INTEGER NOT NULL,
+
+    -- Quarter scores
+    q1_score INTEGER DEFAULT 0,
+    q2_score INTEGER DEFAULT 0,
+    q3_score INTEGER DEFAULT 0,
+    q4_score INTEGER DEFAULT 0,
+    ot_score INTEGER DEFAULT 0,
+
+    -- Team totals
+    first_downs INTEGER DEFAULT 0,
+    third_down_att INTEGER DEFAULT 0,
+    third_down_conv INTEGER DEFAULT 0,
+    fourth_down_att INTEGER DEFAULT 0,
+    fourth_down_conv INTEGER DEFAULT 0,
+
+    total_yards INTEGER DEFAULT 0,
+    passing_yards INTEGER DEFAULT 0,
+    rushing_yards INTEGER DEFAULT 0,
+
+    turnovers INTEGER DEFAULT 0,
+    penalties INTEGER DEFAULT 0,
+    penalty_yards INTEGER DEFAULT 0,
+
+    time_of_possession INTEGER,  -- in seconds
+
+    -- Timeout tracking
+    team_timeouts_remaining INTEGER DEFAULT 3,
+    team_timeouts_used_h1 INTEGER DEFAULT 0,
+    team_timeouts_used_h2 INTEGER DEFAULT 0,
+
+    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE,
+    UNIQUE(dynasty_id, game_id, team_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_box_scores_dynasty ON box_scores(dynasty_id);
+CREATE INDEX IF NOT EXISTS idx_box_scores_game ON box_scores(dynasty_id, game_id);
+CREATE INDEX IF NOT EXISTS idx_box_scores_team ON box_scores(dynasty_id, team_id);
 
 -- ============================================
 -- Schedule Rotation Tables (Milestone 11)
@@ -135,10 +268,21 @@ CREATE INDEX IF NOT EXISTS idx_schedule_rotation_division ON schedule_rotation(d
 -- Dynasty tracking table
 CREATE TABLE IF NOT EXISTS dynasties (
     dynasty_id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
+    dynasty_name TEXT NOT NULL,
+    owner_name TEXT,
     team_id INTEGER NOT NULL CHECK(team_id BETWEEN 1 AND 32),
     season_year INTEGER NOT NULL DEFAULT 2025,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_played TIMESTAMP,
+    total_seasons INTEGER DEFAULT 0,
+    championships_won INTEGER DEFAULT 0,
+    super_bowls_won INTEGER DEFAULT 0,
+    conference_championships INTEGER DEFAULT 0,
+    division_titles INTEGER DEFAULT 0,
+    total_wins INTEGER DEFAULT 0,
+    total_losses INTEGER DEFAULT 0,
+    total_ties INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT TRUE,
     FOREIGN KEY (team_id) REFERENCES teams(team_id)
 );
 
@@ -150,8 +294,11 @@ CREATE TABLE IF NOT EXISTS dynasty_state (
     current_date TEXT,
     current_phase TEXT DEFAULT 'regular_season',
     current_week INTEGER DEFAULT 1,
+    last_simulated_game_id TEXT,
+    current_draft_pick INTEGER DEFAULT 0,
+    draft_in_progress INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    modified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(dynasty_id, season),
     FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id)
 );
@@ -177,6 +324,25 @@ CREATE TABLE IF NOT EXISTS players (
     FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE,
     UNIQUE(dynasty_id, player_id)
 );
+
+-- Team rosters table - links players to teams for roster management
+-- Supports depth chart ordering and roster status tracking
+CREATE TABLE IF NOT EXISTS team_rosters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dynasty_id TEXT NOT NULL,
+    team_id INTEGER NOT NULL,
+    player_id INTEGER NOT NULL,     -- References players.player_id (auto-generated int)
+    depth_chart_order INTEGER DEFAULT 99,  -- Lower = higher on depth chart
+    roster_status TEXT DEFAULT 'active',   -- 'active', 'inactive', 'injured_reserve', 'practice_squad'
+    joined_date TEXT,
+
+    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE,
+    UNIQUE(dynasty_id, team_id, player_id)
+);
+
+-- Indexes for team_rosters
+CREATE INDEX IF NOT EXISTS idx_rosters_team ON team_rosters(dynasty_id, team_id);
+CREATE INDEX IF NOT EXISTS idx_rosters_player ON team_rosters(dynasty_id, player_id);
 
 -- Player contracts table
 CREATE TABLE IF NOT EXISTS player_contracts (
@@ -252,6 +418,7 @@ CREATE TABLE IF NOT EXISTS draft_classes (
     generation_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     total_prospects INTEGER DEFAULT 0,
     is_complete BOOLEAN DEFAULT FALSE,
+    status TEXT DEFAULT 'active',
     UNIQUE(dynasty_id, season),
     FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE
 );
@@ -274,7 +441,7 @@ CREATE TABLE IF NOT EXISTS draft_prospects (
     height_inches INTEGER,
     weight_lbs INTEGER,
     overall INTEGER NOT NULL,
-    potential INTEGER NOT NULL,
+    potential INTEGER,  -- NULL allowed, can be derived from overall if needed
     attributes TEXT NOT NULL,  -- JSON blob of ratings
     combine_results TEXT,      -- JSON blob of combine data
     scouting_grade TEXT,       -- A+, A, B+, B, C+, C, D, F
@@ -285,6 +452,14 @@ CREATE TABLE IF NOT EXISTS draft_prospects (
     draft_round INTEGER,
     draft_pick INTEGER,
     draft_overall_pick INTEGER,
+    projected_pick_min INTEGER,
+    projected_pick_max INTEGER,
+    hometown TEXT,
+    home_state TEXT,
+    archetype_id TEXT,
+    scouted_overall INTEGER,
+    scouting_confidence TEXT DEFAULT 'medium',
+    development_curve TEXT DEFAULT 'normal',
     FOREIGN KEY (draft_class_id) REFERENCES draft_classes(draft_class_id) ON DELETE CASCADE,
     FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE
 );
@@ -302,8 +477,8 @@ CREATE TABLE IF NOT EXISTS draft_order (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     dynasty_id TEXT NOT NULL,
     season INTEGER NOT NULL,
-    round INTEGER NOT NULL CHECK(round BETWEEN 1 AND 7),
-    pick INTEGER NOT NULL CHECK(pick BETWEEN 1 AND 32),
+    round_number INTEGER NOT NULL CHECK(round_number BETWEEN 1 AND 7),
+    pick_in_round INTEGER NOT NULL CHECK(pick_in_round BETWEEN 1 AND 32),
     overall_pick INTEGER NOT NULL,
     team_id INTEGER NOT NULL CHECK(team_id BETWEEN 1 AND 32),
     is_traded BOOLEAN DEFAULT FALSE,
@@ -697,7 +872,9 @@ CREATE TABLE IF NOT EXISTS player_game_stats (
     rushing_tds INTEGER DEFAULT 0,
     rushing_attempts INTEGER DEFAULT 0,
     rushing_long INTEGER DEFAULT 0,
+    rushing_20_plus INTEGER DEFAULT 0,
     rushing_fumbles INTEGER DEFAULT 0,
+    fumbles_lost INTEGER DEFAULT 0,
     yards_after_contact INTEGER DEFAULT 0,
 
     -- Receiving stats
@@ -1418,6 +1595,56 @@ CREATE INDEX IF NOT EXISTS idx_staff_candidates_dynasty ON staff_candidates(dyna
 CREATE INDEX IF NOT EXISTS idx_staff_candidates_type ON staff_candidates(dynasty_id, staff_type);
 
 -- ============================================
+-- GM Proposals - Persistent proposal tracking for owner approval
+-- Tracks all GM proposals across offseason stages
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS gm_proposals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    proposal_id TEXT UNIQUE NOT NULL,       -- UUID for external reference
+    dynasty_id TEXT NOT NULL,
+    team_id INTEGER NOT NULL CHECK(team_id BETWEEN 1 AND 32),
+    season INTEGER NOT NULL,
+    stage TEXT NOT NULL,                    -- Stage when created (e.g., 'OFFSEASON_FREE_AGENCY')
+
+    -- Proposal type and content
+    proposal_type TEXT NOT NULL CHECK(proposal_type IN (
+        'FRANCHISE_TAG', 'EXTENSION', 'SIGNING', 'TRADE',
+        'DRAFT_PICK', 'CUT', 'WAIVER_CLAIM'
+    )),
+    subject_player_id TEXT,                 -- Primary player involved (if applicable)
+    details TEXT NOT NULL,                  -- JSON object with type-specific data
+    gm_reasoning TEXT NOT NULL,             -- GM's explanation for the proposal
+
+    -- Scoring and priority
+    confidence REAL DEFAULT 0.5 CHECK(confidence >= 0 AND confidence <= 1),
+    priority INTEGER DEFAULT 0,             -- For ordering proposals (higher = more important)
+
+    -- Approval workflow
+    status TEXT DEFAULT 'PENDING' CHECK(status IN (
+        'PENDING', 'APPROVED', 'REJECTED', 'MODIFIED', 'EXPIRED'
+    )),
+    owner_notes TEXT,                       -- Owner's notes when approving/rejecting
+
+    -- Timestamps
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP,                  -- When proposal was resolved
+
+    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE,
+    UNIQUE(dynasty_id, team_id, proposal_id)
+);
+
+-- Indexes for efficient proposal queries
+CREATE INDEX IF NOT EXISTS idx_gm_proposals_dynasty_status
+    ON gm_proposals(dynasty_id, team_id, status);
+CREATE INDEX IF NOT EXISTS idx_gm_proposals_stage
+    ON gm_proposals(dynasty_id, team_id, stage, status);
+CREATE INDEX IF NOT EXISTS idx_gm_proposals_season
+    ON gm_proposals(dynasty_id, team_id, season);
+CREATE INDEX IF NOT EXISTS idx_gm_proposals_type
+    ON gm_proposals(dynasty_id, team_id, proposal_type);
+
+-- ============================================
 -- Play-by-Play Persistence
 -- Stores drive and play-level data for historical game review
 -- ============================================
@@ -1517,3 +1744,287 @@ CREATE TABLE IF NOT EXISTS game_plays (
 
 CREATE INDEX IF NOT EXISTS idx_plays_game ON game_plays(dynasty_id, game_id, play_number);
 CREATE INDEX IF NOT EXISTS idx_plays_drive ON game_plays(dynasty_id, game_id, drive_number);
+
+-- ============================================
+-- MEDIA COVERAGE TABLES (Milestone 12)
+-- Power Rankings and Headlines
+-- ============================================
+
+-- Power Rankings - Weekly team rankings
+CREATE TABLE IF NOT EXISTS power_rankings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dynasty_id TEXT NOT NULL,
+    season INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    team_id INTEGER NOT NULL CHECK(team_id BETWEEN 1 AND 32),
+    rank INTEGER NOT NULL CHECK(rank BETWEEN 1 AND 32),
+    previous_rank INTEGER,
+    tier TEXT NOT NULL CHECK(tier IN ('ELITE', 'CONTENDER', 'PLAYOFF', 'BUBBLE', 'REBUILDING')),
+    blurb TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE,
+    UNIQUE(dynasty_id, season, week, team_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_power_rankings_dynasty ON power_rankings(dynasty_id, season, week);
+CREATE INDEX IF NOT EXISTS idx_power_rankings_team ON power_rankings(dynasty_id, team_id);
+
+-- Media Headlines - News headlines and stories
+CREATE TABLE IF NOT EXISTS media_headlines (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dynasty_id TEXT NOT NULL,
+    season INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    headline_type TEXT NOT NULL,
+    headline TEXT NOT NULL,
+    subheadline TEXT,
+    body_text TEXT,
+    sentiment TEXT,
+    priority INTEGER DEFAULT 0,
+    team_ids TEXT,  -- JSON array
+    player_ids TEXT,  -- JSON array
+    game_id TEXT,
+    metadata TEXT,  -- JSON object
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_media_headlines_dynasty ON media_headlines(dynasty_id, season, week);
+CREATE INDEX IF NOT EXISTS idx_media_headlines_type ON media_headlines(dynasty_id, headline_type);
+
+-- =============================================================================
+-- RETIRED PLAYERS
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS retired_players (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dynasty_id TEXT NOT NULL,
+    player_id INTEGER NOT NULL,
+    retirement_season INTEGER NOT NULL,
+    retirement_reason TEXT NOT NULL CHECK(retirement_reason IN (
+        'age_decline', 'injury', 'championship', 'contract', 'personal', 'released'
+    )),
+    final_team_id INTEGER NOT NULL,
+    years_played INTEGER NOT NULL,
+    age_at_retirement INTEGER NOT NULL,
+    one_day_contract_team_id INTEGER,
+    hall_of_fame_eligible_season INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE,
+    UNIQUE(dynasty_id, player_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_retired_players_dynasty ON retired_players(dynasty_id);
+CREATE INDEX IF NOT EXISTS idx_retired_players_season ON retired_players(dynasty_id, retirement_season);
+CREATE INDEX IF NOT EXISTS idx_retired_players_team ON retired_players(dynasty_id, final_team_id);
+
+-- =============================================================================
+-- HALL OF FAME
+-- =============================================================================
+
+-- Permanent Hall of Fame inductee records
+CREATE TABLE IF NOT EXISTS hall_of_fame (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dynasty_id TEXT NOT NULL,
+    player_id INTEGER NOT NULL,
+
+    -- Induction details
+    induction_season INTEGER NOT NULL,
+    years_on_ballot INTEGER NOT NULL DEFAULT 1,
+    is_first_ballot INTEGER NOT NULL DEFAULT 0,
+    vote_percentage REAL NOT NULL,
+
+    -- Denormalized for display (avoids joins)
+    player_name TEXT NOT NULL,
+    primary_position TEXT NOT NULL,
+    career_seasons INTEGER NOT NULL,
+    final_team_id INTEGER NOT NULL,
+    teams_played_for TEXT NOT NULL,  -- JSON array: ["Bears", "Packers"]
+
+    -- Career achievements (snapshot at induction)
+    super_bowl_wins INTEGER NOT NULL DEFAULT 0,
+    mvp_awards INTEGER NOT NULL DEFAULT 0,
+    all_pro_first_team INTEGER NOT NULL DEFAULT 0,
+    all_pro_second_team INTEGER NOT NULL DEFAULT 0,
+    pro_bowl_selections INTEGER NOT NULL DEFAULT 0,
+
+    -- Stats summary (position-specific JSON)
+    career_stats TEXT NOT NULL,  -- {"passing_yards": 89000, "passing_tds": 649}
+
+    -- HOF score at induction
+    hof_score INTEGER NOT NULL,
+
+    -- Ceremony data
+    presenter_name TEXT,
+    presenter_relationship TEXT,
+    speech_highlights TEXT,  -- JSON with speech excerpts
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE,
+    UNIQUE(dynasty_id, player_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_hof_dynasty ON hall_of_fame(dynasty_id);
+CREATE INDEX IF NOT EXISTS idx_hof_induction_season ON hall_of_fame(dynasty_id, induction_season);
+CREATE INDEX IF NOT EXISTS idx_hof_position ON hall_of_fame(dynasty_id, primary_position);
+
+-- =============================================================================
+-- HOF VOTING HISTORY
+-- =============================================================================
+
+-- Track voting results for all candidates each year
+CREATE TABLE IF NOT EXISTS hof_voting_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dynasty_id TEXT NOT NULL,
+    voting_season INTEGER NOT NULL,
+    player_id INTEGER NOT NULL,
+
+    -- Candidate info (denormalized)
+    player_name TEXT NOT NULL,
+    primary_position TEXT NOT NULL,
+    retirement_season INTEGER NOT NULL,
+    years_on_ballot INTEGER NOT NULL,
+
+    -- Voting results
+    vote_percentage REAL NOT NULL,  -- 0.0-1.0
+    votes_received INTEGER NOT NULL,
+    total_voters INTEGER NOT NULL,
+
+    -- Outcome
+    was_inducted INTEGER NOT NULL DEFAULT 0,
+    is_first_ballot INTEGER NOT NULL DEFAULT 0,
+    removed_from_ballot INTEGER NOT NULL DEFAULT 0,  -- Below 5% or 20-year limit
+
+    -- Score data
+    hof_score INTEGER NOT NULL,
+    score_breakdown TEXT,  -- JSON: {"awards": 28, "stats": 20, ...}
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE,
+    UNIQUE(dynasty_id, voting_season, player_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_hof_voting_dynasty ON hof_voting_history(dynasty_id);
+CREATE INDEX IF NOT EXISTS idx_hof_voting_season ON hof_voting_history(dynasty_id, voting_season);
+CREATE INDEX IF NOT EXISTS idx_hof_voting_player ON hof_voting_history(dynasty_id, player_id);
+
+-- =============================================================================
+-- SOCIAL MEDIA & FAN REACTIONS (Milestone 14)
+-- =============================================================================
+
+-- Recurring fan and media personalities (256-384 fans + 40-45 media)
+CREATE TABLE IF NOT EXISTS social_personalities (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dynasty_id TEXT NOT NULL,
+    handle TEXT NOT NULL,  -- @AlwaysBelievinBill
+    display_name TEXT NOT NULL,  -- "Always Believin' Bill"
+    personality_type TEXT NOT NULL CHECK(personality_type IN ('FAN', 'BEAT_REPORTER', 'HOT_TAKE', 'STATS_ANALYST')),
+    archetype TEXT,  -- 'OPTIMIST', 'PESSIMIST', 'BANDWAGON', etc. (NULL for media)
+    team_id INTEGER,  -- NULL for league-wide media personalities
+    sentiment_bias REAL NOT NULL DEFAULT 0.0 CHECK(sentiment_bias BETWEEN -1.0 AND 1.0),
+    posting_frequency TEXT NOT NULL CHECK(posting_frequency IN ('ALL_EVENTS', 'WIN_ONLY', 'LOSS_ONLY', 'EMOTIONAL_MOMENTS', 'UPSET_ONLY')),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE,
+    UNIQUE(dynasty_id, handle)
+);
+
+CREATE INDEX IF NOT EXISTS idx_social_personalities_dynasty ON social_personalities(dynasty_id);
+CREATE INDEX IF NOT EXISTS idx_social_personalities_team ON social_personalities(team_id);
+CREATE INDEX IF NOT EXISTS idx_social_personalities_type ON social_personalities(personality_type);
+
+-- Individual posts/reactions from personalities
+CREATE TABLE IF NOT EXISTS social_posts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dynasty_id TEXT NOT NULL,
+    personality_id INTEGER NOT NULL,
+    season INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    post_text TEXT NOT NULL,
+    event_type TEXT NOT NULL CHECK(event_type IN ('GAME_RESULT', 'PLAYOFF_GAME', 'SUPER_BOWL', 'TRADE', 'SIGNING', 'FRANCHISE_TAG', 'RESIGNING', 'CUT', 'WAIVER_CLAIM', 'DRAFT', 'DRAFT_PICK', 'AWARD', 'HOF_INDUCTION', 'INJURY', 'RUMOR', 'TRAINING_CAMP')),
+    sentiment REAL NOT NULL CHECK(sentiment BETWEEN -1.0 AND 1.0),
+    likes INTEGER DEFAULT 0 CHECK(likes >= 0),
+    retweets INTEGER DEFAULT 0 CHECK(retweets >= 0),
+    event_metadata TEXT,  -- JSON: {game_id: 123, winning_team: 1, score: "31-17"}
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE,
+    FOREIGN KEY (personality_id) REFERENCES social_personalities(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_social_posts_dynasty_season_week ON social_posts(dynasty_id, season, week);
+CREATE INDEX IF NOT EXISTS idx_social_posts_dynasty_season_week_desc ON social_posts(dynasty_id, season DESC, week DESC);
+CREATE INDEX IF NOT EXISTS idx_social_posts_personality ON social_posts(personality_id);
+CREATE INDEX IF NOT EXISTS idx_social_posts_event_type ON social_posts(event_type);
+CREATE INDEX IF NOT EXISTS idx_social_posts_sentiment ON social_posts(sentiment);
+
+-- ============================================================================
+-- Performance Indexes for Expandable Game Rows (Regular Season Week View)
+-- ============================================================================
+-- Note: idx_players_team_position_overall cannot be added here because the
+-- players table is in nfl_simulation.db (legacy database), not game_cycle.db.
+-- The batch query will still work, just without index optimization.
+
+-- Index for top performers query (post-simulation)
+-- Used by RegularSeasonHandler._get_top_performers_for_game()
+CREATE INDEX IF NOT EXISTS idx_player_game_stats_game_team
+ON player_game_stats(game_id, team_id);
+
+-- =============================================================================
+-- PLAYER POPULARITY SYSTEM (Milestone 16)
+-- =============================================================================
+
+-- Player popularity scores tracked weekly
+-- Performance × Visibility × Market formula with decay and tier classification
+CREATE TABLE IF NOT EXISTS player_popularity (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dynasty_id TEXT NOT NULL,
+    player_id INTEGER NOT NULL,
+    season INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+
+    -- Core Score (0-100 range)
+    popularity_score REAL NOT NULL CHECK(popularity_score BETWEEN 0 AND 100),
+
+    -- Component Breakdown
+    performance_score REAL NOT NULL CHECK(performance_score BETWEEN 0 AND 100),
+    visibility_multiplier REAL NOT NULL CHECK(visibility_multiplier BETWEEN 0.5 AND 3.0),
+    market_multiplier REAL NOT NULL CHECK(market_multiplier BETWEEN 0.8 AND 2.0),
+
+    -- Tracking
+    week_change REAL,  -- Change from previous week
+    trend TEXT CHECK(trend IN ('RISING', 'FALLING', 'STABLE')),
+
+    -- Tier Classification
+    tier TEXT NOT NULL CHECK(tier IN ('TRANSCENDENT', 'STAR', 'KNOWN', 'ROLE_PLAYER', 'UNKNOWN')),
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE,
+    UNIQUE(dynasty_id, player_id, season, week)
+);
+
+CREATE INDEX IF NOT EXISTS idx_popularity_dynasty_season_week ON player_popularity(dynasty_id, season, week);
+CREATE INDEX IF NOT EXISTS idx_popularity_score ON player_popularity(dynasty_id, season, week, popularity_score DESC);
+CREATE INDEX IF NOT EXISTS idx_popularity_tier ON player_popularity(dynasty_id, season, week, tier);
+CREATE INDEX IF NOT EXISTS idx_popularity_player ON player_popularity(dynasty_id, player_id, season);
+
+-- Player popularity events (audit trail)
+-- Tracks significant events that impact popularity
+CREATE TABLE IF NOT EXISTS player_popularity_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dynasty_id TEXT NOT NULL,
+    player_id INTEGER NOT NULL,
+    season INTEGER NOT NULL,
+    week INTEGER NOT NULL,
+    event_type TEXT NOT NULL,  -- 'HEADLINE', 'AWARD', 'MILESTONE', 'SOCIAL_SPIKE', 'INJURY', etc.
+    impact REAL NOT NULL,  -- Positive or negative impact value
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (dynasty_id) REFERENCES dynasties(dynasty_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_popularity_events_dynasty ON player_popularity_events(dynasty_id);
+CREATE INDEX IF NOT EXISTS idx_popularity_events_player ON player_popularity_events(dynasty_id, player_id, season, week);
+CREATE INDEX IF NOT EXISTS idx_popularity_events_type ON player_popularity_events(event_type);

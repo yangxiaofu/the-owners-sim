@@ -67,8 +67,8 @@ class StageTransitionManager:
                 to_stage.stage_type == StageType.REGULAR_WEEK_1):
             return True, "Skipping to regular season"
 
-        # Starting new season (from preseason to week 1 of next year)
-        if from_stage.stage_type == StageType.OFFSEASON_PRESEASON:
+        # Starting new season (from waiver wire to week 1 of next year)
+        if from_stage.stage_type == StageType.OFFSEASON_WAIVER_WIRE:
             if to_stage.stage_type == StageType.REGULAR_WEEK_1:
                 if to_stage.season_year == from_stage.season_year + 1:
                     return True, "Starting new season"
@@ -170,8 +170,8 @@ class StageTransitionManager:
             side_effects.append("Entering offseason")
             # TODO: Initialize offseason state
 
-        # Preseason complete -> New Season
-        if from_stage.stage_type == StageType.OFFSEASON_PRESEASON:
+        # Waiver wire complete -> New Season
+        if from_stage.stage_type == StageType.OFFSEASON_WAIVER_WIRE:
             side_effects.append("Starting new season")
             # TODO: Increment season year, reset stats, etc.
 
@@ -193,13 +193,19 @@ def get_transition_description(from_stage: StageType, to_stage: StageType) -> st
             "Re-signing complete. Free agency opens!",
         (StageType.OFFSEASON_FREE_AGENCY, StageType.OFFSEASON_DRAFT):
             "Free agency complete. Time for the NFL Draft!",
-        (StageType.OFFSEASON_DRAFT, StageType.OFFSEASON_ROSTER_CUTS):
-            "Draft complete. Time to cut the roster to 53.",
-        (StageType.OFFSEASON_ROSTER_CUTS, StageType.OFFSEASON_TRAINING_CAMP):
-            "Roster cuts complete. Training camp begins!",
-        (StageType.OFFSEASON_TRAINING_CAMP, StageType.OFFSEASON_PRESEASON):
-            "Training camp complete. Preseason games begin!",
-        (StageType.OFFSEASON_PRESEASON, StageType.REGULAR_WEEK_1):
+        (StageType.OFFSEASON_DRAFT, StageType.OFFSEASON_TRAINING_CAMP):
+            "Draft complete. Training camp begins!",
+        (StageType.OFFSEASON_TRAINING_CAMP, StageType.OFFSEASON_PRESEASON_W1):
+            "Training camp complete. Preseason Week 1 begins!",
+        (StageType.OFFSEASON_PRESEASON_W1, StageType.OFFSEASON_PRESEASON_W2):
+            "Preseason Week 1 complete. On to Week 2!",
+        (StageType.OFFSEASON_PRESEASON_W2, StageType.OFFSEASON_PRESEASON_W3):
+            "Preseason Week 2 complete. Final preseason week ahead!",
+        (StageType.OFFSEASON_PRESEASON_W3, StageType.OFFSEASON_ROSTER_CUTS):
+            "Preseason complete! Time to make final roster cuts (90 → 53).",
+        (StageType.OFFSEASON_ROSTER_CUTS, StageType.OFFSEASON_WAIVER_WIRE):
+            "Roster cuts complete! 53-man roster set. Waiver wire opens.",
+        (StageType.OFFSEASON_WAIVER_WIRE, StageType.REGULAR_WEEK_1):
             "A new season begins!",
     }
 

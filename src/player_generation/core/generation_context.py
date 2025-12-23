@@ -49,21 +49,28 @@ class GenerationConfig:
     def get_overall_range(self) -> tuple[int, int]:
         """Calculate overall range based on context and round.
 
+        Calibrated against actual NFL rosters:
+        - League mean: 77, median: 76
+        - Only 3.4% of NFL players are 90+ overall
+        - Top rookies (Hutchinson, Daniels) are 89-90 - exceptional outliers
+        - Most rookies need 2-4 years to reach elite status
+
         Returns:
             Tuple of (min_overall, max_overall)
         """
         if self.context == GenerationContext.NFL_DRAFT and self.draft_round:
             # Draft round affects overall range
+            # Calibrated so rookies need development to become elite
             ranges = {
-                1: (75, 95),  # First round: elite talent
-                2: (70, 88),  # Second round: quality starters
-                3: (68, 85),  # Third round: good players
-                4: (65, 82),  # Fourth round: rotational players
-                5: (62, 78),  # Fifth round: backups
-                6: (60, 75),  # Sixth round: depth
-                7: (55, 72),  # Seventh round: projects
+                1: (70, 86),  # First round: future stars, rare elite (max matches Hutchinson/Daniels)
+                2: (67, 80),  # Second round: solid starters
+                3: (64, 77),  # Third round: good depth
+                4: (61, 74),  # Fourth round: rotational players
+                5: (58, 71),  # Fifth round: backups
+                6: (55, 68),  # Sixth round: depth
+                7: (52, 65),  # Seventh round: projects
             }
-            min_val, max_val = ranges.get(self.draft_round, (55, 72))
+            min_val, max_val = ranges.get(self.draft_round, (52, 65))
 
         elif self.context == GenerationContext.UDFA:
             min_val, max_val = 50, 68  # UDFA ceiling

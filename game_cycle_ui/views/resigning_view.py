@@ -14,12 +14,13 @@ from typing import Dict, List, Optional
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QPushButton,
-    QScrollArea, QApplication, QCheckBox
+    QScrollArea, QCheckBox
 )
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QFont, QColor
 
 from game_cycle_ui.dialogs import ContractDetailsDialog
+from game_cycle_ui.models.stage_data import ResigningStageData
 from game_cycle_ui.theme import (
     apply_table_style,
     PRIMARY_BUTTON_STYLE,
@@ -35,7 +36,7 @@ from game_cycle_ui.widgets import SummaryPanel
 from game_cycle_ui.widgets.splitter_layout_mixin import SplitterLayoutMixin
 from game_cycle_ui.widgets.hover_card import HoverCard
 from game_cycle_ui.widgets.roster_health_widget import RosterHealthWidget
-from game_cycle_ui.utils.table_utils import NumericTableWidgetItem, TableCellHelper
+from game_cycle_ui.utils.table_utils import NumericTableWidgetItem
 from constants.position_abbreviations import get_position_abbreviation
 from utils.player_field_extractors import extract_overall_rating
 
@@ -77,7 +78,6 @@ class ResigningView(QWidget, SplitterLayoutMixin):
         self._gm_proposals: List[Dict] = []  # GM extension proposals (legacy format)
         self._all_recommendations: List[Dict] = []  # Unified player recommendations (new format)
         self._restructure_proposals: List[Dict] = []  # GM restructure proposals
-        self._proposal_cards: Dict[int, QWidget] = {}  # contract_id -> card widget for restructure proposals
         self._approved_proposals: set = set()  # Track approved proposal_ids
         self._rejected_proposals: set = set()  # Track rejected proposal_ids
         self._toggle_states: Dict[str, bool] = {}  # proposal_id -> is_approved (True=ON)
@@ -370,9 +370,6 @@ class ResigningView(QWidget, SplitterLayoutMixin):
         help_label.setStyleSheet(f"color: {TextColors.ON_LIGHT_SECONDARY}; font-size: 11px;")
         group_layout.addWidget(help_label)
 
-        # GM Restructure Recommendations subsection
-        self._create_gm_restructure_subsection(group_layout)
-
         # Buttons layout
         btn_layout = QVBoxLayout()
         btn_layout.setSpacing(6)
@@ -401,26 +398,6 @@ class ResigningView(QWidget, SplitterLayoutMixin):
 
         # Hidden by default - shown when over cap
         self.cap_relief_group.hide()
-
-    def _create_gm_restructure_subsection(self, parent_layout: QVBoxLayout):
-        """Create GM restructure recommendations subsection."""
-        # Container widget for all restructure proposal cards
-        self.restructure_proposals_widget = QWidget()
-        self.restructure_proposals_layout = QVBoxLayout(self.restructure_proposals_widget)
-        self.restructure_proposals_layout.setSpacing(8)
-        self.restructure_proposals_layout.setContentsMargins(0, 0, 0, 0)
-
-        # Header for the subsection
-        header_label = QLabel("GM RESTRUCTURE RECOMMENDATIONS")
-        header_label.setFont(QFont(Typography.FAMILY, 12, QFont.Weight.Bold))
-        header_label.setStyleSheet(f"color: {Colors.INFO}; padding: 4px 0px;")
-        self.restructure_proposals_layout.addWidget(header_label)
-
-        # Placeholder for proposal cards
-        # Individual cards will be added dynamically via set_restructure_proposals()
-
-        parent_layout.addWidget(self.restructure_proposals_widget)
-        self.restructure_proposals_widget.hide()  # Hidden until proposals are set
 
     def _create_instructions(self, parent_layout: QVBoxLayout):
         """Create instruction text at the bottom."""
@@ -550,14 +527,10 @@ class ResigningView(QWidget, SplitterLayoutMixin):
         self._update_cap_relief_visibility(over_cap_amount)
 
     def _update_cap_relief_visibility(self, over_cap_amount: int = 0):
-        """Show/hide cap relief section based on cap status AND active proposals.
+        """Show/hide cap relief section based on cap status.
 
-        The section remains visible if:
-        1. Team is over the cap, OR
-        2. There are still pending restructure proposals to review
+        The cap relief section is always visible to allow proactive cap management.
         """
-        has_active_proposals = bool(self._proposal_cards)
-
         # Show/hide over-cap warning based on cap status
         if self._is_over_cap and over_cap_amount > 0:
             self.over_cap_warning.setText(
@@ -575,7 +548,10 @@ class ResigningView(QWidget, SplitterLayoutMixin):
 
     def set_restructure_proposals(self, proposals: List[Dict]):
         """
-        Set and display GM restructure proposals.
+        Store GM restructure proposals for dialog display.
+
+        The proposals are displayed when the user clicks "Restructure Contracts..."
+        button, which opens the RestructureDialog.
 
         Args:
             proposals: List of proposal dicts with:
@@ -590,306 +566,25 @@ class ResigningView(QWidget, SplitterLayoutMixin):
                 - proposal_id: str (optional, for tracking)
         """
         self._restructure_proposals = proposals
-        self._proposal_cards.clear()  # Clear the card tracking dictionary
 
-        # Clear existing proposal cards (except the header)
-        # Remove all widgets except the first one (header label)
-        while self.restructure_proposals_layout.count() > 1:
-            item = self.restructure_proposals_layout.takeAt(1)
-            if item.widget():
-                item.widget().deleteLater()
-
-        if not proposals:
-            self.restructure_proposals_widget.hide()
-            self.restructure_btn.show()  # Show manual restructure button
-            return
-
-        # Show proposals widget
-        self.restructure_proposals_widget.show()
-        self.restructure_btn.hide()  # Hide manual restructure button when proposals exist
-
-        # Create a card for each proposal and track by contract_id
-        for proposal in proposals:
-            card = self._create_restructure_proposal_card(proposal)
-            contract_id = proposal.get("contract_id")
-            if contract_id:
-                self._proposal_cards[contract_id] = card  # Track card by contract_id
-            self.restructure_proposals_layout.addWidget(card)
+        # Update button text to show count if proposals exist
+        if proposals:
+            total_savings = sum(p.get("cap_savings", 0) for p in proposals)
+            self.restructure_btn.setText(
+                f"Restructure Contracts... ({len(proposals)} recommendations, "
+                f"+${total_savings / 1_000_000:.1f}M)"
+            )
+        else:
+            self.restructure_btn.setText("Restructure Contracts...")
 
     def clear_restructure_proposals(self):
         """
-        Clear all restructure proposals and their cards.
+        Clear all restructure proposals.
 
         Used when re-evaluating to allow fresh proposal generation.
         """
         self._restructure_proposals.clear()
-        self._proposal_cards.clear()
-
-        # Remove all card widgets (except header)
-        while self.restructure_proposals_layout.count() > 1:
-            item = self.restructure_proposals_layout.takeAt(1)
-            if item.widget():
-                item.widget().deleteLater()
-
-        # Hide proposals widget, show manual restructure button
-        self.restructure_proposals_widget.hide()
-        self.restructure_btn.show()
-
-    def _create_restructure_proposal_card(self, proposal: Dict) -> QWidget:
-        """Create a single restructure proposal card widget."""
-        card = QWidget()
-        card.setStyleSheet(f"""
-            QWidget {{
-                background-color: {Colors.BG_SECONDARY};
-                border: 1px solid {Colors.BORDER};
-                border-radius: 4px;
-            }}
-        """)
-
-        card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(8)
-        card_layout.setContentsMargins(12, 10, 12, 10)
-
-        # Row 1: Player info
-        player_info_layout = QHBoxLayout()
-        player_name = proposal.get("player_name", "Unknown")
-        position = get_position_abbreviation(proposal.get("position", ""))
-        overall = extract_overall_rating(proposal, default=0)
-
-        player_label = QLabel(f"{player_name} ({position}, {overall} OVR)")
-        player_label.setFont(QFont(Typography.FAMILY, 12, QFont.Weight.Bold))
-        player_label.setStyleSheet(f"color: {TextColors.ON_DARK};")
-        player_info_layout.addWidget(player_label)
-        player_info_layout.addStretch()
-
-        card_layout.addLayout(player_info_layout)
-
-        # Row 2: Cap hit change
-        current_cap_hit = proposal.get("current_cap_hit", 0)
-        new_cap_hit = proposal.get("new_cap_hit", 0)
-        cap_hit_label = QLabel(
-            f"Cap Hit: ${current_cap_hit / 1_000_000:.1f}M → ${new_cap_hit / 1_000_000:.1f}M"
-        )
-        cap_hit_label.setFont(QFont(Typography.FAMILY, 11))
-        cap_hit_label.setStyleSheet(f"color: {TextColors.ON_DARK_SECONDARY};")
-        card_layout.addWidget(cap_hit_label)
-
-        # Row 3: Savings and dead money
-        cap_savings = proposal.get("cap_savings", 0)
-        dead_money = proposal.get("dead_money_added", 0)
-
-        savings_layout = QHBoxLayout()
-
-        savings_label = QLabel(f"Savings: +${cap_savings / 1_000_000:.1f}M")
-        savings_label.setFont(QFont(Typography.FAMILY, 11, QFont.Weight.Bold))
-        savings_label.setStyleSheet(f"color: {Colors.SUCCESS};")
-        savings_layout.addWidget(savings_label)
-
-        dead_money_label = QLabel(f"Dead Money: +${dead_money / 1_000_000:.1f}M")
-        dead_money_label.setFont(QFont(Typography.FAMILY, 11))
-        dead_money_label.setStyleSheet(f"color: {Colors.WARNING};")
-        savings_layout.addWidget(dead_money_label)
-
-        savings_layout.addStretch()
-
-        card_layout.addLayout(savings_layout)
-
-        # Row 4: GM reasoning
-        reasoning = proposal.get("gm_reasoning", "No reasoning provided")
-        reasoning_label = QLabel(f'"{reasoning}"')
-        reasoning_label.setWordWrap(True)
-        reasoning_label.setFont(QFont(Typography.FAMILY, 10))
-        reasoning_label.setStyleSheet(f"color: {TextColors.ON_DARK_MUTED}; font-style: italic;")
-        card_layout.addWidget(reasoning_label)
-
-        # Row 5: Action buttons
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
-
-        approve_btn = QPushButton("Approve")
-        approve_btn.setStyleSheet(PRIMARY_BUTTON_STYLE)
-        approve_btn.clicked.connect(lambda: self._on_restructure_proposal_approved(proposal, card))
-        button_layout.addWidget(approve_btn)
-
-        reject_btn = QPushButton("Reject")
-        reject_btn.setStyleSheet(DANGER_BUTTON_STYLE)
-        reject_btn.clicked.connect(lambda: self._on_restructure_proposal_rejected(proposal, card))
-        button_layout.addWidget(reject_btn)
-
-        card_layout.addLayout(button_layout)
-
-        return card
-
-    def _on_restructure_proposal_approved(self, proposal: Dict, card: QWidget):
-        """
-        Handle approval of a restructure proposal.
-
-        Emits signal to controller for execution. Card is removed by controller
-        calling remove_proposal_card(contract_id) after successful execution.
-        If execution fails, card stays visible for retry.
-        """
-        # Emit signal with the proposal - controller will execute and call remove_proposal_card on success
-        self.restructure_proposal_approved.emit(proposal)
-
-    def remove_proposal_card(self, contract_id: int):
-        """
-        Remove a restructure proposal card by contract ID.
-
-        Called by controller after successful restructure execution,
-        or immediately after rejection.
-
-        Args:
-            contract_id: The contract ID to remove
-        """
-        if contract_id in self._proposal_cards:
-            card = self._proposal_cards.pop(contract_id)
-            card.hide()
-            card.deleteLater()
-
-            # Also remove from proposals list
-            self._restructure_proposals = [
-                p for p in self._restructure_proposals
-                if p.get("contract_id") != contract_id
-            ]
-
-            self._update_proposals_visibility()
-
-    def _update_proposals_visibility(self):
-        """Update visibility of proposals widget based on remaining proposals."""
-        if not self._restructure_proposals:
-            self.restructure_proposals_widget.hide()
-            self.restructure_btn.show()
-
-    def set_card_processing(self, contract_id: int):
-        """
-        Show processing state on card when approval is in progress.
-
-        Tints the entire card blue and shows "Processing..." to indicate action is executing.
-
-        Args:
-            contract_id: The contract ID of the card to update
-        """
-        if contract_id in self._proposal_cards:
-            card = self._proposal_cards[contract_id]
-
-            # Tint the entire card to indicate processing (light blue)
-            card.setStyleSheet("""
-                background-color: #E3F2FD;
-                border: 2px solid #2196F3;
-                border-radius: 6px;
-            """)
-
-            # Find and disable buttons, show "Processing..."
-            for btn in card.findChildren(QPushButton):
-                btn.setEnabled(False)
-                if btn.text() == "Approve":
-                    btn.setText("Processing...")
-                    btn.setStyleSheet("""
-                        background: #2196F3;
-                        color: white;
-                        font-weight: bold;
-                        border-radius: 4px;
-                        padding: 6px 12px;
-                    """)
-
-            # Force UI repaint so user sees processing state
-            card.repaint()
-            self.repaint()
-            QApplication.processEvents()
-
-    def set_card_success(self, contract_id: int, cap_savings: int, on_complete=None):
-        """
-        Show success state on card, then remove after 1.5 second delay.
-
-        Changes entire card to green with success styling to make feedback unmissable.
-
-        Args:
-            contract_id: The contract ID of the card to update
-            cap_savings: The amount of cap space saved (in dollars)
-            on_complete: Optional callback to invoke after timer fires (for cap refresh)
-        """
-        if contract_id in self._proposal_cards:
-            card = self._proposal_cards[contract_id]
-
-            # Change ENTIRE CARD to success styling (green background with border)
-            card.setStyleSheet("""
-                background-color: #E8F5E9;
-                border: 2px solid #4CAF50;
-                border-radius: 6px;
-            """)
-
-            # Show success message on the approve button
-            for btn in card.findChildren(QPushButton):
-                if btn.text() == "Processing...":
-                    savings_str = f"${cap_savings / 1_000_000:.1f}M"
-                    btn.setText(f"✓ Saved {savings_str}")
-                    btn.setStyleSheet("""
-                        background: #2E7D32;
-                        color: white;
-                        font-weight: bold;
-                        border-radius: 4px;
-                        padding: 8px 16px;
-                        font-size: 14px;
-                    """)
-                elif btn.text() == "Reject":
-                    btn.hide()  # Hide reject button on success
-
-            # Force UI repaint so user sees the success message
-            card.update()
-            card.repaint()
-            QApplication.processEvents()
-
-            # Create a timer that we keep a reference to (prevents garbage collection)
-            timer = QTimer(self)
-            timer.setSingleShot(True)
-            timer.setInterval(1500)  # 1.5 seconds to ensure visibility
-
-            # Store contract_id and callback in timer's properties
-            timer.setProperty("contract_id", contract_id)
-            timer.setProperty("on_complete", on_complete)
-            timer.timeout.connect(self._on_success_timer_fired)
-            timer.start()
-
-    def _on_success_timer_fired(self):
-        """Handle timer timeout - remove the card after success display."""
-        timer = self.sender()
-        if timer:
-            contract_id = timer.property("contract_id")
-            on_complete = timer.property("on_complete")
-            if contract_id is not None:
-                self.remove_proposal_card(contract_id)
-            # Call the completion callback (e.g., to refresh cap display)
-            if on_complete and callable(on_complete):
-                on_complete()
-            timer.deleteLater()
-
-    def set_card_failure(self, contract_id: int, error: str):
-        """
-        Show failure state on card, re-enable buttons for retry.
-
-        Restores the approve button and shows an error indication so the user
-        can try again or reject the proposal.
-
-        Args:
-            contract_id: The contract ID of the card to update
-            error: The error message (currently not displayed, but logged)
-        """
-        if contract_id in self._proposal_cards:
-            card = self._proposal_cards[contract_id]
-            for btn in card.findChildren(QPushButton):
-                btn.setEnabled(True)
-                if "Processing" in btn.text() or "✓" in btn.text():
-                    btn.setText("Approve")
-                    btn.setStyleSheet(PRIMARY_BUTTON_STYLE)  # Reset to default style
-
-    def _on_restructure_proposal_rejected(self, proposal: Dict, card: QWidget):
-        """Handle rejection of a restructure proposal."""
-        # Emit signal with the proposal
-        self.restructure_proposal_rejected.emit(proposal)
-
-        # Immediately remove the card (rejection doesn't need controller confirmation)
-        contract_id = proposal.get("contract_id")
-        self.remove_proposal_card(contract_id)
+        self.restructure_btn.setText("Restructure Contracts...")
 
     # =========================================================================
     # GM Extension Recommendations (Inline Table)
@@ -968,6 +663,38 @@ class ResigningView(QWidget, SplitterLayoutMixin):
         """
         if hasattr(self, 'roster_health'):
             self.roster_health.update_scores(roster_players, expiring_ids)
+
+    def update_stage_data(self, data: ResigningStageData):
+        """
+        Update the view with consolidated stage data.
+
+        This is a convenience wrapper that calls the existing setters internally.
+        Provides a cleaner API for stage_controller.py by consolidating multiple
+        setter calls into a single method.
+
+        Args:
+            data: ResigningStageData dataclass with all view data
+        """
+        # Always set cap data first (needed for projections)
+        self.set_cap_data(data.cap_data)
+
+        # Set roster health if provided
+        if data.roster_players is not None and data.expiring_ids is not None:
+            self.set_roster_health(data.roster_players, data.expiring_ids)
+
+        # Clear restructure proposals if this is a re-evaluation
+        if data.is_reevaluation:
+            self.clear_restructure_proposals()
+
+        # Set player recommendations
+        self.set_all_players(data.recommendations, is_reevaluation=data.is_reevaluation)
+
+        # Set restructure proposals
+        if data.restructure_proposals:
+            self.set_restructure_proposals(data.restructure_proposals)
+        elif data.is_reevaluation:
+            # Clear if no proposals (re-evaluation path)
+            self.clear_restructure_proposals()
 
     def set_all_players(self, recommendations: List[Dict], is_reevaluation: bool = False):
         """
@@ -1554,23 +1281,21 @@ class ResigningView(QWidget, SplitterLayoutMixin):
     # =========================================================================
 
     def _on_restructure_clicked(self):
-        """Open restructure dialog showing restructurable contracts."""
+        """Open restructure dialog showing GM's restructure recommendations."""
         try:
             from game_cycle_ui.dialogs.restructure_dialog import RestructureDialog
 
-            # Validate required context
-            if not self._db_path or not self._dynasty_id:
-                print("[ResigningView] Cannot open restructure dialog: context not set")
-                return
-
+            # Pass stored proposals to dialog
             dialog = RestructureDialog(
-                team_id=self._team_id,
-                db_path=self._db_path,
-                dynasty_id=self._dynasty_id,
-                season=self._season,
+                proposals=self._restructure_proposals,
                 parent=self
             )
-            dialog.restructure_applied.connect(self._on_restructure_applied)
+
+            # Connect dialog signals
+            # Forward to view signals and also emit restructure_completed for controller
+            dialog.proposal_approved.connect(self._on_dialog_proposal_approved)
+            dialog.proposal_rejected.connect(self.restructure_proposal_rejected.emit)
+
             dialog.exec()
         except ImportError as ie:
             print(f"[ResigningView] Restructure dialog not implemented: {ie}")
@@ -1578,6 +1303,38 @@ class ResigningView(QWidget, SplitterLayoutMixin):
             print(f"[ResigningView] Error opening restructure dialog: {e}")
             import traceback
             traceback.print_exc()
+
+    def _on_dialog_proposal_approved(self, proposal: Dict):
+        """
+        Handle restructure proposal approved from dialog.
+
+        Bridges between the dialog's proposal dict and the existing signals:
+        - Emits restructure_proposal_approved with full proposal for detailed handling
+        - Emits restructure_completed with contract_id and cap_savings for controller
+        """
+        # Emit full proposal for any listeners that need it
+        self.restructure_proposal_approved.emit(proposal)
+
+        # Also emit legacy signal for controller cap refresh
+        contract_id = proposal.get("contract_id", 0)
+        cap_savings = proposal.get("cap_savings", 0)
+        self.restructure_completed.emit(contract_id, cap_savings)
+
+        # Update button text after approval
+        remaining = [
+            p for p in self._restructure_proposals
+            if p.get("contract_id") != contract_id
+        ]
+        self._restructure_proposals = remaining
+
+        if remaining:
+            total_savings = sum(p.get("cap_savings", 0) for p in remaining)
+            self.restructure_btn.setText(
+                f"Restructure Contracts... ({len(remaining)} recommendations, "
+                f"+${total_savings / 1_000_000:.1f}M)"
+            )
+        else:
+            self.restructure_btn.setText("Restructure Contracts...")
 
     def _on_early_cuts_clicked(self):
         """Open early cuts dialog for non-recommended players."""
@@ -1613,12 +1370,6 @@ class ResigningView(QWidget, SplitterLayoutMixin):
             print(f"[ResigningView] Error opening early cuts dialog: {e}")
             import traceback
             traceback.print_exc()
-
-    def _on_restructure_applied(self, contract_id: int, cap_savings: int):
-        """Handle restructure completion."""
-        print(f"[ResigningView] Restructure applied: contract_id={contract_id}, cap_savings=${cap_savings:,}")
-        # Emit signal for controller
-        self.restructure_completed.emit(contract_id, cap_savings)
 
     def _on_early_cut_applied(self, player_id: int, dead_money: int, cap_savings: int):
         """Handle early cut completion."""

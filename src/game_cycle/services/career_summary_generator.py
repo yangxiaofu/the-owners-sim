@@ -15,6 +15,7 @@ import logging
 import sqlite3
 
 from src.game_cycle.database.retired_players_api import CareerSummary
+from src.utils.player_field_extractors import extract_primary_position
 
 
 # ============================================
@@ -177,7 +178,7 @@ class CareerSummaryGenerator:
         """
         player_id = player_dict['player_id']
         full_name = self._get_player_name(player_dict)
-        position = self._get_primary_position(player_dict)
+        position = extract_primary_position(player_dict.get('positions'), default='WR', uppercase=True)
 
         # Aggregate career statistics
         stats = self._aggregate_career_stats(player_id)
@@ -886,25 +887,3 @@ class CareerSummaryGenerator:
         first = player_dict.get('first_name', '')
         last = player_dict.get('last_name', '')
         return f"{first} {last}".strip() or "Unknown Player"
-
-    def _get_primary_position(self, player_dict: Dict[str, Any]) -> str:
-        """Extract primary position from player dict."""
-        positions = player_dict.get('positions', [])
-
-        # Handle JSON string
-        if isinstance(positions, str):
-            try:
-                positions = json.loads(positions)
-            except (json.JSONDecodeError, TypeError):
-                positions = [positions]
-
-        # Handle single position string
-        if isinstance(positions, str):
-            return positions.upper()
-
-        # Return first position or default
-        if positions and len(positions) > 0:
-            pos = positions[0]
-            if isinstance(pos, str):
-                return pos.upper()
-        return 'UNKNOWN'

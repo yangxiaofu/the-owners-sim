@@ -12,7 +12,7 @@ import json
 from datetime import datetime, date
 
 from src.persistence.transaction_logger import TransactionLogger
-from utils.player_field_extractors import extract_overall_rating
+from src.utils.player_field_extractors import extract_overall_rating
 
 
 class WaiverService:

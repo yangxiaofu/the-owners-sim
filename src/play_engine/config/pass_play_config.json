@@ -11,9 +11,9 @@
           "completion_rate": 0.73,
           "sack_rate": 0.055,
           "pressure_rate": 0.22,
-          "deflection_rate": 0.045,
+          "deflection_rate": 0.0021,
           "int_rate": 0.020,
-          "avg_air_yards": 11.5,
+          "avg_air_yards": 9.5,
           "avg_yac": 6.2,
           "avg_time_to_throw": 2.6
         },
@@ -21,9 +21,9 @@
           "completion_rate": 0.77,
           "sack_rate": 0.045,
           "pressure_rate": 0.18,
-          "deflection_rate": 0.04,
+          "deflection_rate": 0.0018,
           "int_rate": 0.018,
-          "avg_air_yards": 10.5,
+          "avg_air_yards": 8.5,
           "avg_yac": 6.8,
           "avg_time_to_throw": 2.4
         },
@@ -31,9 +31,9 @@
           "completion_rate": 0.79,
           "sack_rate": 0.030,
           "pressure_rate": 0.15,
-          "deflection_rate": 0.035,
+          "deflection_rate": 0.0016,
           "int_rate": 0.015,
-          "avg_air_yards": 13.0,
+          "avg_air_yards": 11.0,
           "avg_yac": 7.0,
           "avg_time_to_throw": 2.8
         }
@@ -43,9 +43,9 @@
           "completion_rate": 0.70,
           "sack_rate": 0.065,
           "pressure_rate": 0.25,
-          "deflection_rate": 0.05,
+          "deflection_rate": 0.0023,
           "int_rate": 0.025,
-          "avg_air_yards": 8.0,
+          "avg_air_yards": 6.0,
           "avg_yac": 4.5,
           "avg_time_to_throw": 2.8
         },
@@ -53,9 +53,9 @@
           "completion_rate": 0.75,
           "sack_rate": 0.055,
           "pressure_rate": 0.20,
-          "deflection_rate": 0.045,
+          "deflection_rate": 0.0021,
           "int_rate": 0.020,
-          "avg_air_yards": 7.5,
+          "avg_air_yards": 5.5,
           "avg_yac": 5.0,
           "avg_time_to_throw": 2.5
         }
@@ -65,9 +65,9 @@
           "completion_rate": 0.67,
           "sack_rate": 0.075,
           "pressure_rate": 0.28,
-          "deflection_rate": 0.06,
+          "deflection_rate": 0.0029,
           "interception_rate": 0.028,
-          "avg_air_yards": 6.5,
+          "avg_air_yards": 4.5,
           "avg_yac": 4.0,
           "avg_time_to_throw": 3.0
         }
@@ -77,9 +77,9 @@
           "completion_rate": 0.72,
           "sack_rate": 0.060,
           "pressure_rate": 0.24,
-          "deflection_rate": 0.045,
+          "deflection_rate": 0.0021,
           "int_rate": 0.022,
-          "avg_air_yards": 10.8,
+          "avg_air_yards": 8.8,
           "avg_yac": 5.8,
           "avg_time_to_throw": 2.7
         }
@@ -89,7 +89,7 @@
           "completion_rate": 0.63,
           "sack_rate": 0.090,
           "pressure_rate": 0.32,
-          "deflection_rate": 0.07,
+          "deflection_rate": 0.0032,
           "int_rate": 0.035,
           "avg_air_yards": 3.0,
           "avg_yac": 2.5,
@@ -101,9 +101,9 @@
       "completion_rate": 0.70,
       "sack_rate": 0.060,
       "pressure_rate": 0.24,
-      "deflection_rate": 0.045,
+      "deflection_rate": 0.0021,
       "int_rate": 0.020,
-      "avg_air_yards": 9.0,
+      "avg_air_yards": 7.0,
       "avg_yac": 5.0,
       "avg_time_to_throw": 2.5
     }
@@ -141,14 +141,114 @@
       "pressure_allowance_base": 0.3
     },
     "defensive_modifiers": {
-      "elite_coverage_bonus": 0.9,
+      "elite_coverage_bonus": 0.95,
       "poor_coverage_penalty": 1.4,
       "elite_rush_bonus": 1.3,
       "good_rush_bonus": 1.08,
       "poor_rush_penalty": 0.7
     }
   },
-  
+
+  "receiver_targeting": {
+    "description": "Target distribution weights for WRs, TEs, and RBs",
+    "depth_chart_weights": {
+      "wr1_weight": 0.52,
+      "wr2_weight": 0.70,
+      "wr3_plus_weight": 0.5,
+      "te1_weight": 0.50,
+      "te2_plus_weight": 0.20,
+      "rb_checkdown_weight": 0.4
+    },
+    "receiving_back_threshold": 65,
+    "hands_rating_threshold": 50,
+    "rating_to_weight_conversion": {
+      "base_multiplier": 0.5,
+      "rating_divisor": 100.0
+    },
+    "minimum_target_weight": 0.1
+  },
+
+  "environmental_modifiers": {
+    "description": "Weather and field position effects on pass plays",
+    "deep_pass_threshold": 15.0,
+    "rain": {
+      "completion_multiplier": 0.90,
+      "deep_completion_multiplier": 0.85,
+      "int_multiplier": 1.05
+    },
+    "snow": {
+      "completion_multiplier": 0.85,
+      "deep_completion_multiplier": 0.75,
+      "int_multiplier": 1.10,
+      "air_yards_multiplier": 0.95
+    },
+    "heavy_wind": {
+      "deep_completion_multiplier": 0.70,
+      "air_yards_multiplier": 1.15,
+      "int_multiplier": 1.08
+    },
+    "red_zone": {
+      "field_position_threshold": 80,
+      "completion_multiplier": 0.92,
+      "int_multiplier": 1.15
+    },
+    "minimum_completion_rate": 0.15
+  },
+
+  "qb_scramble": {
+    "description": "QB scramble mechanics for mobile quarterbacks",
+    "scramble_chance": {
+      "base_chance": 0.15,
+      "sack_escape_multiplier": 1.5,
+      "max_sack_escape_chance": 0.70,
+      "fallback_chance": 0.10,
+      "mobility_thresholds": {
+        "elite_mobile": {"min_rating": 90, "bonus": 0.25},
+        "very_mobile": {"min_rating": 85, "bonus": 0.18},
+        "mobile": {"min_rating": 80, "bonus": 0.12},
+        "above_average": {"min_rating": 75, "bonus": 0.05},
+        "statue": {"max_rating": 65, "penalty": -0.08}
+      },
+      "composure_bonus": {
+        "high_threshold": 85,
+        "high_bonus": 0.05,
+        "medium_threshold": 80,
+        "medium_bonus": 0.02
+      },
+      "designed_scramble": {
+        "mobility_threshold": 85,
+        "base_mobility_offset": 80,
+        "chance_divisor": 200
+      },
+      "min_chance": 0.05,
+      "max_chance": 0.50
+    },
+    "scramble_yards": {
+      "base_yards": 4.5,
+      "base_variance": 4.0,
+      "speed_modifier_offset": 70,
+      "speed_modifier_divisor": 100,
+      "agility_thresholds": {
+        "high": {"min_rating": 85, "variance_bonus": 1.5},
+        "medium": {"min_rating": 80, "variance_bonus": 0.75}
+      },
+      "big_scramble": {
+        "speed_threshold": 80,
+        "probability": 0.10,
+        "min_yards": 10,
+        "max_yards": 20
+      }
+    }
+  },
+
+  "situational_modifiers": {
+    "description": "Modifiers based on down, distance, field position",
+    "third_down": {
+      "pressure_multiplier": 1.30,
+      "completion_multiplier": 0.92
+    }
+  },
+
   "play_mechanics": {
     "description": "Core pass play mechanics and probabilities",
     "sack_mechanics": {
@@ -159,7 +259,7 @@
       "primary_target_probability": 0.75
     },
     "pressure_effects": {
-      "accuracy_impact": 0.82,
+      "accuracy_impact": 0.88,
       "pressure_to_hit_conversion": 0.4
     },
     "tackling": {
@@ -188,8 +288,99 @@
   
   "variance_ranges": {
     "description": "Variance ranges for statistical outcomes",
-    "air_yards_variance": 3.0,
-    "yac_variance": 2.5,
+    "air_yards_variance": 8.0,
+    "yac_variance": 5.0,
     "time_to_throw_variance": 0.6
+  },
+
+  "blitz_packages": {
+    "description": "Blitz package modifiers for sack and pressure rates. More rushers = higher pressure but weaker coverage.",
+    "packages": {
+      "four_man_base": {
+        "description": "Standard 4-man rush (DEs + DTs only)",
+        "num_rushers": 4,
+        "sack_modifier": 1.0,
+        "pressure_modifier": 1.0
+      },
+      "three_man_rush": {
+        "description": "Prevent defense - drop 8 into coverage",
+        "num_rushers": 3,
+        "sack_modifier": 0.6,
+        "pressure_modifier": 0.5
+      },
+      "mike_blitz": {
+        "description": "Middle linebacker blitzes A-gap",
+        "num_rushers": 5,
+        "sack_modifier": 1.25,
+        "pressure_modifier": 1.35
+      },
+      "sam_blitz": {
+        "description": "Strong-side linebacker blitzes",
+        "num_rushers": 5,
+        "sack_modifier": 1.2,
+        "pressure_modifier": 1.3
+      },
+      "will_blitz": {
+        "description": "Weak-side linebacker blitzes",
+        "num_rushers": 5,
+        "sack_modifier": 1.2,
+        "pressure_modifier": 1.3
+      },
+      "a_gap_blitz": {
+        "description": "Single A-gap pressure from ILB or safety",
+        "num_rushers": 5,
+        "sack_modifier": 1.3,
+        "pressure_modifier": 1.4
+      },
+      "double_a_gap": {
+        "description": "Both A-gaps pressured - high risk/reward",
+        "num_rushers": 6,
+        "sack_modifier": 1.45,
+        "pressure_modifier": 1.55
+      },
+      "lb_db_combo": {
+        "description": "Linebacker + DB combination blitz",
+        "num_rushers": 6,
+        "sack_modifier": 1.4,
+        "pressure_modifier": 1.5
+      },
+      "corner_blitz": {
+        "description": "Cornerback blitzes off the edge - surprise factor",
+        "num_rushers": 5,
+        "sack_modifier": 1.35,
+        "pressure_modifier": 1.45
+      },
+      "safety_blitz": {
+        "description": "Safety blitzes - common in aggressive schemes",
+        "num_rushers": 5,
+        "sack_modifier": 1.3,
+        "pressure_modifier": 1.4
+      },
+      "nickel_blitz": {
+        "description": "Nickel corner/slot defender blitzes",
+        "num_rushers": 5,
+        "sack_modifier": 1.25,
+        "pressure_modifier": 1.35
+      },
+      "zone_dog": {
+        "description": "Zone coverage with delayed blitz - deceptive",
+        "num_rushers": 5,
+        "sack_modifier": 1.15,
+        "pressure_modifier": 1.25
+      },
+      "fire_zone": {
+        "description": "Zone coverage with 5 rushers - balanced aggression",
+        "num_rushers": 5,
+        "sack_modifier": 1.2,
+        "pressure_modifier": 1.3
+      },
+      "cover_0_blitz": {
+        "description": "All-out blitz with no safety help - maximum aggression",
+        "num_rushers": 6,
+        "sack_modifier": 1.55,
+        "pressure_modifier": 1.65
+      }
+    },
+    "default_package": "four_man_base"
   }
 }

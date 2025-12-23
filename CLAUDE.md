@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Communication Style
+
+**Response Format:**
+- Provide **high-level summaries first** - brief overview of the issue/fix/approach
+- Wait for user to request detailed drill-down before providing implementation specifics
+- Let the user control the level of detail they need
+
 ## Quick Start
 
 **New to this codebase? Start here:**
@@ -32,7 +39,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **DRY Principles**: Search for existing APIs before creating new ones
 - **Certainty Score**: On a scale of 1-100, provide level of certainty for any fix
 - **Database Operations**: MUST raise exceptions on failure - never fail silently
-- **Plan Mode**: Provide file paths (linkable), group by backend/frontend, write pseudo code with architecture adherence
+- **Plan Mode**: Keep plans concise and skimmable - provide file paths (linkable), group by backend/frontend, use bullet points for quick scanning, NO pseudo code or excessive implementation details
 - **Dynasty Isolation**: For any new methods or classes, always consider how to utilize the SSOT for dynasty_id to maintain dynasty isolation
 - **Service Layer Pattern**: Services should NOT make direct database calls - use dedicated API classes:
   ```python

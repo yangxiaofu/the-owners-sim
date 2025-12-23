@@ -11,7 +11,9 @@ Single-page design showing what's happening NOW in the dynasty:
 - Power Rankings (regular season) or Stage-specific content
 """
 
+import json
 import logging
+from types import SimpleNamespace
 from typing import Any, Dict, List, Optional
 
 from PySide6.QtWidgets import (
@@ -59,6 +61,7 @@ from game_cycle_ui.widgets.top_performers_widget import TopPerformersWidget
 from game_cycle_ui.widgets.game_of_week_widget import GameOfWeekWidget
 # from game_cycle_ui.widgets.standings_snapshot_widget import StandingsSnapshotWidget  # Removed
 from game_cycle_ui.widgets.transaction_feed_widget import TransactionFeedWidget
+from game_cycle_ui.views.popularity_view import PopularityView
 
 
 logger = logging.getLogger(__name__)
@@ -183,6 +186,9 @@ class MediaCoverageView(QWidget):
 
         # Team name lookup
         self._team_names: Dict[int, str] = {}
+
+        # Popularity view (lazy-loaded on first tab access)
+        self._popularity_view: Optional[PopularityView] = None
 
         self._setup_ui()
 
@@ -316,13 +322,14 @@ class MediaCoverageView(QWidget):
         layout.addWidget(header_container)
 
         # =====================================================================
-        # TAB WIDGET (Main content area with 4 tabs)
+        # TAB WIDGET (Main content area with 5 tabs)
         # =====================================================================
         self._tab_widget = QTabWidget()
         self._tab_widget.addTab(self._create_headlines_tab(), "Headlines")
         self._tab_widget.addTab(self._create_rankings_tab(), "Power Rankings")
         self._tab_widget.addTab(self._create_leaders_tab(), "League Leaders")
         self._tab_widget.addTab(self._create_transactions_tab(), "Transactions")
+        self._tab_widget.addTab(self._create_trending_players_tab(), "Trending Players")
         layout.addWidget(self._tab_widget, 1)
 
         # =====================================================================
@@ -520,6 +527,32 @@ class MediaCoverageView(QWidget):
         # Return the widget directly (it has its own scroll area)
         return self._transaction_feed_widget
 
+    def _create_trending_players_tab(self) -> QWidget:
+        """Create the Trending Players tab showing player popularity rankings.
+
+        Returns:
+            QWidget: Container with PopularityView
+        """
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        # Create PopularityView instance (lazy-loaded)
+        self._popularity_view = PopularityView(parent=self)
+
+        # Set context if available
+        if self._dynasty_id and self._db_path:
+            self._popularity_view.set_context(
+                self._dynasty_id,
+                self._db_path,
+                self._season,
+                self._current_week
+            )
+
+        layout.addWidget(self._popularity_view)
+
+        return container
+
     # =========================================================================
     # CONTEXT MANAGEMENT
     # =========================================================================
@@ -537,6 +570,16 @@ class MediaCoverageView(QWidget):
         self._db_path = db_path
         self._season = season
         self._load_team_names()
+
+        # Update popularity view if it exists
+        if self._popularity_view:
+            self._popularity_view.set_context(
+                dynasty_id,
+                db_path,
+                season,
+                self._current_week
+            )
+
         self.refresh_data()
 
     def set_current_stage(self, stage: str, week: int = 1):
@@ -633,6 +676,10 @@ class MediaCoverageView(QWidget):
             self._load_top_performers()
             self._load_game_of_week()
 
+            # Refresh popularity view if it exists
+            if self._popularity_view:
+                self._popularity_view.refresh_rankings()
+
             logger.debug(f"Data loaded: {len(self._headlines)} headlines, {len(self._rankings)} rankings, {len(self._games)} games")
 
             self._update_empty_state()
@@ -666,13 +713,15 @@ class MediaCoverageView(QWidget):
             self._team_names = {}
 
     def _load_games(self):
-        """Load game scores for the scoreboard ticker."""
+        """Load game scores for the scoreboard ticker.
+
+        Queries games table for completed games and events table for scheduled games.
+        Uses same pattern as ScheduleView for dynasty isolation.
+        """
         try:
             from src.game_cycle.database.connection import GameCycleDatabase
-            from src.game_cycle.database.schedule_api import ScheduleAPI
 
             db = GameCycleDatabase(self._db_path)
-            api = ScheduleAPI(db)
 
             # Determine week based on stage
             week = self._get_display_week()
@@ -682,11 +731,87 @@ class MediaCoverageView(QWidget):
                 f"[MediaCoverage] Loading games: week={week}, stage={self._current_stage}"
             )
 
-            # Get games for this week/round
+            games = []
+
             if self._current_stage.startswith("REGULAR_"):
-                games = api.get_games_for_week(week)
+                # Track completed game_ids to avoid duplicates
+                completed_game_ids = set()
+
+                # Step 1: Load completed games from games table
+                rows = db.query_all(
+                    """SELECT game_id as id, week, home_team_id, away_team_id,
+                              home_score, away_score
+                       FROM games
+                       WHERE dynasty_id = ? AND season = ? AND week = ?
+                         AND season_type = 'regular_season'
+                         AND home_team_id IS NOT NULL
+                         AND away_team_id IS NOT NULL
+                       ORDER BY game_id""",
+                    (self._dynasty_id, self._season, week)
+                )
+
+                for row in rows:
+                    if not row['home_team_id'] or not row['away_team_id']:
+                        continue
+                    completed_game_ids.add(row['id'])
+                    game = SimpleNamespace(
+                        id=row['id'],
+                        week=row['week'],
+                        home_team_id=row['home_team_id'],
+                        away_team_id=row['away_team_id'],
+                        home_score=row['home_score'],
+                        away_score=row['away_score'],
+                        is_played=True
+                    )
+                    games.append(game)
+
+                # Step 2: Load scheduled (unplayed) games from events table
+                scheduled_rows = db.query_all(
+                    """SELECT event_id, game_id, data
+                       FROM events
+                       WHERE dynasty_id = ?
+                         AND json_extract(data, '$.parameters.season') = ?
+                         AND json_extract(data, '$.parameters.week') = ?
+                         AND json_extract(data, '$.parameters.season_type') = 'regular_season'
+                         AND json_extract(data, '$.parameters.home_team_id') IS NOT NULL
+                         AND json_extract(data, '$.parameters.away_team_id') IS NOT NULL
+                       ORDER BY game_id""",
+                    (self._dynasty_id, self._season, week)
+                )
+
+                for row in scheduled_rows:
+                    game_id = row['game_id']
+
+                    # Skip if already loaded as completed game
+                    if game_id in completed_game_ids:
+                        continue
+
+                    # Parse event data
+                    try:
+                        data = json.loads(row['data'])
+                    except (json.JSONDecodeError, TypeError):
+                        continue
+
+                    params = data.get('parameters', {})
+                    home_team_id = params.get('home_team_id')
+                    away_team_id = params.get('away_team_id')
+
+                    if not home_team_id or not away_team_id:
+                        continue
+
+                    game = SimpleNamespace(
+                        id=game_id,
+                        week=week,
+                        home_team_id=home_team_id,
+                        away_team_id=away_team_id,
+                        home_score=None,
+                        away_score=None,
+                        is_played=False
+                    )
+                    games.append(game)
+
             elif self._current_stage in ("WILD_CARD", "DIVISIONAL", "CONFERENCE_CHAMPIONSHIP", "SUPER_BOWL"):
-                # Playoff games - map stage to round_name format
+                # Playoff games - query from games table with playoff round
                 round_map = {
                     "WILD_CARD": "wild_card",
                     "DIVISIONAL": "divisional",
@@ -694,17 +819,38 @@ class MediaCoverageView(QWidget):
                     "SUPER_BOWL": "super_bowl",
                 }
                 round_name = round_map.get(self._current_stage, self._current_stage.lower())
-                games = api.get_playoff_games(round_name)
-            else:
-                # Offseason - no games to show
-                games = []
+
+                rows = db.query_all(
+                    """SELECT game_id as id, week, home_team_id, away_team_id,
+                              home_score, away_score
+                       FROM games
+                       WHERE dynasty_id = ? AND season = ?
+                         AND game_type = ?
+                         AND home_team_id IS NOT NULL
+                         AND away_team_id IS NOT NULL
+                       ORDER BY game_id""",
+                    (self._dynasty_id, self._season, round_name)
+                )
+
+                for row in rows:
+                    if not row['home_team_id'] or not row['away_team_id']:
+                        continue
+                    game = SimpleNamespace(
+                        id=row['id'],
+                        week=row['week'],
+                        home_team_id=row['home_team_id'],
+                        away_team_id=row['away_team_id'],
+                        home_score=row['home_score'],
+                        away_score=row['away_score'],
+                        is_played=row['home_score'] is not None
+                    )
+                    games.append(game)
 
             # DEBUG: Log results
             logger.info(f"[MediaCoverage] Loaded {len(games)} games")
 
             self._games = []
             for game in games:
-                # ScheduledGame is a dataclass with properties, not a dict
                 home_name = self._team_names.get(game.home_team_id, "")
                 away_name = self._team_names.get(game.away_team_id, "")
                 home_abbr = get_team_abbreviation(home_name) if home_name else f"T{game.home_team_id}"
@@ -820,19 +966,23 @@ class MediaCoverageView(QWidget):
             api = MediaCoverageAPI(db)
 
             # Regular season: use timing-aware method
-            # Shows RECAPs from previous week + PREVIEWs for current week
+            # Shows RECAPs from completed week + PREVIEWs for upcoming week
             if self._is_regular_season():
-                current_week = self._get_current_week_from_stage()
+                stage_week = self._get_current_week_from_stage()
 
-                if current_week == 0:
+                if stage_week == 0:
                     logger.debug("_load_headlines: Week 0 - no games simulated")
                     self._headlines = []
                     self._populate_headlines()
                     return
 
-                logger.debug(f"_load_headlines: Regular season, current_week={current_week}")
+                # API expects completed_week: shows recaps for that week + previews for week+1
+                # Stage week is the week to simulate, so completed week = stage_week - 1
+                # For week 1, we pass 1 to trigger API's special handling
+                completed_week = max(1, stage_week - 1)
+                logger.debug(f"_load_headlines: Regular season, stage_week={stage_week}, completed_week={completed_week}")
                 headlines = api.get_headlines_for_display(
-                    self._dynasty_id, self._season, current_week, limit=20
+                    self._dynasty_id, self._season, completed_week, limit=20
                 )
             else:
                 # Playoffs/offseason: use rolling headlines across all weeks
@@ -940,10 +1090,16 @@ class MediaCoverageView(QWidget):
         if self._current_stage in ("WILD_CARD", "DIVISIONAL", "CONFERENCE_CHAMPIONSHIP", "SUPER_BOWL"):
             week = 18  # Always use last regular season week
             logger.info(f"[MediaCoverage] Loading frozen Week 18 power rankings for playoff stage: {self._current_stage}")
+        elif self._is_regular_season():
+            # For regular season, use the actual simulation week from stage name
+            # Power rankings are generated AFTER week simulation, so we query for the current week
+            week = self._get_current_week_from_stage()
+            logger.debug(f"[MediaCoverage] Regular season - querying power rankings for simulation week {week}")
         else:
+            # For offseason, use display week logic
             week = self._get_display_week()
 
-        # Week 0 means no games have been simulated yet
+        # Week 0 means no games have been simulated yet (shouldn't happen with simulation week logic)
         if week == 0:
             logger.debug("[MediaCoverage] Week 0 - no rankings available yet")
             self._rankings = []
@@ -1666,6 +1822,11 @@ class MediaCoverageView(QWidget):
     def _populate_rankings(self):
         """Populate the power rankings section."""
         if not self._rankings:
+            logger.info(
+                f"[MediaCoverage] No power rankings to display. "
+                f"Stage={self._current_stage}, Dynasty={self._dynasty_id}, "
+                f"Season={self._season}, Display week calculation may have issues."
+            )
             self._rankings_widget.clear()
             return
 

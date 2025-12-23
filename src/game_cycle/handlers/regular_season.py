@@ -154,6 +154,8 @@ class RegularSeasonHandler:
         simulation_mode: SimulationMode,
         dynasty_id: str,
         db_path: str,
+        gc_db: Any,
+        headline_generator: Any,
         game_number: int = 0,
         total_games: int = 0,
         progress_callback: callable = None
@@ -177,6 +179,8 @@ class RegularSeasonHandler:
             simulation_mode: For logging purposes
             dynasty_id: Dynasty identifier
             db_path: Database path for services
+            gc_db: Shared GameCycleDatabase connection for the week
+            headline_generator: Shared HeadlineGenerator instance for the week
             game_number: Current game number (for progress)
             total_games: Total games to simulate (for progress)
             progress_callback: Optional callback(current, total, message) for UI updates
@@ -265,13 +269,10 @@ class RegularSeasonHandler:
             logger.warning("Failed to persist box scores for game %s: %s", ctx.game_id_for_db, e)
 
         # Generate social media posts for game result (Milestone 14)
-        print("=" * 80)
-        print(f"SOCIAL POST GENERATION STARTING FOR GAME: {ctx.game_id_for_db}")
-        print(f"Parameters available: sim_result={sim_result is not None}")
-        print("=" * 80)
         logger.info(f"[SOCIAL] About to generate posts for game {ctx.game_id_for_db}")
         try:
             self._generate_game_social_posts(
+                gc_db=gc_db,
                 db_path=db_path,
                 dynasty_id=dynasty_id,
                 season=ctx.season,
@@ -314,14 +315,20 @@ class RegularSeasonHandler:
 
         # Update standings
         self._update_standings_for_game(
-            dynasty_id, ctx.season,
-            ctx.home_team_id, ctx.away_team_id,
-            home_score, away_score,
+            gc_db=gc_db,
+            dynasty_id=dynasty_id,
+            season=ctx.season,
+            home_team_id=ctx.home_team_id,
+            away_team_id=ctx.away_team_id,
+            home_score=home_score,
+            away_score=away_score,
             overtime_periods=sim_result.overtime_periods
         )
 
         # Generate headline
         self._generate_game_headline(
+            gc_db=gc_db,
+            headline_generator=headline_generator,
             db_path=db_path,
             dynasty_id=dynasty_id,
             season=ctx.season,
@@ -390,6 +397,10 @@ class RegularSeasonHandler:
         mode_str = context.get("simulation_mode", "instant")
         simulation_mode = SimulationMode.FULL if mode_str == "full" else SimulationMode.INSTANT
 
+        # Create HeadlineGenerator once for entire week (reused across all games)
+        from ..services.headline_generator import HeadlineGenerator
+        headline_generator = HeadlineGenerator(db_path, dynasty_id, season)
+
         # WEEK 1 HOOK: Generate draft class and free agents at season start
         if week_number == 1:
             self._trigger_season_start_generation(context)
@@ -397,6 +408,7 @@ class RegularSeasonHandler:
         # Generate preview headlines for notable upcoming games (rivalries, divisional, etc.)
         if db_path:
             self._generate_preview_headlines(
+                headline_generator=headline_generator,
                 db_path=db_path,
                 dynasty_id=dynasty_id,
                 season=season,
@@ -419,20 +431,44 @@ class RegularSeasonHandler:
         logger.debug("events_get_games_by_week returned %d games", len(games))
 
         if not games:
-            # No games found - handle gracefully
-            # Week 18: Schedule generator creates 17 weeks, so Week 18 has 0 games
-            # This is expected - advance to playoffs
-            if week_number == 18:
+            # No games found - ensure schedule exists (idempotent - uses ScheduleCoordinator)
+            if week_number == 1:
+                logger.info(f"[Week 1] No schedule found - ensuring regular season schedule exists...")
+                from game_cycle.services.schedule_coordinator import ScheduleCoordinator
+
+                coordinator = ScheduleCoordinator(db_path, dynasty_id)
+                coordinator.ensure_regular_season_schedule(season)
+
+                # Re-fetch games after ensuring schedule exists
+                games = unified_api.events_get_games_by_week(season, week_number)
+
+                if not games:
+                    # This should never happen after coordinator ensures schedule exists
+                    logger.error("No regular season games found after ensuring schedule")
+                    events_processed.append(f"ERROR: No regular season games found for Week {week_number}")
+                    return {
+                        "games_played": games_played,
+                        "events_processed": events_processed,
+                        "week": week_number,
+                    }
+            elif week_number == 18:
+                # Week 18: Schedule generator creates 17 weeks, so Week 18 has 0 games
+                # This is expected - advance to playoffs
                 logger.debug("Week 18 has no games (17-week schedule) - advancing to playoffs")
                 events_processed.append(f"Week {week_number}: Regular season complete - advancing to playoffs")
+                return {
+                    "games_played": games_played,
+                    "events_processed": events_processed,
+                    "week": week_number,
+                }
             else:
                 logger.debug("No games found for week %d - returning early", week_number)
                 events_processed.append(f"Week {week_number}: No games in database")
-            return {
-                "games_played": games_played,
-                "events_processed": events_processed,
-                "week": week_number,
-            }
+                return {
+                    "games_played": games_played,
+                    "events_processed": events_processed,
+                    "week": week_number,
+                }
 
         # ============================================================
         # PHASE 1: Collect games to simulate
@@ -518,19 +554,28 @@ class RegularSeasonHandler:
         total_games = len(sim_results)
         progress_callback = context.get("progress_callback")
 
-        for game_num, (ctx, sim_result) in enumerate(sim_results, start=1):
-            game_result = self._persist_game_result(
-                ctx=ctx,
-                sim_result=sim_result,
-                unified_api=unified_api,
-                simulation_mode=simulation_mode,
-                dynasty_id=dynasty_id,
-                db_path=db_path,
-                game_number=game_num,
-                total_games=total_games,
-                progress_callback=progress_callback
-            )
-            games_played.append(game_result)
+        # Create shared database connection for all game persistence operations
+        # (reduces 64 connections/week to 1)
+        from ..database.connection import GameCycleDatabase
+        gc_db = GameCycleDatabase(db_path)
+        try:
+            for game_num, (ctx, sim_result) in enumerate(sim_results, start=1):
+                game_result = self._persist_game_result(
+                    ctx=ctx,
+                    sim_result=sim_result,
+                    unified_api=unified_api,
+                    simulation_mode=simulation_mode,
+                    dynasty_id=dynasty_id,
+                    db_path=db_path,
+                    gc_db=gc_db,
+                    headline_generator=headline_generator,
+                    game_number=game_num,
+                    total_games=total_games,
+                    progress_callback=progress_callback
+                )
+                games_played.append(game_result)
+        finally:
+            gc_db.close()
 
         persist_elapsed = time.time() - persist_start
         logger.info("Persisted %d game results in %.2f seconds (sequential)",
@@ -552,6 +597,29 @@ class RegularSeasonHandler:
         # Generate power rankings for the week (Media Coverage - Milestone 12)
         power_rankings_count = self._generate_power_rankings(db_path, dynasty_id, season, week_number)
 
+        # Generate previews for NEXT week's games after this week's simulation
+        # So when stage advances, previews already exist for sidebar display
+        # Week 17 is the last regular season week (17-week schedule), no week 18 previews needed
+        if db_path and week_number < 17:
+            self._generate_preview_headlines(
+                headline_generator=headline_generator,
+                db_path=db_path,
+                dynasty_id=dynasty_id,
+                season=season,
+                week=week_number + 1
+            )
+
+        # Aggregate game grades into season grades before popularity calculation
+        # This ensures popularity has access to updated performance data
+        season_grades_updated = self._aggregate_season_grades(
+            db_path, dynasty_id, season
+        )
+
+        # Update player popularity after all games/stats/media are finalized (Milestone 16)
+        popularity_players_updated = self._update_player_popularity(
+            db_path, dynasty_id, season, week_number
+        )
+
         return {
             "games_played": games_played,
             "events_processed": events_processed,
@@ -562,10 +630,13 @@ class RegularSeasonHandler:
             "award_race_tracked": award_race_tracked,
             "flex_changes": flex_results,
             "power_rankings_updated": power_rankings_count,
+            "season_grades_updated": season_grades_updated,
+            "popularity_players_updated": popularity_players_updated,
         }
 
     def _update_standings_for_game(
         self,
+        gc_db: Any,
         dynasty_id: str,
         season: int,
         home_team_id: int,
@@ -585,9 +656,11 @@ class RegularSeasonHandler:
         - Points for/against
 
         Also updates head-to-head records and rivalry intensity.
+
+        Args:
+            gc_db: Shared GameCycleDatabase connection
         """
         from team_management.teams.team_loader import TeamDataLoader
-        from game_cycle.database.connection import GameCycleDatabase
         from game_cycle.database.standings_api import StandingsAPI
 
         # Load team data for division/conference detection
@@ -602,8 +675,7 @@ class RegularSeasonHandler:
         )
         is_conference = home_team.conference == away_team.conference
 
-        # Use StandingsAPI with game_cycle database
-        gc_db = GameCycleDatabase()
+        # Use StandingsAPI with shared game_cycle database connection
         standings_api = StandingsAPI(gc_db)
         standings_api.update_from_game(
             dynasty_id=dynasty_id,
@@ -1065,9 +1137,9 @@ class RegularSeasonHandler:
             db_path: Path to database
 
         Returns:
-            Dict mapping game_id -> {home: [performers], away: [performers]}
+            Dict mapping (home_team_id, away_team_id) -> {home: [performers], away: [performers]}
             Example: {
-                'game_2025_w5_id1': {
+                (22, 15): {
                     'home': [player_dict, ...],
                     'away': [player_dict, ...]
                 },
@@ -1130,7 +1202,7 @@ class RegularSeasonHandler:
                     if len(home_performers) >= 3 and len(away_performers) >= 3:
                         break
 
-                result[game_id] = {
+                result[(home_team_id, away_team_id)] = {
                     'home': home_performers,
                     'away': away_performers
                 }
@@ -1816,6 +1888,8 @@ class RegularSeasonHandler:
 
     def _generate_game_headline(
         self,
+        gc_db: Any,
+        headline_generator: Any,
         db_path: str,
         dynasty_id: str,
         season: int,
@@ -1837,6 +1911,8 @@ class RegularSeasonHandler:
         Non-critical: Errors are logged but do not fail game simulation.
 
         Args:
+            gc_db: Shared GameCycleDatabase connection
+            headline_generator: Shared HeadlineGenerator instance for the week
             db_path: Database path
             dynasty_id: Dynasty identifier
             season: Season year
@@ -1849,9 +1925,7 @@ class RegularSeasonHandler:
             sim_result: SimulationResult with game details
         """
         try:
-            from ..services.headline_generator import HeadlineGenerator
             from ..database.media_coverage_api import MediaCoverageAPI
-            from ..database.connection import GameCycleDatabase
 
             # Determine winner/loser
             if home_score > away_score:
@@ -1875,38 +1949,33 @@ class RegularSeasonHandler:
                 "overtime_periods": getattr(sim_result, 'overtime_periods', 0),
             }
 
-            # Generate headline
-            generator = HeadlineGenerator(db_path, dynasty_id, season)
-            headline = generator.generate_game_headline(game_data, include_body_text=True)
+            # Generate headline using shared generator
+            headline = headline_generator.generate_game_headline(game_data, include_body_text=True)
 
             if not headline:
                 logger.warning("No headline generated for game %s", game_id)
                 return
 
-            # Persist to database
-            gc_db = GameCycleDatabase(db_path)
-            try:
-                media_api = MediaCoverageAPI(gc_db)
-                media_api.save_headline(
-                    dynasty_id=dynasty_id,
-                    season=season,
-                    week=week,
-                    headline_data={
-                        'headline_type': headline.headline_type.value if hasattr(headline.headline_type, 'value') else str(headline.headline_type),
-                        'headline': headline.headline,
-                        'subheadline': headline.subheadline,
-                        'body_text': headline.body_text,
-                        'sentiment': headline.sentiment.value if hasattr(headline.sentiment, 'value') else str(headline.sentiment),
-                        'priority': headline.priority,
-                        'team_ids': [home_team_id, away_team_id],
-                        'player_ids': headline.player_ids or [],
-                        'game_id': game_id,
-                        'metadata': headline.metadata or {}
-                    }
-                )
-                logger.info("Generated headline for game %s: %s...", game_id, headline.headline[:50])
-            finally:
-                gc_db.close()
+            # Persist to database using shared connection
+            media_api = MediaCoverageAPI(gc_db)
+            media_api.save_headline(
+                dynasty_id=dynasty_id,
+                season=season,
+                week=week,
+                headline_data={
+                    'headline_type': headline.headline_type.value if hasattr(headline.headline_type, 'value') else str(headline.headline_type),
+                    'headline': headline.headline,
+                    'subheadline': headline.subheadline,
+                    'body_text': headline.body_text,
+                    'sentiment': headline.sentiment.value if hasattr(headline.sentiment, 'value') else str(headline.sentiment),
+                    'priority': headline.priority,
+                    'team_ids': [home_team_id, away_team_id],
+                    'player_ids': headline.player_ids or [],
+                    'game_id': game_id,
+                    'metadata': headline.metadata or {}
+                }
+            )
+            logger.info("Generated headline for game %s: %s...", game_id, headline.headline[:50])
 
         except Exception as e:
             # Log but don't fail game simulation for headline errors
@@ -1941,26 +2010,43 @@ class RegularSeasonHandler:
             Number of teams ranked (32 on success, 0 on failure)
         """
         try:
+            logger.info(
+                "Generating power rankings: dynasty=%s, season=%d, week=%d",
+                dynasty_id, season, week
+            )
+
             from ..services.power_rankings_service import PowerRankingsService
 
             service = PowerRankingsService(db_path, dynasty_id, season)
+            logger.debug("PowerRankingsService initialized successfully")
+
             rankings = service.calculate_and_save_rankings(week)
+            logger.debug("calculate_and_save_rankings returned %s rankings",
+                        len(rankings) if rankings else 0)
 
             if rankings:
                 logger.info("Generated power rankings for week %d: %d teams ranked",
                           week, len(rankings))
                 return len(rankings)
             else:
-                logger.warning("No power rankings generated for week %d", week)
+                logger.error(
+                    "No power rankings generated for week %d (dynasty=%s, season=%d). "
+                    "This may indicate missing standings data or calculation failure.",
+                    week, dynasty_id, season
+                )
                 return 0
 
         except Exception as e:
             # Log but don't fail game simulation for power rankings errors
-            logger.warning("Failed to generate power rankings for week %d: %s", week, e)
+            logger.error(
+                "Failed to generate power rankings for week %d (dynasty=%s, season=%d): %s",
+                week, dynasty_id, season, e, exc_info=True
+            )
             return 0
 
     def _generate_preview_headlines(
         self,
+        headline_generator: Any,
         db_path: str,
         dynasty_id: str,
         season: int,
@@ -1978,6 +2064,7 @@ class RegularSeasonHandler:
         Non-critical: Errors are logged but do not fail game simulation.
 
         Args:
+            headline_generator: Shared HeadlineGenerator instance for the week
             db_path: Database path
             dynasty_id: Dynasty identifier
             season: Season year
@@ -1987,12 +2074,10 @@ class RegularSeasonHandler:
             Number of preview headlines generated (0 on failure)
         """
         try:
-            from ..services.headline_generator import HeadlineGenerator
             from ..database.connection import GameCycleDatabase
             from ..database.media_coverage_api import MediaCoverageAPI
 
-            generator = HeadlineGenerator(db_path, dynasty_id, season)
-            previews = generator.generate_preview_headlines(
+            previews = headline_generator.generate_preview_headlines(
                 week=week,
                 min_priority_boost=20  # Only notable games
             )
@@ -2036,6 +2121,7 @@ class RegularSeasonHandler:
 
     def _generate_game_social_posts(
         self,
+        gc_db: Any,
         db_path: str,
         dynasty_id: str,
         season: int,
@@ -2056,6 +2142,7 @@ class RegularSeasonHandler:
         Non-critical: Errors are logged but do not fail game simulation.
 
         Args:
+            gc_db: Shared GameCycleDatabase connection
             db_path: Database path
             dynasty_id: Dynasty identifier
             season: Season year
@@ -2070,15 +2157,11 @@ class RegularSeasonHandler:
         Returns:
             Number of posts generated (0 on failure)
         """
-        print(f"[SOCIAL METHOD ENTRY] _generate_game_social_posts called for game {game_id}")
         try:
             from ..services.social_generators.factory import SocialPostGeneratorFactory
             from ..models.social_event_types import SocialEventType
-            from ..database.connection import GameCycleDatabase
             from ..database.social_personalities_api import SocialPersonalityAPI
 
-            # Entry logging
-            print(f"[SOCIAL] Inside try block - about to generate posts")
             logger.info(f"[SOCIAL] Generating posts for game {game_id}, dynasty {dynasty_id}, "
                        f"teams {home_team_id} vs {away_team_id}, score {home_score}-{away_score}")
 
@@ -2113,12 +2196,10 @@ class RegularSeasonHandler:
                         if top_player:
                             star_players[team_id] = top_player.get('player_name', 'Unknown')
 
-            # Check personalities exist before attempting generation
-            gc_db_check = GameCycleDatabase(db_path)
-            pers_api = SocialPersonalityAPI(gc_db_check)
+            # Check personalities exist using shared connection
+            pers_api = SocialPersonalityAPI(gc_db)
             home_fans = pers_api.get_personalities_by_team(dynasty_id, home_team_id, 'FAN')
             away_fans = pers_api.get_personalities_by_team(dynasty_id, away_team_id, 'FAN')
-            gc_db_check.close()
             logger.info(f"[SOCIAL] Found {len(home_fans)} fans for team {home_team_id}, "
                        f"{len(away_fans)} fans for team {away_team_id}")
 
@@ -2135,23 +2216,18 @@ class RegularSeasonHandler:
                 'season_type': 'regular'  # Regular season game
             }
 
-            # Generate and persist posts using factory (NEW ARCHITECTURE)
-            gc_db = GameCycleDatabase(db_path)
-            try:
-                posts_created = SocialPostGeneratorFactory.generate_posts(
-                    event_type=SocialEventType.GAME_RESULT,
-                    db=gc_db,
-                    dynasty_id=dynasty_id,
-                    season=season,
-                    week=week,
-                    event_data=event_data
-                )
+            # Generate and persist posts using factory with shared connection
+            posts_created = SocialPostGeneratorFactory.generate_posts(
+                event_type=SocialEventType.GAME_RESULT,
+                db=gc_db,
+                dynasty_id=dynasty_id,
+                season=season,
+                week=week,
+                event_data=event_data
+            )
 
-                logger.info(f"[SOCIAL] ✓ Successfully generated and saved {posts_created} posts for game {game_id}")
-                return posts_created
-            finally:
-                gc_db.commit()  # CRITICAL: Flush WAL to main DB before closing
-                gc_db.close()
+            logger.info(f"[SOCIAL] ✓ Successfully generated and saved {posts_created} posts for game {game_id}")
+            return posts_created
 
         except Exception as e:
             # Log but don't fail game simulation for social post errors
@@ -2194,3 +2270,120 @@ class RegularSeasonHandler:
                 gc_db.close()
         except Exception:
             return False
+
+    def _aggregate_season_grades(
+        self,
+        db_path: str,
+        dynasty_id: str,
+        season: int
+    ) -> int:
+        """
+        Aggregate player game grades into season averages.
+
+        This method aggregates individual game-level PFF grades from
+        player_game_grades into snap-weighted season averages in
+        player_season_grades. This must run before popularity calculation
+        to ensure performance scores are based on latest grades.
+
+        Args:
+            db_path: Database path
+            dynasty_id: Dynasty identifier
+            season: Season year
+
+        Returns:
+            Number of player season grades created/updated (0 on failure)
+        """
+        try:
+            from ..database.analytics_api import AnalyticsAPI
+
+            analytics_api = AnalyticsAPI(db_path)
+            grades_updated = analytics_api.aggregate_season_grades_from_game_grades(
+                dynasty_id, season
+            )
+
+            if grades_updated > 0:
+                logger.info(
+                    "Aggregated season grades for %d players (season %d, dynasty=%s)",
+                    grades_updated, season, dynasty_id
+                )
+            else:
+                logger.warning(
+                    "No season grades aggregated for season %d (dynasty=%s). "
+                    "This may indicate no game grades exist yet.",
+                    season, dynasty_id
+                )
+
+            return grades_updated
+
+        except ImportError:
+            # AnalyticsAPI not available - skip
+            logger.debug("AnalyticsAPI not available - skipping season grade aggregation")
+            return 0
+        except Exception as e:
+            # Log but don't fail game simulation for grade aggregation errors
+            logger.error(
+                "Failed to aggregate season grades for season %d (dynasty=%s): %s",
+                season, dynasty_id, e, exc_info=True
+            )
+            return 0
+
+    def _update_player_popularity(
+        self,
+        db_path: str,
+        dynasty_id: str,
+        season: int,
+        week: int
+    ) -> int:
+        """
+        Update player popularity after week completion (Milestone 16).
+
+        This calculates and persists weekly popularity scores based on:
+        - Performance (stats, PFF grades)
+        - Visibility (media headlines, awards, social buzz, team success)
+        - Market size (stadium capacity)
+
+        Non-critical: Errors are logged but do not fail game simulation.
+
+        Args:
+            db_path: Database path
+            dynasty_id: Dynasty identifier
+            season: Season year
+            week: Week number
+
+        Returns:
+            Number of players updated (0 on failure)
+        """
+        try:
+            from ..services.popularity_calculator import PopularityCalculator
+            from ..database.connection import GameCycleDatabase
+
+            # Create database connection for PopularityCalculator
+            db = GameCycleDatabase(db_path)
+            calculator = PopularityCalculator(db, dynasty_id)
+            players_updated = calculator.calculate_weekly_popularity(season, week)
+
+            if players_updated > 0:
+                logger.info(
+                    "Updated popularity for %d players (week %d, season %d)",
+                    players_updated, week, season
+                )
+            else:
+                logger.warning(
+                    "No player popularity updates for week %d (dynasty=%s, season=%d). "
+                    "This may indicate missing stats or calculation failure.",
+                    week, dynasty_id, season
+                )
+
+            return players_updated
+
+        except ImportError:
+            # PopularityCalculator not yet implemented - silently skip
+            logger.debug("PopularityCalculator not available - skipping popularity update")
+            return 0
+        except Exception as e:
+            # Log but don't fail game simulation for popularity calculation errors
+            logger.error(
+                "Failed to update player popularity for week %d (dynasty=%s, season=%d): %s",
+                week, dynasty_id, season, e, exc_info=True
+            )
+            return 0

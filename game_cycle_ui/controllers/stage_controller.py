@@ -150,7 +150,7 @@ class StageUIController(QObject):
         """Refresh view with current state."""
         # Initialize if not already done
         if not self._backend.is_initialized():
-            self._backend.initialize(season_year=self._season, skip_preseason=True)
+            self._backend.initialize(season_year=self._season, skip_preseason=False)
 
         stage = self.current_stage
 
@@ -258,13 +258,22 @@ class StageUIController(QObject):
             self.error_occurred.emit("No current stage")
             return
 
-        # Note: Auto-advance for completed stages is handled by backend's
-        # execute_current_stage(auto_advance=True) - no duplicate check needed here
+        # Check for transition from regular season to playoffs
+        # If Week 18 is completed and user clicks simulate, show playoff bracket first
+        if stage.completed and stage.phase == SeasonPhase.REGULAR_SEASON:
+            next_stage = stage.next_stage()
+            if next_stage and next_stage.phase == SeasonPhase.PLAYOFFS:
+                # Advance to playoffs and show bracket BEFORE simulating
+                self._advance_to_next()
+                return  # Don't execute - let user see bracket and click simulate
 
-        # Check if this stage needs progress dialog (regular season or playoffs)
+        # Check if this stage needs progress dialog (regular season, playoffs, or preseason)
         needs_progress = (
             stage.phase == SeasonPhase.REGULAR_SEASON or
-            stage.phase == SeasonPhase.PLAYOFFS
+            stage.phase == SeasonPhase.PLAYOFFS or
+            stage.stage_type in (StageType.OFFSEASON_PRESEASON_W1,
+                                 StageType.OFFSEASON_PRESEASON_W2,
+                                 StageType.OFFSEASON_PRESEASON_W3)
         )
 
         if needs_progress:
@@ -288,8 +297,13 @@ class StageUIController(QObject):
 
     def _execute_with_progress(self, stage: Stage):
         """Execute stage with progress dialog (runs in main thread with UI updates)."""
-        # Create progress dialog
-        stage_label = stage.display_name
+        # SSOT check: if stage is completed, backend will auto-advance
+        # Show the correct week that will actually be simulated
+        if stage.completed:
+            next_stage = stage.next_stage()
+            stage_label = next_stage.display_name if next_stage else stage.display_name
+        else:
+            stage_label = stage.display_name
         progress = QProgressDialog(
             f"Simulating {stage_label}...\n\nInitializing...",
             None,  # No cancel button
@@ -384,9 +398,6 @@ class StageUIController(QObject):
                 StageType.OFFSEASON_FREE_AGENCY,
                 StageType.OFFSEASON_TRADING,
                 StageType.OFFSEASON_DRAFT,
-                StageType.OFFSEASON_PRESEASON_W1,
-                StageType.OFFSEASON_PRESEASON_W2,
-                StageType.OFFSEASON_PRESEASON_W3,
                 StageType.OFFSEASON_WAIVER_WIRE,
             ):
                 # Don't auto-advance - user interaction required
@@ -405,6 +416,21 @@ class StageUIController(QObject):
                     self._update_ui_with_results(stage, week_number)
                     # Refresh only the simulate button without rebuilding the view
                     self._refresh_button_only()
+            elif stage.stage_type in (
+                StageType.OFFSEASON_PRESEASON_W1,
+                StageType.OFFSEASON_PRESEASON_W2,
+                StageType.OFFSEASON_PRESEASON_W3
+            ):
+                # Preseason games - stay on current week to let user review scores
+                # Similar to regular season, but no IR activations
+                preseason_week_map = {
+                    StageType.OFFSEASON_PRESEASON_W1: 1,
+                    StageType.OFFSEASON_PRESEASON_W2: 2,
+                    StageType.OFFSEASON_PRESEASON_W3: 3
+                }
+                week_number = preseason_week_map[stage.stage_type]
+                self._update_ui_with_preseason_results(stage, week_number)
+                self._refresh_button_only()
             else:
                 # Non-interactive stages (e.g., OFFSEASON_TRAINING_CAMP)
                 self._advance_to_next()
@@ -449,7 +475,7 @@ class StageUIController(QObject):
             from database.unified_api import UnifiedDatabaseAPI
             unified_api = UnifiedDatabaseAPI(self._database_path, self._dynasty_id)
 
-            games = unified_api.events_get_games_by_week(
+            games = unified_api.games_get_by_week(
                 season=stage.season_year,
                 week=week_number,
                 season_type='regular_season'
@@ -468,12 +494,15 @@ class StageUIController(QObject):
             results = []
             for game in games:
                 game_id = game['game_id']
+                team_key = (game.get('home_team_id'), game.get('away_team_id'))
 
                 result = {
                     'game_id': game_id,
+                    'home_team_id': game.get('home_team_id'),
+                    'away_team_id': game.get('away_team_id'),
                     'home_score': game.get('home_score', 0),
                     'away_score': game.get('away_score', 0),
-                    'top_performers': top_performers_map.get(game_id, {
+                    'top_performers': top_performers_map.get(team_key, {
                         'home': [],
                         'away': []
                     })
@@ -485,6 +514,54 @@ class StageUIController(QObject):
 
         except Exception as e:
             logger.error(f"Failed to update UI with results: {e}", exc_info=True)
+            # Don't crash - just log error and continue
+
+    def _update_ui_with_preseason_results(self, stage: Stage, week_number: int):
+        """
+        Update UI with post-simulation results for preseason week.
+
+        Similar to _update_ui_with_results but queries preseason games instead.
+
+        Args:
+            stage: Current stage (preseason week)
+            week_number: Preseason week number that was just simulated (1-3)
+        """
+        if not self._view:
+            return
+
+        try:
+            # Query preseason games for this week to get scores
+            from database.unified_api import UnifiedDatabaseAPI
+            unified_api = UnifiedDatabaseAPI(self._database_path, self._dynasty_id)
+
+            games = unified_api.games_get_by_week(
+                season=stage.season_year,
+                week=week_number,
+                season_type='preseason'
+            )
+
+            # For preseason, we can skip top performers for now
+            # Just show scores - can enhance later if desired
+            results = []
+            for game in games:
+                result = {
+                    'game_id': game['game_id'],
+                    'home_team_id': game.get('home_team_id'),
+                    'away_team_id': game.get('away_team_id'),
+                    'home_score': game.get('home_score', 0),
+                    'away_score': game.get('away_score', 0),
+                    'top_performers': {
+                        'home': [],
+                        'away': []
+                    }
+                }
+                results.append(result)
+
+            # Update view with results (will auto-expand game rows)
+            self._view.update_with_results(results)
+
+        except Exception as e:
+            logger.error(f"Failed to update UI with preseason results: {e}", exc_info=True)
             # Don't crash - just log error and continue
 
     def _advance_to_next(self):
@@ -504,7 +581,7 @@ class StageUIController(QObject):
                 self._view.set_status(f"Season {current_year} complete! Starting {new_year} season...")
 
             # Start new season
-            self._backend.start_new_season(new_year, skip_preseason=True)
+            self._backend.start_new_season(new_year, skip_preseason=False)
             self._season = new_year
             self.refresh()
 

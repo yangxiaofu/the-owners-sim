@@ -13,6 +13,8 @@ from game_cycle_ui.views.schedule_view import ScheduleView
 from game_cycle_ui.views.media_coverage_view import MediaCoverageView
 from game_cycle_ui.views.owner_view import OwnerView
 from game_cycle_ui.views.team_view import TeamView
+from game_cycle_ui.views.preseason_view import PreseasonView
+from game_cycle_ui.views.popularity_view import PopularityView
 
 __all__ = [
     "StageView",
@@ -28,4 +30,6 @@ __all__ = [
     "MediaCoverageView",
     "OwnerView",
     "TeamView",
+    "PreseasonView",
+    "PopularityView",
 ]

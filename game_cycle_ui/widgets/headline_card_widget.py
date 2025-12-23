@@ -1,41 +1,75 @@
 """
-HeadlineCardWidget - Compact card for displaying media headlines.
+HeadlineCardWidget - ESPN-style compact news feed item.
 
 Part of Milestone 12: Media Coverage, Tollgate 7.
 
-Displays headline content with:
-- Sentiment indicator (colored badge)
-- Headline text (bold if featured)
-- Subheadline (truncated)
-- Click handler for detail view
+Displays headline in a compact single-row format with:
+- Category chip (colored pill)
+- Headline text
+- Timestamp
+- Hover effect for interactivity
 """
 
 from typing import Any, Dict, Optional
+from datetime import datetime
 
 from PySide6.QtWidgets import (
     QWidget,
-    QVBoxLayout,
     QHBoxLayout,
+    QVBoxLayout,
     QLabel,
-    QFrame,
     QSizePolicy,
 )
 from PySide6.QtCore import Signal, Qt
 from PySide6.QtGui import QCursor
 
-from game_cycle_ui.theme import SENTIMENT_COLORS, SENTIMENT_BADGES, ESPN_THEME
+from game_cycle_ui.theme import (
+    ESPN_THEME,
+    Colors,
+    FontSizes,
+    TextColors,
+    Typography,
+)
+
+
+# Category colors for chips (ESPN-style)
+CATEGORY_COLORS = {
+    "PREVIEW": {"bg": "#E65100", "fg": "#FFFFFF"},      # Orange
+    "GAME_RECAP": {"bg": "#1565C0", "fg": "#FFFFFF"},   # Blue
+    "BREAKING": {"bg": "#C62828", "fg": "#FFFFFF"},     # Red
+    "INJURY": {"bg": "#7B1FA2", "fg": "#FFFFFF"},       # Purple
+    "TRADE": {"bg": "#2E7D32", "fg": "#FFFFFF"},        # Green
+    "SIGNING": {"bg": "#00838F", "fg": "#FFFFFF"},      # Teal
+    "DRAFT": {"bg": "#F9A825", "fg": "#1a1a1a"},        # Yellow
+    "DEFAULT": {"bg": "#424242", "fg": "#FFFFFF"},      # Gray
+}
+
+# Sentiment icons (minimal)
+SENTIMENT_ICONS = {
+    "POSITIVE": "●",
+    "NEGATIVE": "●",
+    "NEUTRAL": "●",
+    "HYPE": "★",
+    "CRITICAL": "●",
+}
+
+SENTIMENT_ICON_COLORS = {
+    "POSITIVE": "#4CAF50",   # Green
+    "NEGATIVE": "#F44336",   # Red
+    "NEUTRAL": "#9E9E9E",    # Gray
+    "HYPE": "#FF9800",       # Orange
+    "CRITICAL": "#F44336",   # Red
+}
 
 
 class HeadlineCardWidget(QWidget):
     """
-    Compact card widget for displaying a single headline.
+    Compact ESPN-style news feed item.
 
-    Can be displayed in two modes:
-    - Featured: Larger, more prominent styling for top stories
-    - Regular: Compact styling for secondary headlines
+    Single row layout: [SENTIMENT] [CATEGORY] Headline text              [TIME]
 
     Signals:
-        clicked: Emitted when card is clicked, passes headline_id
+        clicked: Emitted when item is clicked, passes headline_id
     """
 
     clicked = Signal(int)  # headline_id
@@ -47,20 +81,11 @@ class HeadlineCardWidget(QWidget):
         parent: Optional[QWidget] = None
     ):
         """
-        Initialize the headline card.
+        Initialize the headline feed item.
 
         Args:
-            headline_data: Dictionary containing headline info:
-                - id: int
-                - headline: str
-                - subheadline: Optional[str]
-                - body_text: Optional[str]
-                - sentiment: str (POSITIVE, NEGATIVE, NEUTRAL, HYPE, CRITICAL)
-                - priority: int
-                - headline_type: str
-                - team_ids: List[int]
-                - player_ids: List[int]
-            is_featured: If True, display in featured/prominent style
+            headline_data: Dictionary containing headline info
+            is_featured: If True, slightly more prominent styling
             parent: Parent widget
         """
         super().__init__(parent)
@@ -69,130 +94,156 @@ class HeadlineCardWidget(QWidget):
         self._setup_ui()
 
     def _setup_ui(self):
-        """Build the card UI."""
-        # Main layout
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 12, 16, 12)
+        """Build the compact feed item UI."""
+        # Main horizontal layout
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(10)
 
-        # Container frame for styling
-        self._frame = QFrame()
-        self._frame.setFrameShape(QFrame.Shape.StyledPanel)
-        self._frame.setObjectName("headline_card")
+        # Dynamic height based on content (no fixed height)
+        self.setMinimumHeight(40)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
 
-        frame_layout = QVBoxLayout(self._frame)
-        frame_layout.setContentsMargins(16, 14, 16, 14)
-        frame_layout.setSpacing(10)
+        # Apply hover styling
+        self._apply_style(hovered=False)
 
-        # Top row: sentiment badge + headline type
-        top_row = QHBoxLayout()
-        top_row.setSpacing(8)
-
-        # Sentiment badge
+        # Sentiment indicator (small dot)
         sentiment = self._data.get("sentiment", "NEUTRAL")
-        badge_text = SENTIMENT_BADGES.get(sentiment, "•")
-        badge_color = SENTIMENT_COLORS.get(sentiment, "#666666")
+        icon = SENTIMENT_ICONS.get(sentiment, "●")
+        icon_color = SENTIMENT_ICON_COLORS.get(sentiment, "#9E9E9E")
 
-        self._badge = QLabel(badge_text)
-        self._badge.setStyleSheet(
-            f"color: {badge_color}; font-weight: bold; font-size: 28px;"
+        self._sentiment_dot = QLabel(icon)
+        self._sentiment_dot.setFixedWidth(16)
+        self._sentiment_dot.setAlignment(Qt.AlignCenter)
+        self._sentiment_dot.setStyleSheet(
+            f"color: {icon_color}; font-size: {FontSizes.CAPTION};"
         )
-        self._badge.setFixedWidth(36)
-        top_row.addWidget(self._badge)
+        layout.addWidget(self._sentiment_dot)
 
-        # Headline type label
-        headline_type = self._data.get("headline_type", "")
-        if headline_type:
-            type_label = QLabel(headline_type.replace("_", " ").title())
-            type_label.setStyleSheet(
-                f"color: {badge_color}; font-size: 20px; font-weight: bold;"
-            )
-            top_row.addWidget(type_label)
+        # Category chip
+        headline_type = self._data.get("headline_type", "DEFAULT").upper()
+        category_style = CATEGORY_COLORS.get(headline_type, CATEGORY_COLORS["DEFAULT"])
 
-        top_row.addStretch()
-        frame_layout.addLayout(top_row)
+        display_type = headline_type.replace("_", " ").title()
+        if len(display_type) > 12:
+            display_type = display_type[:10] + "..."
 
-        # Headline text
+        self._category_chip = QLabel(display_type)
+        self._category_chip.setFont(Typography.CAPTION)
+        self._category_chip.setAlignment(Qt.AlignCenter)
+        self._category_chip.setStyleSheet(
+            f"background-color: {category_style['bg']}; "
+            f"color: {category_style['fg']}; "
+            f"border-radius: 3px; "
+            f"padding: 2px 6px; "
+            f"font-weight: bold;"
+        )
+        self._category_chip.setFixedWidth(80)
+        layout.addWidget(self._category_chip)
+
+        # Headline text container (vertical layout for headline + subheadline)
+        from PySide6.QtWidgets import QVBoxLayout
+        text_container = QWidget()
+        text_layout = QVBoxLayout(text_container)
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(2)
+
+        # Main headline
         headline_text = self._data.get("headline", "Untitled")
         self._headline_label = QLabel(headline_text)
-        self._headline_label.setWordWrap(True)
+        self._headline_label.setFont(Typography.BODY if not self._is_featured else Typography.BODY_BOLD)
+        self._headline_label.setStyleSheet(f"color: {TextColors.ON_DARK};")
+        self._headline_label.setWordWrap(True)  # Allow wrapping instead of truncating
+        self._headline_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        text_layout.addWidget(self._headline_label)
 
-        if self._is_featured:
-            self._headline_label.setStyleSheet(
-                f"font-size: 32px; font-weight: bold; color: {ESPN_THEME['text_primary']};"
-            )
+        # Subheadline (if exists)
+        subheadline_text = self._data.get("subheadline", "")
+        if subheadline_text:
+            self._subheadline_label = QLabel(subheadline_text)
+            self._subheadline_label.setFont(Typography.CAPTION)
+            self._subheadline_label.setStyleSheet(f"color: {ESPN_THEME['text_secondary']};")
+            self._subheadline_label.setWordWrap(True)
+            self._subheadline_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            text_layout.addWidget(self._subheadline_label)
         else:
-            self._headline_label.setStyleSheet(
-                f"font-size: 26px; font-weight: bold; color: {ESPN_THEME['text_primary']};"
-            )
+            self._subheadline_label = None
 
-        frame_layout.addWidget(self._headline_label)
+        layout.addWidget(text_container, 1)  # Stretch factor 1
 
-        # Subheadline (if present)
-        subheadline = self._data.get("subheadline", "")
-        if subheadline:
-            self._sub_label = QLabel(subheadline)
-            self._sub_label.setWordWrap(True)
-            self._sub_label.setStyleSheet(
-                f"color: {ESPN_THEME['text_secondary']}; font-size: 22px;"
-            )
-            # Truncate long subheadlines
-            if len(subheadline) > 120:
-                self._sub_label.setText(subheadline[:117] + "...")
-            frame_layout.addWidget(self._sub_label)
+        # Timestamp (right-aligned)
+        created_at = self._data.get("created_at")
+        time_text = self._format_timestamp(created_at)
 
-        # Body preview for featured cards
-        if self._is_featured:
-            body_text = self._data.get("body_text", "")
-            if body_text:
-                # Show first ~150 chars
-                preview = body_text[:150].rsplit(" ", 1)[0] + "..." if len(body_text) > 150 else body_text
-                self._body_preview = QLabel(preview)
-                self._body_preview.setWordWrap(True)
-                self._body_preview.setStyleSheet(
-                    f"color: {ESPN_THEME['text_secondary']}; font-size: 24px; margin-top: 8px;"
-                )
-                frame_layout.addWidget(self._body_preview)
-
-        # Apply card styling
-        self._apply_card_style()
-
-        layout.addWidget(self._frame)
+        self._time_label = QLabel(time_text)
+        self._time_label.setFont(Typography.CAPTION)
+        self._time_label.setStyleSheet(f"color: {ESPN_THEME['text_muted']};")
+        self._time_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self._time_label.setFixedWidth(50)
+        layout.addWidget(self._time_label)
 
         # Make clickable
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
 
-    def _apply_card_style(self):
-        """Apply border and background styling to the card."""
-        sentiment = self._data.get("sentiment", "NEUTRAL")
-        border_color = SENTIMENT_COLORS.get(sentiment, "#666666")
+    def _format_timestamp(self, created_at) -> str:
+        """Format timestamp as relative time."""
+        if not created_at:
+            return ""
 
-        if self._is_featured:
-            # Featured: more prominent border and dark background
-            self._frame.setStyleSheet(f"""
-                QFrame#headline_card {{
-                    background-color: {ESPN_THEME['card_bg']};
-                    border: 2px solid {border_color};
-                    border-radius: 6px;
-                }}
-                QFrame#headline_card:hover {{
-                    background-color: {ESPN_THEME['card_hover']};
-                    border-color: {border_color};
-                }}
-            """)
+        try:
+            if isinstance(created_at, str):
+                # Parse ISO format
+                dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+            elif isinstance(created_at, datetime):
+                dt = created_at
+            else:
+                return ""
+
+            now = datetime.now()
+            if dt.tzinfo:
+                now = datetime.now(dt.tzinfo)
+
+            diff = now - dt
+
+            if diff.days > 7:
+                return dt.strftime("%m/%d")
+            elif diff.days > 0:
+                return f"{diff.days}d"
+            elif diff.seconds > 3600:
+                return f"{diff.seconds // 3600}h"
+            elif diff.seconds > 60:
+                return f"{diff.seconds // 60}m"
+            else:
+                return "now"
+        except Exception:
+            return ""
+
+    def _apply_style(self, hovered: bool = False):
+        """Apply background style based on hover state."""
+        if hovered:
+            self.setStyleSheet(
+                f"HeadlineCardWidget {{ "
+                f"background-color: {ESPN_THEME['card_hover']}; "
+                f"border-bottom: 1px solid {ESPN_THEME['border']}; "
+                f"}}"
+            )
         else:
-            # Regular: subtle border with dark background
-            self._frame.setStyleSheet(f"""
-                QFrame#headline_card {{
-                    background-color: {ESPN_THEME['card_bg']};
-                    border: 1px solid {ESPN_THEME['border']};
-                    border-left: 3px solid {border_color};
-                    border-radius: 4px;
-                }}
-                QFrame#headline_card:hover {{
-                    background-color: {ESPN_THEME['card_hover']};
-                }}
-            """)
+            self.setStyleSheet(
+                f"HeadlineCardWidget {{ "
+                f"background-color: transparent; "
+                f"border-bottom: 1px solid {ESPN_THEME['border']}; "
+                f"}}"
+            )
+
+    def enterEvent(self, event):
+        """Handle mouse enter for hover effect."""
+        self._apply_style(hovered=True)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        """Handle mouse leave for hover effect."""
+        self._apply_style(hovered=False)
+        super().leaveEvent(event)
 
     def mousePressEvent(self, event):
         """Handle mouse click to emit signal."""
@@ -213,22 +264,50 @@ class HeadlineCardWidget(QWidget):
 
     def set_data(self, headline_data: Dict[str, Any]):
         """
-        Update the card with new headline data.
+        Update the item with new headline data.
 
         Args:
             headline_data: New headline dictionary
         """
         self._data = headline_data
-        # Clear and rebuild UI
-        # For simplicity, just update the labels
-        self._headline_label.setText(headline_data.get("headline", "Untitled"))
 
+        # Update headline (no truncation)
+        headline_text = headline_data.get("headline", "Untitled")
+        self._headline_label.setText(headline_text)
+
+        # Update subheadline
+        subheadline_text = headline_data.get("subheadline", "")
+        if self._subheadline_label:
+            if subheadline_text:
+                self._subheadline_label.setText(subheadline_text)
+                self._subheadline_label.setVisible(True)
+            else:
+                self._subheadline_label.setVisible(False)
+
+        # Update sentiment
         sentiment = headline_data.get("sentiment", "NEUTRAL")
-        badge_text = SENTIMENT_BADGES.get(sentiment, "•")
-        badge_color = SENTIMENT_COLORS.get(sentiment, "#666666")
-        self._badge.setText(badge_text)
-        self._badge.setStyleSheet(
-            f"color: {badge_color}; font-weight: bold; font-size: 28px;"
+        icon = SENTIMENT_ICONS.get(sentiment, "●")
+        icon_color = SENTIMENT_ICON_COLORS.get(sentiment, "#9E9E9E")
+        self._sentiment_dot.setText(icon)
+        self._sentiment_dot.setStyleSheet(
+            f"color: {icon_color}; font-size: {FontSizes.CAPTION};"
         )
 
-        self._apply_card_style()
+        # Update category
+        headline_type = headline_data.get("headline_type", "DEFAULT").upper()
+        category_style = CATEGORY_COLORS.get(headline_type, CATEGORY_COLORS["DEFAULT"])
+        display_type = headline_type.replace("_", " ").title()
+        if len(display_type) > 12:
+            display_type = display_type[:10] + "..."
+        self._category_chip.setText(display_type)
+        self._category_chip.setStyleSheet(
+            f"background-color: {category_style['bg']}; "
+            f"color: {category_style['fg']}; "
+            f"border-radius: 3px; "
+            f"padding: 2px 6px; "
+            f"font-weight: bold;"
+        )
+
+        # Update timestamp
+        created_at = headline_data.get("created_at")
+        self._time_label.setText(self._format_timestamp(created_at))

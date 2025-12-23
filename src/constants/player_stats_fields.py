@@ -93,6 +93,10 @@ class PlayerStatField(Enum):
     RUSHING_YARDS = StatFieldMetadata("rushing_yards", "rushing_yards", 0, int, persistable=True)
     RUSHING_TOUCHDOWNS = StatFieldMetadata("rushing_tds", "rushing_tds", 0, int, persistable=True)
     CARRIES = StatFieldMetadata("rushing_attempts", "rushing_attempts", 0, int, persistable=True)
+    RUSHING_LONG = StatFieldMetadata("rushing_long", "rushing_long", 0, int, persistable=True)
+    RUSHING_20_PLUS = StatFieldMetadata("rushing_20_plus", "rushing_20_plus", 0, int, persistable=True)
+    RUSHING_FUMBLES = StatFieldMetadata("rushing_fumbles", "rushing_fumbles", 0, int, persistable=True)
+    FUMBLES_LOST = StatFieldMetadata("fumbles_lost", "fumbles_lost", 0, int, persistable=True)
     YARDS_AFTER_CONTACT = StatFieldMetadata("yards_after_contact", "yards_after_contact", 0, int, persistable=True)
 
     # ============================================================
@@ -286,7 +290,8 @@ class PlayerStatField(Enum):
                 cls.TIME_TO_THROW_TOTAL, cls.THROW_COUNT
             ],
             StatCategory.RUSHING: [
-                cls.CARRIES, cls.RUSHING_YARDS, cls.RUSHING_TOUCHDOWNS, cls.YARDS_AFTER_CONTACT,
+                cls.CARRIES, cls.RUSHING_YARDS, cls.RUSHING_TOUCHDOWNS, cls.RUSHING_LONG,
+                cls.RUSHING_20_PLUS, cls.RUSHING_FUMBLES, cls.FUMBLES_LOST, cls.YARDS_AFTER_CONTACT,
                 # Ball carrier advanced stats
                 cls.BROKEN_TACKLES, cls.TACKLES_FACED
             ],

@@ -93,6 +93,118 @@ class BasePlaySimulator:
                 found_players.append(player)
         return found_players
 
+    def _get_field_defensive_players_by_positions(self, positions: List[str]) -> List:
+        """
+        Get defensive players who are actually on the field based on formation limits.
+
+        Unlike _find_defensive_players_by_positions() which returns ALL roster players,
+        this method only returns players who would be on the field based on:
+        1. The current defensive formation's personnel requirements
+        2. The player's depth chart order (starters first)
+
+        This ensures stat attribution (sacks, tackles, interceptions) only goes to
+        players who are actually playing, not bench players.
+
+        Args:
+            positions: List of position strings to match
+
+        Returns:
+            List of Player objects who are on the field and match the positions
+        """
+        from play_engine.mechanics.formations import DefensiveFormation
+        from constants.position_abbreviations import get_position_limit_with_aliases
+
+        # Get formation personnel requirements
+        personnel = DefensiveFormation.get_personnel_requirements(self.defensive_formation)
+        if not personnel:
+            # Fallback to all players if formation not found
+            return self._find_defensive_players_by_positions(positions)
+
+        # Get all matching players
+        all_matching = self._find_defensive_players_by_positions(positions)
+
+        # Track how many players of each position we've added (matching snap tracking logic)
+        position_counts = {}
+        field_players = []
+
+        # Sort by depth chart order to ensure starters are selected first
+        sorted_players = sorted(
+            all_matching,
+            key=lambda p: (getattr(p, 'depth_chart_order', 99), -getattr(p, 'overall', 0))
+        )
+
+        for player in sorted_players:
+            position = getattr(player, 'primary_position', '')
+
+            # Get the limit for this position from formation (with alias support)
+            pos_limit, tracking_pos = get_position_limit_with_aliases(position, personnel, position_counts)
+
+            # Check if we've already filled this position
+            pos_count = position_counts.get(tracking_pos, 0)
+            if pos_count >= pos_limit:
+                continue  # Skip - formation doesn't use more of this position
+
+            field_players.append(player)
+            position_counts[tracking_pos] = pos_count + 1
+
+        return field_players
+
+    def _get_field_offensive_players_by_positions(self, positions: List[str]) -> List:
+        """
+        Get offensive players who are actually on the field based on formation limits.
+
+        Unlike _find_players_by_positions() which returns ALL roster players,
+        this method only returns players who would be on the field based on:
+        1. The current offensive formation's personnel requirements
+        2. The player's depth chart order (starters first)
+
+        This ensures stat attribution (receiving yards, blocking grades) only goes to
+        players who are actually playing, not bench players.
+
+        Args:
+            positions: List of position strings to match
+
+        Returns:
+            List of Player objects who are on the field and match the positions
+        """
+        from play_engine.mechanics.formations import OffensiveFormation
+        from constants.position_abbreviations import get_position_limit_with_aliases
+
+        # Get formation personnel requirements
+        personnel = OffensiveFormation.get_personnel_requirements(self.offensive_formation)
+        if not personnel:
+            # Fallback to all players if formation not found
+            return self._find_players_by_positions(positions)
+
+        # Get all matching players
+        all_matching = self._find_players_by_positions(positions)
+
+        # Track how many players of each position we've added (matching snap tracking logic)
+        position_counts = {}
+        field_players = []
+
+        # Sort by depth chart order to ensure starters are selected first
+        sorted_players = sorted(
+            all_matching,
+            key=lambda p: (getattr(p, 'depth_chart_order', 99), -getattr(p, 'overall', 0))
+        )
+
+        for player in sorted_players:
+            position = getattr(player, 'primary_position', '')
+
+            # Get the limit for this position from formation (with alias support)
+            pos_limit, tracking_pos = get_position_limit_with_aliases(position, personnel, position_counts)
+
+            # Check if we've already filled this position
+            pos_count = position_counts.get(tracking_pos, 0)
+            if pos_count >= pos_limit:
+                continue  # Skip - formation doesn't use more of this position
+
+            field_players.append(player)
+            position_counts[tracking_pos] = pos_count + 1
+
+        return field_players
+
     # ============================================
     # Snap Tracking
     # ============================================
@@ -195,6 +307,46 @@ class BasePlaySimulator:
             def_position_counts[tracking_pos] = pos_count + 1
             defensive_count += 1
 
+        # Track snaps for rotation/backup players who have stats but weren't in starting lineup
+        # This handles cases where a backup RB comes in and gets carries, or a backup CB makes a tackle
+        processed_players = set()
+
+        # Collect names of all players we've already processed from starting lineups
+        for player in self.offensive_players[:offensive_count]:
+            processed_players.add(player.name)
+        for player in self.defensive_players[:defensive_count]:
+            processed_players.add(player.name)
+
+        # Find rotation players: those in existing_stats but not in processed_players
+        for player_name, stats in existing_stats.items():
+            if player_name in processed_players:
+                continue  # Already got snaps from starting lineup tracking
+
+            # Determine if this is an offensive or defensive rotation player based on stats
+            has_offensive_stats = (
+                stats.rushing_attempts > 0 or
+                stats.receptions > 0 or
+                stats.passing_attempts > 0 or
+                getattr(stats, 'run_blocks', 0) > 0 or
+                getattr(stats, 'pass_blocks', 0) > 0
+            )
+
+            has_defensive_stats = (
+                stats.tackles > 0 or
+                stats.assisted_tackles > 0 or
+                stats.sacks > 0 or
+                stats.interceptions > 0 or
+                stats.passes_defended > 0 or
+                getattr(stats, 'missed_tackles', 0) > 0 or
+                getattr(stats, 'qb_pressures', 0) > 0
+            )
+
+            # Add snap for rotation player based on which side of ball they played
+            if has_offensive_stats:
+                stats.add_offensive_snap()
+            if has_defensive_stats:
+                stats.add_defensive_snap()
+
         return player_stats
 
     # ============================================
@@ -240,6 +392,81 @@ class BasePlaySimulator:
             return actual_yards, 6, True
 
         return final_yards, 0, False
+
+    def _calculate_touchdown_outcome(
+        self,
+        original_yards: int,
+        final_yards: int,
+        play_negated: bool
+    ) -> Tuple[int, int]:
+        """
+        Calculate actual yards and points scored, handling touchdown detection.
+
+        Wrapper around _detect_touchdown() that returns simplified (yards, points) tuple.
+
+        Args:
+            original_yards: Yards before penalty adjustment
+            final_yards: Yards after penalty adjustment
+            play_negated: Whether penalty negated the play
+
+        Returns:
+            Tuple of (actual_yards, points_scored)
+        """
+        actual_yards, points_scored, _ = self._detect_touchdown(
+            original_yards, final_yards, play_negated
+        )
+        return actual_yards, points_scored
+
+    def _create_play_summary(
+        self,
+        play_type: str,
+        actual_yards: int,
+        time_elapsed: float,
+        points_scored: int,
+        player_stats: List['PlayerStats'],
+        penalty_result: Optional = None,
+        original_yards: Optional[int] = None
+    ) -> 'PlayStatsSummary':
+        """
+        Create PlayStatsSummary with penalty information and player stats.
+
+        Centralizes the pattern of:
+        1. Creating PlayStatsSummary
+        2. Attaching penalty information if present
+        3. Adding all player stats
+
+        Args:
+            play_type: Type of play (e.g., PlayType.RUN, 'pass', 'complete')
+            actual_yards: Final yards gained after penalties/touchdowns
+            time_elapsed: Time taken for the play
+            points_scored: Points scored (0 or 6 for TD)
+            player_stats: List of all player stats for this play
+            penalty_result: Optional penalty result object
+            original_yards: Original yards before penalty adjustment
+
+        Returns:
+            Complete PlayStatsSummary ready to return
+        """
+        from .stats import PlayStatsSummary
+
+        summary = PlayStatsSummary(
+            play_type=play_type,
+            yards_gained=actual_yards,
+            time_elapsed=time_elapsed,
+            points_scored=points_scored
+        )
+
+        if penalty_result and getattr(penalty_result, 'penalty_occurred', False):
+            summary.penalty_occurred = True
+            summary.penalty_instance = penalty_result.penalty_instance
+            summary.original_yards = original_yards
+            summary.play_negated = getattr(penalty_result, 'play_negated', False)
+            summary.enforcement_result = getattr(penalty_result, 'enforcement_result', None)
+
+        for stats in player_stats:
+            summary.add_player_stats(stats)
+
+        return summary
 
     # ============================================
     # Player Stats Validation

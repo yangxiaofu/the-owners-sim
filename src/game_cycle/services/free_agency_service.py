@@ -220,8 +220,9 @@ class FreeAgencyService:
             archetype = registry.get_archetype(archetype_id)
             if archetype and archetype.development_curve:
                 return {"early": "E", "normal": "N", "late": "L"}.get(archetype.development_curve, "N")
-        except Exception:
-            pass
+        except Exception as e:
+            # Expected - archetype may not exist or be malformed, default to normal development
+            self._logger.debug(f"Could not load development curve for archetype {archetype_id}: {e}")
         return "N"
 
     def _calculate_age(self, birthdate: Optional[str]) -> int:

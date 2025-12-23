@@ -6,7 +6,7 @@ and dead money projections. Used to satisfy Tollgate 2 success criteria:
 "Can view contract details for any player showing cap hit breakdown"
 """
 
-from typing import Dict, Optional
+from typing import Dict, Optional, TYPE_CHECKING
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox,
@@ -17,6 +17,26 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QColor
 
 from salary_cap.contract_manager import ContractManager
+from game_cycle_ui.widgets import (
+    ValuationBreakdownWidget,
+    CollapsibleSection,
+)
+from game_cycle_ui.widgets.stat_frame import create_stat_display
+
+if TYPE_CHECKING:
+    from contract_valuation.models import ValuationResult
+from game_cycle_ui.theme import (
+    Colors,
+    Typography,
+    FontSizes,
+    TextColors,
+    PRIMARY_BUTTON_STYLE,
+    SECONDARY_BUTTON_STYLE,
+    DANGER_BUTTON_STYLE,
+    WARNING_BUTTON_STYLE,
+    NEUTRAL_BUTTON_STYLE,
+    apply_table_style
+)
 
 
 class ContractDetailsDialog(QDialog):
@@ -33,7 +53,8 @@ class ContractDetailsDialog(QDialog):
         player_name: str,
         contract_id: int,
         db_path: str,
-        parent=None
+        parent=None,
+        valuation_result: Optional["ValuationResult"] = None
     ):
         """
         Initialize contract details dialog.
@@ -43,12 +64,14 @@ class ContractDetailsDialog(QDialog):
             contract_id: Contract ID to display
             db_path: Path to the database
             parent: Parent widget
+            valuation_result: Optional valuation breakdown to display
         """
         super().__init__(parent)
         self._player_name = player_name
         self._contract_id = contract_id
         self._db_path = db_path
         self._contract_data: Optional[Dict] = None
+        self._valuation_result = valuation_result
 
         self.setWindowTitle(f"Contract Details - {player_name}")
         self.setMinimumSize(700, 400)
@@ -65,7 +88,7 @@ class ContractDetailsDialog(QDialog):
 
         # Header with player name
         header = QLabel(f"Contract: {self._player_name}")
-        header.setFont(QFont("Arial", 14, QFont.Bold))
+        header.setFont(Typography.H5)
         layout.addWidget(header)
 
         # Summary panel
@@ -74,13 +97,14 @@ class ContractDetailsDialog(QDialog):
         # Year-by-year table
         self._create_year_table(layout)
 
+        # Valuation section (if available)
+        if self._valuation_result is not None:
+            valuation_section = self._create_valuation_section()
+            layout.addWidget(valuation_section)
+
         # Close button
         close_btn = QPushButton("Close")
-        close_btn.setStyleSheet(
-            "QPushButton { background-color: #666; color: white; "
-            "border-radius: 3px; padding: 8px 24px; }"
-            "QPushButton:hover { background-color: #555; }"
-        )
+        close_btn.setStyleSheet(NEUTRAL_BUTTON_STYLE)
         close_btn.clicked.connect(self.accept)
 
         btn_layout = QHBoxLayout()
@@ -95,51 +119,32 @@ class ContractDetailsDialog(QDialog):
         summary_layout.setSpacing(30)
 
         # Total value
-        self._total_value_label = self._create_stat_frame(
+        self._total_value_label = create_stat_display(
             summary_layout, "Total Value", "$0"
         )
 
         # Contract years
-        self._years_label = self._create_stat_frame(
+        self._years_label = create_stat_display(
             summary_layout, "Years", "0"
         )
 
         # Signing bonus
-        self._signing_bonus_label = self._create_stat_frame(
+        self._signing_bonus_label = create_stat_display(
             summary_layout, "Signing Bonus", "$0"
         )
 
         # Total guaranteed
-        self._guaranteed_label = self._create_stat_frame(
+        self._guaranteed_label = create_stat_display(
             summary_layout, "Total Guaranteed", "$0"
         )
 
         # Contract type
-        self._type_label = self._create_stat_frame(
+        self._type_label = create_stat_display(
             summary_layout, "Type", "N/A"
         )
 
         summary_layout.addStretch()
         parent_layout.addWidget(summary_group)
-
-    def _create_stat_frame(
-        self, parent_layout: QHBoxLayout, title: str, initial_value: str
-    ) -> QLabel:
-        """Create a stat display frame and return the value label."""
-        frame = QFrame()
-        frame_layout = QVBoxLayout(frame)
-        frame_layout.setContentsMargins(0, 0, 0, 0)
-
-        title_label = QLabel(title)
-        title_label.setStyleSheet("color: #666; font-size: 11px;")
-        frame_layout.addWidget(title_label)
-
-        value_label = QLabel(initial_value)
-        value_label.setFont(QFont("Arial", 14, QFont.Bold))
-        frame_layout.addWidget(value_label)
-
-        parent_layout.addWidget(frame)
-        return value_label
 
     def _create_year_table(self, parent_layout: QVBoxLayout):
         """Create the year-by-year breakdown table."""
@@ -152,7 +157,10 @@ class ContractDetailsDialog(QDialog):
             "Year", "Base Salary", "Bonus Proration", "Cap Hit", "Guaranteed", "Dead $ if Cut"
         ])
 
-        # Configure table appearance
+        # Apply centralized table styling
+        apply_table_style(self._year_table)
+
+        # Configure column resize modes
         header = self._year_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
@@ -161,13 +169,25 @@ class ContractDetailsDialog(QDialog):
         header.setSectionResizeMode(4, QHeaderView.Stretch)
         header.setSectionResizeMode(5, QHeaderView.Stretch)
 
-        self._year_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        # Additional table configuration
         self._year_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self._year_table.setAlternatingRowColors(True)
-        self._year_table.verticalHeader().setVisible(False)
 
         table_layout.addWidget(self._year_table)
         parent_layout.addWidget(table_group, stretch=1)
+
+    def _create_valuation_section(self) -> QFrame:
+        """Create collapsible section showing contract valuation breakdown."""
+        container = QFrame()
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        section = CollapsibleSection("How Was This Contract Valued?", expanded=False)
+        widget = ValuationBreakdownWidget()
+        widget.set_valuation_result(self._valuation_result)
+        section.content_layout().addWidget(widget)
+        layout.addWidget(section)
+
+        return container
 
     def _load_contract_data(self):
         """Load contract details from the database."""
@@ -202,7 +222,7 @@ class ContractDetailsDialog(QDialog):
         total_guaranteed = contract.get("total_guaranteed", 0)
         self._guaranteed_label.setText(f"${total_guaranteed:,}")
         if total_guaranteed > 0:
-            self._guaranteed_label.setStyleSheet("color: #1976D2;")  # Blue
+            self._guaranteed_label.setStyleSheet(f"color: {Colors.INFO};")
 
         contract_type = contract.get("contract_type", "N/A")
         self._type_label.setText(contract_type)
@@ -227,14 +247,14 @@ class ContractDetailsDialog(QDialog):
             proration = detail.get("signing_bonus_proration", 0)
             proration_item = QTableWidgetItem(f"${proration:,}")
             proration_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            proration_item.setForeground(QColor("#1976D2"))  # Blue
+            proration_item.setForeground(QColor(Colors.INFO))
             self._year_table.setItem(row, 2, proration_item)
 
             # Cap hit
             cap_hit = detail.get("total_cap_hit", 0)
             cap_item = QTableWidgetItem(f"${cap_hit:,}")
             cap_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            cap_item.setFont(QFont("Arial", -1, QFont.Bold))
+            cap_item.setFont(Typography.BODY_BOLD)
             self._year_table.setItem(row, 3, cap_item)
 
             # Guaranteed
@@ -242,10 +262,10 @@ class ContractDetailsDialog(QDialog):
             guarantee_type = detail.get("guarantee_type", "NONE")
             if is_guaranteed:
                 guaranteed_text = f"${base_salary:,}" if guarantee_type == "FULL" else "Partial"
-                guaranteed_color = QColor("#2E7D32")  # Green
+                guaranteed_color = QColor(Colors.SUCCESS)
             else:
                 guaranteed_text = "$0"
-                guaranteed_color = QColor("#666")
+                guaranteed_color = QColor(Colors.MUTED)
 
             guaranteed_item = QTableWidgetItem(guaranteed_text)
             guaranteed_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
@@ -258,7 +278,7 @@ class ContractDetailsDialog(QDialog):
             dead_item = QTableWidgetItem(f"${dead_money:,}")
             dead_item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
             if dead_money > 0:
-                dead_item.setForeground(QColor("#C62828"))  # Red
+                dead_item.setForeground(QColor(Colors.ERROR))
             self._year_table.setItem(row, 5, dead_item)
 
         # Add totals row
@@ -271,7 +291,7 @@ class ContractDetailsDialog(QDialog):
 
         # "TOTAL" label
         total_label = QTableWidgetItem("TOTAL")
-        total_label.setFont(QFont("Arial", -1, QFont.Bold))
+        total_label.setFont(Typography.BODY_BOLD)
         total_label.setTextAlignment(Qt.AlignCenter)
         self._year_table.setItem(row, 0, total_label)
 
@@ -286,27 +306,27 @@ class ContractDetailsDialog(QDialog):
         # Base salary total
         base_total = QTableWidgetItem(f"${total_base:,}")
         base_total.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        base_total.setFont(QFont("Arial", -1, QFont.Bold))
+        base_total.setFont(Typography.BODY_BOLD)
         self._year_table.setItem(row, 1, base_total)
 
         # Proration total
         proration_total = QTableWidgetItem(f"${total_proration:,}")
         proration_total.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        proration_total.setFont(QFont("Arial", -1, QFont.Bold))
-        proration_total.setForeground(QColor("#1976D2"))
+        proration_total.setFont(Typography.BODY_BOLD)
+        proration_total.setForeground(QColor(Colors.INFO))
         self._year_table.setItem(row, 2, proration_total)
 
         # Cap hit total
         cap_total = QTableWidgetItem(f"${total_cap:,}")
         cap_total.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        cap_total.setFont(QFont("Arial", -1, QFont.Bold))
+        cap_total.setFont(Typography.BODY_BOLD)
         self._year_table.setItem(row, 3, cap_total)
 
         # Guaranteed total
         guaranteed_total = QTableWidgetItem(f"${total_guaranteed:,}")
         guaranteed_total.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        guaranteed_total.setFont(QFont("Arial", -1, QFont.Bold))
-        guaranteed_total.setForeground(QColor("#2E7D32"))
+        guaranteed_total.setFont(Typography.BODY_BOLD)
+        guaranteed_total.setForeground(QColor(Colors.SUCCESS))
         self._year_table.setItem(row, 4, guaranteed_total)
 
         # Dead money N/A for totals
@@ -321,5 +341,5 @@ class ContractDetailsDialog(QDialog):
 
         error_item = QTableWidgetItem(f"Error loading contract: {message}")
         error_item.setTextAlignment(Qt.AlignCenter)
-        error_item.setForeground(QColor("#C62828"))
+        error_item.setForeground(QColor(Colors.ERROR))
         self._year_table.setItem(0, 0, error_item)

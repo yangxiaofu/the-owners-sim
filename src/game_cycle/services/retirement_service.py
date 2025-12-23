@@ -618,10 +618,8 @@ class RetirementService:
         """
         try:
             from src.database.player_roster_api import PlayerRosterAPI
-            from src.database.connection import DatabaseConnection
 
-            db_conn = DatabaseConnection(self._db_path)
-            roster_api = PlayerRosterAPI(self._db_path, db_conn)
+            roster_api = PlayerRosterAPI(self._db_path)
 
             # Update player's team_id to 0 and remove from team_rosters
             roster_api.update_player_team(self._dynasty_id, player_id, 0)

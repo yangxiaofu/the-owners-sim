@@ -16,7 +16,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor
 
 from game_cycle_ui.theme import (
-    get_rivalry_intensity_color, RIVALRY_TYPE_COLORS
+    get_rivalry_intensity_color, RIVALRY_TYPE_COLORS, Colors,
+    Typography, FontSizes, TextColors, apply_table_style
 )
 
 
@@ -54,7 +55,7 @@ class TeamScheduleWidget(QWidget):
 
         # Team header
         self.team_header = QLabel("Team Schedule")
-        self.team_header.setFont(QFont("Arial", 24, QFont.Bold))
+        self.team_header.setFont(Typography.H1)
         layout.addWidget(self.team_header)
 
         # Schedule table
@@ -64,36 +65,22 @@ class TeamScheduleWidget(QWidget):
             "Week", "Opponent", "H/A", "Result", "Rivalry"
         ])
 
-        # Configure header
+        # Apply standard table styling
+        apply_table_style(self.schedule_table)
+
+        # Configure header resize modes
         header = self.schedule_table.horizontalHeader()
-        header.setStyleSheet("""
-            QHeaderView::section {
-                background-color: #1e3a5f;
-                color: #ffffff;
-                padding: 10px;
-                border: none;
-                border-bottom: 1px solid #2c5282;
-                font-weight: bold;
-                font-size: 16px;
-            }
-        """)
-        header.setMinimumHeight(40)
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # Week
         header.setSectionResizeMode(1, QHeaderView.Stretch)           # Opponent
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # H/A
         header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # Result
         header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Rivalry
 
-        # Configure table
+        # Configure table behavior
         self.schedule_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.schedule_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.schedule_table.setAlternatingRowColors(True)
         self.schedule_table.verticalHeader().setVisible(False)
         self.schedule_table.cellDoubleClicked.connect(self._on_row_clicked)
-
-        # Set larger default font for table
-        self.schedule_table.setFont(QFont("Arial", 18))
-        self.schedule_table.verticalHeader().setDefaultSectionSize(36)
 
         layout.addWidget(self.schedule_table)
 
@@ -169,8 +156,8 @@ class TeamScheduleWidget(QWidget):
         # Bye text spanning columns
         bye_item = QTableWidgetItem("BYE WEEK")
         bye_item.setTextAlignment(Qt.AlignCenter)
-        bye_item.setFont(QFont("Arial", 18, QFont.Bold))
-        bye_item.setForeground(QColor("#666"))
+        bye_item.setFont(Typography.BODY_BOLD)
+        bye_item.setForeground(QColor(Colors.MUTED))
         bye_item.setBackground(bye_color)
         self.schedule_table.setItem(row, 1, bye_item)
 
@@ -179,7 +166,7 @@ class TeamScheduleWidget(QWidget):
             item = QTableWidgetItem("-")
             item.setTextAlignment(Qt.AlignCenter)
             item.setBackground(bye_color)
-            item.setForeground(QColor("#999"))
+            item.setForeground(QColor(Colors.TEXT_MUTED))
             self.schedule_table.setItem(row, col, item)
 
     def _create_game_row(self, row: int, week: int, game: Dict):
@@ -207,8 +194,8 @@ class TeamScheduleWidget(QWidget):
         # Home/Away
         ha_item = QTableWidgetItem("vs" if is_home else "@")
         ha_item.setTextAlignment(Qt.AlignCenter)
-        ha_item.setForeground(QColor("#1976D2" if is_home else "#F57C00"))
-        ha_item.setFont(QFont("Arial", 18, QFont.Bold))
+        ha_item.setForeground(QColor(Colors.INFO if is_home else Colors.WARNING))
+        ha_item.setFont(Typography.BODY_BOLD)
         self.schedule_table.setItem(row, 2, ha_item)
 
         # Result
@@ -222,22 +209,22 @@ class TeamScheduleWidget(QWidget):
 
             if team_score > opp_score:
                 result_text = f"W {team_score}-{opp_score}"
-                result_color = "#2E7D32"  # Green
+                result_color = Colors.SUCCESS
             elif team_score < opp_score:
                 result_text = f"L {team_score}-{opp_score}"
-                result_color = "#C62828"  # Red
+                result_color = Colors.ERROR
             else:
                 result_text = f"T {team_score}-{opp_score}"
-                result_color = "#666"
+                result_color = Colors.MUTED
 
             result_item = QTableWidgetItem(result_text)
             result_item.setTextAlignment(Qt.AlignCenter)
             result_item.setForeground(QColor(result_color))
-            result_item.setFont(QFont("Arial", 18, QFont.Bold))
+            result_item.setFont(Typography.BODY_BOLD)
         else:
             result_item = QTableWidgetItem("-")
             result_item.setTextAlignment(Qt.AlignCenter)
-            result_item.setForeground(QColor("#999"))
+            result_item.setForeground(QColor(Colors.TEXT_MUTED))
 
         self.schedule_table.setItem(row, 3, result_item)
 
@@ -248,17 +235,17 @@ class TeamScheduleWidget(QWidget):
             rivalry_item = QTableWidgetItem(rivalry_text)
             rivalry_item.setTextAlignment(Qt.AlignCenter)
 
-            type_color = RIVALRY_TYPE_COLORS.get(rivalry.rivalry_type.value, "#666")
+            type_color = RIVALRY_TYPE_COLORS.get(rivalry.rivalry_type.value, Colors.MUTED)
             rivalry_item.setForeground(QColor(type_color))
-            rivalry_item.setFont(QFont("Arial", 18, QFont.Bold))
+            rivalry_item.setFont(Typography.BODY_BOLD)
             rivalry_item.setToolTip(f"{rivalry.rivalry_name} (Intensity: {rivalry.intensity})")
 
-            # Apply row highlighting for rivalry - set background and dark text
+            # Apply row highlighting for rivalry - dark background with white text
             intensity_color = get_rivalry_intensity_color(rivalry.intensity)
 
             # Also apply to rivalry item before adding
             rivalry_item.setBackground(QColor(intensity_color))
-            rivalry_item.setForeground(QColor("#1a1a1a"))
+            rivalry_item.setForeground(QColor("white"))
             self.schedule_table.setItem(row, 4, rivalry_item)
 
             # Apply to all columns including the rivalry column (0-4)
@@ -266,12 +253,12 @@ class TeamScheduleWidget(QWidget):
                 item = self.schedule_table.item(row, col)
                 if item:
                     item.setBackground(QColor(intensity_color))
-                    # Use dark text on light backgrounds for readability
-                    item.setForeground(QColor("#1a1a1a"))
+                    # Use white text on dark ESPN-themed backgrounds
+                    item.setForeground(QColor("white"))
         else:
             empty_item = QTableWidgetItem("-")
             empty_item.setTextAlignment(Qt.AlignCenter)
-            empty_item.setForeground(QColor("#CCC"))
+            empty_item.setForeground(QColor(Colors.DISABLED))
             self.schedule_table.setItem(row, 4, empty_item)
 
     def _create_empty_row(self, row: int, week: int):
@@ -283,14 +270,14 @@ class TeamScheduleWidget(QWidget):
 
         # No game
         no_game_item = QTableWidgetItem("No game")
-        no_game_item.setForeground(QColor("#999"))
+        no_game_item.setForeground(QColor(Colors.TEXT_MUTED))
         self.schedule_table.setItem(row, 1, no_game_item)
 
         # Fill remaining columns
         for col in range(2, 5):
             item = QTableWidgetItem("-")
             item.setTextAlignment(Qt.AlignCenter)
-            item.setForeground(QColor("#CCC"))
+            item.setForeground(QColor(Colors.DISABLED))
             self.schedule_table.setItem(row, col, item)
 
     def _get_rivalry(self, team_a: int, team_b: int):

@@ -292,13 +292,18 @@ class ContractManager:
 
         # Get current year details
         year_details = self.db_api.get_contract_year_details(contract_id)
+
+        # Debug: print all year details
+        print(f"[DEBUG restructure] contract_id={contract_id}, looking for year_to_restructure={year_to_restructure}")
+        print(f"[DEBUG restructure] Available years: {[(d.get('contract_year'), d.get('season_year'), d.get('base_salary')) for d in year_details]}")
+
         current_year_detail = next(
             (d for d in year_details if d['contract_year'] == year_to_restructure),
             None
         )
 
         if not current_year_detail:
-            raise ValueError(f"Year {year_to_restructure} not found for contract {contract_id}")
+            raise ValueError(f"Year {year_to_restructure} not found for contract {contract_id}. Available years: {[d.get('contract_year') for d in year_details]}")
 
         # Validate amount
         if amount_to_convert > current_year_detail['base_salary']:
@@ -326,9 +331,9 @@ class ContractManager:
         )
 
         # Update current year
-        with self.db_api.db_api.database_path:
-            import sqlite3
-            conn = sqlite3.connect(self.db_api.database_path)
+        import sqlite3
+        conn = sqlite3.connect(self.db_api.database_path)
+        try:
             conn.execute('''
                 UPDATE contract_year_details
                 SET base_salary = ?,
@@ -363,6 +368,7 @@ class ContractManager:
             ''', (new_signing_bonus, new_signing_bonus_proration, contract_id))
 
             conn.commit()
+        finally:
             conn.close()
 
         # Log transaction
@@ -381,6 +387,7 @@ class ContractManager:
 
         # Build return dict
         result = {
+            'success': True,
             'cap_savings': restructure_impact['cap_savings_current_year'],
             'new_cap_hits': self.calculator.calculate_contract_cap_hit_by_year(contract_id),
             'dead_money_increase': restructure_impact['dead_money_increase'],

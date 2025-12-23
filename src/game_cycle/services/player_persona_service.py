@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple, Any
 
 from src.player_management.player_persona import PlayerPersona, PersonaType
 from src.game_cycle.database.persona_api import PersonaAPI, PersonaRecord
-from utils.player_field_extractors import extract_overall_rating
+from src.utils.player_field_extractors import extract_overall_rating
 
 
 # Base distribution weights (total = 100)

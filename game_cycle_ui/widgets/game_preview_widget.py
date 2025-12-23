@@ -11,21 +11,20 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGridLayout
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QColor
 
-from game_cycle_ui.theme import ESPN_THEME
+from game_cycle_ui.theme import ESPN_THEME, Colors, Typography, FontSizes, TextColors
 
 
 def _get_rank_color(rank: int) -> str:
     """Get color based on ranking position."""
     if rank <= 5:
-        return "#4CAF50"  # Green - elite
+        return Colors.SUCCESS  # Green - elite
     elif rank <= 15:
-        return "#FFC107"  # Amber - good
+        return Colors.WARNING  # Amber - good
     elif rank <= 25:
-        return "#FF9800"  # Orange - average
+        return Colors.WARNING  # Orange - average
     else:
-        return "#F44336"  # Red - poor
+        return Colors.ERROR  # Red - poor
 
 
 def _get_rank_color_inverse(rank: int) -> str:
@@ -64,7 +63,7 @@ class GamePreviewWidget(QWidget):
 
         # Empty state label (hidden by default)
         self.empty_label = QLabel("No upcoming games")
-        self.empty_label.setFont(QFont("Arial", 22))
+        self.empty_label.setFont(Typography.H1)
         self.empty_label.setStyleSheet(f"color: {ESPN_THEME['text_muted']};")
         self.empty_label.setAlignment(Qt.AlignCenter)
         self.empty_label.hide()
@@ -89,14 +88,14 @@ class GamePreviewWidget(QWidget):
         top_row.setSpacing(8)
 
         self.week_label = QLabel("WEEK -- PREVIEW")
-        self.week_label.setFont(QFont("Arial", 18, QFont.Bold))
+        self.week_label.setFont(Typography.BODY_BOLD)
         self.week_label.setStyleSheet(f"color: {ESPN_THEME['red']};")
         top_row.addWidget(self.week_label)
 
         top_row.addStretch()
 
         self.location_label = QLabel("HOME")
-        self.location_label.setFont(QFont("Arial", 18))
+        self.location_label.setFont(Typography.BODY_BOLD)
         self.location_label.setStyleSheet(f"color: {ESPN_THEME['text_secondary']};")
         top_row.addWidget(self.location_label)
 
@@ -104,8 +103,8 @@ class GamePreviewWidget(QWidget):
 
         # Teams matchup
         self.matchup_label = QLabel("Team A vs Team B")
-        self.matchup_label.setFont(QFont("Arial", 24, QFont.Bold))
-        self.matchup_label.setStyleSheet("color: white;")
+        self.matchup_label.setFont(Typography.H1)
+        self.matchup_label.setStyleSheet(f"color: {TextColors.ON_DARK};")
         header_layout.addWidget(self.matchup_label)
 
         parent_layout.addWidget(self.header_frame)
@@ -124,8 +123,8 @@ class GamePreviewWidget(QWidget):
 
         # Section header
         comp_header = QLabel("TEAM COMPARISON")
-        comp_header.setFont(QFont("Arial", 20, QFont.Bold))
-        comp_header.setStyleSheet("color: white;")
+        comp_header.setFont(Typography.H3)
+        comp_header.setStyleSheet(f"color: {TextColors.ON_DARK};")
         comp_layout.addWidget(comp_header)
 
         # Grid for comparison
@@ -134,19 +133,17 @@ class GamePreviewWidget(QWidget):
         self.comp_grid.setContentsMargins(0, 12, 0, 0)
 
         # Column headers
-        header_font = QFont("Arial", 18, QFont.Bold)
-
         spacer = QLabel("")
         self.comp_grid.addWidget(spacer, 0, 0)
 
         self.user_team_header = QLabel("User")
-        self.user_team_header.setFont(header_font)
+        self.user_team_header.setFont(Typography.BODY_BOLD)
         self.user_team_header.setStyleSheet(f"color: {ESPN_THEME['text_secondary']};")
         self.user_team_header.setAlignment(Qt.AlignCenter)
         self.comp_grid.addWidget(self.user_team_header, 0, 1)
 
         self.opp_team_header = QLabel("Opponent")
-        self.opp_team_header.setFont(header_font)
+        self.opp_team_header.setFont(Typography.BODY_BOLD)
         self.opp_team_header.setStyleSheet(f"color: {ESPN_THEME['text_secondary']};")
         self.opp_team_header.setAlignment(Qt.AlignCenter)
         self.comp_grid.addWidget(self.opp_team_header, 0, 2)
@@ -167,30 +164,27 @@ class GamePreviewWidget(QWidget):
             ("opp_ppg", "Opp Points/Game"),
         ]
 
-        row_font = QFont("Arial", 18)
-        value_font = QFont("Arial", 18, QFont.Bold)
-
         for row_idx, (key, label) in enumerate(stats, start=1):
             # Label
             stat_label = QLabel(label)
-            stat_label.setFont(row_font)
+            stat_label.setFont(Typography.BODY)
             stat_label.setStyleSheet(f"color: {ESPN_THEME['text_secondary']};")
             self.comp_grid.addWidget(stat_label, row_idx, 0)
             self.stat_labels[key] = stat_label
 
             # User value
             user_val = QLabel("--")
-            user_val.setFont(value_font)
+            user_val.setFont(Typography.BODY_BOLD)
             user_val.setAlignment(Qt.AlignCenter)
-            user_val.setStyleSheet("color: white;")
+            user_val.setStyleSheet(f"color: {TextColors.ON_DARK};")
             self.comp_grid.addWidget(user_val, row_idx, 1)
             self.user_stat_values[key] = user_val
 
             # Opponent value
             opp_val = QLabel("--")
-            opp_val.setFont(value_font)
+            opp_val.setFont(Typography.BODY_BOLD)
             opp_val.setAlignment(Qt.AlignCenter)
-            opp_val.setStyleSheet("color: white;")
+            opp_val.setStyleSheet(f"color: {TextColors.ON_DARK};")
             self.comp_grid.addWidget(opp_val, row_idx, 2)
             self.opp_stat_values[key] = opp_val
 
@@ -211,8 +205,8 @@ class GamePreviewWidget(QWidget):
 
         # Section header
         matchups_header = QLabel("KEY MATCHUPS")
-        matchups_header.setFont(QFont("Arial", 20, QFont.Bold))
-        matchups_header.setStyleSheet("color: white;")
+        matchups_header.setFont(Typography.H3)
+        matchups_header.setStyleSheet(f"color: {TextColors.ON_DARK};")
         matchups_layout.addWidget(matchups_header)
 
         # Matchup rows - store direct references to labels
@@ -230,7 +224,7 @@ class GamePreviewWidget(QWidget):
         """Create a single matchup row. Returns (frame, user_label, opp_label)."""
         row_frame = QFrame()
         row_frame.setStyleSheet(
-            "QFrame { background-color: #2a2a2a; border-radius: 4px; }"
+            f"QFrame {{ background-color: {ESPN_THEME['card_bg']}; border-radius: 4px; }}"
         )
 
         row_layout = QHBoxLayout(row_frame)
@@ -239,9 +233,9 @@ class GamePreviewWidget(QWidget):
 
         # Position badge
         pos_label = QLabel(position)
-        pos_label.setFont(QFont("Arial", 16, QFont.Bold))
+        pos_label.setFont(Typography.BODY_BOLD)
         pos_label.setStyleSheet(
-            f"color: white; background-color: {ESPN_THEME['red']}; "
+            f"color: {TextColors.ON_DARK}; background-color: {ESPN_THEME['red']}; "
             "border-radius: 4px; padding: 2px 8px;"
         )
         pos_label.setFixedWidth(50)
@@ -250,13 +244,13 @@ class GamePreviewWidget(QWidget):
 
         # User player info
         user_player = QLabel("--")
-        user_player.setFont(QFont("Arial", 18))
-        user_player.setStyleSheet("color: white;")
+        user_player.setFont(Typography.BODY)
+        user_player.setStyleSheet(f"color: {TextColors.ON_DARK};")
         row_layout.addWidget(user_player, 1)
 
         # VS separator
         vs_label = QLabel("vs")
-        vs_label.setFont(QFont("Arial", 16))
+        vs_label.setFont(Typography.CAPTION)
         vs_label.setStyleSheet(f"color: {ESPN_THEME['text_muted']};")
         vs_label.setAlignment(Qt.AlignCenter)
         vs_label.setFixedWidth(30)
@@ -264,8 +258,8 @@ class GamePreviewWidget(QWidget):
 
         # Opponent player info
         opp_player = QLabel("--")
-        opp_player.setFont(QFont("Arial", 18))
-        opp_player.setStyleSheet("color: white;")
+        opp_player.setFont(Typography.BODY)
+        opp_player.setStyleSheet(f"color: {TextColors.ON_DARK};")
         opp_player.setAlignment(Qt.AlignRight)
         row_layout.addWidget(opp_player, 1)
 
@@ -324,9 +318,9 @@ class GamePreviewWidget(QWidget):
         user_record = user_stats.get('record', '--')
         opp_record = opp_stats.get('record', '--')
         self.user_stat_values['record'].setText(user_record)
-        self.user_stat_values['record'].setStyleSheet("color: white;")
+        self.user_stat_values['record'].setStyleSheet(f"color: {TextColors.ON_DARK};")
         self.opp_stat_values['record'].setText(opp_record)
-        self.opp_stat_values['record'].setStyleSheet("color: white;")
+        self.opp_stat_values['record'].setStyleSheet(f"color: {TextColors.ON_DARK};")
 
         # Power ranking (display as #X)
         user_power = user_stats.get('power_rank', 0)
@@ -338,7 +332,7 @@ class GamePreviewWidget(QWidget):
             )
         else:
             self.user_stat_values['power_rank'].setText("--")
-            self.user_stat_values['power_rank'].setStyleSheet("color: white;")
+            self.user_stat_values['power_rank'].setStyleSheet(f"color: {TextColors.ON_DARK};")
 
         if opp_power > 0:
             self.opp_stat_values['power_rank'].setText(f"#{opp_power}")
@@ -347,7 +341,7 @@ class GamePreviewWidget(QWidget):
             )
         else:
             self.opp_stat_values['power_rank'].setText("--")
-            self.opp_stat_values['power_rank'].setStyleSheet("color: white;")
+            self.opp_stat_values['power_rank'].setStyleSheet(f"color: {TextColors.ON_DARK};")
 
         # Rankings (display as #X)
         rank_fields = [
@@ -368,7 +362,7 @@ class GamePreviewWidget(QWidget):
                 )
             else:
                 self.user_stat_values[display_key].setText("--")
-                self.user_stat_values[display_key].setStyleSheet("color: white;")
+                self.user_stat_values[display_key].setStyleSheet(f"color: {TextColors.ON_DARK};")
 
             if opp_rank > 0:
                 self.opp_stat_values[display_key].setText(f"#{opp_rank}")
@@ -377,7 +371,7 @@ class GamePreviewWidget(QWidget):
                 )
             else:
                 self.opp_stat_values[display_key].setText("--")
-                self.opp_stat_values[display_key].setStyleSheet("color: white;")
+                self.opp_stat_values[display_key].setStyleSheet(f"color: {TextColors.ON_DARK};")
 
         # PPG stats (display as value)
         ppg_fields = [('ppg', 'ppg'), ('opp_ppg', 'opp_ppg')]

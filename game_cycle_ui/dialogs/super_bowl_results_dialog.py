@@ -16,7 +16,8 @@ from PySide6.QtWidgets import (
     QWidget, QGroupBox
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
+
+from game_cycle_ui.theme import Typography, FontSizes, TextColors, Colors, apply_table_style
 
 
 class SuperBowlResultsDialog(QDialog):
@@ -115,27 +116,27 @@ class SuperBowlResultsDialog(QDialog):
     def _create_header(self, layout: QVBoxLayout):
         """Create the header section."""
         header = QLabel(f"Super Bowl {self._get_super_bowl_number()}")
-        header.setFont(QFont("Arial", 24, QFont.Bold))
+        header.setFont(Typography.H1)
         header.setAlignment(Qt.AlignCenter)
-        header.setStyleSheet("color: #1976D2;")
+        header.setStyleSheet(f"color: {Colors.INFO};")
         layout.addWidget(header)
 
         subtitle = QLabel(f"{self._season} Season Champions")
-        subtitle.setFont(QFont("Arial", 12))
+        subtitle.setFont(Typography.BODY)
         subtitle.setAlignment(Qt.AlignCenter)
-        subtitle.setStyleSheet("color: #666;")
+        subtitle.setStyleSheet(f"color: {Colors.MUTED};")
         layout.addWidget(subtitle)
 
     def _create_winner_section(self, layout: QVBoxLayout):
         """Create the winner display section."""
         winner_frame = QFrame()
-        winner_frame.setStyleSheet("""
-            QFrame {
+        winner_frame.setStyleSheet(f"""
+            QFrame {{
                 background-color: #E3F2FD;
-                border: 2px solid #1976D2;
+                border: 2px solid {Colors.INFO};
                 border-radius: 8px;
                 padding: 16px;
-            }
+            }}
         """)
         winner_layout = QVBoxLayout(winner_frame)
 
@@ -168,22 +169,22 @@ class SuperBowlResultsDialog(QDialog):
 
         # Champion label
         champion_label = QLabel(winner_name)
-        champion_label.setFont(QFont("Arial", 20, QFont.Bold))
+        champion_label.setFont(Typography.H2)
         champion_label.setAlignment(Qt.AlignCenter)
-        champion_label.setStyleSheet("color: #1a1a1a;")
+        champion_label.setStyleSheet(f"color: {Colors.TEXT_PRIMARY};")
         winner_layout.addWidget(champion_label)
 
         # Score
         score_label = QLabel(f"defeated {loser_name}")
-        score_label.setFont(QFont("Arial", 12))
+        score_label.setFont(Typography.BODY)
         score_label.setAlignment(Qt.AlignCenter)
-        score_label.setStyleSheet("color: #333;")
+        score_label.setStyleSheet(f"color: {Colors.TEXT_PRIMARY};")
         winner_layout.addWidget(score_label)
 
         score_value = QLabel(f"{winner_score} - {loser_score}")
-        score_value.setFont(QFont("Arial", 16, QFont.Bold))
+        score_value.setFont(Typography.H4)
         score_value.setAlignment(Qt.AlignCenter)
-        score_value.setStyleSheet("color: #1a1a1a;")
+        score_value.setStyleSheet(f"color: {Colors.TEXT_PRIMARY};")
         winner_layout.addWidget(score_value)
 
         layout.addWidget(winner_frame)
@@ -195,20 +196,20 @@ class SuperBowlResultsDialog(QDialog):
             return
 
         mvp_group = QGroupBox("Super Bowl MVP")
-        mvp_group.setStyleSheet("""
-            QGroupBox {
+        mvp_group.setStyleSheet(f"""
+            QGroupBox {{
                 font-weight: bold;
-                font-size: 14px;
+                font-size: {FontSizes.H5};
                 border: 1px solid #ccc;
                 border-radius: 6px;
                 margin-top: 12px;
                 padding-top: 10px;
-            }
-            QGroupBox::title {
+            }}
+            QGroupBox::title {{
                 subcontrol-origin: margin;
                 left: 12px;
                 padding: 0 8px;
-            }
+            }}
         """)
         mvp_layout = QVBoxLayout(mvp_group)
 
@@ -223,7 +224,7 @@ class SuperBowlResultsDialog(QDialog):
             team_name = f" - {team.abbreviation}" if team else ""
 
         name_label = QLabel(f"{player_name} ({position}){team_name}")
-        name_label.setFont(QFont("Arial", 14, QFont.Bold))
+        name_label.setFont(Typography.H5)
         name_label.setAlignment(Qt.AlignCenter)
         mvp_layout.addWidget(name_label)
 
@@ -231,9 +232,9 @@ class SuperBowlResultsDialog(QDialog):
         stat_summary = mvp_data.get("stat_summary", "")
         if stat_summary:
             stats_label = QLabel(stat_summary)
-            stats_label.setFont(QFont("Arial", 11))
+            stats_label.setFont(Typography.BODY_SMALL)
             stats_label.setAlignment(Qt.AlignCenter)
-            stats_label.setStyleSheet("color: #444;")
+            stats_label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY};")
             stats_label.setWordWrap(True)
             mvp_layout.addWidget(stats_label)
 
@@ -245,20 +246,20 @@ class SuperBowlResultsDialog(QDialog):
             return
 
         awards_group = QGroupBox(f"{self._season} Season Awards")
-        awards_group.setStyleSheet("""
-            QGroupBox {
+        awards_group.setStyleSheet(f"""
+            QGroupBox {{
                 font-weight: bold;
-                font-size: 14px;
+                font-size: {FontSizes.H5};
                 border: 1px solid #ccc;
                 border-radius: 6px;
                 margin-top: 12px;
                 padding-top: 10px;
-            }
-            QGroupBox::title {
+            }}
+            QGroupBox::title {{
                 subcontrol-origin: margin;
                 left: 12px;
                 padding: 0 8px;
-            }
+            }}
         """)
         awards_layout = QVBoxLayout(awards_group)
 
@@ -266,14 +267,15 @@ class SuperBowlResultsDialog(QDialog):
         table = QTableWidget()
         table.setColumnCount(3)
         table.setHorizontalHeaderLabels(["Award", "Winner", "Team"])
+
+        # Apply centralized table styling
+        apply_table_style(table)
+
+        # Configure column resize modes
         table.horizontalHeader().setStretchLastSection(True)
         table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeToContents)
         table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        table.setSelectionBehavior(QTableWidget.SelectRows)
-        table.setEditTriggers(QTableWidget.NoEditTriggers)
-        table.setAlternatingRowColors(True)
-        table.verticalHeader().setVisible(False)
 
         # Award display names
         award_names = {
@@ -320,18 +322,18 @@ class SuperBowlResultsDialog(QDialog):
         btn_layout.addStretch()
 
         continue_btn = QPushButton("Continue to Offseason")
-        continue_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #1976D2;
+        continue_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {Colors.INFO};
                 color: white;
                 border-radius: 4px;
                 padding: 12px 32px;
-                font-size: 14px;
+                font-size: {FontSizes.H5};
                 font-weight: bold;
-            }
-            QPushButton:hover {
+            }}
+            QPushButton:hover {{
                 background-color: #1565C0;
-            }
+            }}
         """)
         continue_btn.clicked.connect(self._on_continue)
         btn_layout.addWidget(continue_btn)

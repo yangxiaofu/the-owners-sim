@@ -12,7 +12,7 @@ import sqlite3
 import json
 
 from src.persistence.transaction_logger import TransactionLogger
-from utils.player_field_extractors import extract_overall_rating
+from src.utils.player_field_extractors import extract_overall_rating
 
 
 class RosterCutsService:
@@ -127,7 +127,7 @@ class RosterCutsService:
 
     def _ensure_tables(self):
         """Create waiver tables if they don't exist (handles schema migration)."""
-        conn = sqlite3.connect(self._db_path)
+        conn = sqlite3.connect(self._db_path, timeout=30.0)
         try:
             conn.executescript('''
                 CREATE TABLE IF NOT EXISTS waiver_wire (
@@ -361,7 +361,8 @@ class RosterCutsService:
         player_id: int,
         team_id: int,
         add_to_waivers: bool = True,
-        use_june_1: bool = False
+        use_june_1: bool = False,
+        conn: Optional[sqlite3.Connection] = None
     ) -> Dict[str, Any]:
         """
         Cut a player from the roster with dead money calculation.
@@ -371,6 +372,9 @@ class RosterCutsService:
             team_id: Team ID
             add_to_waivers: Whether to add player to waiver wire (default True)
             use_june_1: If True, use Post-June 1 designation to spread dead money over 2 years
+            conn: Optional shared database connection for transaction mode.
+                  If provided, all operations use this connection (for avoiding lock conflicts).
+                  If None, operations create their own connections.
 
         Returns:
             Dict with:
@@ -384,9 +388,11 @@ class RosterCutsService:
         """
         from database.player_roster_api import PlayerRosterAPI
         from salary_cap.cap_database_api import CapDatabaseAPI
+        from datetime import date as date_type
 
         try:
-            roster_api = PlayerRosterAPI(self._db_path)
+            # Use shared connection if provided to avoid lock conflicts
+            roster_api = PlayerRosterAPI(self._db_path, connection=conn)
             cap_api = CapDatabaseAPI(self._db_path)
 
             # Get player info
@@ -427,8 +433,17 @@ class RosterCutsService:
                     use_june_1=use_june_1
                 )
 
-                # Void the contract
-                cap_api.void_contract(contract["contract_id"])
+                # Void the contract - use shared connection if provided to avoid locks
+                if conn is not None:
+                    conn.execute('''
+                        UPDATE player_contracts
+                        SET is_active = FALSE,
+                            voided_date = ?,
+                            modified_at = CURRENT_TIMESTAMP
+                        WHERE contract_id = ?
+                    ''', (date_type.today(), contract["contract_id"]))
+                else:
+                    cap_api.void_contract(contract["contract_id"])
 
             # Add to waiver wire if requested
             if add_to_waivers:
@@ -436,7 +451,8 @@ class RosterCutsService:
                     player_id=player_id,
                     former_team_id=team_id,
                     dead_money=dead_money,
-                    cap_savings=cap_savings
+                    cap_savings=cap_savings,
+                    conn=conn
                 )
 
             # Move player to "waiver" status (not free agent yet)
@@ -453,25 +469,30 @@ class RosterCutsService:
                 f"Cut {player_name} from team {team_id}{june_1_str}. Dead money: ${dead_money:,}{next_yr_str}, Savings: ${cap_savings:,}"
             )
 
-            # Log transaction for audit trail
-            self._transaction_logger.log_transaction(
-                dynasty_id=self._dynasty_id,
-                season=self._season + 1,  # Cut is during next season's preseason
-                transaction_type="ROSTER_CUT",
-                player_id=player_id,
-                player_name=player_name,
-                position=player_position,
-                from_team_id=team_id,
-                to_team_id=None,  # To waivers/free agency
-                transaction_date=date(self._season + 1, 8, 27),  # Roster cut deadline (next year)
-                details={
+            # Prepare transaction log data
+            transaction_log_data = {
+                "dynasty_id": self._dynasty_id,
+                "season": self._season + 1,  # Cut is during next season's preseason
+                "transaction_type": "ROSTER_CUT",
+                "player_id": player_id,
+                "player_name": player_name,
+                "position": player_position,
+                "from_team_id": team_id,
+                "to_team_id": None,  # To waivers/free agency
+                "transaction_date": date(self._season + 1, 8, 27),  # Roster cut deadline (next year)
+                "details": {
                     "dead_money": dead_money,
                     "dead_money_next_year": dead_money_next_year,
                     "cap_savings": cap_savings,
                     "use_june_1": use_june_1,
                     "reason": "roster_limit",
                 }
-            )
+            }
+
+            # Log transaction for audit trail
+            # If conn is provided (batch mode), defer logging to caller to avoid lock conflicts
+            if conn is None:
+                self._transaction_logger.log_transaction(**transaction_log_data)
 
             return {
                 "success": True,
@@ -481,6 +502,7 @@ class RosterCutsService:
                 "dead_money_next_year": dead_money_next_year,
                 "cap_savings": cap_savings,
                 "use_june_1": use_june_1,
+                "transaction_log_data": transaction_log_data,  # Caller logs after commit
             }
 
         except Exception as e:
@@ -737,7 +759,8 @@ class RosterCutsService:
         player_id: int,
         former_team_id: int,
         dead_money: int,
-        cap_savings: int
+        cap_savings: int,
+        conn: Optional[sqlite3.Connection] = None
     ) -> int:
         """
         Add a cut player to the waiver wire.
@@ -747,11 +770,17 @@ class RosterCutsService:
             former_team_id: Team that cut the player
             dead_money: Dead money cap hit
             cap_savings: Cap savings from cut
+            conn: Optional shared database connection for transaction mode.
+                  If provided, uses this connection (caller manages commit/close).
+                  If None, creates own connection with auto-commit.
 
         Returns:
             Waiver wire entry ID
         """
-        conn = sqlite3.connect(self._db_path)
+        # Use shared connection if provided, otherwise create new one
+        owns_connection = conn is None
+        if owns_connection:
+            conn = sqlite3.connect(self._db_path, timeout=30.0)
         cursor = conn.cursor()
 
         try:
@@ -784,7 +813,9 @@ class RosterCutsService:
                     self._season
                 )
             )
-            conn.commit()
+            # Only commit if we own the connection
+            if owns_connection:
+                conn.commit()
             return cursor.lastrowid
 
         except sqlite3.IntegrityError:
@@ -792,7 +823,9 @@ class RosterCutsService:
             self._logger.warning(f"Player {player_id} already on waiver wire")
             return -1
         finally:
-            conn.close()
+            # Only close if we created the connection
+            if owns_connection:
+                conn.close()
 
     def get_waiver_wire_players(self) -> List[Dict[str, Any]]:
         """
@@ -804,7 +837,7 @@ class RosterCutsService:
         from database.player_roster_api import PlayerRosterAPI
 
         roster_api = PlayerRosterAPI(self._db_path)
-        conn = sqlite3.connect(self._db_path)
+        conn = sqlite3.connect(self._db_path, timeout=30.0)
         cursor = conn.cursor()
 
         try:

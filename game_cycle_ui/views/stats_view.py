@@ -10,12 +10,18 @@ from typing import Dict, List, Optional, Any
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QComboBox,
-    QFrame, QTabWidget, QPushButton
+    QTabWidget, QPushButton
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor
 
-from game_cycle_ui.theme import TABLE_HEADER_STYLE
+from game_cycle_ui.theme import (
+    TAB_STYLE, PRIMARY_BUTTON_STYLE, SECONDARY_BUTTON_STYLE,
+    DANGER_BUTTON_STYLE, WARNING_BUTTON_STYLE, NEUTRAL_BUTTON_STYLE,
+    Typography, FontSizes, TextColors, apply_table_style
+)
+from game_cycle_ui.widgets import SummaryPanel
+from constants.position_abbreviations import get_position_abbreviation
 
 
 class NumericTableWidgetItem(QTableWidgetItem):
@@ -85,7 +91,7 @@ class StatsView(QWidget):
         header = QHBoxLayout()
 
         title = QLabel("LEAGUE STATS")
-        title.setFont(QFont("Arial", 16, QFont.Bold))
+        title.setFont(Typography.H4)
         header.addWidget(title)
 
         header.addStretch()
@@ -116,11 +122,7 @@ class StatsView(QWidget):
 
         # Refresh button
         self.refresh_btn = QPushButton("Refresh")
-        self.refresh_btn.setStyleSheet(
-            "QPushButton { background-color: #1976D2; color: white; "
-            "border-radius: 4px; padding: 6px 16px; }"
-            "QPushButton:hover { background-color: #1565C0; }"
-        )
+        self.refresh_btn.setStyleSheet(SECONDARY_BUTTON_STYLE)
         self.refresh_btn.clicked.connect(self._on_refresh_clicked)
         header.addWidget(self.refresh_btn)
 
@@ -140,57 +142,24 @@ class StatsView(QWidget):
 
     def _create_summary_panel(self, parent_layout: QVBoxLayout):
         """Create summary statistics panel."""
-        summary_group = QGroupBox("Season Summary")
-        summary_layout = QHBoxLayout(summary_group)
-        summary_layout.setSpacing(30)
+        summary_panel = SummaryPanel("Season Summary")
 
         # Games played
-        self._create_stat_widget(
-            summary_layout, "games_label", "Games Played", "0"
-        )
+        self.games_label = summary_panel.add_stat("Games Played", "0")
 
         # Players with stats
-        self._create_stat_widget(
-            summary_layout, "players_label", "Players", "0"
-        )
+        self.players_label = summary_panel.add_stat("Players", "0")
 
         # Current week
-        self._create_stat_widget(
-            summary_layout, "week_label", "Week", "0"
-        )
+        self.week_label = summary_panel.add_stat("Week", "0")
 
-        summary_layout.addStretch()
-        parent_layout.addWidget(summary_group)
-
-    def _create_stat_widget(
-        self,
-        parent_layout: QHBoxLayout,
-        attr_name: str,
-        title: str,
-        initial_value: str,
-        color: Optional[str] = None
-    ):
-        """Create a single stat widget."""
-        frame = QFrame()
-        vlayout = QVBoxLayout(frame)
-        vlayout.setContentsMargins(0, 0, 0, 0)
-
-        title_label = QLabel(title)
-        title_label.setStyleSheet("color: #666; font-size: 11px;")
-        vlayout.addWidget(title_label)
-
-        value_label = QLabel(initial_value)
-        value_label.setFont(QFont("Arial", 16, QFont.Bold))
-        if color:
-            value_label.setStyleSheet(f"color: {color};")
-        vlayout.addWidget(value_label)
-
-        setattr(self, attr_name, value_label)
-        parent_layout.addWidget(frame)
+        summary_panel.add_stretch()
+        parent_layout.addWidget(summary_panel)
 
     def _create_category_tabs(self, parent_layout: QVBoxLayout):
         """Create tab widget with stat category tables."""
         self.category_tabs = QTabWidget()
+        self.category_tabs.setStyleSheet(TAB_STYLE)
 
         # Passing tab
         self.passing_table = self._create_stats_table([
@@ -200,7 +169,7 @@ class StatsView(QWidget):
 
         # Rushing tab - added SNAPS column
         self.rushing_table = self._create_stats_table([
-            "#", "Player", "Pos", "Team", "ATT", "YDS", "AVG", "TD", "LNG", "FUM", "SNAPS"
+            "#", "Player", "Pos", "Team", "ATT", "YDS", "AVG", "TD", "20+", "LNG", "FUM", "LST", "SNAPS"
         ])
         self.category_tabs.addTab(self.rushing_table, "Rushing")
 
@@ -268,7 +237,7 @@ class StatsView(QWidget):
         # Toggle button row
         toggle_row = QHBoxLayout()
 
-        # Toggle button styling
+        # Toggle button styling (uses SECONDARY_BUTTON_STYLE colors for checked state)
         toggle_style = """
             QPushButton {
                 background-color: #3a3a3a;
@@ -343,21 +312,21 @@ class StatsView(QWidget):
         table.setColumnCount(len(headers))
         table.setHorizontalHeaderLabels(headers)
 
-        # Configure appearance
+        # Apply standard ESPN dark table styling
+        apply_table_style(table)
+
+        # Configure column resize modes
         header = table.horizontalHeader()
-        header.setStyleSheet(TABLE_HEADER_STYLE)
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # Rank
         header.setSectionResizeMode(1, QHeaderView.Stretch)  # Player name
         for i in range(2, len(headers)):
             header.setSectionResizeMode(i, QHeaderView.ResizeToContents)
 
-        table.setEditTriggers(QTableWidget.NoEditTriggers)
-        table.setSelectionBehavior(QTableWidget.SelectRows)
-        table.setAlternatingRowColors(True)
-        table.verticalHeader().setVisible(False)
-
         # Enable sorting by clicking column headers
         table.setSortingEnabled(True)
+
+        # Connect double-click to open player detail dialog
+        table.cellDoubleClicked.connect(self._on_stats_player_double_clicked)
 
         return table
 
@@ -483,6 +452,20 @@ class StatsView(QWidget):
                 limit=25,
                 team_id=self._team_filter
             )
+            # Debug: Check for duplicates
+            print(f"[StatsView] Received {len(leaders)} receiving leaders")
+            player_ids = [p.get('player_id') for p in leaders]
+            unique_ids = set(player_ids)
+            if len(player_ids) != len(unique_ids):
+                print(f"[StatsView] WARNING: Found duplicate player_ids! Total: {len(player_ids)}, Unique: {len(unique_ids)}")
+                # Show which players are duplicated
+                from collections import Counter
+                counts = Counter(player_ids)
+                duplicates = [pid for pid, count in counts.items() if count > 1]
+                for dup_id in duplicates:
+                    dup_players = [p for p in leaders if p.get('player_id') == dup_id]
+                    print(f"  Player ID {dup_id}: {dup_players[0].get('player_name')} appears {len(dup_players)} times")
+
             self._populate_receiving_table(leaders)
         except Exception as e:
             print(f"[StatsView] Error loading receiving leaders: {e}")
@@ -758,9 +741,12 @@ class StatsView(QWidget):
             rank_item.setTextAlignment(Qt.AlignCenter)
             self.passing_table.setItem(row, 0, rank_item)
 
-            # Player name
+            # Player name (store player data for double-click handler)
             name = player.get("player_name", "Unknown")
-            self.passing_table.setItem(row, 1, QTableWidgetItem(name))
+            name_item = QTableWidgetItem(name)
+            name_item.setData(Qt.UserRole, player.get("player_id"))
+            name_item.setData(Qt.UserRole + 1, player)
+            self.passing_table.setItem(row, 1, name_item)
 
             # Position
             pos = self._get_position_abbr(player.get("position", "QB"))
@@ -806,9 +792,12 @@ class StatsView(QWidget):
             rank_item.setTextAlignment(Qt.AlignCenter)
             self.rushing_table.setItem(row, 0, rank_item)
 
-            # Player name
+            # Player name (store player data for double-click handler)
             name = player.get("player_name", "Unknown")
-            self.rushing_table.setItem(row, 1, QTableWidgetItem(name))
+            name_item = QTableWidgetItem(name)
+            name_item.setData(Qt.UserRole, player.get("player_id"))
+            name_item.setData(Qt.UserRole + 1, player)
+            self.rushing_table.setItem(row, 1, name_item)
 
             # Position
             pos = self._get_position_abbr(player.get("position", "RB"))
@@ -827,8 +816,10 @@ class StatsView(QWidget):
             att = player.get("rushing_attempts", 0) or 0
             yds = player.get("rushing_yards", 0) or 0
             td = player.get("rushing_tds", 0) or 0
+            rushing_20_plus = player.get("rushing_20_plus", 0) or 0
             lng = player.get("rushing_long", 0) or 0
             fum = player.get("rushing_fumbles", 0) or 0
+            fumbles_lost = player.get("fumbles_lost", 0) or 0
             snaps = player.get("snap_counts_offense", 0) or 0
 
             # Calculate average
@@ -838,9 +829,11 @@ class StatsView(QWidget):
             self._set_stat_cell(self.rushing_table, row, 5, yds, highlight=row == 0)
             self._set_stat_cell(self.rushing_table, row, 6, f"{avg:.1f}")
             self._set_stat_cell(self.rushing_table, row, 7, td)
-            self._set_stat_cell(self.rushing_table, row, 8, lng)
-            self._set_stat_cell(self.rushing_table, row, 9, fum)
-            self._set_stat_cell(self.rushing_table, row, 10, snaps)
+            self._set_stat_cell(self.rushing_table, row, 8, rushing_20_plus)
+            self._set_stat_cell(self.rushing_table, row, 9, lng)
+            self._set_stat_cell(self.rushing_table, row, 10, fum)
+            self._set_stat_cell(self.rushing_table, row, 11, fumbles_lost)
+            self._set_stat_cell(self.rushing_table, row, 12, snaps)
 
     def _populate_receiving_table(self, leaders: List[Dict]):
         """Populate receiving table with leader data."""
@@ -852,9 +845,12 @@ class StatsView(QWidget):
             rank_item.setTextAlignment(Qt.AlignCenter)
             self.receiving_table.setItem(row, 0, rank_item)
 
-            # Player name
+            # Player name (store player data for double-click handler)
             name = player.get("player_name", "Unknown")
-            self.receiving_table.setItem(row, 1, QTableWidgetItem(name))
+            name_item = QTableWidgetItem(name)
+            name_item.setData(Qt.UserRole, player.get("player_id"))
+            name_item.setData(Qt.UserRole + 1, player)
+            self.receiving_table.setItem(row, 1, name_item)
 
             # Position
             pos = self._get_position_abbr(player.get("position", "WR"))
@@ -900,9 +896,12 @@ class StatsView(QWidget):
             rank_item.setTextAlignment(Qt.AlignCenter)
             self.defense_table.setItem(row, 0, rank_item)
 
-            # Player name
+            # Player name (store player data for double-click handler)
             name = player.get("player_name", "Unknown")
-            self.defense_table.setItem(row, 1, QTableWidgetItem(name))
+            name_item = QTableWidgetItem(name)
+            name_item.setData(Qt.UserRole, player.get("player_id"))
+            name_item.setData(Qt.UserRole + 1, player)
+            self.defense_table.setItem(row, 1, name_item)
 
             # Position
             pos = self._get_position_abbr(player.get("position", "LB"))
@@ -947,9 +946,12 @@ class StatsView(QWidget):
             rank_item.setTextAlignment(Qt.AlignCenter)
             self.kicking_table.setItem(row, 0, rank_item)
 
-            # Player name
+            # Player name (store player data for double-click handler)
             name = player.get("player_name", "Unknown")
-            self.kicking_table.setItem(row, 1, QTableWidgetItem(name))
+            name_item = QTableWidgetItem(name)
+            name_item.setData(Qt.UserRole, player.get("player_id"))
+            name_item.setData(Qt.UserRole + 1, player)
+            self.kicking_table.setItem(row, 1, name_item)
 
             # Team abbreviation
             team_id = player.get("team_id", 0)
@@ -987,9 +989,12 @@ class StatsView(QWidget):
             rank_item.setTextAlignment(Qt.AlignCenter)
             self.punting_table.setItem(row, 0, rank_item)
 
-            # Player name
+            # Player name (store player data for double-click handler)
             name = player.get("player_name", "Unknown")
-            self.punting_table.setItem(row, 1, QTableWidgetItem(name))
+            name_item = QTableWidgetItem(name)
+            name_item.setData(Qt.UserRole, player.get("player_id"))
+            name_item.setData(Qt.UserRole + 1, player)
+            self.punting_table.setItem(row, 1, name_item)
 
             # Team abbreviation
             team_id = player.get("team_id", 0)
@@ -1019,9 +1024,12 @@ class StatsView(QWidget):
             rank_item.setTextAlignment(Qt.AlignCenter)
             self.blocking_table.setItem(row, 0, rank_item)
 
-            # Player name
+            # Player name (store player data for double-click handler)
             name = player.get("player_name", "Unknown")
-            self.blocking_table.setItem(row, 1, QTableWidgetItem(name))
+            name_item = QTableWidgetItem(name)
+            name_item.setData(Qt.UserRole, player.get("player_id"))
+            name_item.setData(Qt.UserRole + 1, player)
+            self.blocking_table.setItem(row, 1, name_item)
 
             # Position
             pos = self._get_position_abbr(player.get("position", "OL"))
@@ -1065,9 +1073,12 @@ class StatsView(QWidget):
             rank_item.setTextAlignment(Qt.AlignCenter)
             self.coverage_table.setItem(row, 0, rank_item)
 
-            # Player name
+            # Player name (store player data for double-click handler)
             name = player.get("player_name", "Unknown")
-            self.coverage_table.setItem(row, 1, QTableWidgetItem(name))
+            name_item = QTableWidgetItem(name)
+            name_item.setData(Qt.UserRole, player.get("player_id"))
+            name_item.setData(Qt.UserRole + 1, player)
+            self.coverage_table.setItem(row, 1, name_item)
 
             # Position
             pos = self._get_position_abbr(player.get("position", "CB"))
@@ -1113,9 +1124,12 @@ class StatsView(QWidget):
             rank_item.setTextAlignment(Qt.AlignCenter)
             self.pass_rush_table.setItem(row, 0, rank_item)
 
-            # Player name
+            # Player name (store player data for double-click handler)
             name = player.get("player_name", "Unknown")
-            self.pass_rush_table.setItem(row, 1, QTableWidgetItem(name))
+            name_item = QTableWidgetItem(name)
+            name_item.setData(Qt.UserRole, player.get("player_id"))
+            name_item.setData(Qt.UserRole + 1, player)
+            self.pass_rush_table.setItem(row, 1, name_item)
 
             # Position
             pos = self._get_position_abbr(player.get("position", "DE"))
@@ -1188,7 +1202,7 @@ class StatsView(QWidget):
 
         if highlight:
             item.setForeground(QColor("#2E7D32"))
-            item.setFont(QFont("Arial", 10, QFont.Bold))
+            item.setFont(Typography.SMALL_BOLD)
 
         table.setItem(row, col, item)
 
@@ -1202,29 +1216,8 @@ class StatsView(QWidget):
             return "FA" if team_id == 0 else f"T{team_id}"
 
     def _get_position_abbr(self, position: str) -> str:
-        """Get position abbreviation."""
-        # Map common positions to abbreviations
-        pos_map = {
-            "quarterback": "QB",
-            "running_back": "RB",
-            "wide_receiver": "WR",
-            "tight_end": "TE",
-            "left_tackle": "LT",
-            "left_guard": "LG",
-            "center": "C",
-            "right_guard": "RG",
-            "right_tackle": "RT",
-            "defensive_end": "DE",
-            "defensive_tackle": "DT",
-            "linebacker": "LB",
-            "cornerback": "CB",
-            "safety": "S",
-            "kicker": "K",
-            "punter": "P",
-        }
-
-        pos_lower = position.lower().replace(" ", "_")
-        return pos_map.get(pos_lower, position[:3].upper())
+        """Get position abbreviation using centralized mapping."""
+        return get_position_abbreviation(position)
 
     def _calculate_passer_rating(
         self,
@@ -1287,3 +1280,50 @@ class StatsView(QWidget):
         self.blocking_table.setRowCount(0)
         self.coverage_table.setRowCount(0)
         self.pass_rush_table.setRowCount(0)
+
+    def _on_stats_player_double_clicked(self, row: int, column: int):
+        """Handle stats table double-click - open player detail dialog."""
+        table = self.sender()
+        if not table:
+            return
+
+        # Player name is in column 1 for most tables, column 1 for kicking/punting
+        name_col = 1
+        name_item = table.item(row, name_col)
+        if not name_item:
+            return
+
+        player_id = name_item.data(Qt.UserRole)
+        player_data = name_item.data(Qt.UserRole + 1)
+        player_name = name_item.text()
+
+        if not player_id or not player_data:
+            return
+
+        if not self._dynasty_id or not self._db_path:
+            return
+
+        # Get team name from team_id
+        team_id = player_data.get("team_id", 0)
+        team_name = ""
+        if team_id:
+            try:
+                from team_management.teams.team_loader import get_team_by_id
+                team = get_team_by_id(team_id)
+                if team:
+                    team_name = f"{team.city} {team.nickname}"
+            except Exception:
+                pass
+
+        from game_cycle_ui.dialogs.player_detail_dialog import PlayerDetailDialog
+        dialog = PlayerDetailDialog(
+            player_id=player_id,
+            player_name=player_name,
+            player_data=player_data,
+            dynasty_id=self._dynasty_id,
+            season=self._season,
+            db_path=self._db_path,
+            team_name=team_name,
+            parent=self
+        )
+        dialog.exec()

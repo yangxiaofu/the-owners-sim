@@ -29,6 +29,9 @@ from game_cycle_ui.theme import (
     ESPN_TEXT_PRIMARY,
     ESPN_TEXT_SECONDARY,
     ESPN_BORDER,
+    Colors,
+    FontSizes,
+    TextColors,
 )
 
 # Convenience alias for breaking news background
@@ -86,7 +89,7 @@ class BreakingNewsBanner(QWidget):
         self._breaking_badge.setStyleSheet(f"""
             background-color: {ESPN_TEXT_WHITE};
             color: {ESPN_RED};
-            font-size: 10px;
+            font-size: {FontSizes.SMALL};
             font-weight: bold;
             padding: 4px 8px;
             border-radius: 2px;
@@ -99,8 +102,8 @@ class BreakingNewsBanner(QWidget):
         # Headline text
         self._headline_label = QLabel("")
         self._headline_label.setStyleSheet(f"""
-            color: {ESPN_TEXT_WHITE};
-            font-size: 13px;
+            color: {TextColors.ON_DARK};
+            font-size: {FontSizes.H5};
             font-weight: bold;
         """)
         self._headline_label.setSizePolicy(
@@ -112,8 +115,8 @@ class BreakingNewsBanner(QWidget):
         # "READ MORE" link
         self._read_more = QLabel("READ MORE")
         self._read_more.setStyleSheet(f"""
-            color: {ESPN_TEXT_WHITE};
-            font-size: 10px;
+            color: {TextColors.ON_DARK};
+            font-size: {FontSizes.SMALL};
             font-weight: bold;
             text-decoration: underline;
             padding-right: 8px;
@@ -140,7 +143,7 @@ class BreakingNewsBanner(QWidget):
             self._breaking_badge.setStyleSheet(f"""
                 background-color: {ESPN_TEXT_WHITE};
                 color: {ESPN_RED};
-                font-size: 10px;
+                font-size: {FontSizes.SMALL};
                 font-weight: bold;
                 padding: 4px 8px;
                 border-radius: 2px;
@@ -149,8 +152,8 @@ class BreakingNewsBanner(QWidget):
         else:
             self._breaking_badge.setStyleSheet(f"""
                 background-color: {ESPN_DARK_RED};
-                color: {ESPN_TEXT_WHITE};
-                font-size: 10px;
+                color: {TextColors.ON_DARK};
+                font-size: {FontSizes.SMALL};
                 font-weight: bold;
                 padding: 4px 8px;
                 border-radius: 2px;
@@ -274,10 +277,10 @@ class AlertBanner(QWidget):
 
         # Color based on type
         colors = {
-            "info": {"bg": "#1976D2", "text": "#FFFFFF"},
-            "warning": {"bg": "#F57C00", "text": "#FFFFFF"},
-            "success": {"bg": "#2E7D32", "text": "#FFFFFF"},
-            "breaking": {"bg": ESPN_RED, "text": "#FFFFFF"},
+            "info": {"bg": Colors.INFO, "text": Colors.TEXT_INVERSE},
+            "warning": {"bg": Colors.WARNING, "text": Colors.TEXT_INVERSE},
+            "success": {"bg": Colors.SUCCESS, "text": Colors.TEXT_INVERSE},
+            "breaking": {"bg": ESPN_RED, "text": Colors.TEXT_INVERSE},
         }
         style = colors.get(self._alert_type, colors["info"])
 
@@ -302,7 +305,7 @@ class AlertBanner(QWidget):
         icon_label.setStyleSheet(f"""
             color: {style['text']};
             font-weight: bold;
-            font-size: 14px;
+            font-size: {FontSizes.H5};
             background-color: rgba(255,255,255,0.2);
             border-radius: 10px;
             padding: 2px 8px;
@@ -313,7 +316,7 @@ class AlertBanner(QWidget):
         message_label = QLabel(self._message)
         message_label.setStyleSheet(f"""
             color: {style['text']};
-            font-size: 12px;
+            font-size: {FontSizes.BODY};
             font-weight: bold;
         """)
         layout.addWidget(message_label, 1)
@@ -322,7 +325,7 @@ class AlertBanner(QWidget):
         dismiss_btn = QLabel("x")
         dismiss_btn.setStyleSheet(f"""
             color: {style['text']};
-            font-size: 14px;
+            font-size: {FontSizes.H5};
             padding: 4px 8px;
         """)
         dismiss_btn.setCursor(Qt.CursorShape.PointingHandCursor)

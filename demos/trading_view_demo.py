@@ -2,17 +2,24 @@
 Trading View Demo - Isolation test for Executive Memo style trade proposals.
 
 Provides fast UI iteration (~1 second startup) with mock data scenarios.
-No database required.
+Can also load real data from database.
 
 Usage:
+    # Mock data scenarios
     python demos/trading_view_demo.py              # Default scenario
     python demos/trading_view_demo.py win_now      # Win-now scenario
     python demos/trading_view_demo.py rebuild      # Rebuild scenario
     python demos/trading_view_demo.py edge_cases   # Stress test
+
+    # Real database data
+    python demos/trading_view_demo.py --dynasty Test123  # Load from game_cycle.db
 """
 
 import sys
-from typing import List, Dict, Any
+import argparse
+import sqlite3
+from pathlib import Path
+from typing import List, Dict, Any, Optional
 
 from PySide6.QtWidgets import QApplication, QMainWindow
 from PySide6.QtCore import Slot
@@ -468,35 +475,151 @@ def create_mock_proposals(scenario: str = "default") -> List[Dict[str, Any]]:
         return []
 
 
+def load_real_proposals(dynasty_id: str) -> tuple[List[Dict[str, Any]], int, int, str]:
+    """
+    Load actual trade proposals from game_cycle.db for a specific dynasty.
+
+    Returns:
+        (proposals, season, team_id, db_path)
+    """
+    db_path = Path("data/database/game_cycle/game_cycle.db")
+
+    if not db_path.exists():
+        print(f"[ERROR] Database not found: {db_path}")
+        print("Make sure you're running from the project root directory.")
+        sys.exit(1)
+
+    conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    # Get dynasty state (season, team_id, current stage)
+    cursor.execute("""
+        SELECT season, user_team_id, current_stage
+        FROM dynasty_state
+        WHERE dynasty_id = ?
+    """, (dynasty_id,))
+
+    state_row = cursor.fetchone()
+    if not state_row:
+        print(f"[ERROR] Dynasty '{dynasty_id}' not found in database")
+        conn.close()
+        sys.exit(1)
+
+    season = state_row["season"]
+    team_id = state_row["user_team_id"]
+    current_stage = state_row["current_stage"]
+
+    print(f"[DEMO] Dynasty: {dynasty_id}")
+    print(f"[DEMO] Season: {season}, Team: {team_id}, Stage: {current_stage}")
+
+    # Load pending trade proposals for this dynasty
+    cursor.execute("""
+        SELECT
+            proposal_id,
+            proposal_type,
+            stage,
+            status,
+            created_at,
+            details_json,
+            gm_reasoning,
+            confidence
+        FROM gm_proposals
+        WHERE dynasty_id = ?
+          AND proposal_type = 'TRADE'
+          AND status = 'PENDING'
+        ORDER BY created_at DESC
+    """, (dynasty_id,))
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    if not rows:
+        print(f"[DEMO] No pending trade proposals found for dynasty '{dynasty_id}'")
+        print("[DEMO] Falling back to mock data...")
+        return create_mock_proposals("default"), season, team_id, str(db_path)
+
+    # Convert database rows to proposal dicts
+    proposals = []
+    for row in rows:
+        import json
+        details = json.loads(row["details_json"]) if row["details_json"] else {}
+
+        # Build proposal dict in expected format
+        proposal = {
+            "proposal_id": row["proposal_id"],
+            "priority": details.get("priority", "MEDIUM"),
+            "title": details.get("title", "Trade Proposal"),
+            "trade_partner": details.get("trade_partner", "Unknown Team"),
+            "confidence": row["confidence"] or 0.5,
+            "sending": details.get("sending", []),
+            "receiving": details.get("receiving", []),
+            "value_differential": details.get("value_differential", 0),
+            "cap_impact": details.get("cap_impact", 0),
+            "gm_reasoning": row["gm_reasoning"] or "No reasoning provided",
+            "strategic_fit": details.get("strategic_fit", []),
+            "status": row["status"]
+        }
+        proposals.append(proposal)
+
+    print(f"[DEMO] Loaded {len(proposals)} real trade proposals from database")
+    return proposals, season, team_id, str(db_path)
+
+
 def main():
     """Main demo entry point."""
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(
+        description="Trading View Demo - Test trade proposal UI with mock or real data"
+    )
+    parser.add_argument(
+        "scenario",
+        nargs="?",
+        default="default",
+        choices=["default", "win_now", "rebuild", "edge_cases"],
+        help="Mock data scenario to load (ignored if --dynasty is used)"
+    )
+    parser.add_argument(
+        "--dynasty",
+        type=str,
+        help="Load real proposals from game_cycle.db for this dynasty ID"
+    )
+
+    args = parser.parse_args()
+
     app = QApplication(sys.argv)
 
-    # Parse CLI args
-    scenario = sys.argv[1] if len(sys.argv) > 1 else "default"
-
-    if scenario not in ["default", "win_now", "rebuild", "edge_cases"]:
-        print(f"Unknown scenario: {scenario}")
-        print("Available scenarios: default, win_now, rebuild, edge_cases")
-        sys.exit(1)
+    # Determine mode: real database or mock data
+    if args.dynasty:
+        # REAL DATA MODE
+        proposals, season, team_id, db_path = load_real_proposals(args.dynasty)
+        dynasty_id = args.dynasty
+        window_title = f"Trading View Demo - Dynasty: {dynasty_id} (Season {season})"
+    else:
+        # MOCK DATA MODE
+        proposals = create_mock_proposals(args.scenario)
+        dynasty_id = "mock_dynasty"
+        db_path = ":memory:"
+        season = 2025
+        team_id = 22  # Detroit Lions
+        window_title = f"Trading View Demo - {args.scenario.title().replace('_', ' ')} Scenario"
 
     # Create main window
     window = QMainWindow()
-    window.setWindowTitle(f"Trading View Demo - {scenario.title().replace('_', ' ')} Scenario")
+    window.setWindowTitle(window_title)
     window.resize(1200, 800)
 
-    # Create TradingView with mock context
+    # Create TradingView
     view = TradingView()
     view.set_context(
-        dynasty_id="mock_dynasty",
-        db_path=":memory:",
-        season=2025,
-        team_id=22  # Detroit Lions
+        dynasty_id=dynasty_id,
+        db_path=db_path,
+        season=season,
+        team_id=team_id
     )
 
-    # Load mock proposals
-    proposals = create_mock_proposals(scenario)
-    print(f"[DEMO] Loaded {len(proposals)} proposals for '{scenario}' scenario")
+    # Load proposals
+    print(f"[DEMO] Loaded {len(proposals)} proposals")
     view.set_gm_proposals(proposals)
 
     # Wire up signal handlers for demo

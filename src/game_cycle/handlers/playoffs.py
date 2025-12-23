@@ -150,7 +150,7 @@ class PlayoffHandler:
             super_bowl_result, season_awards = self._calculate_end_of_season_awards(
                 context, super_bowl_game
             )
-            events_processed.append("Season awards calculated")
+            events_processed.append("Super Bowl MVP calculated")
             events_processed.append(f"Super Bowl MVP: {super_bowl_result.get('mvp', {}).get('player_name', 'Unknown')}")
 
         return {
@@ -299,6 +299,25 @@ class PlayoffHandler:
 
             # Generate media headline for this playoff game
             self._generate_playoff_headline(context, result, round_name, sim_result)
+
+            # Generate social media posts for playoff game (Milestone 14)
+            try:
+                self._generate_playoff_social_posts(
+                    db_path=db_path,
+                    dynasty_id=dynasty_id,
+                    season=season,
+                    week=week,
+                    round_name=round_name,
+                    game_id=game_id,
+                    home_team_id=home_team_id,
+                    away_team_id=away_team_id,
+                    home_score=home_score,
+                    away_score=away_score,
+                    sim_result=sim_result
+                )
+            except Exception as e:
+                print(f"[PlayoffHandler] SOCIAL POST GENERATION FAILED for {game_id}: {e}")
+                # Don't fail the whole playoff simulation
 
             # Call progress callback if provided (for UI updates)
             if progress_callback:
@@ -658,25 +677,19 @@ class PlayoffHandler:
             "mvp": mvp_data,
         }
 
-        # Calculate season awards (MVP, OPOY, DPOY, etc.)
-        # This is idempotent - will skip if already calculated
-        print(f"[PlayoffHandler] Calculating season awards for {season}...")
-        try:
-            awards_results = awards_service.calculate_all_awards()
-            # Debug logging: show winner or why missing
-            for award_id, result in awards_results.items():
-                if result.winner:
-                    print(f"[PlayoffHandler] {award_id.upper()}: {result.winner.player_name}")
-                else:
-                    print(f"[PlayoffHandler] {award_id.upper()}: No winner (candidates_evaluated={result.candidates_evaluated})")
-            season_awards = {
-                award_id: result.to_dict() if hasattr(result, 'to_dict') else result
-                for award_id, result in awards_results.items()
-            }
-            print(f"[PlayoffHandler] Season awards calculated: {list(awards_results.keys())}")
-        except Exception as e:
-            print(f"[PlayoffHandler] Failed to calculate season awards: {e}")
-            season_awards = {}
+        # DISABLED: Season awards calculation moved to OffseasonHandler._execute_honors()
+        # PlayoffHandler runs immediately after Super Bowl, BEFORE stats are aggregated
+        # into season grades. The EligibilityChecker requires player_season_grades table
+        # to be populated, which only happens in honors stage.
+        #
+        # Separation of concerns:
+        # - PlayoffHandler: Calculate Super Bowl MVP (uses raw game stats - works fine)
+        # - OffseasonHandler: Calculate season awards (after stats aggregation - correct)
+        #
+        # Previously this would log "No candidates found" because player_season_grades
+        # table was empty. Now awards are calculated in the correct place.
+        season_awards = {}
+        print(f"[PlayoffHandler] Season awards will be calculated in OFFSEASON_HONORS stage")
 
         return super_bowl_result, season_awards
 
@@ -1036,6 +1049,117 @@ class PlayoffHandler:
             # Log but don't fail game simulation for headline errors
             print(f"[PlayoffHandler] Failed to generate headline for playoff game: {e}")
 
+    def _generate_playoff_social_posts(
+        self,
+        db_path: str,
+        dynasty_id: str,
+        season: int,
+        week: int,
+        round_name: str,
+        game_id: str,
+        home_team_id: int,
+        away_team_id: int,
+        home_score: int,
+        away_score: int,
+        sim_result
+    ) -> int:
+        """
+        Generate and persist social media posts for a playoff game.
+
+        Similar to regular season posts, but with playoff context.
+        Posts will mention the playoff round and have higher engagement.
+
+        Args:
+            db_path: Database path
+            dynasty_id: Dynasty identifier
+            season: Season year
+            week: Week number
+            round_name: Playoff round name (wild_card, divisional, conference, super_bowl)
+            game_id: Game identifier
+            home_team_id: Home team ID
+            away_team_id: Away team ID
+            home_score: Home team final score
+            away_score: Away team final score
+            sim_result: SimulationResult with game details
+
+        Returns:
+            Number of posts generated (0 on failure)
+        """
+        try:
+            from ..services.social_generators.factory import SocialPostGeneratorFactory
+            from ..models.social_event_types import SocialEventType
+            from ..database.connection import GameCycleDatabase
+
+            print(f"[SOCIAL] Generating playoff posts for {game_id} ({round_name})")
+
+            # Determine winner/loser
+            if home_score > away_score:
+                winner_id, loser_id = home_team_id, away_team_id
+                winner_score, loser_score = home_score, away_score
+            else:
+                winner_id, loser_id = away_team_id, home_team_id
+                winner_score, loser_score = away_score, home_score
+
+            # Calculate game characteristics
+            score_margin = abs(home_score - away_score)
+            is_blowout = score_margin >= 21
+            # Playoff upsets: Lower seed beating higher seed
+            is_upset = False  # TODO: Implement playoff seeding upset detection
+
+            # Extract star players from sim result
+            star_players = {}
+            if hasattr(sim_result, 'player_stats') and sim_result.player_stats:
+                for team_id in [home_team_id, away_team_id]:
+                    team_stats = [p for p in sim_result.player_stats if p.get('team_id') == team_id]
+                    if team_stats:
+                        def get_total_yards(p):
+                            return (
+                                (p.get('passing_yards') or 0) +
+                                (p.get('rushing_yards') or 0) +
+                                (p.get('receiving_yards') or 0)
+                            )
+                        top_player = max(team_stats, key=get_total_yards, default=None)
+                        if top_player:
+                            star_players[team_id] = top_player.get('player_name', 'Unknown')
+
+            # Build event data for generator
+            event_data = {
+                'winning_team_id': winner_id,
+                'losing_team_id': loser_id,
+                'winning_score': winner_score,
+                'losing_score': loser_score,
+                'game_id': game_id,
+                'is_upset': is_upset,
+                'is_blowout': is_blowout,
+                'star_players': star_players if star_players else None,
+                'season_type': 'playoffs',  # KEY: Mark as playoff game
+                'round_name': round_name    # KEY: Include playoff round
+            }
+
+            # Generate and persist posts using factory (NEW ARCHITECTURE)
+            gc_db = GameCycleDatabase(db_path)
+            try:
+                posts_created = SocialPostGeneratorFactory.generate_posts(
+                    event_type=SocialEventType.GAME_RESULT,
+                    db=gc_db,
+                    dynasty_id=dynasty_id,
+                    season=season,
+                    week=week,
+                    event_data=event_data
+                )
+
+                print(f"[SOCIAL] ✓ Generated {posts_created} playoff posts for {round_name} game {game_id}")
+                return posts_created
+            finally:
+                gc_db.commit()  # CRITICAL: Flush WAL to main DB before closing
+                gc_db.close()
+
+        except Exception as e:
+            print(f"[PlayoffHandler] Error generating social posts for {game_id}: {e}")
+            import traceback
+            traceback.print_exc()
+            return 0
+
     def _log_round_summary(self, round_name: str, games_played: List[Dict[str, Any]]) -> None:
         """Log summary of completed round."""
         print(f"\n{'='*60}")
@@ -1238,13 +1362,13 @@ class PlayoffHandler:
             matchups.append({
                 "game_id": game_id,
                 "home_team": {
-                    "id": home_team_id,
+                    "team_id": home_team_id,
                     "name": home_team.full_name if home_team else f"Team {home_team_id}",
                     "abbreviation": home_team.abbreviation if home_team else "???",
                     "record": f"{home_standing.wins if home_standing else 0}-{home_standing.losses if home_standing else 0}",
                 },
                 "away_team": {
-                    "id": away_team_id,
+                    "team_id": away_team_id,
                     "name": away_team.full_name if away_team else f"Team {away_team_id}",
                     "abbreviation": away_team.abbreviation if away_team else "???",
                     "record": f"{away_standing.wins if away_standing else 0}-{away_standing.losses if away_standing else 0}",
@@ -1582,7 +1706,8 @@ class PlayoffHandler:
         db = GameCycleDatabase()  # Uses default game_cycle.db
         api = PlayoffBracketAPI(db)
 
-        return api.get_round_winners(dynasty_id, season, round_name, conference)
+        winners = api.get_round_winners(dynasty_id, season, round_name, conference)
+        return winners
 
     def _update_bracket_result(
         self,

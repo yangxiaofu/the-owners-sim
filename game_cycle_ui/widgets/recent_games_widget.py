@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor, QCursor
 
-from game_cycle_ui.theme import ESPN_THEME
+from game_cycle_ui.theme import ESPN_THEME, Colors, Typography, FontSizes, TextColors
 
 
 class GameResultCard(QFrame):
@@ -49,19 +49,19 @@ class GameResultCard(QFrame):
         top_row = QHBoxLayout()
 
         self.result_badge = QLabel("W")
-        self.result_badge.setFont(QFont("Arial", 12, QFont.Bold))
+        self.result_badge.setFont(Typography.H6)
         self.result_badge.setFixedWidth(24)
         self.result_badge.setAlignment(Qt.AlignCenter)
         top_row.addWidget(self.result_badge)
 
         self.opponent_label = QLabel("vs Opponent")
-        self.opponent_label.setFont(QFont("Arial", 11, QFont.Bold))
-        self.opponent_label.setStyleSheet("color: white;")
+        self.opponent_label.setFont(Typography.BODY_SMALL_BOLD)
+        self.opponent_label.setStyleSheet(f"color: {TextColors.ON_DARK};")
         top_row.addWidget(self.opponent_label, 1)
 
         self.score_label = QLabel("0-0")
-        self.score_label.setFont(QFont("Arial", 14, QFont.Bold))
-        self.score_label.setStyleSheet("color: white;")
+        self.score_label.setFont(Typography.H5)
+        self.score_label.setStyleSheet(f"color: {TextColors.ON_DARK};")
         self.score_label.setAlignment(Qt.AlignRight)
         top_row.addWidget(self.score_label)
 
@@ -69,8 +69,8 @@ class GameResultCard(QFrame):
 
         # Week label
         self.week_label = QLabel("Week --")
-        self.week_label.setFont(QFont("Arial", 9))
-        self.week_label.setStyleSheet(f"color: {ESPN_THEME['text_muted']};")
+        self.week_label.setFont(Typography.TINY)
+        self.week_label.setStyleSheet(f"color: {TextColors.ON_DARK_DISABLED};")
         layout.addWidget(self.week_label)
 
         # Stats row
@@ -78,13 +78,13 @@ class GameResultCard(QFrame):
         stats_row.setSpacing(16)
 
         self.yards_label = QLabel("Yds: --")
-        self.yards_label.setFont(QFont("Arial", 9))
-        self.yards_label.setStyleSheet(f"color: {ESPN_THEME['text_secondary']};")
+        self.yards_label.setFont(Typography.TINY)
+        self.yards_label.setStyleSheet(f"color: {TextColors.ON_DARK_MUTED};")
         stats_row.addWidget(self.yards_label)
 
         self.turnovers_label = QLabel("TO: --")
-        self.turnovers_label.setFont(QFont("Arial", 9))
-        self.turnovers_label.setStyleSheet(f"color: {ESPN_THEME['text_secondary']};")
+        self.turnovers_label.setFont(Typography.TINY)
+        self.turnovers_label.setStyleSheet(f"color: {TextColors.ON_DARK_MUTED};")
         stats_row.addWidget(self.turnovers_label)
 
         stats_row.addStretch()
@@ -129,19 +129,19 @@ class GameResultCard(QFrame):
             self._is_win = True
             self.result_badge.setText("W")
             self.result_badge.setStyleSheet(
-                "color: white; background-color: #2E7D32; border-radius: 4px;"
+                f"color: {TextColors.ON_DARK}; background-color: {Colors.SUCCESS}; border-radius: 4px;"
             )
         elif team_score < opponent_score:
             self._is_win = False
             self.result_badge.setText("L")
             self.result_badge.setStyleSheet(
-                "color: white; background-color: #C62828; border-radius: 4px;"
+                f"color: {TextColors.ON_DARK}; background-color: {Colors.ERROR}; border-radius: 4px;"
             )
         else:
             self._is_win = False
             self.result_badge.setText("T")
             self.result_badge.setStyleSheet(
-                "color: white; background-color: #666; border-radius: 4px;"
+                f"color: {TextColors.ON_DARK}; background-color: {Colors.MUTED}; border-radius: 4px;"
             )
 
         # Opponent
@@ -194,8 +194,8 @@ class RecentGamesWidget(QWidget):
 
         # Header
         header = QLabel("UPCOMING GAMES")
-        header.setFont(QFont("Arial", 12, QFont.Bold))
-        header.setStyleSheet("color: white;")
+        header.setFont(Typography.H6)
+        header.setStyleSheet(f"color: {TextColors.ON_DARK};")
         layout.addWidget(header)
 
         # Scroll area for cards
@@ -219,8 +219,8 @@ class RecentGamesWidget(QWidget):
 
         # Empty state label
         self.empty_label = QLabel("No upcoming games")
-        self.empty_label.setFont(QFont("Arial", 10))
-        self.empty_label.setStyleSheet(f"color: {ESPN_THEME['text_muted']};")
+        self.empty_label.setFont(Typography.SMALL)
+        self.empty_label.setStyleSheet(f"color: {TextColors.ON_DARK_DISABLED};")
         self.empty_label.setAlignment(Qt.AlignCenter)
         self.empty_label.hide()
         layout.addWidget(self.empty_label)

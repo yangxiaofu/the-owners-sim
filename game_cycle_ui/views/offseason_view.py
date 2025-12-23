@@ -223,7 +223,6 @@ class OffseasonView(QWidget):
         # Preseason view (index 8) - game simulation for W1/W2/W3
         self.preseason_view = PreseasonView()
         self.preseason_view.advance_requested.connect(self.advance_requested.emit)
-        self.preseason_view.process_cuts_requested.connect(self._on_preseason_cuts_requested)
         self.preseason_view.game_selected.connect(self._on_preseason_game_selected)
         self.stack.addWidget(self.preseason_view)
 
@@ -259,7 +258,9 @@ class OffseasonView(QWidget):
         elif stage_type == StageType.OFFSEASON_PRESEASON_W2:
             self.process_button.setText("Process Preseason Week 2")
         elif stage_type == StageType.OFFSEASON_PRESEASON_W3:
-            self.process_button.setText("Process Final Roster Cuts")
+            self.process_button.setText("Process Preseason Week 3")
+        elif stage_type == StageType.OFFSEASON_ROSTER_CUTS:
+            self.process_button.setText("Finalize Roster Cuts")
         else:
             self.process_button.setText(f"Process {stage.display_name}")
         self.process_button.setEnabled(True)
@@ -414,34 +415,52 @@ class OffseasonView(QWidget):
 
             # Set context for BoxScoreDialog access
             user_team_id = preview_data.get("user_team_id", 1)
-            if self._dynasty_id and self._db_path:
-                self.preseason_view.set_context(
-                    dynasty_id=self._dynasty_id,
-                    db_path=self._db_path,
-                    season=stage.season_year,
-                    user_team_id=user_team_id
-                )
+            # Always set context (use preview_data as fallback if needed)
+            self.preseason_view.set_context(
+                dynasty_id=self._dynasty_id or preview_data.get("dynasty_id"),
+                db_path=self._db_path or preview_data.get("db_path"),
+                season=stage.season_year,
+                user_team_id=user_team_id
+            )
 
             # Determine week number
             if stage_type == StageType.OFFSEASON_PRESEASON_W1:
                 week = 1
             elif stage_type == StageType.OFFSEASON_PRESEASON_W2:
                 week = 2
-            else:
+            else:  # OFFSEASON_PRESEASON_W3
                 week = 3
 
             # Configure preseason view for this week
             self.preseason_view.set_week(week)
 
-            # Set preseason games from preview data
-            preseason_games = preview_data.get("preseason_games", [])
-            self.preseason_view.set_games(preseason_games)
+            # Fallback: if database fetch failed (0 games), use preview_data
+            games_count = len(self.preseason_view._games)
+            print(f"[OffseasonView] After set_week({week}), view has {games_count} games")
+            if games_count == 0:
+                print(f"[OffseasonView] WARNING: Fallback triggered - using preview_data")
+                preseason_games = preview_data.get("preseason_games", [])
+                print(f"[OffseasonView] preview_data has {len(preseason_games)} games")
+                if preseason_games:
+                    self.preseason_view.set_games(preseason_games)
+                    print(f"[OffseasonView] Set games from preview_data")
+            else:
+                print(f"[OffseasonView] Database fetch succeeded, not using fallback")
 
-            # For Week 3, also set roster status for cuts
-            if week == 3:
-                current_size = preview_data.get("roster_count", preview_data.get("current_size", 90))
-                target_size = preview_data.get("target_size", 53)
-                self.preseason_view.set_roster_status(current_size, target_size)
+            # Set roster status (all weeks just show current roster size)
+            current_size = preview_data.get("roster_count", preview_data.get("current_size", 90))
+            self.preseason_view.set_roster_status(current_size, 90)
+
+        elif stage_type == StageType.OFFSEASON_ROSTER_CUTS:
+            # Final roster cuts - dedicated view (index 5)
+            self.stack.setCurrentIndex(5)
+
+            # Refresh roster cuts view with current data
+            self.roster_cuts_view.refresh_roster()
+
+            # Update process button
+            self.process_button.setVisible(True)
+            self.process_button.setText("Finalize Roster Cuts")
 
         elif stage_type == StageType.OFFSEASON_WAIVER_WIRE:
             self.stack.setCurrentIndex(6)
@@ -612,7 +631,8 @@ class OffseasonView(QWidget):
         if self._current_stage and self._current_stage.stage_type in (
             StageType.OFFSEASON_PRESEASON_W1,
             StageType.OFFSEASON_PRESEASON_W2,
-            StageType.OFFSEASON_PRESEASON_W3
+            StageType.OFFSEASON_PRESEASON_W3,
+            StageType.OFFSEASON_ROSTER_CUTS
         ):
             # Check roster size requirement first
             cuts_needed = self.roster_cuts_view.get_cuts_needed()
@@ -642,19 +662,6 @@ class OffseasonView(QWidget):
                     )
             else:
                 self.process_button.setToolTip("")
-
-    def _on_preseason_cuts_requested(self):
-        """
-        Handle preseason cuts request from PreseasonView.
-
-        This is called when the user clicks "Open Full Roster Cuts View" on
-        Preseason Week 3. Switches to the RosterCutsView for the full cuts interface.
-        """
-        # Switch to roster cuts view (index 5)
-        self.stack.setCurrentIndex(5)
-
-        # Signal that roster cuts are being processed
-        self.get_suggestions_requested.emit()
 
     def _on_preseason_game_selected(self, game_id: str):
         """Handle preseason game selection - show box score."""

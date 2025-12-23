@@ -1,0 +1,878 @@
+{
+  "templates": {
+    "GAME_RESULT_WIN": {
+      "requirements": {
+        "context_required": false,
+        "notes": "Game context (winner/loser/score) is always available"
+      },
+      "GENERIC": [
+        "Good team win. {player} stepped up when it mattered.",
+        "Solid performance across the board. On to next week.",
+        "Hard-fought victory. Exactly what we needed.",
+        "{winner} did what they had to do. Clean game."
+      ],
+      "OPTIMIST": [
+        "LET'S GOOOOO! {winner} {verb} {loser} {score}! 🔥",
+        "THAT'S MY TEAM! {player} was absolutely incredible today!",
+        "Can't stop this {winner} team right now!",
+        "Beautiful win! This is what {winner} football looks like!",
+        "{player} is HIM! What a performance! {stat}",
+        "Victory tastes so sweet! {winner} looking unstoppable! 💪",
+        "This team is SPECIAL! Mark my words! 🌟"
+      ],
+      "PESSIMIST": [
+        "Finally. About time. Still don't trust them.",
+        "Cool we won but this team will find a way to disappoint us.",
+        "One win doesn't erase the last {streak} losses.",
+        "Won but looked ugly doing it. Not impressed.",
+        "Great, now everyone will overreact to ONE win.",
+        "They'll blow it next week. Guaranteed."
+      ],
+      "BANDWAGON": {
+        "templates": [
+          "Just started watching {winner} this season and WOW! 🎉",
+          "Best team in the league right now! No debate!",
+          "New favorite team alert! {winner} are incredible!"
+        ],
+        "requirements": {
+          "min_week": 1
+        }
+      },
+      "BANDWAGON_PLAYOFF_HYPE": {
+        "templates": [
+          "Championship vibes! I'm all in on {winner}!",
+          "{winner} are going ALL THE WAY! 🏆"
+        ],
+        "requirements": {
+          "playoff_positions": ["IN_HUNT", "CLINCHED", "LEADER"],
+          "min_week": 8
+        }
+      },
+      "STATS_NERD": [
+        "{player} posted a {grade} PFF grade with {stat}. Elite performance.",
+        "Win probability was only {win_prob}% at halftime. Remarkable.",
+        "{winner} now leads the league in {stat_category}. Sustainable?",
+        "EPA leaders: {player} (+{epa}). Dominant showing.",
+        "Third down conversion rate: {pct}%. That wins games."
+      ],
+      "OLD_TIMER": [
+        "That's the {winner} football I remember! Old school!",
+        "Reminds me of the {legend} era. Good times.",
+        "Now THAT'S how you win games. The fundamentals.",
+        "Just like the old days. Defense wins championships."
+      ],
+      "HOT_HEAD": {
+        "templates": [
+          "FINALLY!!!! ABOUT TIME!!!! 🔥🔥🔥",
+          "THAT'S WHAT I'M TALKING ABOUT!!!! LET'S GO!!!!",
+          "SEE WHAT HAPPENS WHEN WE DON'T PLAY STUPID?!?!"
+        ],
+        "requirements": {
+          "min_week": 1
+        }
+      },
+      "HOT_HEAD_PLAYOFF_HYPE": {
+        "templates": [
+          "PLAYOFF BOUND BABY!!!! NO ONE CAN STOP US!!!!"
+        ],
+        "requirements": {
+          "playoff_positions": ["IN_HUNT", "CLINCHED", "LEADER"],
+          "min_week": 10
+        }
+      },
+      "MEME_LORD": [
+        "{loser} in shambles rn 😂",
+        "You just got {winner}'d lmaooo",
+        "{loser} fans real quiet now 🤐",
+        "That's what I thought {loser} 💀",
+        "{winner} said 'not today' 😤"
+      ],
+      "TRADE_ANALYST": {
+        "templates": [
+          "{player} trade looking brilliant. {stat} in his debut.",
+          "Front office knew what they were doing. Smart acquisition.",
+          "This win validates the {player} signing. Worth every penny."
+        ],
+        "requirements": {
+          "recent_trades": true,
+          "min_week": 1,
+          "notes": "Should only be used if team made recent trades (last 2 weeks)"
+        }
+      },
+      "CONSPIRACY": [
+        "About time the refs let us win one.",
+        "Only won because the refs actually called a fair game for once.",
+        "Don't get used to it. They'll screw us next week."
+      ],
+      "BALANCED": [
+        "Good team win. {player} stepped up when it mattered.",
+        "Solid performance across the board. On to next week.",
+        "Hard-fought victory. Exactly what we needed.",
+        "{winner} did what they had to do. Clean game."
+      ]
+    },
+    "GAME_RESULT_LOSS": {
+      "requirements": {
+        "context_required": false,
+        "notes": "Game context (winner/loser/score) is always available"
+      },
+      "GENERIC": [
+        "Tough loss. {player} struggled but it happens.",
+        "Disappointing result. Execution needs work.",
+        "On to next week. Fix the mistakes and move on.",
+        "Credit to {winner}. They played better today."
+      ],
+      "OPTIMIST": {
+        "templates": [
+          "Tough loss but we'll bounce back! Still believe! 💪",
+          "Close game, just didn't go our way. On to the next one.",
+          "Proud of the fight. {player} gave it his all.",
+          "Not worried. This team will learn from this."
+        ],
+        "requirements": {
+          "min_week": 1
+        }
+      },
+      "OPTIMIST_PLAYOFF_HOPE": {
+        "templates": [
+          "Bad day doesn't define us. Playoffs still in reach! 🏈"
+        ],
+        "requirements": {
+          "playoff_positions": ["IN_HUNT", "LEADER"],
+          "min_week": 8
+        }
+      },
+      "PESSIMIST": {
+        "templates": [
+          "I KNEW IT. SAME OLD {loser}. FIRE EVERYONE.",
+          "This team is a joke. Absolutely pathetic.",
+          "Why do I even watch anymore? Pain.",
+          "Every. Single. Week. Same story.",
+          "This franchise is cursed. Accept it."
+        ],
+        "requirements": {
+          "min_week": 1
+        }
+      },
+      "PESSIMIST_PLAYOFF_DESPAIR": {
+        "templates": [
+          "We're never making the playoffs. Ever.",
+          "Kiss the playoffs goodbye. Another wasted season."
+        ],
+        "requirements": {
+          "playoff_positions": ["IN_HUNT", "LEADER", "UNKNOWN"],
+          "min_week": 8
+        }
+      },
+      "PESSIMIST_DRAFT_FOCUS": {
+        "templates": [
+          "At least we're getting a top 5 pick. Silver lining?",
+          "Another loss, another step closer to draft position.",
+          "Season's over. Eyes on the draft now."
+        ],
+        "requirements": {
+          "playoff_positions": ["ELIMINATED"],
+          "min_week": 12
+        }
+      },
+      "BANDWAGON": [
+        "Maybe I was wrong about {loser}...",
+        "Time to find a new team lol",
+        "Unsubscribing from {loser} content",
+        "They were supposed to be good this year??"
+      ],
+      "STATS_NERD": [
+        "{player} had a {grade} PFF grade. Brutal performance.",
+        "Expected points added: {epa}. That's how you lose.",
+        "Third down defense: {pct}%. Simply unacceptable.",
+        "Win probability dropped {change}% after the turnover. Costly."
+      ],
+      "OLD_TIMER": [
+        "Back in my day we didn't fold like this.",
+        "Lost the fundamentals. {legend} would be ashamed.",
+        "This isn't {loser} football. What happened to us?",
+        "We used to be a tough team. Now this."
+      ],
+      "HOT_HEAD": [
+        "FIRE {coach}!!!! THIS IS UNACCEPTABLE!!!!",
+        "REFS STOLE THIS GAME. RIGGED. 😡",
+        "I'M DONE WITH THIS TEAM. SEASON OVER.",
+        "EMBARRASSING!!!! BLOW IT ALL UP!!!!",
+        "WORST COACHING I'VE EVER SEEN!!!!"
+      ],
+      "MEME_LORD": [
+        "{loser} and losing, name a better duo 😭",
+        "Pain. All I know is pain. 💀",
+        "{loser} moment",
+        "We're a meme franchise fr",
+        "Suffering builds character right? RIGHT?? 😂😭"
+      ],
+      "TRADE_ANALYST": {
+        "templates": [
+          "{player} trade looking terrible. Should have kept the picks.",
+          "This loss is on the front office. Bad roster construction.",
+          "Overpaid for {player} and this is what we get."
+        ],
+        "requirements": {
+          "recent_trades": true,
+          "notes": "Should only be used if team made recent trades for analysis"
+        }
+      },
+      "CONSPIRACY": [
+        "Refs decided this game. Clear as day.",
+        "{winner} gets every call. We get nothing.",
+        "How is that not PI?!? League doesn't want us to win.",
+        "Convenient no-call on that hold. So rigged."
+      ],
+      "BALANCED": [
+        "Tough loss. {player} struggled but it happens.",
+        "Disappointing result. Execution needs work.",
+        "On to next week. Fix the mistakes and move on.",
+        "Credit to {winner}. They played better today."
+      ]
+    },
+    "TRADE": {
+      "requirements": {
+        "context_required": true,
+        "notes": "Trade-specific context required: player name, teams, draft picks involved"
+      },
+      "GENERIC": [
+        "Interesting move. {player} addresses {position} need.",
+        "Fair value trade. Both teams got what they wanted.",
+        "Let's see how {player} fits the system. Could work."
+      ],
+      "OPTIMIST": {
+        "templates": [
+          "LOVE this move! {player} is exactly what we needed! 🔥",
+          "GM is cooking! This pushes us over the edge!",
+          "{player} + {existing_player}? League COOKED! 😤"
+        ],
+        "requirements": {
+          "min_week": 1
+        }
+      },
+      "OPTIMIST_CHAMPIONSHIP": {
+        "templates": [
+          "Championship window OPEN! Let's gooo!"
+        ],
+        "requirements": {
+          "playoff_positions": ["IN_HUNT", "CLINCHED", "LEADER"],
+          "min_week": 1
+        }
+      },
+      "PESSIMIST": [
+        "We gave up WAY too much for {player}. Terrible trade.",
+        "This team is allergic to good decisions.",
+        "Can't wait for this to blow up in our faces.",
+        "{player} is washed. Why did we do this?"
+      ],
+      "BANDWAGON": [
+        "Wow {team} is going all in! I'm here for it!",
+        "Big moves! This is exciting!",
+        "{team} is serious about winning!"
+      ],
+      "STATS_NERD": [
+        "{team} gets: {player} | Cap hit: ${cap_hit}M | Grade: {grade}",
+        "Smart move. {player} fills the {position} hole without breaking the bank.",
+        "Overpay. {player} isn't worth a {draft_pick}. Bad asset management.",
+        "Trade value chart says {team} won this deal by {points} points."
+      ],
+      "OLD_TIMER": [
+        "Back in my day we didn't trade away draft picks like this.",
+        "Reminds me of when we traded for {legend}. Good times.",
+        "Building through the draft worked for us before. Why change?"
+      ],
+      "HOT_HEAD": [
+        "FINALLY!!!! SOME ACTION!!!! 🔥",
+        "THIS IS WHAT I'M TALKING ABOUT!!!!",
+        "IF THIS DOESN'T WORK GM IS FIRED!!!!"
+      ],
+      "MEME_LORD": [
+        "{other_team} got fleeced lmaooo 😂",
+        "{player} welcome to the {team}! 🎉",
+        "GM woke up and chose violence today"
+      ],
+      "TRADE_ANALYST": [
+        "Cap implications: {team} has ${cap}M in space after this.",
+        "Draft capital spent: {picks}. High price but fills a need.",
+        "{player} on a {years}yr/${value}M deal. Market value trade.",
+        "This affects our ability to sign {position} in FA. Risky."
+      ],
+      "CONSPIRACY": [
+        "Of course the league approves this trade instantly.",
+        "Meanwhile our trades get 'reviewed' for days.",
+        "Convenient timing. Feels orchestrated."
+      ],
+      "BALANCED": [
+        "Interesting move. {player} addresses {position} need.",
+        "Fair value trade. Both teams got what they wanted.",
+        "Let's see how {player} fits the system. Could work."
+      ]
+    },
+    "SIGNING": {
+      "requirements": {
+        "context_required": true,
+        "notes": "Signing-specific context: player, contract value/years, position"
+      },
+      "GENERIC": [
+        "Solid signing. {player} is a key piece going forward.",
+        "Fair market value. Both sides should be happy.",
+        "{years} years is the right length. Good deal.",
+        "{player} earned this contract. Well deserved."
+      ],
+      "OPTIMIST": [
+        "YES! Locked up {player}! {years}yr/${value}M is a STEAL!",
+        "Best news all offseason! {player} staying put! 🎉",
+        "This is why I love this front office. Nailed it.",
+        "{player} is the future! Smart signing!"
+      ],
+      "PESSIMIST": [
+        "${value}M for {player}??? Are we insane???",
+        "Way too much money. This will cripple our cap.",
+        "Classic {team} overpaying for a declining player.",
+        "{player} isn't worth half of that. Dumb move."
+      ],
+      "BANDWAGON": [
+        "Big signing! {team} means business!",
+        "{player} is a game changer!",
+        "Love to see {team} making moves!"
+      ],
+      "STATS_NERD": [
+        "{player}: {years}yr/${value}M | APY: ${apy}M | % of cap: {cap_pct}%",
+        "Market rate for {position}. Fair deal for both sides.",
+        "Above market value by ${diff}M/yr. Slight overpay.",
+        "{player} graded {grade} last season. Worth it at this price."
+      ],
+      "OLD_TIMER": [
+        "Glad we're keeping {player}. Loyalty matters.",
+        "Remember when we let {legend} walk? Not making that mistake again.",
+        "Good to see the front office taking care of our guys."
+      ],
+      "HOT_HEAD": {
+        "templates": [
+          "FINALLY PAID THE MAN!!!! 💰",
+          "IF WE LOST {player} I WOULD'VE RIOTED!!!!"
+        ],
+        "requirements": {
+          "min_week": 1
+        }
+      },
+      "HOT_HEAD_CHAMPIONSHIP": {
+        "templates": [
+          "NOW GO WIN A CHAMPIONSHIP!!!!"
+        ],
+        "requirements": {
+          "playoff_positions": ["IN_HUNT", "CLINCHED", "LEADER"],
+          "min_week": 1
+        }
+      },
+      "MEME_LORD": [
+        "{player} secured the bag 💰💰💰",
+        "Get paid king 👑",
+        "Other teams in shambles 😂"
+      ],
+      "TRADE_ANALYST": [
+        "Cap situation: ${remaining}M remaining after {player} signing.",
+        "This limits our FA flexibility. Can't afford {position} now.",
+        "Front-loaded deal. Smart structuring by the GM.",
+        "Market reset at {position}. Other teams will pay more now."
+      ],
+      "CONSPIRACY": [
+        "Convenient that this got done before the cap increase announcement.",
+        "Other teams can offer more but {player} takes less here? Sus.",
+        "Agent probably got kickbacks. Follow the money."
+      ],
+      "BALANCED": [
+        "Solid signing. {player} is a key piece going forward.",
+        "Fair market value. Both sides should be happy.",
+        "{years} years is the right length. Good deal.",
+        "{player} earned this contract. Well deserved."
+      ]
+    },
+    "CUT": {
+      "requirements": {
+        "context_required": true,
+        "notes": "Cut-specific context: player, cap savings, reasoning"
+      },
+      "GENERIC": [
+        "Understandable move. {player} didn't fit the direction.",
+        "Business decision. Wish {player} the best.",
+        "Cap casualty. Happens every year.",
+        "Makes sense given {player}'s age and salary."
+      ],
+      "OPTIMIST": [
+        "Tough but necessary move. Trust the process! 🙏",
+        "Making room for bigger signings! Love it!",
+        "Addition by subtraction. We'll be better.",
+        "Cap space freed up! Time to make moves! 💰"
+      ],
+      "PESSIMIST": [
+        "Cutting {player}? We're tanking. It's over.",
+        "This franchise has no loyalty. Disgusting.",
+        "We'll regret this when {player} balls out elsewhere.",
+        "Classic {team} making the wrong move."
+      ],
+      "STATS_NERD": [
+        "{player} cap savings: ${savings}M. Dead cap: ${dead_cap}M.",
+        "PFF grade last season: {grade}. Declining production.",
+        "Makes sense financially but loses {war} WAR.",
+        "Post-June 1 designation would save ${diff}M more."
+      ],
+      "OLD_TIMER": [
+        "{player} gave us good years. Thanks for the memories.",
+        "End of an era. Respect to {player}.",
+        "Remember when {player} {achievement}? Good times."
+      ],
+      "HOT_HEAD": [
+        "ABOUT TIME!!!! {player} WAS WASHED!!!!",
+        "CUT HALF THE ROSTER WHILE YOU'RE AT IT!!!!",
+        "FINALLY MAKING SMART MOVES!!!!"
+      ],
+      "MEME_LORD": [
+        "{player} unemployment line speedrun 💀",
+        "Goodbye and good riddance lol",
+        "Another one bites the dust 🎵"
+      ],
+      "TRADE_ANALYST": [
+        "{player} was due ${owed}M. Saves ${savings}M in cap space.",
+        "Expect {player} to sign with {contender} for cheap.",
+        "Creates roster spot for {position} from draft.",
+        "Cap strategy: Clear old contracts, reset at {position}."
+      ],
+      "BALANCED": [
+        "Understandable move. {player} didn't fit the direction.",
+        "Business decision. Wish {player} the best.",
+        "Cap casualty. Happens every year.",
+        "Makes sense given {player}'s age and salary."
+      ]
+    },
+    "AWARD": {
+      "requirements": {
+        "context_required": true,
+        "notes": "Award-specific context: player, award type (MVP, DPOY, etc.)"
+      },
+      "ALL": [
+        "LETS GOOOO {player} {award}!!!! 🏆🏆🏆",
+        "Congrats to {player}! Well deserved!",
+        "{player} for {award}! No debate!",
+        "If {player} doesn't win {award} this league is rigged.",
+        "About time {player} gets some respect! {award}!",
+        "{player} {award} SZN! 👑",
+        "UNANIMOUS {award}! {player} is HIM!",
+        "{player} dominating! {award} locked up!",
+        "Nobody else close. {player} {award} easy.",
+        "{player} {stat} this season. {award} is his."
+      ]
+    },
+    "RUMOR": {
+      "requirements": {
+        "context_required": true,
+        "notes": "Rumor-specific context: player, team, speculation about move"
+      },
+      "GENERIC": [
+        "Interesting rumor. Let's see if there's substance to it.",
+        "{player} would be a good fit if the price is right.",
+        "Smoke or fire? Hard to say this time of year.",
+        "Makes sense positionally but depends on the contract."
+      ],
+      "OPTIMIST": [
+        "If we get {player} it's OVER for the league! 🔥",
+        "Please let this rumor be true! {player} would be perfect!",
+        "Trust the front office! They know what they're doing!",
+        "{player} to {team}? YES PLEASE! 🙏"
+      ],
+      "PESSIMIST": [
+        "Just a rumor to get our hopes up before we do nothing.",
+        "{player} isn't coming here. Why would he?",
+        "We're not getting {player}. Stop believing these rumors.",
+        "Even if true, we'll mess up the contract somehow."
+      ],
+      "STATS_NERD": [
+        "{player} market value: ${value}M/yr. Can we afford it?",
+        "Cap space: ${cap}M. {player} asking price: ${asking}M. Tight.",
+        "{player} fills {position} need. Makes sense schematically.",
+        "Age concern: {player} is {age}. Durability questionable."
+      ],
+      "OLD_TIMER": [
+        "Rumors like this happened with {legend} too. We'll see.",
+        "Don't believe everything you hear in the offseason.",
+        "Wouldn't mind {player}. Reminds me of {legend}."
+      ],
+      "HOT_HEAD": [
+        "IF WE DON'T GET {player} FIRE EVERYONE!!!!",
+        "DO IT!!!! MAKE IT HAPPEN!!!!",
+        "WHY IS THIS TAKING SO LONG?!?! SIGN HIM!!!!"
+      ],
+      "MEME_LORD": [
+        "{player} to {team} (REAL) (NOT CLICKBAIT) 😂",
+        "Sources: Trust me bro",
+        "{player} flight tracker szn 🛫",
+        "Breaking: {player} spotted at {city} airport 👀"
+      ],
+      "TRADE_ANALYST": [
+        "Sources: {team} showing interest in {player}.",
+        "{player} asking price: ${value}M/yr. {team} can offer ${can_offer}M.",
+        "Draft pick compensation would be {picks}. Worth it?",
+        "Cap implications if {team} signs {player}: ${remaining}M left."
+      ],
+      "CONSPIRACY": [
+        "{player}'s agent is using {team} for leverage. Classic.",
+        "Of course this 'leaks' right before FA. All planned.",
+        "Media pushing this story to generate clicks. Fake news."
+      ],
+      "BALANCED": [
+        "Interesting rumor. Let's see if there's substance to it.",
+        "{player} would be a good fit if the price is right.",
+        "Smoke or fire? Hard to say this time of year.",
+        "Makes sense positionally but depends on the contract."
+      ]
+    },
+    "DRAFT": {
+      "requirements": {
+        "context_required": true,
+        "min_week": 12,
+        "max_week": 18,
+        "notes": "Draft-specific context required during draft week (weeks 12-18 typically)"
+      },
+      "GENERIC": [
+        "Solid pick. {player} fills a need.",
+        "Let's see how {player} develops. Has potential.",
+        "Makes sense given our roster. Good value.",
+        "{player} needs time but has upside."
+      ],
+      "OPTIMIST": [
+        "LOVE this pick! {player} is going to be a STAR! ⭐",
+        "Best player available! Great value!",
+        "GM nailed it AGAIN! Trust the process! 🎯",
+        "{player} is exactly what we needed! Perfect fit!",
+        "Steal of the draft! Everyone sleeping on {player}!"
+      ],
+      "PESSIMIST": [
+        "Reaching for {player} at {pick}?! Terrible pick.",
+        "We needed {position} and took {other_position}??? WHY?!",
+        "This guy is a bust waiting to happen.",
+        "Classic {team} drafting. Always wrong.",
+        "Could've traded down. Fire the GM."
+      ],
+      "STATS_NERD": [
+        "{player} college stats: {stat}. Elite production.",
+        "Athletic profile: {percentile} percentile. Ideal for {position}.",
+        "Consensus board had {player} at {rank}. Slight reach.",
+        "Positional value: {position} at pick {pick}. Fair.",
+        "Comp: {player} is like {pro_comp} coming out."
+      ],
+      "OLD_TIMER": [
+        "{player} reminds me of {legend}. Good pick.",
+        "Hope {player} pans out like {past_pick} did for us.",
+        "Back in my day we drafted {legend} in the {round}. Different era."
+      ],
+      "HOT_HEAD": {
+        "templates": [
+          "FINALLY!!!! WE DRAFTED {position}!!!!",
+          "IF {player} BUSTS I'M DONE!!!!"
+        ],
+        "requirements": {
+          "min_week": 1
+        }
+      },
+      "HOT_HEAD_TITLE_TALK": {
+        "templates": [
+          "CHAMPIONSHIP INCOMING!!!! 🏆"
+        ],
+        "requirements": {
+          "playoff_positions": ["IN_HUNT", "CLINCHED", "LEADER"],
+          "min_week": 1
+        }
+      },
+      "MEME_LORD": [
+        "{player} to {team}! W or L? 🤔",
+        "GM woke up feeling dangerous 😤",
+        "{player} welcome to the squad! 🎉",
+        "Other teams punching air rn 😂"
+      ],
+      "TRADE_ANALYST": [
+        "Draft capital spent: Pick {pick} | Value: {value} points.",
+        "Could've traded down and still got {player}. Missed opportunity.",
+        "{player} rookie contract: 4yr/${value}M. Cheap production.",
+        "Need depth at {position}. Smart pick."
+      ],
+      "BALANCED": [
+        "Solid pick. {player} fills a need.",
+        "Let's see how {player} develops. Has potential.",
+        "Makes sense given our roster. Good value.",
+        "{player} needs time but has upside."
+      ]
+    },
+    "INJURY": {
+      "requirements": {
+        "context_required": true,
+        "notes": "Injury-specific context: player, timeline, replacement backup"
+      },
+      "GENERIC": [
+        "Tough news on {player}. Hope for a quick recovery.",
+        "{backup} steps in. Let's see what he can do.",
+        "Injuries are part of the game. Adapt and overcome.",
+        "Wishing {player} a full recovery. Take care."
+      ],
+      "OPTIMIST": [
+        "Prayers up for {player}! 🙏 He'll come back stronger!",
+        "Tough blow but we have the depth! Next man up! 💪",
+        "{player} is a warrior. He'll bounce back!",
+        "Sending positive vibes to {player}! We got this!"
+      ],
+      "PESSIMIST": [
+        "Of course {player} gets hurt. Every year.",
+        "Season over. Pack it in.",
+        "This team is cursed. I swear.",
+        "{player} out {timeline}?! We're done."
+      ],
+      "STATS_NERD": [
+        "{player} injury history: {count} games missed since {year}.",
+        "Replacement {backup} PFF grade: {grade}. Big dropoff.",
+        "Win rate without {player}: {pct}%. Concerning.",
+        "{timeline} = {games} games missed. Playoff implications."
+      ],
+      "OLD_TIMER": [
+        "Hate to see {player} hurt. Tough kid.",
+        "Back in my day players played through that. Different game now.",
+        "Hope {player} takes his time recovering. Health first."
+      ],
+      "HOT_HEAD": [
+        "WHY IS OUR TRAINING STAFF SO BAD?!?!",
+        "FIRE THE STRENGTH COACH!!!!",
+        "EVERY YEAR WITH THE INJURIES!!!!"
+      ],
+      "MEME_LORD": [
+        "{team} injury report looking like a CVS receipt 💀",
+        "Pain. Just pain. 😭",
+        "{team} and injuries, name a more iconic duo",
+        "We can't have nice things"
+      ],
+      "CONSPIRACY": [
+        "Convenient injury right before the big game. Sus.",
+        "Other teams' players never get hurt like this.",
+        "Something going on with our medical staff. Investigate."
+      ],
+      "BALANCED": [
+        "Tough news on {player}. Hope for a quick recovery.",
+        "{backup} steps in. Let's see what he can do.",
+        "Injuries are part of the game. Adapt and overcome.",
+        "Wishing {player} a full recovery. Take care."
+      ]
+    },
+    "FRANCHISE_TAG": {
+      "requirements": {
+        "context_required": true,
+        "min_week": 8,
+        "max_week": 10,
+        "notes": "Franchise tag deadline context: player, tag type, value"
+      },
+      "GENERIC": [
+        "Franchise tag on {player}. Reasonable move given the market.",
+        "{player} tagged at {value}. Fair short-term solution.",
+        "Franchise tag keeps {player} for another year. Smart.",
+        "{tag_type} tag gives both sides time to negotiate."
+      ],
+      "OPTIMIST": [
+        "Franchise tag on {player}! Love this move! 🔒💪",
+        "YES! Keeping {player} is huge for us! 🙌",
+        "Smart business locking up {player} with the tag!",
+        "This is what winning teams do! Keep {player}! 🏆"
+      ],
+      "PESSIMIST": [
+        "Wasting {value} on {player}? Typical front office disaster.",
+        "{player} doesn't deserve the franchise tag. Bad decision.",
+        "Here we go again. Overpaying with the tag.",
+        "This team never learns. {value} down the drain."
+      ],
+      "STATS_NERD": [
+        "{player} franchise tag: {value}. Cap implications significant.",
+        "{tag_type} tag on {player}. Market rate analysis pending.",
+        "{position} franchise tag: {value}. Above/below market?",
+        "Cap hit: {value} for {player}. WAR vs. cost analysis needed."
+      ],
+      "BANDWAGON": {
+        "templates": [
+          "Franchise tag! We're keeping the best! 🔥",
+          "LOVE this move! {player} + franchise tag = winning!",
+          "Front office stepping up! Tag {player}! 💯"
+        ],
+        "requirements": {
+          "min_week": 1
+        }
+      },
+      "BANDWAGON_CHAMPIONSHIP": {
+        "templates": [
+          "{player} is staying! Championship window open! 🏆"
+        ],
+        "requirements": {
+          "playoff_positions": ["IN_HUNT", "CLINCHED", "LEADER"],
+          "min_week": 1
+        }
+      },
+      "OLD_TIMER": [
+        "Back in my day, we didn't have franchise tags. But {player} deserves it.",
+        "{player} reminds me of the greats. Tag was the right move.",
+        "Smart move. {player} is special, worth the {value}.",
+        "They better treat {player} right with this tag."
+      ],
+      "HOT_HEAD": [
+        "FRANCHISE TAG {player}!!! LET'S GOOOOO 🔥🔥🔥",
+        "{value}?? WORTH IT! {player} IS THE FUTURE!!!",
+        "WHO CARES ABOUT THE CAP! TAG {player}!!!",
+        "FINALLY SOME SENSE! LOCK UP {player}! 💪💪"
+      ],
+      "MEME_LORD": [
+        "{player} got the bag 💰 Franchise tag szn",
+        "FO said 'you're not going anywhere' *applies tag* 🔒",
+        "{player}: Can I negotiate? FO: *slaps franchise tag* 😂",
+        "Franchise tag go brrrrr {value} 📈"
+      ],
+      "TRADE_ANALYST": [
+        "{tag_type} franchise tag on {player}. Trade value implications?",
+        "Tagged {player}. Could signal extension talks or trade bait.",
+        "{value} tag. If no long-term deal, watch for trade scenarios.",
+        "Franchise tag = 1-year trial or trade chip? {player} situation developing."
+      ],
+      "CONSPIRACY": [
+        "They're only tagging {player} to inflate trade value. Watch.",
+        "Franchise tag 'negotiations' are just PR. They'll move {player}.",
+        "{value} tag? Something doesn't add up here...",
+        "This {player} tag is a smokescreen. GM has other plans."
+      ],
+      "BALANCED": [
+        "Franchise tag on {player}. Reasonable move given the market.",
+        "{player} tagged at {value}. Fair short-term solution.",
+        "Franchise tag keeps {player} for another year. Smart.",
+        "{tag_type} tag gives both sides time to negotiate."
+      ],
+      "ALL": [
+        "Franchise tag applied to {player}.",
+        "{player} gets the {tag_type} tag at {value}.",
+        "{team} uses franchise tag on {player}.",
+        "{player} franchise tagged for {value}."
+      ]
+    },
+    "RESIGNING": {
+      "requirements": {
+        "context_required": true,
+        "min_week": 3,
+        "max_week": 8,
+        "notes": "Resigning context: player, extension years/value, offseason phase"
+      },
+      "GENERIC": [
+        "Good to see {player} staying with {team}. Solid extension.",
+        "{player} extension makes sense at {value}/year.",
+        "Continuity matters. {player} re-signing is the right move.",
+        "Fair deal for both sides. {player} stays, team has clarity."
+      ],
+      "OPTIMIST": {
+        "templates": [
+          "{player} is STAYING! Best news all offseason! Let's build a dynasty!",
+          "Locked up {player} for {years} years! This team is going places!",
+          "{team} keeping the core together! {player} extension is HUGE!",
+          "So happy we kept {player}! Worth every penny of that {value}/year!"
+        ],
+        "requirements": {
+          "min_week": 1
+        }
+      },
+      "OPTIMIST_TITLE": {
+        "templates": [
+          "Yes! {player} not going anywhere! Championship vibes!"
+        ],
+        "requirements": {
+          "playoff_positions": ["IN_HUNT", "CLINCHED", "LEADER"],
+          "min_week": 1
+        }
+      },
+      "PESSIMIST": [
+        "Great, {player} got paid. Watch them regress immediately.",
+        "{value} per year for {player}? We're going to regret this.",
+        "Another overpay. {player} peaked last year. Mark my words.",
+        "Sure, lock up {player} while we still have holes everywhere else.",
+        "This contract will look terrible in 2 years."
+      ],
+      "BANDWAGON": [
+        "{player} is my favorite player! So glad they're staying!",
+        "Just bought a {player} jersey! Perfect timing!",
+        "{team} keeping {player} is why they're my team!",
+        "Best {position} in the league! {total} is a steal!"
+      ],
+      "STATS_NERD": [
+        "{player}'s {value}/year is market value for elite {position}s.",
+        "{years} year deal for {player} - reasonable term structure.",
+        "{total} total for {player} tracks with recent {position} market.",
+        "Cap hit will be manageable with rising cap projections."
+      ],
+      "OLD_TIMER": [
+        "Good. Loyalty still means something. {player} earned this.",
+        "Back in my day, players stayed their whole career. Glad {player} is staying.",
+        "The way it should be. Build through continuity.",
+        "Smart to keep {player}. You don't let homegrown talent walk."
+      ],
+      "HOT_HEAD": {
+        "templates": [
+          "THAT'S RIGHT {player}!!!! YOU'RE A {team} FOR LIFE!!!!",
+          "FRONT OFFICE FINALLY DID SOMETHING RIGHT!!!! {player} EXTENDED!!!!",
+          "HYPE TRAIN HAS NO BRAKES!!!! {player} LOCKED UP!!!!"
+        ],
+        "requirements": {
+          "min_week": 1
+        }
+      },
+      "HOT_HEAD_RING_TALK": {
+        "templates": [
+          "LET'S GOOOO!!!! {player} STAYING!!!! CHAMPIONSHIP INCOMING!!!!"
+        ],
+        "requirements": {
+          "playoff_positions": ["IN_HUNT", "CLINCHED", "LEADER"],
+          "min_week": 1
+        }
+      },
+      "MEME_LORD": [
+        "{player} saw the other teams and said 'nah I'm good'",
+        "Other teams in shambles watching {player} re-sign",
+        "{player} chose violence (staying to dominate the division)",
+        "Rest of the league punching air rn"
+      ],
+      "TRADE_ANALYST": [
+        "Smart money management. {player} at {value}/year leaves cap flexibility.",
+        "This extension keeps {player} off the market. Other teams were circling.",
+        "Front office secured {player} before the price went up. Good timing.",
+        "{years} years for {player} - team-friendly given market trajectory."
+      ],
+      "CONSPIRACY": [
+        "{player} only re-signed because no other team wanted them.",
+        "Convenient timing on this extension. What are they hiding?",
+        "They're overpaying {player} to distract from other moves.",
+        "Watch, they'll trade {player} next year after this 'extension'."
+      ],
+      "BALANCED": [
+        "Good to see {player} staying with {team}. Solid extension.",
+        "{player} extension makes sense at {value}/year.",
+        "Continuity matters. {player} re-signing is the right move.",
+        "Fair deal for both sides. {player} stays, team has clarity."
+      ]
+    }
+  },
+  "emojis": {
+    "positive": ["🔥", "💪", "🏆", "⭐", "🎉", "😤", "👑", "🎯"],
+    "negative": ["😭", "💀", "😡", "🤦", "😤"],
+    "neutral": ["🤔", "👀", "🏈", "📊"],
+    "celebration": ["🎊", "🎉", "🥳", "🍾"],
+    "prayer": ["🙏", "❤️"]
+  },
+  "sentiment_modifiers": {
+    "OPTIMIST": 0.7,
+    "PESSIMIST": -0.6,
+    "BANDWAGON": 0.6,
+    "STATS_NERD": 0.0,
+    "OLD_TIMER": 0.1,
+    "HOT_HEAD": 0.0,
+    "MEME_LORD": 0.5,
+    "TRADE_ANALYST": 0.0,
+    "CONSPIRACY": -0.5,
+    "BALANCED": 0.0
+  }
+}

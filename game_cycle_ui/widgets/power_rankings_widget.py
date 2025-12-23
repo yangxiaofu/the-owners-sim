@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
 )
 from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QCursor
+from PySide6.QtGui import QCursor, QPixmap
 
 from game_cycle_ui.theme import (
     TABLE_HEADER_STYLE,
@@ -38,7 +38,11 @@ from game_cycle_ui.theme import (
     ESPN_TEXT_SECONDARY,
     ESPN_TEXT_MUTED,
     ESPN_BORDER,
+    Colors,
+    FontSizes,
+    TextColors,
 )
+from game_cycle_ui.widgets.empty_state_widget import EmptyStateWidget
 
 
 # Tier background colors (subtle, for row backgrounds)
@@ -53,9 +57,9 @@ TIER_ROW_COLORS = {
 # Tier accent colors (for left border)
 TIER_ACCENT_COLORS = {
     "ELITE": ESPN_RED,
-    "CONTENDER": "#1976D2",
-    "PLAYOFF": "#2E7D32",
-    "BUBBLE": "#F57C00",
+    "CONTENDER": Colors.INFO,
+    "PLAYOFF": Colors.SUCCESS,
+    "BUBBLE": Colors.WARNING,
     "REBUILDING": "#444444",
 }
 
@@ -100,15 +104,9 @@ class RankingRowWidget(QWidget):
             else:
                 movement = f"▼{rank - previous}"
 
-        # Set fixed height for compact display
-        self.setFixedHeight(28)
+        # Set fixed height for expanded display (was 28px, now 70px)
+        self.setFixedHeight(70)
         self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-
-        # Tooltip shows full blurb
-        if blurb:
-            self.setToolTip(f"{team_name}\n\n{blurb}")
-        else:
-            self.setToolTip(team_name)
 
         # Get tier colors
         bg_color = TIER_ROW_COLORS.get(tier, TIER_ROW_COLORS["REBUILDING"])
@@ -125,59 +123,97 @@ class RankingRowWidget(QWidget):
             }}
         """)
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(8, 2, 8, 2)
-        layout.setSpacing(8)
+        main_layout = QHBoxLayout(self)
+        main_layout.setContentsMargins(10, 8, 10, 8)
+        main_layout.setSpacing(12)
 
         # Rank number
         rank_label = QLabel(str(rank))
-        rank_label.setFixedWidth(24)
+        rank_label.setFixedWidth(30)
         rank_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         rank_label.setStyleSheet(f"""
             color: {ESPN_TEXT_PRIMARY};
             font-weight: bold;
-            font-size: 12px;
+            font-size: {FontSizes.H5};
             background: transparent;
             border: none;
         """)
-        layout.addWidget(rank_label)
+        main_layout.addWidget(rank_label)
 
-        # Team name (truncated if needed)
-        display_name = team_name
-        if len(display_name) > 20:
-            display_name = display_name[:18] + "..."
+        # Team logo placeholder (30x30)
+        # TODO: Load actual team logo from resources
+        logo_label = QLabel("🏈")  # Placeholder emoji
+        logo_label.setFixedSize(30, 30)
+        logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logo_label.setStyleSheet(f"""
+            font-size: {FontSizes.H5};
+            background: transparent;
+            border: none;
+        """)
+        main_layout.addWidget(logo_label)
 
-        name_label = QLabel(display_name)
+        # Team info column (name + blurb)
+        info_widget = QWidget()
+        info_layout = QVBoxLayout(info_widget)
+        info_layout.setContentsMargins(0, 0, 0, 0)
+        info_layout.setSpacing(2)
+
+        # Team name row with movement indicator
+        name_row = QHBoxLayout()
+        name_row.setSpacing(8)
+
+        name_label = QLabel(team_name)
         name_label.setStyleSheet(f"""
             color: {ESPN_TEXT_PRIMARY};
-            font-size: 11px;
+            font-size: {FontSizes.BODY};
+            font-weight: bold;
             background: transparent;
             border: none;
         """)
-        layout.addWidget(name_label, 1)  # Stretch
+        name_row.addWidget(name_label)
 
         # Movement indicator
         move_label = QLabel(movement)
-        move_label.setFixedWidth(32)
-        move_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        move_label.setAlignment(Qt.AlignmentFlag.AlignVCenter)
 
         if movement.startswith("▲"):
-            move_color = "#2E7D32"  # Green
+            move_color = Colors.SUCCESS
         elif movement.startswith("▼"):
             move_color = ESPN_RED
         elif movement == "NEW":
-            move_color = "#1976D2"  # Blue
+            move_color = Colors.INFO
         else:
             move_color = ESPN_TEXT_MUTED
 
         move_label.setStyleSheet(f"""
             color: {move_color};
             font-weight: bold;
-            font-size: 10px;
+            font-size: {FontSizes.SMALL};
             background: transparent;
             border: none;
         """)
-        layout.addWidget(move_label)
+        name_row.addWidget(move_label)
+        name_row.addStretch()
+
+        info_layout.addLayout(name_row)
+
+        # Blurb text (truncate if too long)
+        if blurb:
+            display_blurb = blurb
+            if len(display_blurb) > 80:
+                display_blurb = display_blurb[:77] + "..."
+
+            blurb_label = QLabel(display_blurb)
+            blurb_label.setWordWrap(True)
+            blurb_label.setStyleSheet(f"""
+                color: {ESPN_TEXT_SECONDARY};
+                font-size: {FontSizes.SMALL};
+                background: transparent;
+                border: none;
+            """)
+            info_layout.addWidget(blurb_label)
+
+        main_layout.addWidget(info_widget, 1)  # Stretch
 
     def mousePressEvent(self, event):
         """Handle click to emit signal."""
@@ -237,7 +273,7 @@ class PowerRankingsWidget(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        # Header bar
+        # Header bar with week selector and history button
         header_frame = QFrame()
         header_frame.setStyleSheet(f"""
             background-color: {ESPN_CARD_BG};
@@ -245,18 +281,28 @@ class PowerRankingsWidget(QWidget):
         """)
         header_layout = QHBoxLayout(header_frame)
         header_layout.setContentsMargins(16, 10, 16, 10)
+        header_layout.setSpacing(12)
 
         title = QLabel("POWER RANKINGS")
         title.setStyleSheet(f"""
             color: {ESPN_TEXT_PRIMARY};
-            font-size: 14px;
+            font-size: {FontSizes.H5};
             font-weight: bold;
             letter-spacing: 2px;
         """)
         header_layout.addWidget(title)
+
         header_layout.addStretch()
 
         layout.addWidget(header_frame)
+
+        # Empty state widget (shown when no rankings available)
+        self._empty_state = EmptyStateWidget(
+            "Power rankings will be available after Week 1 is simulated",
+            icon="📊"
+        )
+        self._empty_state.setVisible(True)  # Show by default until rankings are loaded
+        layout.addWidget(self._empty_state)
 
         # Two-column container
         columns_container = QWidget()
@@ -276,7 +322,7 @@ class PowerRankingsWidget(QWidget):
         left_header.setStyleSheet(f"""
             background-color: {ESPN_CARD_BG};
             color: {ESPN_TEXT_SECONDARY};
-            font-size: 10px;
+            font-size: {FontSizes.SMALL};
             font-weight: bold;
             padding: 4px;
             border-bottom: 1px solid {ESPN_RED};
@@ -311,7 +357,7 @@ class PowerRankingsWidget(QWidget):
         right_header.setStyleSheet(f"""
             background-color: {ESPN_CARD_BG};
             color: {ESPN_TEXT_SECONDARY};
-            font-size: 10px;
+            font-size: {FontSizes.SMALL};
             font-weight: bold;
             padding: 4px;
             border-bottom: 1px solid {ESPN_RED};
@@ -328,6 +374,7 @@ class PowerRankingsWidget(QWidget):
 
         columns_layout.addWidget(self._right_column)
 
+        self._columns_container = columns_container
         layout.addWidget(columns_container)
 
     def set_rankings(self, rankings: List[Dict[str, Any]]):
@@ -346,6 +393,16 @@ class PowerRankingsWidget(QWidget):
         """
         self._rankings = rankings
         self._clear_columns()
+
+        if not rankings:
+            # Show empty state, hide columns
+            self._empty_state.setVisible(True)
+            self._columns_container.setVisible(False)
+            return
+
+        # Hide empty state, show columns when displaying rankings
+        self._empty_state.setVisible(False)
+        self._columns_container.setVisible(True)
 
         # Sort by rank just in case
         sorted_rankings = sorted(rankings, key=lambda r: r.get("rank", 999))
@@ -392,10 +449,25 @@ class PowerRankingsWidget(QWidget):
         """Get the currently selected team ID (not applicable in this view)."""
         return None
 
-    def clear(self):
-        """Clear the rankings display."""
+    def clear(self, message: Optional[str] = None):
+        """
+        Clear the rankings display and show empty state message.
+
+        Args:
+            message: Optional custom message to display when empty.
+                     If None, shows default message.
+        """
         self._clear_columns()
         self._rankings = []
+
+        # Show empty state with custom or default message
+        if message:
+            self._empty_state.set_message(message)
+        else:
+            self._empty_state.set_message("Power rankings will be available after Week 1 is simulated")
+
+        self._empty_state.setVisible(True)
+        self._columns_container.setVisible(False)
 
     def set_team_names(self, team_names: Dict[int, str]):
         """

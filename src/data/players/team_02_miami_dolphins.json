@@ -1,7 +1,7 @@
 {
   "team_id": 2,
   "team_name": "Miami Dolphins",
-  "total_players": 52,
+  "total_players": 51,
   "players": {
     "6001": {
       "player_id": 6001,
@@ -264,40 +264,6 @@
         "guaranteed_money": 50000000,
         "contract_type": "trade_return",
         "cap_hit_2025": 13745000
-      }
-    },
-    "6011": {
-      "player_id": 6011,
-      "first_name": "Jevon",
-      "last_name": "Holland",
-      "number": 8,
-      "birthdate": "1999-01-11",
-      "positions": [
-        "free_safety"
-      ],
-      "team_id": 2,
-      "attributes": {
-        "overall": 85,
-        "speed": 90,
-        "strength": 78,
-        "coverage": 88,
-        "run_defense": 80,
-        "agility": 90,
-        "awareness": 88,
-        "discipline": 85,
-        "composure": 85,
-        "experience": 78,
-        "penalty_technique": 85,
-        "tackling": 82,
-        "range": 92
-      },
-      "contract": {
-        "contract_years": 2,
-        "annual_salary": 6500000,
-        "signing_bonus": 2000000,
-        "guaranteed_money": 8000000,
-        "contract_type": "extension",
-        "cap_hit_2025": 7500000
       }
     },
     "6012": {

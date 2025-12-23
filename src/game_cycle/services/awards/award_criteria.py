@@ -105,6 +105,25 @@ OL_BENCHMARKS = {
     'run_blocking_grade': {'elite': 85.0, 'good': 75.0, 'average': 65.0},
 }
 
+# Special Teams benchmarks (adjusted for 18-game season)
+# Long Snapper - primarily grade-based (snap accuracy often not tracked)
+LS_BENCHMARKS = {
+    'special_teams_grade': {'elite': 85.0, 'good': 75.0, 'average': 65.0},
+}
+
+# Return Specialist benchmarks - 2023 leaders: J.Jefferson 1,134 combined, 2 TDs
+RS_BENCHMARKS = {
+    'return_yards': {'elite': 1200, 'good': 900, 'average': 600},  # Combined kick + punt return yards
+    'return_tds': {'elite': 2, 'good': 1, 'average': 0},
+    'yards_per_return': {'elite': 12.0, 'good': 10.0, 'average': 8.0},  # Average per return
+}
+
+# Special Teamer benchmarks (coverage, gunner, blocking)
+ST_BENCHMARKS = {
+    'special_teams_tackles': {'elite': 20, 'good': 15, 'average': 10},
+    'special_teams_grade': {'elite': 85.0, 'good': 75.0, 'average': 65.0},
+}
+
 
 # ============================================
 # MVP Position Multipliers
@@ -973,34 +992,120 @@ class CPOYCriteria(BaseAwardCriteria):
 
 
 # ============================================
+# Pro Bowl Voting Components
+# ============================================
+
+class FanVotingComponent:
+    """
+    Simulates fan voting for Pro Bowl.
+
+    Fans vote heavily based on stats (big names, big numbers).
+    Weight: 70% stats, 20% grade, 10% team success
+    """
+    STATS_WEIGHT = 0.70
+    GRADE_WEIGHT = 0.20
+    TEAM_SUCCESS_WEIGHT = 0.10
+
+    def calculate_score(self, candidate: PlayerCandidate,
+                       stats_score: float,
+                       grade_score: float,
+                       team_success_score: float) -> float:
+        """Calculate fan voting score."""
+        return (
+            stats_score * self.STATS_WEIGHT +
+            grade_score * self.GRADE_WEIGHT +
+            team_success_score * self.TEAM_SUCCESS_WEIGHT
+        )
+
+
+class PlayerVotingComponent:
+    """
+    Simulates player voting for Pro Bowl.
+
+    Players vote based on peer respect and performance quality.
+    Weight: 30% stats, 60% grade, 10% positional value
+
+    TODO: Add positional value component (blocking, route running, etc.)
+    """
+    STATS_WEIGHT = 0.30
+    GRADE_WEIGHT = 0.60
+    POSITIONAL_VALUE_WEIGHT = 0.10
+
+    def calculate_score(self, candidate: PlayerCandidate,
+                       stats_score: float,
+                       grade_score: float,
+                       team_success_score: float) -> float:
+        """Calculate player voting score."""
+        # Placeholder: Use team success as proxy for positional value
+        # TODO: Implement actual positional value metrics
+        positional_value = team_success_score
+
+        return (
+            stats_score * self.STATS_WEIGHT +
+            grade_score * self.GRADE_WEIGHT +
+            positional_value * self.POSITIONAL_VALUE_WEIGHT
+        )
+
+
+class CoachVotingComponent:
+    """
+    Simulates coach voting for Pro Bowl.
+
+    Coaches vote based on scheme fit, technique, consistency.
+    Weight: 40% stats, 50% grade, 10% film grade
+
+    TODO: Add film grade component (technique, consistency)
+    """
+    STATS_WEIGHT = 0.40
+    GRADE_WEIGHT = 0.50
+    FILM_GRADE_WEIGHT = 0.10
+
+    def calculate_score(self, candidate: PlayerCandidate,
+                       stats_score: float,
+                       grade_score: float,
+                       team_success_score: float) -> float:
+        """Calculate coach voting score."""
+        # Placeholder: Use grade as proxy for film grade
+        # TODO: Implement actual film grade metrics
+        film_grade = grade_score
+
+        return (
+            stats_score * self.STATS_WEIGHT +
+            grade_score * self.GRADE_WEIGHT +
+            film_grade * self.FILM_GRADE_WEIGHT
+        )
+
+
+# ============================================
 # Pro Bowl Criteria
 # ============================================
 
 class ProBowlCriteria(BaseAwardCriteria):
     """
-    Pro Bowl selection criteria - stats-driven like fan voting.
+    Pro Bowl selection criteria - simulated voting system.
 
-    Unlike All-Pro (which emphasizes grades), Pro Bowl selection mirrors
-    real NFL fan voting where big stats and name recognition matter most.
+    Mimics real NFL Pro Bowl voting:
+    - 33.3% Fan Voting (stats-heavy: 70% stats, 20% grade, 10% team success)
+    - 33.3% Player Voting (grade-heavy: 30% stats, 60% grade, 10% positional value)
+    - 33.3% Coach Voting (balanced: 40% stats, 50% grade, 10% film grade)
 
-    Weights:
-    - 60% Stats (position-specific production)
-    - 30% Grades (overall performance quality)
-    - 10% Team Success (winning team bias in voting)
+    Effective weights after voting simulation:
+    - Stats: ~47% (70% × 0.333 + 30% × 0.333 + 40% × 0.333)
+    - Grade: ~43% (20% × 0.333 + 60% × 0.333 + 50% × 0.333)
+    - Team Success/Other: ~10%
 
-    This ensures stat leaders like Saquon Barkley (1400+ yards) make the
-    Pro Bowl even if their grade isn't top-tier.
+    Note: Current implementation is a placeholder. Voting components
+    can be enhanced with more sophisticated metrics later.
     """
-
-    STATS_WEIGHT = 0.80      # Stats are primary (fans vote on production)
-    GRADE_WEIGHT = 0.15      # Grade secondary
-    TEAM_SUCCESS_WEIGHT = 0.05  # Winning team bias (minor)
 
     def __init__(self):
         super().__init__(AwardType.MVP)  # Using MVP as placeholder
+        self.fan_voting = FanVotingComponent()
+        self.player_voting = PlayerVotingComponent()
+        self.coach_voting = CoachVotingComponent()
 
     def calculate_score(self, candidate: PlayerCandidate) -> AwardScore:
-        """Calculate Pro Bowl score for a candidate."""
+        """Calculate Pro Bowl score using simulated voting."""
         # Calculate stat component (position-specific)
         stats_score = self._calculate_position_stats(candidate)
 
@@ -1010,12 +1115,21 @@ class ProBowlCriteria(BaseAwardCriteria):
         # Calculate team success component
         team_success_score = self._calculate_team_success(candidate)
 
-        # Calculate weighted total
-        total_score = (
-            stats_score * self.STATS_WEIGHT +
-            grade_score * self.GRADE_WEIGHT +
-            team_success_score * self.TEAM_SUCCESS_WEIGHT
+        # Simulate voting components (33.3% each)
+        fan_score = self.fan_voting.calculate_score(
+            candidate, stats_score, grade_score, team_success_score
         )
+
+        player_score = self.player_voting.calculate_score(
+            candidate, stats_score, grade_score, team_success_score
+        )
+
+        coach_score = self.coach_voting.calculate_score(
+            candidate, stats_score, grade_score, team_success_score
+        )
+
+        # Equal weight: 33.3% each
+        total_score = (fan_score + player_score + coach_score) / 3
 
         return AwardScore(
             player_id=candidate.player_id,
@@ -1033,6 +1147,9 @@ class ProBowlCriteria(BaseAwardCriteria):
                 'overall_grade': candidate.overall_grade,
                 'position_grade': candidate.position_grade,
                 'team_wins': candidate.team_wins,
+                'fan_score': fan_score,
+                'player_score': player_score,
+                'coach_score': coach_score,
             }
         )
 
@@ -1046,8 +1163,17 @@ class ProBowlCriteria(BaseAwardCriteria):
             return self._calculate_rb_stats(candidate)
         elif position in ('WR', 'TE'):
             return self._calculate_receiver_stats(candidate)
-        elif position in ('LT', 'LG', 'C', 'RG', 'RT', 'OL'):
+        elif position in ('LT', 'LG', 'C', 'RG', 'RT', 'OL', 'OT', 'OG'):
             return self._calculate_ol_stats(candidate)
+        elif position in ('K', 'P'):
+            # Kickers and punters use position grade (stats may not be comprehensive)
+            return self._normalize_grade(candidate.position_grade)
+        elif position == 'LS':
+            return self._calculate_ls_stats(candidate)
+        elif position in ('KR', 'PR', 'RS'):
+            return self._calculate_rs_stats(candidate)
+        elif position == 'ST':
+            return self._calculate_st_stats(candidate)
         elif candidate.position_group == 'defense':
             return self._calculate_defensive_stats(candidate)
         else:
@@ -1086,6 +1212,92 @@ class ProBowlCriteria(BaseAwardCriteria):
         recs = self._normalize_stat(candidate.receptions, benchmarks['receptions'])
         # Fans love big yard numbers
         return yards * 0.45 + tds * 0.35 + recs * 0.20
+
+    def _calculate_ls_stats(self, candidate: PlayerCandidate) -> float:
+        """
+        Calculate Long Snapper stats for Pro Bowl.
+
+        LS evaluation is primarily grade-based since snap accuracy
+        stats may not be tracked in detail.
+        """
+        # Use special teams grade if available
+        if hasattr(candidate, 'special_teams_grade') and candidate.special_teams_grade:
+            grade_score = self._normalize_stat(
+                candidate.special_teams_grade,
+                LS_BENCHMARKS['special_teams_grade']
+            )
+            return grade_score
+
+        # Fallback to overall grade
+        return self._normalize_grade(candidate.overall_grade)
+
+    def _calculate_rs_stats(self, candidate: PlayerCandidate) -> float:
+        """
+        Calculate Return Specialist stats for Pro Bowl.
+
+        Weight: 50% return yards, 30% return TDs, 20% yards per return
+        """
+        # Calculate total return yards (kick + punt)
+        total_return_yards = (
+            getattr(candidate, 'kick_return_yards', 0) +
+            getattr(candidate, 'punt_return_yards', 0)
+        )
+
+        total_return_tds = (
+            getattr(candidate, 'kick_return_tds', 0) +
+            getattr(candidate, 'punt_return_tds', 0)
+        )
+
+        total_returns = (
+            getattr(candidate, 'kick_returns', 0) +
+            getattr(candidate, 'punt_returns', 0)
+        )
+
+        avg_per_return = total_return_yards / total_returns if total_returns > 0 else 0
+
+        yards_score = self._normalize_stat(
+            total_return_yards,
+            RS_BENCHMARKS['return_yards']
+        )
+
+        tds_score = self._normalize_stat(
+            total_return_tds,
+            RS_BENCHMARKS['return_tds']
+        )
+
+        avg_score = self._normalize_stat(
+            avg_per_return,
+            RS_BENCHMARKS['yards_per_return']
+        )
+
+        # Weight: 50% yards, 30% TDs, 20% average
+        return yards_score * 0.50 + tds_score * 0.30 + avg_score * 0.20
+
+    def _calculate_st_stats(self, candidate: PlayerCandidate) -> float:
+        """
+        Calculate Special Teamer stats for Pro Bowl.
+
+        Weight: 40% special teams tackles, 60% special teams grade
+        """
+        tackles_score = 0.0
+        if hasattr(candidate, 'special_teams_tackles'):
+            tackles_score = self._normalize_stat(
+                candidate.special_teams_tackles,
+                ST_BENCHMARKS['special_teams_tackles']
+            )
+
+        grade_score = 0.0
+        if hasattr(candidate, 'special_teams_grade') and candidate.special_teams_grade:
+            grade_score = self._normalize_stat(
+                candidate.special_teams_grade,
+                ST_BENCHMARKS['special_teams_grade']
+            )
+        else:
+            # Fallback to overall grade
+            grade_score = self._normalize_grade(candidate.overall_grade)
+
+        # Weight: 40% tackles, 60% grade
+        return tackles_score * 0.40 + grade_score * 0.60
 
     def _calculate_team_success(self, candidate: PlayerCandidate) -> float:
         """Calculate team success component (winning teams get more Pro Bowl votes)."""

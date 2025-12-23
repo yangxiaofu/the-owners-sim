@@ -12,6 +12,7 @@ Design:
 
 from typing import List, Dict, Any, Optional, TYPE_CHECKING
 import random
+import logging
 
 from src.game_cycle.models import FAGuidance, FAPhilosophy, GMProposal
 from src.game_cycle.models.fa_guidance import FA_WAVE_PROPOSAL_LIMITS
@@ -54,9 +55,10 @@ class GMFAProposalEngine:
         self.guidance = fa_guidance
         self._valuation_service = valuation_service
         self._team_id = team_id
+        self._logger = logging.getLogger(__name__)
 
         # Debug logging for GM proposal engine initialization
-        print(f"[DEBUG] GMFAProposalEngine initialized: priority_positions={fa_guidance.priority_positions}")
+        self._logger.debug(f"GMFAProposalEngine initialized: priority_positions={fa_guidance.priority_positions}")
 
         # Validation: if valuation_service provided, team_id is required
         if valuation_service and team_id is None:
@@ -420,8 +422,9 @@ class GMFAProposalEngine:
                     gm_archetype=self.gm,
                 )
                 valuation_description = valuation_result.gm_style_description
-            except Exception:
-                pass
+            except Exception as e:
+                # Log valuation service failure but continue with proposal
+                self._logger.warning(f"Failed to get valuation for player {player.get('player_id', 'unknown')}: {e}", exc_info=True)
 
         rationale = self._generate_archetype_rationale(
             player, aav, years, tier, valuation_description

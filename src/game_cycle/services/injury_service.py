@@ -16,6 +16,7 @@ import sqlite3
 from datetime import date
 from typing import Any, Dict, List, Optional
 
+from src.utils.player_field_extractors import extract_primary_position
 from src.game_cycle.models.injury_models import (
     INJURY_SEVERITY_WEEKS,
     INJURY_TYPE_SEVERITY_RANGE,
@@ -292,7 +293,7 @@ class InjuryService:
         Returns:
             Injury instance if injury occurred, None otherwise
         """
-        position = self._get_position(player)
+        position = extract_primary_position(player.get('positions'), default='WR')
         durability = self._get_durability(player)
         age = self._calculate_age(player)
         injury_history = len(self.get_player_injury_history(player['player_id']))
@@ -584,7 +585,13 @@ class InjuryService:
         finally:
             conn.close()
 
-    def activate_from_ir(self, player_id: int, current_week: Optional[int] = None) -> bool:
+    def activate_from_ir(
+        self,
+        player_id: int,
+        current_week: Optional[int] = None,
+        conn: Optional[sqlite3.Connection] = None,
+        deferred_logs: Optional[List[Dict[str, Any]]] = None
+    ) -> bool:
         """
         Activate player from Injured Reserve.
 
@@ -596,6 +603,12 @@ class InjuryService:
         Args:
             player_id: Player to activate
             current_week: Current week number (optional, fetched if not provided)
+            conn: Optional shared database connection for transaction mode.
+                  If provided, uses this connection (caller manages commit/close).
+                  If None, creates own connection with auto-commit.
+            deferred_logs: Optional list to append transaction log data to.
+                  If provided, logs are deferred to caller (for batch operations).
+                  If None, logs are written immediately.
 
         Returns:
             True if successful, False if validation fails
@@ -603,7 +616,10 @@ class InjuryService:
         Raises:
             sqlite3.Error: If database operation fails
         """
-        conn = sqlite3.connect(self._db_path, timeout=30.0)
+        # Use shared connection if provided to avoid lock conflicts
+        owns_connection = conn is None
+        if owns_connection:
+            conn = sqlite3.connect(self._db_path, timeout=30.0)
         conn.row_factory = sqlite3.Row
         try:
             # 1. Get the player's active IR injury
@@ -688,27 +704,36 @@ class InjuryService:
                 DO UPDATE SET ir_return_slots_used = ir_return_slots_used + 1
             """, (self._dynasty_id, team_id, self._season))
 
-            conn.commit()
+            # Only commit if we own the connection
+            if owns_connection:
+                conn.commit()
 
-            # 7. Log transaction
-            try:
-                self._transaction_logger.log_transaction(
-                    dynasty_id=self._dynasty_id,
-                    season=self._season,
-                    transaction_type="IR_ACTIVATION",
-                    player_id=player_id,
-                    player_name=player_name,
-                    position=None,
-                    from_team_id=team_id,
-                    to_team_id=team_id,
-                    transaction_date=date.today(),
-                    details={
-                        'weeks_on_ir': weeks_on_ir,
-                        'slots_remaining': slots_remaining - 1,
-                    }
-                )
-            except Exception as tx_error:
-                self._logger.warning(f"Could not log IR activation transaction: {tx_error}")
+            # 7. Log transaction (defer if in batch mode to avoid lock conflicts)
+            transaction_log_data = {
+                "dynasty_id": self._dynasty_id,
+                "season": self._season,
+                "transaction_type": "IR_ACTIVATION",
+                "player_id": player_id,
+                "player_name": player_name,
+                "position": None,
+                "from_team_id": team_id,
+                "to_team_id": team_id,
+                "transaction_date": date.today(),
+                "details": {
+                    'weeks_on_ir': weeks_on_ir,
+                    'slots_remaining': slots_remaining - 1,
+                }
+            }
+
+            if deferred_logs is not None:
+                # Batch mode - defer logging to caller
+                deferred_logs.append(transaction_log_data)
+            else:
+                # Normal mode - log immediately
+                try:
+                    self._transaction_logger.log_transaction(**transaction_log_data)
+                except Exception as tx_error:
+                    self._logger.warning(f"Could not log IR activation transaction: {tx_error}")
 
             self._logger.info(
                 f"Activated player {player_id} from IR "
@@ -717,11 +742,15 @@ class InjuryService:
             return True
 
         except Exception as e:
-            conn.rollback()
+            # Only rollback if we own the connection
+            if owns_connection:
+                conn.rollback()
             self._logger.error(f"Failed to activate player from IR: {e}")
             raise
         finally:
-            conn.close()
+            # Only close if we created the connection
+            if owns_connection:
+                conn.close()
 
     def can_activate_from_ir(self, player_id: int, current_week: Optional[int] = None) -> Dict[str, Any]:
         """
@@ -866,18 +895,6 @@ class InjuryService:
     # =========================================================================
     # Helper Methods
     # =========================================================================
-
-    def _get_position(self, player: Dict) -> str:
-        """Extract primary position from player dict."""
-        positions = player.get('positions', [])
-        if isinstance(positions, str):
-            try:
-                positions = json.loads(positions)
-            except json.JSONDecodeError:
-                positions = [positions]
-        if isinstance(positions, list) and positions:
-            return positions[0]
-        return 'WR'  # Default
 
     def _get_durability(self, player: Dict) -> int:
         """Extract durability from player attributes."""
@@ -1136,8 +1153,8 @@ class InjuryService:
                     pi.injury_id,
                     pi.player_id,
                     p.first_name || ' ' || p.last_name as player_name,
-                    p.position,
-                    p.overall,
+                    p.positions,
+                    json_extract(p.attributes, '$.overall') as overall,
                     pi.week_occurred,
                     pi.injury_type,
                     pi.body_part,
@@ -1168,7 +1185,7 @@ class InjuryService:
                     "injury_id": row['injury_id'],
                     "player_id": row['player_id'],
                     "player_name": row['player_name'],
-                    "position": row['position'],
+                    "position": row['positions'],
                     "overall": row['overall'],
                     "weeks_on_ir": weeks_on_ir,
                     "injury_type": row['injury_type'],
@@ -1297,6 +1314,7 @@ class InjuryService:
         activated_players = []
         cut_players = []
         errors = []
+        pending_transaction_logs = []  # Deferred logs to avoid lock conflicts
 
         # Begin atomic transaction
         conn = sqlite3.connect(self._db_path, timeout=30.0)
@@ -1312,16 +1330,21 @@ class InjuryService:
                 player_to_cut = activation["player_to_cut"]
 
                 # 1. Cut the designated player to make room
+                # Pass conn to avoid lock conflicts with outer transaction
                 try:
                     cut_result = roster_cuts_service.cut_player(
                         player_id=player_to_cut,
                         team_id=team_id,
                         add_to_waivers=True,
-                        use_june_1=False
+                        use_june_1=False,
+                        conn=conn
                     )
 
                     if cut_result["success"]:
                         cut_players.append(cut_result["player_name"])
+                        # Collect transaction log data for deferred logging
+                        if "transaction_log_data" in cut_result:
+                            pending_transaction_logs.append(cut_result["transaction_log_data"])
                     else:
                         errors.append(f"Failed to cut player {player_to_cut}")
                         raise Exception(f"Cut failed for player {player_to_cut}")
@@ -1332,8 +1355,14 @@ class InjuryService:
                     raise  # Rollback transaction
 
                 # 2. Activate the IR player
+                # Pass conn and deferred_logs to avoid lock conflicts with outer transaction
                 try:
-                    success = self.activate_from_ir(player_to_activate, current_week)
+                    success = self.activate_from_ir(
+                        player_to_activate,
+                        current_week,
+                        conn=conn,
+                        deferred_logs=pending_transaction_logs
+                    )
                     if success:
                         # Get player name for reporting
                         player_row = conn.execute("""
@@ -1355,6 +1384,13 @@ class InjuryService:
 
             # If we got here, all operations succeeded
             conn.commit()
+
+            # Log deferred transactions now that commit succeeded
+            for tx_data in pending_transaction_logs:
+                try:
+                    self._transaction_logger.log_transaction(**tx_data)
+                except Exception as tx_err:
+                    self._logger.warning(f"Failed to log transaction after commit: {tx_err}")
 
             self._logger.info(
                 f"Batch IR activations successful for team {team_id}: "
@@ -1525,7 +1561,7 @@ class InjuryService:
             conn.row_factory = sqlite3.Row
             try:
                 roster_rows = conn.execute("""
-                    SELECT player_id, position, overall
+                    SELECT player_id, positions, json_extract(attributes, '$.overall') as overall
                     FROM players
                     WHERE dynasty_id = ? AND team_id = ?
                 """, (self._dynasty_id, team_id)).fetchall()

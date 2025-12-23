@@ -11,10 +11,10 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGridLayout
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont, QColor
 
 from game_cycle_ui.theme import (
-    TIER_COLORS, MOVEMENT_COLORS, ESPN_THEME
+    TIER_COLORS, MOVEMENT_COLORS, ESPN_THEME, Colors,
+    Typography, FontSizes, TextColors
 )
 
 
@@ -27,8 +27,9 @@ class TeamSidebarWidget(QWidget):
     2. Record Section - W-L-T, division standing, home/away splits
     3. Power Ranking - Current rank, movement arrow, tier
     4. Coaching Style - HC/OC/DC philosophy names
-    5. Stats Snapshot - PPG, Opp PPG, Turnover Diff
-    6. Top Performers - Best player per position group
+    5. Star Power - Popularity tier counts and top draw player
+    6. Stats Snapshot - PPG, Opp PPG, Turnover Diff
+    7. Top Performers - Best player per position group
     """
 
     # Signals
@@ -65,10 +66,13 @@ class TeamSidebarWidget(QWidget):
         # 4. Coaching Style
         self._create_coaching_section(layout)
 
-        # 5. Stats Snapshot
+        # 5. Star Power
+        self._create_star_power_section(layout)
+
+        # 6. Stats Snapshot
         self._create_stats_section(layout)
 
-        # 6. Top Performers
+        # 7. Top Performers
         self._create_top_performers_section(layout)
 
         # Push everything up
@@ -88,15 +92,15 @@ class TeamSidebarWidget(QWidget):
 
         # Team abbreviation (large)
         self.team_abbrev_label = QLabel("---")
-        self.team_abbrev_label.setFont(QFont("Arial", 28, QFont.Bold))
-        self.team_abbrev_label.setStyleSheet("color: white;")
+        self.team_abbrev_label.setFont(Typography.DISPLAY)
+        self.team_abbrev_label.setStyleSheet(f"color: {TextColors.ON_DARK};")
         self.team_abbrev_label.setAlignment(Qt.AlignCenter)
         banner_layout.addWidget(self.team_abbrev_label)
 
         # Team full name (smaller)
         self.team_name_label = QLabel("Select a team")
-        self.team_name_label.setFont(QFont("Arial", 11))
-        self.team_name_label.setStyleSheet(f"color: {ESPN_THEME['text_secondary']};")
+        self.team_name_label.setFont(Typography.CAPTION)
+        self.team_name_label.setStyleSheet(f"color: {TextColors.ON_DARK_MUTED};")
         self.team_name_label.setAlignment(Qt.AlignCenter)
         banner_layout.addWidget(self.team_name_label)
 
@@ -115,20 +119,20 @@ class TeamSidebarWidget(QWidget):
 
         # Section header
         header = QLabel("RECORD")
-        header.setFont(QFont("Arial", 9, QFont.Bold))
-        header.setStyleSheet(f"color: {ESPN_THEME['text_muted']};")
+        header.setFont(Typography.TINY_BOLD)
+        header.setStyleSheet(f"color: {TextColors.ON_DARK_DISABLED};")
         record_layout.addWidget(header)
 
         # Main record (W-L-T)
         self.record_label = QLabel("0-0-0")
-        self.record_label.setFont(QFont("Arial", 20, QFont.Bold))
-        self.record_label.setStyleSheet("color: white;")
+        self.record_label.setFont(Typography.H2)
+        self.record_label.setStyleSheet(f"color: {TextColors.ON_DARK};")
         record_layout.addWidget(self.record_label)
 
         # Division standing
         self.division_label = QLabel("")
-        self.division_label.setFont(QFont("Arial", 10))
-        self.division_label.setStyleSheet(f"color: {ESPN_THEME['text_secondary']};")
+        self.division_label.setFont(Typography.SMALL)
+        self.division_label.setStyleSheet(f"color: {TextColors.ON_DARK_MUTED};")
         record_layout.addWidget(self.division_label)
 
         # Splits row
@@ -136,13 +140,13 @@ class TeamSidebarWidget(QWidget):
         splits_layout.setSpacing(16)
 
         self.home_label = QLabel("Home: 0-0")
-        self.home_label.setFont(QFont("Arial", 9))
-        self.home_label.setStyleSheet(f"color: {ESPN_THEME['text_secondary']};")
+        self.home_label.setFont(Typography.TINY)
+        self.home_label.setStyleSheet(f"color: {TextColors.ON_DARK_MUTED};")
         splits_layout.addWidget(self.home_label)
 
         self.away_label = QLabel("Away: 0-0")
-        self.away_label.setFont(QFont("Arial", 9))
-        self.away_label.setStyleSheet(f"color: {ESPN_THEME['text_secondary']};")
+        self.away_label.setFont(Typography.TINY)
+        self.away_label.setStyleSheet(f"color: {TextColors.ON_DARK_MUTED};")
         splits_layout.addWidget(self.away_label)
 
         splits_layout.addStretch()
@@ -163,20 +167,20 @@ class TeamSidebarWidget(QWidget):
 
         # Section header
         header = QLabel("POWER RANKING")
-        header.setFont(QFont("Arial", 9, QFont.Bold))
-        header.setStyleSheet(f"color: {ESPN_THEME['text_muted']};")
+        header.setFont(Typography.TINY_BOLD)
+        header.setStyleSheet(f"color: {TextColors.ON_DARK_DISABLED};")
         ranking_layout.addWidget(header)
 
         # Rank row
         rank_row = QHBoxLayout()
 
         self.rank_label = QLabel("#--")
-        self.rank_label.setFont(QFont("Arial", 24, QFont.Bold))
-        self.rank_label.setStyleSheet("color: white;")
+        self.rank_label.setFont(Typography.H1)
+        self.rank_label.setStyleSheet(f"color: {TextColors.ON_DARK};")
         rank_row.addWidget(self.rank_label)
 
         self.movement_label = QLabel("")
-        self.movement_label.setFont(QFont("Arial", 14, QFont.Bold))
+        self.movement_label.setFont(Typography.H5)
         rank_row.addWidget(self.movement_label)
 
         rank_row.addStretch()
@@ -184,7 +188,7 @@ class TeamSidebarWidget(QWidget):
 
         # Tier label
         self.tier_label = QLabel("")
-        self.tier_label.setFont(QFont("Arial", 10, QFont.Bold))
+        self.tier_label.setFont(Typography.SMALL_BOLD)
         self.tier_label.setStyleSheet(
             "padding: 2px 8px; border-radius: 4px;"
         )
@@ -205,27 +209,59 @@ class TeamSidebarWidget(QWidget):
 
         # Section header
         header = QLabel("COACHING STYLE")
-        header.setFont(QFont("Arial", 9, QFont.Bold))
-        header.setStyleSheet(f"color: {ESPN_THEME['text_muted']};")
+        header.setFont(Typography.TINY_BOLD)
+        header.setStyleSheet(f"color: {TextColors.ON_DARK_DISABLED};")
         coaching_layout.addWidget(header)
 
         # Coach entries
         self.hc_label = QLabel("HC: --")
-        self.hc_label.setFont(QFont("Arial", 10))
-        self.hc_label.setStyleSheet("color: white;")
+        self.hc_label.setFont(Typography.SMALL)
+        self.hc_label.setStyleSheet(f"color: {TextColors.ON_DARK};")
         coaching_layout.addWidget(self.hc_label)
 
         self.oc_label = QLabel("OC: --")
-        self.oc_label.setFont(QFont("Arial", 10))
-        self.oc_label.setStyleSheet("color: white;")
+        self.oc_label.setFont(Typography.SMALL)
+        self.oc_label.setStyleSheet(f"color: {TextColors.ON_DARK};")
         coaching_layout.addWidget(self.oc_label)
 
         self.dc_label = QLabel("DC: --")
-        self.dc_label.setFont(QFont("Arial", 10))
-        self.dc_label.setStyleSheet("color: white;")
+        self.dc_label.setFont(Typography.SMALL)
+        self.dc_label.setStyleSheet(f"color: {TextColors.ON_DARK};")
         coaching_layout.addWidget(self.dc_label)
 
         parent_layout.addWidget(self.coaching_frame)
+
+    def _create_star_power_section(self, parent_layout: QVBoxLayout):
+        """Create star power summary section."""
+        self.star_power_frame = QFrame()
+        self.star_power_frame.setStyleSheet(
+            "QFrame { background-color: #1a1a1a; border-radius: 6px; }"
+        )
+
+        star_layout = QVBoxLayout(self.star_power_frame)
+        star_layout.setSpacing(4)
+        star_layout.setContentsMargins(10, 8, 10, 8)
+
+        # Section header
+        header = QLabel("STAR POWER")
+        header.setFont(Typography.TINY_BOLD)
+        header.setStyleSheet(f"color: {TextColors.ON_DARK_DISABLED};")
+        star_layout.addWidget(header)
+
+        # Tier counts line
+        self.tier_counts_label = QLabel("Calculating...")
+        self.tier_counts_label.setFont(Typography.SMALL)
+        self.tier_counts_label.setStyleSheet(f"color: {TextColors.ON_DARK};")
+        self.tier_counts_label.setWordWrap(True)
+        star_layout.addWidget(self.tier_counts_label)
+
+        # Top draw line
+        self.top_draw_label = QLabel("")
+        self.top_draw_label.setFont(Typography.SMALL)
+        self.top_draw_label.setStyleSheet(f"color: {TextColors.ON_DARK};")
+        star_layout.addWidget(self.top_draw_label)
+
+        parent_layout.addWidget(self.star_power_frame)
 
     def _create_stats_section(self, parent_layout: QVBoxLayout):
         """Create stats snapshot section."""
@@ -240,8 +276,8 @@ class TeamSidebarWidget(QWidget):
 
         # Section header
         header = QLabel("SEASON STATS")
-        header.setFont(QFont("Arial", 9, QFont.Bold))
-        header.setStyleSheet(f"color: {ESPN_THEME['text_muted']};")
+        header.setFont(Typography.TINY_BOLD)
+        header.setStyleSheet(f"color: {TextColors.ON_DARK_DISABLED};")
         stats_layout.addWidget(header)
 
         # Stats grid
@@ -250,35 +286,35 @@ class TeamSidebarWidget(QWidget):
 
         # PPG
         ppg_title = QLabel("PPG")
-        ppg_title.setFont(QFont("Arial", 9))
-        ppg_title.setStyleSheet(f"color: {ESPN_THEME['text_muted']};")
+        ppg_title.setFont(Typography.TINY)
+        ppg_title.setStyleSheet(f"color: {TextColors.ON_DARK_DISABLED};")
         grid.addWidget(ppg_title, 0, 0)
 
         self.ppg_value = QLabel("0.0")
-        self.ppg_value.setFont(QFont("Arial", 14, QFont.Bold))
-        self.ppg_value.setStyleSheet("color: white;")
+        self.ppg_value.setFont(Typography.H5)
+        self.ppg_value.setStyleSheet(f"color: {TextColors.ON_DARK};")
         grid.addWidget(self.ppg_value, 1, 0)
 
         # Opp PPG
         opp_title = QLabel("Opp PPG")
-        opp_title.setFont(QFont("Arial", 9))
-        opp_title.setStyleSheet(f"color: {ESPN_THEME['text_muted']};")
+        opp_title.setFont(Typography.TINY)
+        opp_title.setStyleSheet(f"color: {TextColors.ON_DARK_DISABLED};")
         grid.addWidget(opp_title, 0, 1)
 
         self.opp_ppg_value = QLabel("0.0")
-        self.opp_ppg_value.setFont(QFont("Arial", 14, QFont.Bold))
-        self.opp_ppg_value.setStyleSheet("color: white;")
+        self.opp_ppg_value.setFont(Typography.H5)
+        self.opp_ppg_value.setStyleSheet(f"color: {TextColors.ON_DARK};")
         grid.addWidget(self.opp_ppg_value, 1, 1)
 
         # Turnover Diff
         to_title = QLabel("TO Diff")
-        to_title.setFont(QFont("Arial", 9))
-        to_title.setStyleSheet(f"color: {ESPN_THEME['text_muted']};")
+        to_title.setFont(Typography.TINY)
+        to_title.setStyleSheet(f"color: {TextColors.ON_DARK_DISABLED};")
         grid.addWidget(to_title, 0, 2)
 
         self.to_diff_value = QLabel("0")
-        self.to_diff_value.setFont(QFont("Arial", 14, QFont.Bold))
-        self.to_diff_value.setStyleSheet("color: white;")
+        self.to_diff_value.setFont(Typography.H5)
+        self.to_diff_value.setStyleSheet(f"color: {TextColors.ON_DARK};")
         grid.addWidget(self.to_diff_value, 1, 2)
 
         stats_layout.addLayout(grid)
@@ -297,8 +333,8 @@ class TeamSidebarWidget(QWidget):
 
         # Section header
         header = QLabel("TOP PERFORMERS")
-        header.setFont(QFont("Arial", 9, QFont.Bold))
-        header.setStyleSheet(f"color: {ESPN_THEME['text_muted']};")
+        header.setFont(Typography.TINY_BOLD)
+        header.setStyleSheet(f"color: {TextColors.ON_DARK_DISABLED};")
         performers_layout.addWidget(header)
 
         # Performer rows (will be populated dynamically)
@@ -307,19 +343,19 @@ class TeamSidebarWidget(QWidget):
             row = QHBoxLayout()
 
             pos_label = QLabel("--")
-            pos_label.setFont(QFont("Arial", 9, QFont.Bold))
-            pos_label.setStyleSheet(f"color: {ESPN_THEME['text_muted']};")
+            pos_label.setFont(Typography.TINY_BOLD)
+            pos_label.setStyleSheet(f"color: {TextColors.ON_DARK_DISABLED};")
             pos_label.setFixedWidth(30)
             row.addWidget(pos_label)
 
             name_label = QLabel("--")
-            name_label.setFont(QFont("Arial", 10))
-            name_label.setStyleSheet("color: white;")
+            name_label.setFont(Typography.SMALL)
+            name_label.setStyleSheet(f"color: {TextColors.ON_DARK};")
             row.addWidget(name_label, 1)
 
             rank_label = QLabel("--")
-            rank_label.setFont(QFont("Arial", 10, QFont.Bold))
-            rank_label.setStyleSheet("color: #4CAF50;")  # Green
+            rank_label.setFont(Typography.SMALL_BOLD)
+            rank_label.setStyleSheet(f"color: {Colors.SUCCESS};")
             rank_label.setAlignment(Qt.AlignRight)
             row.addWidget(rank_label)
 
@@ -413,13 +449,13 @@ class TeamSidebarWidget(QWidget):
         # Movement
         movement = ranking.movement
         if movement.startswith("▲"):
-            color = MOVEMENT_COLORS.get('up', '#4CAF50')
+            color = MOVEMENT_COLORS.get('up', Colors.SUCCESS)
             self.movement_label.setStyleSheet(f"color: {color};")
         elif movement.startswith("▼"):
-            color = MOVEMENT_COLORS.get('down', '#F44336')
+            color = MOVEMENT_COLORS.get('down', Colors.ERROR)
             self.movement_label.setStyleSheet(f"color: {color};")
         else:
-            color = MOVEMENT_COLORS.get('same', '#888')
+            color = MOVEMENT_COLORS.get('same', Colors.MUTED)
             self.movement_label.setStyleSheet(f"color: {color};")
         self.movement_label.setText(movement)
 
@@ -428,7 +464,7 @@ class TeamSidebarWidget(QWidget):
         tier_color = TIER_COLORS.get(tier, '#444')
         self.tier_label.setText(tier)
         self.tier_label.setStyleSheet(
-            f"background-color: {tier_color}; color: white; "
+            f"background-color: {tier_color}; color: {TextColors.ON_DARK}; "
             "padding: 2px 8px; border-radius: 4px;"
         )
 
@@ -476,13 +512,53 @@ class TeamSidebarWidget(QWidget):
         to_diff = stats.turnover_margin
         if to_diff > 0:
             self.to_diff_value.setText(f"+{to_diff}")
-            self.to_diff_value.setStyleSheet("color: #4CAF50;")  # Green
+            self.to_diff_value.setStyleSheet(f"color: {Colors.SUCCESS};")
         elif to_diff < 0:
             self.to_diff_value.setText(f"{to_diff}")
-            self.to_diff_value.setStyleSheet("color: #F44336;")  # Red
+            self.to_diff_value.setStyleSheet(f"color: {Colors.ERROR};")
         else:
             self.to_diff_value.setText("0")
-            self.to_diff_value.setStyleSheet("color: white;")
+            self.to_diff_value.setStyleSheet(f"color: {TextColors.ON_DARK};")
+
+    def set_star_power(self, star_power_data: Dict):
+        """
+        Set star power summary data.
+
+        Args:
+            star_power_data: Dict with keys:
+                - transcendent_count: int
+                - star_count: int
+                - known_count: int
+                - top_player_name: str (optional)
+                - top_player_score: int (optional)
+        """
+        transcendent = star_power_data.get('transcendent_count', 0)
+        stars = star_power_data.get('star_count', 0)
+        known = star_power_data.get('known_count', 0)
+        top_name = star_power_data.get('top_player_name')
+        top_score = star_power_data.get('top_player_score')
+
+        # Build tier counts line with color coding
+        parts = []
+        if transcendent > 0:
+            parts.append(f'<span style="color: #FFD700; font-weight: bold;">{transcendent} Transcendent</span>')
+        if stars > 0:
+            parts.append(f'<span style="color: #87CEEB; font-weight: bold;">{stars} Stars</span>')
+        if known > 0:
+            parts.append(f'{known} Known')
+
+        if parts:
+            tier_text = ', '.join(parts)
+        else:
+            tier_text = '<span style="color: #999;">No Star Players</span>'
+
+        self.tier_counts_label.setText(tier_text)
+
+        # Top draw line
+        if top_name and top_score is not None:
+            self.top_draw_label.setText(f'<b>Top Draw:</b> {top_name} ({top_score})')
+        else:
+            self.top_draw_label.setText('')
 
     def set_top_performers(self, performers: List[Dict]):
         """
@@ -502,7 +578,7 @@ class TeamSidebarWidget(QWidget):
             labels['pos'].setText("--")
             labels['name'].setText("--")
             labels['rank'].setText("--")
-            labels['rank'].setStyleSheet("color: #888;")
+            labels['rank'].setStyleSheet(f"color: {Colors.MUTED};")
 
         # Populate with data
         for i, performer in enumerate(performers[:4]):
@@ -518,13 +594,13 @@ class TeamSidebarWidget(QWidget):
 
             # Color code rank (lower is better)
             if rank <= 5:
-                color = "#4CAF50"  # Green (elite)
+                color = Colors.SUCCESS  # Green (elite)
             elif rank <= 15:
-                color = "#FFC107"  # Amber (good)
+                color = Colors.WARNING  # Amber (good)
             elif rank <= 25:
-                color = "#FF9800"  # Orange (average)
+                color = Colors.WARNING  # Orange (average)
             else:
-                color = "#F44336"  # Red (below average)
+                color = Colors.ERROR  # Red (below average)
             labels['rank'].setStyleSheet(f"color: {color};")
 
     def clear(self):
@@ -557,10 +633,12 @@ class TeamSidebarWidget(QWidget):
         self.ppg_value.setText("0.0")
         self.opp_ppg_value.setText("0.0")
         self.to_diff_value.setText("0")
-        self.to_diff_value.setStyleSheet("color: white;")
+        self.to_diff_value.setStyleSheet(f"color: {TextColors.ON_DARK};")
+        self.tier_counts_label.setText("Calculating...")
+        self.top_draw_label.setText("")
 
         for labels in self.performer_labels:
             labels['pos'].setText("--")
             labels['name'].setText("--")
-            labels['grade'].setText("--")
-            labels['grade'].setStyleSheet("color: #888;")
+            labels['rank'].setText("--")
+            labels['rank'].setStyleSheet(f"color: {Colors.MUTED};")

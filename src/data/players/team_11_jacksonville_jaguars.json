@@ -1,7 +1,7 @@
 {
   "team_id": 11,
   "team_name": "Jacksonville Jaguars",
-  "total_players": 50,
+  "total_players": 51,
   "players": {
     "12001": {
       "player_id": 12001,
@@ -1474,6 +1474,41 @@
         "guaranteed_money": 0,
         "contract_type": "veteran_minimum",
         "cap_hit_2025": 1200000
+      }
+    },
+    "7046": {
+      "player_id": 7046,
+      "first_name": "Greg",
+      "last_name": "Newsome II",
+      "number": 23,
+      "birthdate": "2002-02-26",
+      "positions": [
+        "cornerback"
+      ],
+      "team_id": 11,
+      "attributes": {
+        "overall": 83,
+        "speed": 88,
+        "strength": 78,
+        "agility": 88,
+        "awareness": 82,
+        "discipline": 82,
+        "composure": 80,
+        "experience": 75,
+        "penalty_technique": 82,
+        "coverage": 88,
+        "man_coverage": 85,
+        "zone_coverage": 85,
+        "physicality": 80,
+        "intelligence": 85
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 13370000,
+        "signing_bonus": 0,
+        "guaranteed_money": 13370000,
+        "contract_type": "5th_year_option",
+        "cap_hit_2025": 13370000
       }
     },
     "12045": {

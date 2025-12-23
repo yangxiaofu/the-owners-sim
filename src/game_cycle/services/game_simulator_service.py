@@ -475,7 +475,9 @@ class GameSimulatorService:
             'rushing_tds': raw_stat.get('rushing_tds', 0),
             'rushing_attempts': raw_stat.get('rushing_attempts', 0),
             'rushing_long': raw_stat.get('rushing_long', 0),
+            'rushing_20_plus': raw_stat.get('rushing_20_plus', 0),
             'rushing_fumbles': raw_stat.get('rushing_fumbles', 0),
+            'fumbles_lost': raw_stat.get('fumbles_lost', 0),
 
             # Receiving stats
             'receiving_yards': raw_stat.get('receiving_yards', 0),

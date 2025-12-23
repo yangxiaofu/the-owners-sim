@@ -70,6 +70,73 @@ POSITION_ABBREVIATIONS = {
     "punt_returner": "PR",
 }
 
+# Reverse mapping (NFL abbreviation → underscore format)
+# Used to convert draft prospect positions to roster player format
+# Note: Some abbreviations map to multiple positions (e.g., "SAM" maps to both
+# "strong_side_linebacker" and "sam_linebacker"). We prefer the more specific version.
+ABBREVIATION_TO_POSITION = {
+    "QB": "quarterback",
+    "RB": "running_back",
+    "FB": "fullback",
+    "WR": "wide_receiver",
+    "TE": "tight_end",
+    "LT": "left_tackle",
+    "LG": "left_guard",
+    "C": "center",
+    "RG": "right_guard",
+    "RT": "right_tackle",
+    "T": "tackle",
+    "G": "guard",
+    "OL": "offensive_line",
+    "OG": "offensive_guard",
+    "OT": "offensive_tackle",
+    "DE": "defensive_end",
+    "DT": "defensive_tackle",
+    "NT": "nose_tackle",
+    "LB": "linebacker",
+    "MLB": "middle_linebacker",
+    "ILB": "inside_linebacker",
+    "OLB": "outside_linebacker",
+    "MIKE": "mike_linebacker",
+    "WILL": "will_linebacker",
+    "SAM": "sam_linebacker",
+    "CB": "cornerback",
+    "NCB": "nickel_cornerback",
+    "S": "safety",
+    "FS": "free_safety",
+    "SS": "strong_safety",
+    "K": "kicker",
+    "P": "punter",
+    "LS": "long_snapper",
+    "KR": "kick_returner",
+    "PR": "punt_returner",
+}
+
+
+def get_full_position_name(abbreviation: str) -> str:
+    """
+    Convert NFL position abbreviation to full position name.
+
+    Used primarily for converting draft prospect positions to the format
+    expected by the roster/depth chart system.
+
+    Args:
+        abbreviation: NFL abbreviation (e.g., "QB", "RB", "WR")
+
+    Returns:
+        Full position name in underscore format (e.g., "quarterback")
+        If abbreviation not found, returns lowercase version of input
+
+    Examples:
+        >>> get_full_position_name("QB")
+        'quarterback'
+        >>> get_full_position_name("WR")
+        'wide_receiver'
+        >>> get_full_position_name("unknown")
+        'unknown'
+    """
+    return ABBREVIATION_TO_POSITION.get(abbreviation.upper(), abbreviation.lower())
+
 
 def get_position_abbreviation(position: str) -> str:
     """

@@ -10,7 +10,7 @@ extension proposals with budget-adjusted offers.
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from utils.player_field_extractors import extract_overall_rating
+from src.utils.player_field_extractors import extract_overall_rating
 from game_cycle.models.owner_directives import OwnerDirectives
 from game_cycle.models.persistent_gm_proposal import (
     PersistentGMProposal,

@@ -583,10 +583,22 @@ class BoxScoreDialog(QDialog):
     def _load_stats(self):
         """Load game stats from database and store by team."""
         try:
+            print(f"[BoxScoreDialog] Loading stats for game_id='{self._game_id}'")
             api = UnifiedDatabaseAPI(self._db_path, dynasty_id=self._dynasty_id)
             all_stats = api.stats_get_game_stats(self._game_id)
+            print(f"[BoxScoreDialog] Query returned {len(all_stats) if all_stats else 0} player stats")
 
             if not all_stats:
+                # DEBUG: Check if stats exist under different game_id pattern
+                from game_cycle.database.connection import GameCycleDatabase
+                with GameCycleDatabase(self._db_path) as conn:
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "SELECT DISTINCT game_id FROM player_game_stats WHERE dynasty_id = ? ORDER BY game_id LIMIT 15",
+                        (self._dynasty_id,)
+                    )
+                    available_ids = [r[0] for r in cursor.fetchall()]
+                    print(f"[BoxScoreDialog] WARNING: No stats found! Available game_ids in DB: {available_ids}")
                 return
 
             # Split by team

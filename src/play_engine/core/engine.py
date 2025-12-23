@@ -33,6 +33,11 @@ def simulate(play_engine_params):
     offensive_formation = offensive_play_call.get_formation()
     defensive_formation = defensive_play_call.get_formation()
     coverage_scheme = defensive_play_call.get_coverage()  # NEW: Extract coverage scheme
+
+    # NEW: Extract blitz package and rusher assignments for dynamic sack attribution
+    # Use getattr for safe access - SpecialTeamsPlayCall doesn't have these methods
+    blitz_package = getattr(defensive_play_call, 'get_blitz_package', lambda: None)()
+    rusher_assignments = getattr(defensive_play_call, 'get_rusher_assignments', lambda: None)()
     
     # Determine play type and simulate accordingly
     match offensive_play_type:
@@ -150,7 +155,14 @@ def simulate(play_engine_params):
                 performance_tracker=play_engine_params.get_performance_tracker(),
 
                 # ✅ FIX 1: Pass field position for touchdown detection
-                field_position=play_engine_params.get_field_position()
+                field_position=play_engine_params.get_field_position(),
+
+                # Pass down for situational adjustments (3rd down pressure)
+                down=play_engine_params.get_down(),
+
+                # NEW: Blitz package and rusher assignments for dynamic sack attribution
+                blitz_package=blitz_package,
+                rusher_assignments=rusher_assignments
             )
             
             # Create context with actual field position for penalty calculations

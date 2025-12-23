@@ -63,6 +63,7 @@ from play_engine.simulation.field_goal import FieldGoalSimulator
 from play_engine.game_state.field_position import FieldPosition, FieldZone
 from play_engine.game_state.down_situation import DownState, calculate_first_down_line
 from play_engine.mechanics.rb_rotation import RBSubstitutionManager
+from play_engine.mechanics.defensive_rotation import DefensiveRotationManager
 from play_engine.mechanics.penalties.penalty_engine import PlayContext
 from team_management.teams.team_loader import Team
 from team_management.players.player import Position
@@ -188,6 +189,15 @@ class GameLoopController:
         )
         self.away_rb_manager = RBSubstitutionManager.from_coaching_staff(
             self.away_coaching_staff.offensive_coordinator
+        )
+
+        # Defensive rotation managers - distribute snaps across position groups based on DC philosophy
+        # DL rotates most (55-75%), LB moderate (70-85%), DB least (82-95%)
+        self.home_def_rotation = DefensiveRotationManager.from_defensive_coordinator(
+            self.home_coaching_staff.defensive_coordinator
+        )
+        self.away_def_rotation = DefensiveRotationManager.from_defensive_coordinator(
+            self.away_coaching_staff.defensive_coordinator
         )
 
         # Game tracking
@@ -617,6 +627,14 @@ class GameLoopController:
         defensive_players = (self.away_roster if possessing_team_id == self.home_team.team_id
                            else self.home_roster)
 
+        # Defensive rotation: Apply rotation to select which defenders are on the field
+        # This ensures starters stay fresh and backups get snaps based on DC philosophy
+        def_rotation_manager = (self.away_def_rotation if possessing_team_id == self.home_team.team_id
+                               else self.home_def_rotation)
+        defensive_players = self._apply_defensive_rotation(
+            defensive_players, def_rotation_manager, defensive_play_call
+        )
+
         # Determine team IDs for proper player stats attribution
         offensive_team_id = (self.home_team.team_id if possessing_team_id == self.home_team.team_id
                              else self.away_team.team_id)
@@ -1012,6 +1030,9 @@ class GameLoopController:
 
         # ✅ FIX: Clear quarter continuation state to prevent inheriting 4th quarter down/distance
         self.quarter_continuation_manager.clear_continuation()
+        # ✅ FIX: Also clear legacy down state variables to ensure 1st & 10 for OT
+        self.next_drive_down = None
+        self.next_drive_yards_to_go = None
 
         logger.info("OT kickoff: Team %d kicks to Team %d, ball at %d-yard line",
                     other_team_id, possessing_team_id,
@@ -1548,3 +1569,75 @@ class GameLoopController:
             Description string (empty if not a rivalry game)
         """
         return get_rivalry_game_description(self.rivalry_modifiers)
+
+    # ===== Defensive Rotation Methods =====
+
+    def _apply_defensive_rotation(
+        self,
+        defensive_players: List,
+        rotation_manager: DefensiveRotationManager,
+        defensive_play_call
+    ) -> List:
+        """
+        Apply defensive rotation to select which defenders are on the field.
+
+        Groups players by position group (DL, LB, DB), applies rotation selection
+        based on DC philosophy, and returns a reordered roster with rotated
+        players prioritized.
+
+        Args:
+            defensive_players: Full defensive roster (sorted by depth chart)
+            rotation_manager: DefensiveRotationManager for the defensive team
+            defensive_play_call: Defensive play call with formation info
+
+        Returns:
+            Reordered list of defensive players with rotated players first
+        """
+        from play_engine.mechanics.formations import DefensiveFormation
+        from play_engine.mechanics.defensive_rotation import (
+            DEFENSIVE_LINE_POSITIONS, LINEBACKER_POSITIONS, DEFENSIVE_BACK_POSITIONS
+        )
+
+        # Get formation from play call to determine personnel requirements
+        formation_str = getattr(defensive_play_call, 'formation', None)
+        if hasattr(defensive_play_call, 'selected_formation'):
+            formation_str = getattr(defensive_play_call.selected_formation, 'value', formation_str)
+
+        # Get personnel requirements from formation
+        personnel = {}
+        if formation_str:
+            personnel = DefensiveFormation.get_personnel_requirements(formation_str) or {}
+
+        # Calculate slots needed per position group from formation
+        dl_slots = sum(personnel.get(pos, 0) for pos in ['defensive_end', 'defensive_tackle', 'nose_tackle', 'leo'])
+        lb_slots = sum(personnel.get(pos, 0) for pos in ['mike_linebacker', 'sam_linebacker', 'will_linebacker',
+                                                          'inside_linebacker', 'outside_linebacker'])
+        db_slots = sum(personnel.get(pos, 0) for pos in ['cornerback', 'free_safety', 'strong_safety', 'nickel_cornerback'])
+
+        # Fallback to base 4-3 if no formation data
+        if dl_slots == 0 and lb_slots == 0 and db_slots == 0:
+            dl_slots, lb_slots, db_slots = 4, 3, 4
+
+        # Group players by position
+        dl_players = [p for p in defensive_players
+                     if getattr(p, 'primary_position', '').lower() in DEFENSIVE_LINE_POSITIONS]
+        lb_players = [p for p in defensive_players
+                     if getattr(p, 'primary_position', '').lower() in LINEBACKER_POSITIONS
+                     or 'linebacker' in getattr(p, 'primary_position', '').lower()]
+        db_players = [p for p in defensive_players
+                     if getattr(p, 'primary_position', '').lower() in DEFENSIVE_BACK_POSITIONS]
+
+        # Apply rotation selection for each position group
+        rotated_dl = rotation_manager.select_field_players('DL', dl_players, dl_slots)
+        rotated_lb = rotation_manager.select_field_players('LB', lb_players, lb_slots)
+        rotated_db = rotation_manager.select_field_players('DB', db_players, db_slots)
+
+        # Record snaps for rotated players
+        rotation_manager.record_snaps_for_players(rotated_dl + rotated_lb + rotated_db)
+
+        # Build prioritized roster: rotated players first, then remaining players
+        # This ensures the play engine picks the rotated players when limiting to 11
+        rotated_set = set(id(p) for p in rotated_dl + rotated_lb + rotated_db)
+        remaining_players = [p for p in defensive_players if id(p) not in rotated_set]
+
+        return rotated_dl + rotated_lb + rotated_db + remaining_players

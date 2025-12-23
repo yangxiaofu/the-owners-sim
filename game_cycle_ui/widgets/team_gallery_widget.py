@@ -1,7 +1,7 @@
 """
-Team Gallery Widget - Visual team selection grid.
+Team Gallery Widget - Visual team selection with conference tabs.
 
-Displays 32 NFL teams organized by division for visual team selection.
+Displays 32 NFL teams organized by division with AFC/NFC tab navigation.
 Each team is shown as a colored card with team abbreviation and city.
 """
 
@@ -9,10 +9,11 @@ from typing import Optional
 
 from PySide6.QtWidgets import (
     QWidget, QGridLayout, QVBoxLayout, QHBoxLayout, QLabel, QScrollArea,
-    QFrame, QGroupBox
+    QFrame, QGroupBox, QTabWidget
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
+
+from game_cycle_ui.theme import Colors, Typography, FontSizes, TextColors
 
 
 class TeamCard(QFrame):
@@ -40,36 +41,31 @@ class TeamCard(QFrame):
 
     def _setup_ui(self, team: dict):
         """Build the card UI."""
-        self.setFixedSize(110, 70)
+        self.setFixedSize(130, 80)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._update_stylesheet()
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(6, 6, 6, 6)
-        layout.setSpacing(2)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(4)
 
         # Abbreviation (large, centered)
         abbr_label = QLabel(team['abbreviation'])
-        abbr_font = QFont()
-        abbr_font.setPointSize(16)
-        abbr_font.setBold(True)
-        abbr_label.setFont(abbr_font)
+        abbr_label.setFont(Typography.H3)
         abbr_label.setStyleSheet("color: white; background: transparent;")
         abbr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(abbr_label)
 
         # City (small, centered)
         city_label = QLabel(team['city'])
-        city_font = QFont()
-        city_font.setPointSize(9)
-        city_label.setFont(city_font)
-        city_label.setStyleSheet("color: rgba(255, 255, 255, 0.85); background: transparent;")
+        city_label.setFont(Typography.SMALL)
+        city_label.setStyleSheet("color: rgba(255, 255, 255, 0.9); background: transparent;")
         city_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(city_label)
 
     def _update_stylesheet(self):
         """Update the card's stylesheet based on selection state."""
-        border = "3px solid #FFD700" if self._selected else "2px solid transparent"
+        border = "3px solid #FFD700" if self._selected else "2px solid rgba(255,255,255,0.2)"
         self.setStyleSheet(f"""
             TeamCard {{
                 background-color: {self._primary_color};
@@ -77,7 +73,7 @@ class TeamCard(QFrame):
                 border-radius: 8px;
             }}
             TeamCard:hover {{
-                border: 2px solid #FFD700;
+                border: 3px solid #FFD700;
             }}
         """)
 
@@ -99,17 +95,44 @@ class TeamCard(QFrame):
 
 class TeamGalleryWidget(QWidget):
     """
-    Grid of 32 NFL teams organized by division.
+    Tabbed team selection with AFC/NFC conference tabs.
 
     Layout:
-    - 2 rows (AFC, NFC)
-    - 4 columns (East, North, South, West)
-    - Each cell contains a division group with 4 team cards
+    - Tab bar with AFC / NFC tabs
+    - Each tab shows 4 divisions (East, North, South, West) in columns
+    - Each division column contains 4 team cards vertically
 
     Signals:
         team_selected(int): Emitted when a team card is clicked
     """
     team_selected = Signal(int)  # Emits team_id
+
+    # Tab styling for conference tabs
+    TAB_STYLE = """
+        QTabWidget::pane {
+            border: none;
+            background: #2a2a2a;
+            border-radius: 8px;
+        }
+        QTabBar::tab {
+            background: #333333;
+            color: #888888;
+            padding: 10px 40px;
+            border-top-left-radius: 6px;
+            border-top-right-radius: 6px;
+            margin-right: 4px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        QTabBar::tab:selected {
+            background: #2a2a2a;
+            color: #FFFFFF;
+        }
+        QTabBar::tab:hover:!selected {
+            background: #3a3a3a;
+            color: #CCCCCC;
+        }
+    """
 
     def __init__(self, team_loader, parent=None):
         """
@@ -126,76 +149,79 @@ class TeamGalleryWidget(QWidget):
         self._setup_ui()
 
     def _setup_ui(self):
-        """Build the gallery UI."""
+        """Build the gallery UI with conference tabs."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        # Title
-        title = QLabel("Select Your Team")
-        title_font = QFont()
-        title_font.setPointSize(12)
-        title_font.setBold(True)
-        title.setFont(title_font)
-        title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title)
+        # Tab widget for AFC/NFC
+        self.tab_widget = QTabWidget()
+        self.tab_widget.setStyleSheet(self.TAB_STYLE)
 
-        # Scrollable container for team grid
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        # Create AFC and NFC tabs
+        afc_widget = self._create_conference_widget('AFC')
+        nfc_widget = self._create_conference_widget('NFC')
 
-        container = QWidget()
-        grid = QGridLayout(container)
-        grid.setSpacing(10)
+        self.tab_widget.addTab(afc_widget, "AFC")
+        self.tab_widget.addTab(nfc_widget, "NFC")
 
-        # Create division groups: AFC (row 0), NFC (row 1)
-        conferences = ['AFC', 'NFC']
+        layout.addWidget(self.tab_widget)
+
+    def _create_conference_widget(self, conference: str) -> QWidget:
+        """
+        Create a widget showing all 4 divisions for a conference.
+
+        Args:
+            conference: 'AFC' or 'NFC'
+
+        Returns:
+            QWidget with 4 division columns
+        """
+        widget = QWidget()
+        widget.setStyleSheet("background: #2a2a2a;")
+
+        # Horizontal layout for 4 divisions
+        layout = QHBoxLayout(widget)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(24)
+
         divisions = ['East', 'North', 'South', 'West']
 
-        for c_idx, conf in enumerate(conferences):
-            for d_idx, div in enumerate(divisions):
-                group = self._create_division_group(conf, div)
-                grid.addWidget(group, c_idx, d_idx)
+        for division in divisions:
+            div_widget = self._create_division_column(conference, division)
+            layout.addWidget(div_widget)
 
-        scroll.setWidget(container)
-        layout.addWidget(scroll)
+        return widget
 
-    def _create_division_group(self, conference: str, division: str) -> QGroupBox:
+    def _create_division_column(self, conference: str, division: str) -> QWidget:
         """
-        Create a group box containing 4 team cards for a division.
+        Create a vertical column for a division with header and team cards.
 
         Args:
             conference: 'AFC' or 'NFC'
             division: 'East', 'North', 'South', or 'West'
 
         Returns:
-            QGroupBox with team cards in a 2x2 grid
+            QWidget with division header and 4 team cards stacked vertically
         """
-        group = QGroupBox(f"{conference} {division}")
-        group.setStyleSheet("""
-            QGroupBox {
-                font-weight: bold;
-                border: 1px solid #ccc;
-                border-radius: 6px;
-                margin-top: 10px;
-                padding-top: 10px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px;
-            }
-        """)
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
 
-        layout = QGridLayout(group)
-        layout.setSpacing(6)
-        layout.setContentsMargins(8, 15, 8, 8)
+        # Division header
+        header = QLabel(division.upper())
+        header.setFont(Typography.H5)
+        header.setStyleSheet("color: #888888; background: transparent;")
+        header.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(header)
 
         # Get teams for this division
         teams = [t for t in self.team_loader.get_all_teams()
                  if t.conference == conference and t.division == division]
 
-        for i, team in enumerate(teams):
+        # Create team cards vertically
+        for team in teams:
             team_data = {
                 'team_id': team.team_id,
                 'city': team.city,
@@ -205,11 +231,11 @@ class TeamGalleryWidget(QWidget):
             }
             card = TeamCard(team_data)
             card.clicked.connect(self._on_card_clicked)
-            # 2x2 grid within each division
-            layout.addWidget(card, i // 2, i % 2)
+            layout.addWidget(card, alignment=Qt.AlignmentFlag.AlignHCenter)
             self._cards[team.team_id] = card
 
-        return group
+        layout.addStretch()
+        return widget
 
     def _on_card_clicked(self, team_id: int):
         """
@@ -247,3 +273,9 @@ class TeamGalleryWidget(QWidget):
         """
         if team_id in self._cards:
             self._on_card_clicked(team_id)
+
+            # Switch to the correct tab
+            team = self.team_loader.get_team_by_id(team_id)
+            if team:
+                tab_index = 0 if team.conference == 'AFC' else 1
+                self.tab_widget.setCurrentIndex(tab_index)

@@ -3,28 +3,37 @@ Defensive play call with formation and coverage support
 
 Represents a complete defensive play call including play type, formation,
 and optional coverage/blitz packages for realistic football defensive coordination.
+
+Enhanced with RusherAssignments to track which players are pass rushing vs covering,
+enabling dynamic sack attribution based on actual blitz packages.
 """
 
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
 from ..play_types.defensive_types import DefensivePlayType
 from ..mechanics.formations import DefensiveFormation
 from ..mechanics.unified_formations import UnifiedDefensiveFormation
+
+# Import RusherAssignments for tracking blitz rusher configurations
+if TYPE_CHECKING:
+    from ..play_types.blitz_types import RusherAssignments
 
 
 class DefensivePlayCall:
     """Complete defensive play call with formation and coverage"""
     
     def __init__(self, play_type: str, formation: str, coverage: Optional[str] = None,
-                 blitz_package: Optional[str] = None, hot_routes: Optional[List[str]] = None, **kwargs):
+                 blitz_package: Optional[str] = None, hot_routes: Optional[List[str]] = None,
+                 rusher_assignments: Optional['RusherAssignments'] = None, **kwargs):
         """
         Initialize defensive play call
-        
+
         Args:
             play_type: DefensivePlayType constant (e.g., DefensivePlayType.COVER_2)
             formation: DefensiveFormation constant (e.g., DefensiveFormation.FOUR_THREE)
             coverage: Optional coverage scheme ("man", "zone", "robber", etc.)
             blitz_package: Optional blitz type ("corner_blitz", "safety_blitz", "a_gap", etc.)
             hot_routes: Optional list of hot route adjustments
+            rusher_assignments: Optional RusherAssignments tracking which positions rush vs cover
             **kwargs: Additional defensive-specific parameters
         """
         self.play_type = play_type
@@ -32,6 +41,7 @@ class DefensivePlayCall:
         self.coverage = coverage
         self.blitz_package = blitz_package
         self.hot_routes = hot_routes or []
+        self.rusher_assignments = rusher_assignments
         self.additional_params = kwargs
         
         # Validate inputs
@@ -135,7 +145,17 @@ class DefensivePlayCall:
     def get_blitz_package(self) -> Optional[str]:
         """Get the blitz package"""
         return self.blitz_package
-    
+
+    def get_rusher_assignments(self) -> Optional['RusherAssignments']:
+        """
+        Get the rusher assignments for this play.
+
+        Returns:
+            RusherAssignments if set, None otherwise.
+            Used by PassPlaySimulator to determine which players are sack-eligible.
+        """
+        return self.rusher_assignments
+
     def get_hot_routes(self) -> List[str]:
         """Get hot route adjustments"""
         return self.hot_routes.copy()
@@ -192,9 +212,10 @@ class DefensivePlayCall:
             coverage=coverage,
             blitz_package=self.blitz_package,
             hot_routes=self.hot_routes,
+            rusher_assignments=self.rusher_assignments,
             **self.additional_params
         )
-    
+
     def with_blitz_package(self, blitz_package: str) -> 'DefensivePlayCall':
         """Create new play call with different blitz package"""
         return DefensivePlayCall(
@@ -203,9 +224,22 @@ class DefensivePlayCall:
             coverage=self.coverage,
             blitz_package=blitz_package,
             hot_routes=self.hot_routes,
+            rusher_assignments=self.rusher_assignments,
             **self.additional_params
         )
-    
+
+    def with_rusher_assignments(self, rusher_assignments: 'RusherAssignments') -> 'DefensivePlayCall':
+        """Create new play call with different rusher assignments"""
+        return DefensivePlayCall(
+            play_type=self.play_type,
+            formation=self.formation,
+            coverage=self.coverage,
+            blitz_package=self.blitz_package,
+            hot_routes=self.hot_routes,
+            rusher_assignments=rusher_assignments,
+            **self.additional_params
+        )
+
     def with_formation(self, formation: str) -> 'DefensivePlayCall':
         """Create new play call with different formation"""
         return DefensivePlayCall(
@@ -214,9 +248,10 @@ class DefensivePlayCall:
             coverage=self.coverage,
             blitz_package=self.blitz_package,
             hot_routes=self.hot_routes,
+            rusher_assignments=self.rusher_assignments,
             **self.additional_params
         )
-    
+
     def add_hot_route(self, hot_route: str) -> 'DefensivePlayCall':
         """Create new play call with additional hot route"""
         new_hot_routes = self.hot_routes + [hot_route]
@@ -226,6 +261,7 @@ class DefensivePlayCall:
             coverage=self.coverage,
             blitz_package=self.blitz_package,
             hot_routes=new_hot_routes,
+            rusher_assignments=self.rusher_assignments,
             **self.additional_params
         )
     

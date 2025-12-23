@@ -1,8 +1,41 @@
 {
   "team_id": 17,
   "team_name": "Dallas Cowboys",
-  "total_players": 54,
+  "total_players": 55,
   "players": {
+    "5008": {
+      "player_id": 5008,
+      "first_name": "Quinnen",
+      "last_name": "Williams",
+      "number": 95,
+      "birthdate": "1996-02-22",
+      "positions": [
+        "defensive_tackle"
+      ],
+      "team_id": 17,
+      "attributes": {
+        "overall": 92,
+        "speed": 78,
+        "strength": 95,
+        "pass_rush": 90,
+        "run_defense": 92,
+        "agility": 82,
+        "awareness": 88,
+        "discipline": 88,
+        "composure": 88,
+        "experience": 82,
+        "penalty_technique": 85,
+        "power_moves": 95
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 24000000,
+        "signing_bonus": 20000000,
+        "guaranteed_money": 66000000,
+        "contract_type": "extension",
+        "cap_hit_2025": 20400000
+      }
+    },
     "1700": {
       "player_id": 1700,
       "first_name": "Dak",

@@ -12,9 +12,23 @@ from PySide6.QtWidgets import (
     QPushButton, QFrame, QMessageBox
 )
 from PySide6.QtCore import Signal, Qt
-from PySide6.QtGui import QFont, QColor
+from PySide6.QtGui import QColor
 
 from game_cycle.models import GMProposal
+from game_cycle_ui.theme import (
+    Colors,
+    Typography,
+    FontSizes,
+    PRIMARY_BUTTON_STYLE,
+    DANGER_BUTTON_STYLE,
+)
+from game_cycle_ui.widgets import (
+    ValuationBreakdownWidget,
+    GMStyleBadge,
+    PressureLevelIndicator,
+    CollapsibleSection,
+)
+from game_cycle_ui.widgets.stat_frame import create_stat_display
 
 
 class GMProposalNotificationDialog(QDialog):
@@ -22,17 +36,17 @@ class GMProposalNotificationDialog(QDialog):
     Dialog for reviewing and approving/rejecting GM free agency proposals.
 
     Shows one proposal at a time with navigation if multiple proposals exist.
-    Owner can approve or reject each proposal.
-
-    Phase 1 MVP: Approve/Reject only (Counter-offer in Phase 3)
+    Owner can approve, reject, or modify each proposal.
 
     Signals:
         proposal_approved: GMProposal that was approved
         proposal_rejected: GMProposal that was rejected
+        proposal_modify_clicked: User wants to modify terms (GMProposal)
     """
 
     proposal_approved = Signal(object)  # GMProposal
     proposal_rejected = Signal(object)  # GMProposal
+    proposal_modify_clicked = Signal(object)  # GMProposal to modify
 
     def __init__(
         self,
@@ -69,7 +83,7 @@ class GMProposalNotificationDialog(QDialog):
 
         # Header
         header = QLabel(f"GM PROPOSAL - {self._gm_name}")
-        header.setFont(QFont("Arial", 14, QFont.Bold))
+        header.setFont(Typography.H5)
         header.setAlignment(Qt.AlignCenter)
         layout.addWidget(header)
 
@@ -79,7 +93,7 @@ class GMProposalNotificationDialog(QDialog):
             "for this signing. Review the proposal and decide whether to approve or reject."
         )
         info.setWordWrap(True)
-        info.setStyleSheet("color: #555; font-size: 11px; padding: 8px;")
+        info.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; font-size: {FontSizes.CAPTION}; padding: 8px;")
         layout.addWidget(info)
 
         # Player info panel
@@ -91,6 +105,9 @@ class GMProposalNotificationDialog(QDialog):
         # GM reasoning panels
         self._create_pitch_panel(layout)
         self._create_rationale_panel(layout)
+
+        # Valuation breakdown section (collapsible)
+        self._create_valuation_section(layout)
 
         # Cap impact panel
         self._create_cap_impact_panel(layout)
@@ -179,7 +196,7 @@ class GMProposalNotificationDialog(QDialog):
 
         self._pitch_label = QLabel("Loading...")
         self._pitch_label.setWordWrap(True)
-        self._pitch_label.setStyleSheet("padding: 10px; font-size: 12px;")
+        self._pitch_label.setStyleSheet(f"padding: 10px; font-size: {FontSizes.BODY};")
         pitch_layout.addWidget(self._pitch_label)
 
         parent_layout.addWidget(pitch_group)
@@ -192,11 +209,34 @@ class GMProposalNotificationDialog(QDialog):
         self._rationale_label = QLabel("Loading...")
         self._rationale_label.setWordWrap(True)
         self._rationale_label.setStyleSheet(
-            "padding: 10px; font-size: 11px; color: #555; font-style: italic;"
+            f"padding: 10px; font-size: {FontSizes.CAPTION}; color: {Colors.TEXT_SECONDARY}; font-style: italic;"
         )
         rationale_layout.addWidget(self._rationale_label)
 
         parent_layout.addWidget(rationale_group)
+
+    def _create_valuation_section(self, parent_layout: QVBoxLayout):
+        """Create collapsible section showing contract valuation breakdown."""
+        # Container for the valuation section
+        self._valuation_container = QFrame()
+        valuation_layout = QVBoxLayout(self._valuation_container)
+        valuation_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Collapsible section
+        self._valuation_section = CollapsibleSection(
+            "How Was This Contract Valued?", expanded=False
+        )
+
+        # Valuation breakdown widget inside the collapsible
+        self._valuation_widget = ValuationBreakdownWidget()
+        self._valuation_section.content_layout().addWidget(self._valuation_widget)
+
+        valuation_layout.addWidget(self._valuation_section)
+
+        # Initially hidden - only shown when proposal has valuation_result
+        self._valuation_container.setVisible(False)
+
+        parent_layout.addWidget(self._valuation_container)
 
     def _create_cap_impact_panel(self, parent_layout: QVBoxLayout):
         """Create panel showing cap impact."""
@@ -205,36 +245,17 @@ class GMProposalNotificationDialog(QDialog):
         cap_layout.setSpacing(30)
 
         # Year 1 cap hit
-        self._cap_hit_label = self._create_stat_frame(
-            cap_layout, "Year 1 Cap Hit", "$0"
+        self._cap_hit_label = create_stat_display(
+            cap_layout, "Year 1 Cap Hit", "$0", title_font_size=FontSizes.SMALL, value_font=Typography.BODY_BOLD
         )
 
         # Remaining cap after
-        self._remaining_cap_label = self._create_stat_frame(
-            cap_layout, "Remaining Cap Space", "$0"
+        self._remaining_cap_label = create_stat_display(
+            cap_layout, "Remaining Cap Space", "$0", title_font_size=FontSizes.SMALL, value_font=Typography.BODY_BOLD
         )
 
         cap_layout.addStretch()
         parent_layout.addWidget(cap_group)
-
-    def _create_stat_frame(
-        self, parent_layout: QHBoxLayout, title: str, initial_value: str
-    ) -> QLabel:
-        """Create a stat display frame and return the value label."""
-        frame = QFrame()
-        frame_layout = QVBoxLayout(frame)
-        frame_layout.setContentsMargins(0, 0, 0, 0)
-
-        title_label = QLabel(title)
-        title_label.setStyleSheet("color: #666; font-size: 10px;")
-        frame_layout.addWidget(title_label)
-
-        value_label = QLabel(initial_value)
-        value_label.setFont(QFont("Arial", 12, QFont.Bold))
-        frame_layout.addWidget(value_label)
-
-        parent_layout.addWidget(frame)
-        return value_label
 
     def _create_navigation(self, parent_layout: QVBoxLayout):
         """Create navigation buttons for multiple proposals."""
@@ -250,7 +271,7 @@ class GMProposalNotificationDialog(QDialog):
 
         self._proposal_counter_label = QLabel("Proposal 1 of 1")
         self._proposal_counter_label.setAlignment(Qt.AlignCenter)
-        self._proposal_counter_label.setFont(QFont("Arial", 11, QFont.Bold))
+        self._proposal_counter_label.setFont(Typography.CAPTION_BOLD)
 
         self._next_btn = QPushButton("Next Proposal →")
         self._next_btn.clicked.connect(self._on_next)
@@ -264,32 +285,34 @@ class GMProposalNotificationDialog(QDialog):
         parent_layout.addWidget(nav_frame)
 
     def _create_action_buttons(self, parent_layout: QVBoxLayout):
-        """Create approve/reject action buttons."""
+        """Create approve/modify/reject action buttons."""
         btn_layout = QHBoxLayout()
         btn_layout.addStretch()
 
         # Reject button
         self._reject_btn = QPushButton("✗ Reject")
-        self._reject_btn.setStyleSheet(
-            "QPushButton { background-color: #c62828; color: white; "
-            "border-radius: 3px; padding: 10px 24px; font-size: 13px; font-weight: bold; }"
-            "QPushButton:hover { background-color: #b71c1c; }"
-            "QPushButton:pressed { background-color: #a71c1c; }"
-        )
+        self._reject_btn.setStyleSheet(DANGER_BUTTON_STYLE)
         self._reject_btn.clicked.connect(self._on_reject)
+
+        # Modify button (adjust terms before approval)
+        self._modify_btn = QPushButton("✎ Modify Terms")
+        self._modify_btn.setStyleSheet(
+            "QPushButton { background-color: #1976D2; color: white; "
+            "border-radius: 4px; padding: 10px 20px; font-weight: bold; }"
+            "QPushButton:hover { background-color: #2196F3; }"
+        )
+        self._modify_btn.setToolTip("Modify contract terms before approval")
+        self._modify_btn.clicked.connect(self._on_modify)
 
         # Approve button
         self._approve_btn = QPushButton("✓ Approve")
-        self._approve_btn.setStyleSheet(
-            "QPushButton { background-color: #2e7d32; color: white; "
-            "border-radius: 3px; padding: 10px 24px; font-size: 13px; font-weight: bold; }"
-            "QPushButton:hover { background-color: #1b5e20; }"
-            "QPushButton:pressed { background-color: #0a4e10; }"
-        )
+        self._approve_btn.setStyleSheet(PRIMARY_BUTTON_STYLE)
         self._approve_btn.clicked.connect(self._on_approve)
         self._approve_btn.setDefault(True)
 
         btn_layout.addWidget(self._reject_btn)
+        btn_layout.addSpacing(10)
+        btn_layout.addWidget(self._modify_btn)
         btn_layout.addSpacing(10)
         btn_layout.addWidget(self._approve_btn)
 
@@ -330,13 +353,20 @@ class GMProposalNotificationDialog(QDialog):
         self._cap_hit_label.setText(f"${proposal.cap_impact:,}")
         self._remaining_cap_label.setText(f"${proposal.remaining_cap_after:,}")
 
+        # Update valuation breakdown (if available)
+        if proposal.valuation_result is not None:
+            self._valuation_widget.set_valuation_result(proposal.valuation_result)
+            self._valuation_container.setVisible(True)
+        else:
+            self._valuation_container.setVisible(False)
+
         # Style cap impact based on available space
         if proposal.remaining_cap_after < 5_000_000:
-            self._remaining_cap_label.setStyleSheet("color: #c62828; font-weight: bold;")  # Red - low cap
+            self._remaining_cap_label.setStyleSheet(f"color: {Colors.ERROR}; font-weight: bold;")  # Red - low cap
         elif proposal.remaining_cap_after < 15_000_000:
-            self._remaining_cap_label.setStyleSheet("color: #f57c00; font-weight: bold;")  # Orange - moderate
+            self._remaining_cap_label.setStyleSheet(f"color: {Colors.WARNING}; font-weight: bold;")  # Orange - moderate
         else:
-            self._remaining_cap_label.setStyleSheet("color: #2e7d32; font-weight: bold;")  # Green - healthy
+            self._remaining_cap_label.setStyleSheet(f"color: {Colors.SUCCESS}; font-weight: bold;")  # Green - healthy
 
         # Update navigation
         if len(self._proposals) > 1:
@@ -351,16 +381,19 @@ class GMProposalNotificationDialog(QDialog):
         if decision is True:  # Previously approved
             self._approve_btn.setText("✓ Approved")
             self._approve_btn.setEnabled(False)
+            self._modify_btn.setEnabled(False)
             self._reject_btn.setEnabled(True)
             self._reject_btn.setText("✗ Reject (Undo)")
         elif decision is False:  # Previously rejected
             self._reject_btn.setText("✗ Rejected")
             self._reject_btn.setEnabled(False)
+            self._modify_btn.setEnabled(False)
             self._approve_btn.setEnabled(True)
             self._approve_btn.setText("✓ Approve (Undo)")
         else:  # Not yet decided
             self._approve_btn.setText("✓ Approve")
             self._approve_btn.setEnabled(True)
+            self._modify_btn.setEnabled(True)
             self._reject_btn.setText("✗ Reject")
             self._reject_btn.setEnabled(True)
 
@@ -412,6 +445,11 @@ class GMProposalNotificationDialog(QDialog):
         else:
             # All proposals reviewed - close dialog
             self.accept()
+
+    def _on_modify(self):
+        """Handle modify button click - emit signal to open modification dialog."""
+        current_proposal = self._proposals[self._current_index]
+        self.proposal_modify_clicked.emit(current_proposal)
 
     def _on_reject(self):
         """Handle reject button click."""

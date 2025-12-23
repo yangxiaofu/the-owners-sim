@@ -56,6 +56,27 @@ from .staff_member import (
     create_default_hc,
 )
 
+from .proposal_enums import (
+    ProposalType,
+    ProposalStatus,
+)
+
+from .persistent_gm_proposal import (
+    PersistentGMProposal,
+    create_franchise_tag_details,
+    create_extension_details,
+    create_signing_details,
+    create_trade_details,
+    create_draft_pick_details,
+    create_cut_details,
+    create_waiver_claim_details,
+)
+
+from .transaction_event import (
+    TransactionType,
+    TransactionEvent,
+)
+
 __all__ = [
     'InjuryType',
     'InjurySeverity',
@@ -86,4 +107,16 @@ __all__ = [
     'StaffCandidate',
     'create_default_gm',
     'create_default_hc',
+    'ProposalType',
+    'ProposalStatus',
+    'PersistentGMProposal',
+    'create_franchise_tag_details',
+    'create_extension_details',
+    'create_signing_details',
+    'create_trade_details',
+    'create_draft_pick_details',
+    'create_cut_details',
+    'create_waiver_claim_details',
+    'TransactionType',
+    'TransactionEvent',
 ]

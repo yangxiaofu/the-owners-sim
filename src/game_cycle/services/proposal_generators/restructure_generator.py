@@ -13,7 +13,7 @@ import sqlite3
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from utils.player_field_extractors import extract_overall_rating
+from src.utils.player_field_extractors import extract_overall_rating
 from game_cycle.models.owner_directives import OwnerDirectives
 from game_cycle.models.persistent_gm_proposal import (
     PersistentGMProposal,
@@ -23,7 +23,6 @@ from game_cycle.models.proposal_enums import ProposalType, ProposalStatus
 from game_cycle.services.cap_helper import CapHelper
 from salary_cap.cap_calculator import CapCalculator
 from salary_cap.cap_database_api import CapDatabaseAPI
-from team_management.gm_archetype import GMArchetype
 
 
 class RestructureProposalGenerator:
@@ -78,7 +77,7 @@ class RestructureProposalGenerator:
         season: int,
         team_id: int,
         directives: OwnerDirectives,
-        gm_archetype: GMArchetype,
+        gm_archetype: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize the generator.
@@ -89,14 +88,22 @@ class RestructureProposalGenerator:
             season: Current season year
             team_id: User's team ID
             directives: Owner's strategic directives
-            gm_archetype: GM personality and decision-making traits
+            gm_archetype: GM personality traits dict (optional)
         """
         self._db_path = db_path
         self._dynasty_id = dynasty_id
         self._season = season
         self._team_id = team_id
         self._directives = directives
-        self._gm_archetype = gm_archetype
+
+        # Validate and store archetype as dict
+        if gm_archetype is not None and not isinstance(gm_archetype, dict):
+            raise TypeError(
+                f"gm_archetype must be a dict, got {type(gm_archetype).__name__}. "
+                f"Use gm_archetype.to_dict() to convert GMArchetype object."
+            )
+        self._gm_archetype = gm_archetype or {}
+
         self._logger = logging.getLogger(__name__)
 
         # Initialize cap APIs (offseason cap calculations are for NEXT season)
@@ -118,7 +125,7 @@ class RestructureProposalGenerator:
         # Check if GM should propose restructures
         if not self._should_generate_proposals(cap_space):
             self._logger.debug(
-                f"GM archetype (cap_management={self._gm_archetype.cap_management}) "
+                f"GM archetype (cap_management={self._gm_archetype.get('cap_management', 0.5)}) "
                 f"does not propose restructures with ${cap_space:,} cap space"
             )
             return []
@@ -137,7 +144,7 @@ class RestructureProposalGenerator:
             tier = self._determine_tier(candidate, cap_space)
 
             # Skip low-value proactive restructures unless GM is very cap-conscious
-            if tier == self.TIER_PROACTIVE and self._gm_archetype.cap_management < 0.7:
+            if tier == self.TIER_PROACTIVE and self._gm_archetype.get("cap_management", 0.5) < 0.7:
                 continue
 
             # Calculate restructure impact
@@ -178,17 +185,17 @@ class RestructureProposalGenerator:
 
         # Tight cap + high cap_management GM
         if cap_space < self.CAP_TIGHT_THRESHOLD:
-            if self._gm_archetype.cap_management >= 0.5:
+            if self._gm_archetype.get("cap_management", 0.5) >= 0.5:
                 return True
 
         # Comfortable cap + very high cap_management GM (proactive)
         if cap_space < self.CAP_COMFORTABLE_THRESHOLD:
-            if self._gm_archetype.cap_management >= 0.7:
+            if self._gm_archetype.get("cap_management", 0.5) >= 0.7:
                 return True
 
         # Win-now mentality with cap pressure
         if (
-            self._gm_archetype.win_now_mentality >= 0.7
+            self._gm_archetype.get("win_now_mentality", 0.5) >= 0.7
             and cap_space < self.CAP_COMFORTABLE_THRESHOLD
         ):
             return True
@@ -349,8 +356,8 @@ class RestructureProposalGenerator:
         # Higher win_now = convert more
         conversion_factor = (
             0.5  # Base: convert 50%
-            + (self._gm_archetype.risk_tolerance * 0.3)  # +0 to +30%
-            + (self._gm_archetype.win_now_mentality * 0.2)  # +0 to +20%
+            + (self._gm_archetype.get("risk_tolerance", 0.5) * 0.3)  # +0 to +30%
+            + (self._gm_archetype.get("win_now_mentality", 0.5) * 0.2)  # +0 to +20%
         )
         conversion_factor = min(conversion_factor, 0.95)  # Cap at 95%
 
@@ -394,13 +401,13 @@ class RestructureProposalGenerator:
 
         # Protected player bonus (max +30)
         if candidate["player_id"] in self._directives.protected_player_ids:
-            score += 30 * self._gm_archetype.loyalty
+            score += 30 * self._gm_archetype.get("loyalty", 0.5)
             reasons.append("protected_player")
 
         # Star player bonus (max +25)
         overall = extract_overall_rating(candidate, default=0)
         if overall >= 90:
-            score += 25 * self._gm_archetype.star_chasing
+            score += 25 * self._gm_archetype.get("star_chasing", 0.5)
             reasons.append("star_player")
         elif overall >= 80:
             score += 15
@@ -408,7 +415,7 @@ class RestructureProposalGenerator:
 
         # Win-now bonus for veteran stars (max +20)
         if (
-            self._gm_archetype.win_now_mentality >= 0.7
+            self._gm_archetype.get("win_now_mentality", 0.5) >= 0.7
             and overall >= 85
             and candidate["age"] >= 27
         ):
@@ -416,7 +423,7 @@ class RestructureProposalGenerator:
             reasons.append("win_now_veteran")
 
         # Cap management proactive bonus (max +15)
-        if self._gm_archetype.cap_management >= 0.7:
+        if self._gm_archetype.get("cap_management", 0.5) >= 0.7:
             score += 15
             reasons.append("proactive_cap_manager")
 
@@ -519,7 +526,7 @@ class RestructureProposalGenerator:
         # Higher cap_management = higher confidence
         base_confidence = 0.6
         tier_bonus = (6 - tier) * 0.05  # Tier 1 = +0.25, Tier 5 = +0.05
-        archetype_bonus = self._gm_archetype.cap_management * 0.2
+        archetype_bonus = self._gm_archetype.get("cap_management", 0.5) * 0.2
         confidence = min(0.95, max(0.5, base_confidence + tier_bonus + archetype_bonus))
 
         return PersistentGMProposal(
@@ -583,7 +590,7 @@ class RestructureProposalGenerator:
             )
 
         # Protected player + high loyalty (Tier 2)
-        if "protected_player" in reasons and self._gm_archetype.loyalty >= 0.7:
+        if "protected_player" in reasons and self._gm_archetype.get("loyalty", 0.5) >= 0.7:
             return (
                 f"{name} is a protected player you've identified as core to our future. "
                 f"At {overall} OVR, he's valuable, and this restructure shows our commitment while "
@@ -593,7 +600,7 @@ class RestructureProposalGenerator:
             )
 
         # Star player + star chasing (Tier 3)
-        if "star_player" in reasons and self._gm_archetype.star_chasing >= 0.7:
+        if "star_player" in reasons and self._gm_archetype.get("star_chasing", 0.5) >= 0.7:
             return (
                 f"{name} ({position}, {overall} OVR) is an elite talent we're building around. "
                 f"Restructuring his deal frees {savings_str} immediately to improve the roster, "
@@ -603,7 +610,7 @@ class RestructureProposalGenerator:
             )
 
         # Win-now mentality (Tier 3-4)
-        if self._gm_archetype.win_now_mentality >= 0.7:
+        if self._gm_archetype.get("win_now_mentality", 0.5) >= 0.7:
             return (
                 f"With our championship window open, we need to maximize the roster NOW. "
                 f"Restructuring {name}'s contract ({overall} OVR, age {age}) saves {savings_str} "
@@ -613,7 +620,7 @@ class RestructureProposalGenerator:
             )
 
         # Cap management proactive (Tier 5)
-        if self._gm_archetype.cap_management >= 0.7:
+        if self._gm_archetype.get("cap_management", 0.5) >= 0.7:
             return (
                 f"Smart cap move to create flexibility. {name} ({position}, {overall} OVR) "
                 f"has {years_remaining} years left, making this a good restructure candidate. "
@@ -624,7 +631,7 @@ class RestructureProposalGenerator:
             )
 
         # Risk tolerance (aggressive restructures)
-        if self._gm_archetype.risk_tolerance >= 0.7:
+        if self._gm_archetype.get("risk_tolerance", 0.5) >= 0.7:
             return (
                 f"This is a calculated risk I'm willing to take. Restructuring {name}'s deal "
                 f"saves {savings_str} immediately by converting {converted_str} to prorated bonus. "

@@ -18,6 +18,7 @@ from src.constants.position_normalizer import normalize_position
 from src.game_cycle.database.progression_history_api import (
     ProgressionHistoryAPI, ProgressionHistoryRecord
 )
+from src.utils.player_field_extractors import extract_overall_rating
 
 
 class AgeCategory(Enum):

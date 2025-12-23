@@ -1,41 +1,8 @@
 {
   "team_id": 7,
   "team_name": "Cleveland Browns",
-  "total_players": 51,
+  "total_players": 52,
   "players": {
-    "7001": {
-      "player_id": 7001,
-      "first_name": "Joe",
-      "last_name": "Flacco",
-      "number": 15,
-      "birthdate": "1987-05-03",
-      "positions": [
-        "quarterback"
-      ],
-      "team_id": 7,
-      "attributes": {
-        "overall": 78,
-        "speed": 45,
-        "accuracy": 75,
-        "arm_strength": 85,
-        "awareness": 92,
-        "discipline": 90,
-        "composure": 88,
-        "experience": 95,
-        "penalty_technique": 92,
-        "leadership": 90,
-        "pocket_presence": 85,
-        "mobility": 45
-      },
-      "contract": {
-        "contract_years": 1,
-        "annual_salary": 3500000,
-        "signing_bonus": 750000,
-        "guaranteed_money": 2000000,
-        "contract_type": "veteran",
-        "cap_hit_2025": 3500000
-      }
-    },
     "7002": {
       "player_id": 7002,
       "first_name": "Dillon",
@@ -710,6 +677,39 @@
         "cap_hit_2025": 1250000
       }
     },
+    "924": {
+      "player_id": 924,
+      "first_name": "Cam",
+      "last_name": "Robinson",
+      "number": 74,
+      "birthdate": "1995-10-17",
+      "positions": [
+        "left_tackle"
+      ],
+      "team_id": 7,
+      "attributes": {
+        "overall": 78,
+        "strength": 82,
+        "pass_blocking": 80,
+        "run_blocking": 78,
+        "agility": 78,
+        "awareness": 82,
+        "discipline": 82,
+        "composure": 80,
+        "experience": 88,
+        "penalty_technique": 82,
+        "versatility": 88,
+        "leadership": 82
+      },
+      "contract": {
+        "contract_years": 1,
+        "annual_salary": 5500000,
+        "signing_bonus": 1000000,
+        "guaranteed_money": 3500000,
+        "contract_type": "veteran",
+        "cap_hit_2025": 6500000
+      }
+    },
     "7024": {
       "player_id": 7024,
       "first_name": "Ethan",
@@ -818,7 +818,7 @@
       "number": 67,
       "birthdate": "2002-11-11",
       "positions": [
-        "guard"
+        "right_guard"
       ],
       "team_id": 7,
       "attributes": {
@@ -1388,39 +1388,41 @@
         "cap_hit_2025": 12103622
       }
     },
-    "7046": {
-      "player_id": 7046,
-      "first_name": "Greg",
-      "last_name": "Newsome II",
-      "number": 23,
-      "birthdate": "2002-02-26",
+    "7098": {
+      "player_id": 7098,
+      "first_name": "Tyson",
+      "last_name": "Campbell",
+      "number": 32,
+      "birthdate": "2000-03-17",
       "positions": [
         "cornerback"
       ],
       "team_id": 7,
       "attributes": {
-        "overall": 83,
-        "speed": 88,
+        "overall": 81,
+        "speed": 90,
         "strength": 78,
         "agility": 88,
-        "awareness": 82,
-        "discipline": 82,
-        "composure": 80,
-        "experience": 75,
-        "penalty_technique": 82,
-        "coverage": 88,
-        "man_coverage": 85,
-        "zone_coverage": 85,
-        "physicality": 80,
-        "intelligence": 85
+        "awareness": 80,
+        "discipline": 78,
+        "composure": 78,
+        "experience": 80,
+        "penalty_technique": 76,
+        "coverage": 78,
+        "man_coverage": 80,
+        "zone_coverage": 76,
+        "ball_skills": 75,
+        "press": 82,
+        "tackling": 85,
+        "run_defense": 88
       },
       "contract": {
-        "contract_years": 1,
-        "annual_salary": 13370000,
-        "signing_bonus": 0,
-        "guaranteed_money": 13370000,
-        "contract_type": "5th_year_option",
-        "cap_hit_2025": 13370000
+        "contract_years": 4,
+        "annual_salary": 19125000,
+        "signing_bonus": 16000000,
+        "guaranteed_money": 53400000,
+        "contract_type": "extension",
+        "cap_hit_2025": 1436274
       }
     },
     "7047": {
@@ -1730,6 +1732,41 @@
         "guaranteed_money": 500000,
         "contract_type": "veteran",
         "cap_hit_2025": 1100000
+      }
+    },
+    "7099": {
+      "player_id": 7099,
+      "first_name": "Carson",
+      "last_name": "Schwesinger",
+      "number": 54,
+      "birthdate": "2002-01-15",
+      "positions": [
+        "linebacker"
+      ],
+      "team_id": 7,
+      "attributes": {
+        "overall": 74,
+        "speed": 82,
+        "strength": 78,
+        "agility": 80,
+        "awareness": 75,
+        "discipline": 78,
+        "composure": 72,
+        "experience": 62,
+        "penalty_technique": 75,
+        "coverage": 72,
+        "run_defense": 78,
+        "tackling": 82,
+        "pass_rush": 70,
+        "instincts": 80
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 1100000,
+        "signing_bonus": 500000,
+        "guaranteed_money": 1800000,
+        "contract_type": "rookie",
+        "cap_hit_2025": 1225000
       }
     }
   }

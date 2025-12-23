@@ -69,6 +69,9 @@ class FreeAgencyUIController(QObject):
         self._fa_guidance = None  # FAGuidance object from pre-FA dialog
         self._gm_archetype = None  # GMArchetype for proposal generation
 
+        # Cap-clearing trade proposals (keyed by proposal_id)
+        self._cap_clearing_trade_proposals: Dict[str, Any] = {}
+
         # View reference (optional, for refresh)
         self._view = None
 
@@ -120,6 +123,10 @@ class FreeAgencyUIController(QObject):
         if hasattr(fa_view, 'process_wave_requested'):
             fa_view.process_wave_requested.connect(self.on_process_wave)
 
+        # Connect trade search signal (cap-clearing trades)
+        if hasattr(fa_view, 'trade_search_requested'):
+            fa_view.trade_search_requested.connect(self.on_trade_search_requested)
+
     # -------------------------------------------------------------------------
     # Signal Handlers (accumulate actions)
     # -------------------------------------------------------------------------
@@ -129,19 +136,43 @@ class FreeAgencyUIController(QObject):
         Handle offer submission from view.
 
         Accumulates offer in pending list until execute() is called.
+        Also calculates Year-1 cap hit using CapHelper (SSOT) and updates
+        the view's pending cap commit.
 
         Args:
             player_id: Player receiving the offer
             offer_data: Dict with aav, years, guaranteed, signing_bonus
         """
+        aav = offer_data.get("aav", 0)
+        years = offer_data.get("years", 1)
+        signing_bonus = offer_data.get("signing_bonus", 0)
+
         offer = {
             "player_id": player_id,
-            "aav": offer_data.get("aav", 0),
-            "years": offer_data.get("years", 1),
+            "aav": aav,
+            "years": years,
             "guaranteed": offer_data.get("guaranteed", 0),
-            "signing_bonus": offer_data.get("signing_bonus", 0),
+            "signing_bonus": signing_bonus,
         }
         self._wave_actions["submit_offers"].append(offer)
+
+        # Calculate Year-1 cap hit using CapHelper (SSOT) and update view
+        if self._view and self._db_path:
+            try:
+                from game_cycle.services.cap_helper import CapHelper
+                # Offseason uses season + 1 for cap calculations
+                cap_helper = CapHelper(self._db_path, self._dynasty_id, self._season + 1)
+                total_value = aav * years
+                year1_cap_hit = cap_helper.calculate_signing_cap_hit(
+                    total_value=total_value,
+                    signing_bonus=signing_bonus,
+                    years=years
+                )
+                self._view.update_pending_cap_commit(player_id, year1_cap_hit)
+            except Exception as e:
+                # Fallback: keep the AAV estimate set by the view
+                import logging
+                logging.getLogger(__name__).debug(f"Could not calculate Year-1 cap hit: {e}")
 
     def on_offer_withdrawn(self, offer_id: int) -> None:
         """
@@ -423,3 +454,245 @@ class FreeAgencyUIController(QObject):
     def has_fa_guidance(self) -> bool:
         """Check if FA guidance has been set."""
         return self._fa_guidance is not None
+
+    # -------------------------------------------------------------------------
+    # Cap-Clearing Trade Search (for unaffordable GM signing proposals)
+    # -------------------------------------------------------------------------
+
+    def on_trade_search_requested(self, proposal_id: str, cap_shortage: int) -> None:
+        """
+        Handle trade search request from unaffordable GM signing proposal.
+
+        Flow:
+        1. Get proposal details for context
+        2. Generate cap-clearing trades using TradeProposalGenerator
+        3. Show TradeSearchDialog with results
+        4. If user approves trade, add to pending proposals
+
+        Args:
+            proposal_id: ID of the signing proposal we can't afford
+            cap_shortage: Amount over cap (positive number)
+        """
+        # Get proposal for context
+        proposal = self._get_proposal_by_id(proposal_id)
+        if not proposal:
+            print(f"[ERROR] Could not find proposal {proposal_id}")
+            return
+
+        # Extract player info for dialog header
+        details = proposal.get("details", {})
+        player_info = {
+            "name": details.get("player_name", "Unknown"),
+            "position": details.get("position", ""),
+            "aav": details.get("contract", {}).get("aav", 0)
+        }
+
+        # Generate cap-clearing trades
+        trade_options = self._generate_cap_clearing_trades(cap_shortage)
+
+        # Show dialog
+        from game_cycle_ui.dialogs.trade_search_dialog import TradeSearchDialog
+
+        dialog = TradeSearchDialog(
+            parent=self._view,
+            player_info=player_info,
+            cap_shortage=cap_shortage,
+            trade_options=trade_options
+        )
+
+        # Connect trade selection signal
+        dialog.trade_selected.connect(
+            lambda trade_id: self._on_cap_clearing_trade_selected(trade_id, proposal_id)
+        )
+
+        # Show dialog (modal)
+        dialog.exec()
+
+    def _generate_cap_clearing_trades(self, min_cap_to_clear: int) -> List[Dict]:
+        """
+        Generate cap-clearing trade proposals.
+
+        Uses TradeProposalGenerator with owner directives to find AI-accepted
+        trades that free up cap space.
+
+        Args:
+            min_cap_to_clear: Target cap savings (for context/logging)
+
+        Returns:
+            List of trade proposal dicts for UI display
+        """
+        from game_cycle.services.proposal_generators.trade_generator import (
+            TradeProposalGenerator
+        )
+        from game_cycle.models.owner_directives import OwnerDirectives
+
+        # Get owner directives (need for protected players list)
+        directives = self._get_owner_directives()
+
+        # Create generator
+        generator = TradeProposalGenerator(
+            db_path=self._db_path,
+            dynasty_id=self._dynasty_id,
+            season=self._season,
+            team_id=self._user_team_id,
+            directives=directives
+        )
+
+        # Generate proposals
+        try:
+            proposals = generator.generate_cap_clearing_trades(
+                min_cap_to_clear=min_cap_to_clear,
+                max_proposals=5
+            )
+
+            # Store proposals in memory for later retrieval
+            self._cap_clearing_trade_proposals.clear()
+            for proposal in proposals:
+                self._cap_clearing_trade_proposals[proposal.proposal_id] = proposal
+
+            # Convert to dict format for UI
+            return [p.to_dict() for p in proposals]
+
+        except Exception as e:
+            print(f"[ERROR] Failed to generate cap-clearing trades: {e}")
+            return []
+
+    def _on_cap_clearing_trade_selected(self, trade_proposal_id: str, signing_proposal_id: str):
+        """
+        Handle user approving a cap-clearing trade from dialog.
+
+        Adds the trade to pending proposals for owner review.
+        Maintains workflow consistency.
+
+        Args:
+            trade_proposal_id: ID of approved trade proposal
+            signing_proposal_id: Original signing proposal (for context)
+        """
+        from game_cycle.database.proposal_api import ProposalAPI
+        from game_cycle.database.connection import GameCycleDatabase
+        from game_cycle.models.proposal_enums import ProposalStatus
+
+        try:
+            # Find the trade proposal from in-memory storage
+            trade_proposal = self._cap_clearing_trade_proposals.get(trade_proposal_id)
+
+            if not trade_proposal:
+                print(f"[ERROR] Trade proposal {trade_proposal_id} not found in memory")
+                return
+
+            print(f"[INFO] Trade {trade_proposal_id} approved for cap clearing")
+            print(f"[INFO] This will help sign player from proposal {signing_proposal_id}")
+
+            # Set status to PENDING so it appears in GM proposals
+            trade_proposal.status = ProposalStatus.PENDING
+
+            # Persist to database
+            db = GameCycleDatabase(self._db_path)
+            proposal_api = ProposalAPI(db)
+
+            proposal_api.create_proposal(trade_proposal)
+
+            print(f"[SUCCESS] Trade proposal {trade_proposal_id} persisted to database")
+
+            # Refresh GM proposals view if available
+            if self._view and hasattr(self._view, 'refresh_gm_proposals'):
+                self._view.refresh_gm_proposals()
+                print("[SUCCESS] GM proposals view refreshed")
+
+            # Clean up the in-memory proposal (it's now in DB)
+            del self._cap_clearing_trade_proposals[trade_proposal_id]
+
+        except Exception as e:
+            print(f"[ERROR] Failed to approve cap-clearing trade: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _get_proposal_by_id(self, proposal_id: str) -> Optional[Dict]:
+        """
+        Get a proposal by ID from the database.
+
+        Args:
+            proposal_id: Proposal ID to find
+
+        Returns:
+            Proposal dict or None if not found
+        """
+        from game_cycle.database.proposal_api import ProposalAPI
+        from game_cycle.database.connection import GameCycleDatabase
+
+        try:
+            db = GameCycleDatabase(self._db_path)
+            proposal_api = ProposalAPI(db)
+
+            proposal = proposal_api.get_proposal(
+                dynasty_id=self._dynasty_id,
+                team_id=self._user_team_id,
+                proposal_id=proposal_id
+            )
+
+            if proposal:
+                return proposal.to_dict()
+
+            return None
+
+        except Exception as e:
+            print(f"[ERROR] Failed to get proposal {proposal_id}: {e}")
+            return None
+
+    def _get_owner_directives(self) -> 'OwnerDirectives':
+        """
+        Get owner directives from database.
+
+        Returns:
+            OwnerDirectives object (uses defaults if not found)
+        """
+        from game_cycle.models.owner_directives import OwnerDirectives
+        from game_cycle.database.connection import GameCycleDatabase
+        import sqlite3
+
+        try:
+            db = GameCycleDatabase(self._db_path)
+            conn = db.get_connection()
+
+            cursor = conn.execute(
+                """
+                SELECT team_philosophy, budget_stance, protected_player_ids,
+                       expendable_player_ids, priority_positions
+                FROM owner_directives
+                WHERE dynasty_id = ? AND team_id = ? AND season = ?
+                """,
+                (self._dynasty_id, self._user_team_id, self._season)
+            )
+
+            row = cursor.fetchone()
+
+            if row:
+                import json
+                return OwnerDirectives(
+                    team_philosophy=row[0] or "maintain",
+                    budget_stance=row[1] or "moderate",
+                    protected_player_ids=json.loads(row[2]) if row[2] else [],
+                    expendable_player_ids=json.loads(row[3]) if row[3] else [],
+                    priority_positions=json.loads(row[4]) if row[4] else []
+                )
+            else:
+                # Return defaults if not found
+                return OwnerDirectives(
+                    team_philosophy="maintain",
+                    budget_stance="moderate",
+                    protected_player_ids=[],
+                    expendable_player_ids=[],
+                    priority_positions=[]
+                )
+
+        except Exception as e:
+            print(f"[ERROR] Failed to get owner directives: {e}")
+            # Return defaults on error
+            from game_cycle.models.owner_directives import OwnerDirectives
+            return OwnerDirectives(
+                team_philosophy="maintain",
+                budget_stance="moderate",
+                protected_player_ids=[],
+                expendable_player_ids=[],
+                priority_positions=[]
+            )

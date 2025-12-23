@@ -1,0 +1,303 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                    StandingsSnapshotWidget - Visual Reference              ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+┌────────────────────────────────────────┐
+│  WIDGET STRUCTURE (200px × 300px)      │
+└────────────────────────────────────────┘
+
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓  ╮
+┃ STANDINGS                              ┃  │ Header Frame
+┃ ┌────────────────────────────────┐     ┃  │ 60px
+┃ │ AFC East                    ▼  │     ┃  │ (#1a1a1a bg)
+┃ └────────────────────────────────┘     ┃  │ (Red bottom border)
+┣━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┫  ╯
+┃ 1. 🟢  BUF                  8-2        ┃  ← Team Row 1 (28px)
+┃────────────────────────────────────────┃  ← Border (#333)
+┃ 2. 🟢  MIA                  7-3        ┃  ← Team Row 2 (28px)
+┃────────────────────────────────────────┃  ← Border
+┃ 3. 🔴  NYJ                  5-5        ┃  ← Team Row 3 (28px)
+┃────────────────────────────────────────┃  ← Border
+┃ 4. 🔴  NE                   3-7        ┃  ← Team Row 4 (28px)
+┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+    ↑      ↑      ↑               ↑
+    │      │      │               └─ W-L Record (11px, #888)
+    │      │      └───────────────── Team Abbrev (11px bold, white)
+    │      └──────────────────────── Playoff Indicator (🟢/🔴)
+    └─────────────────────────────── Division Rank (11px, #888)
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ COMPONENT BREAKDOWN
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─ HEADER FRAME ────────────────────────────────────────────────────────┐
+│                                                                        │
+│  ┌─ Title Label ────────────────────────────────────┐                │
+│  │ STANDINGS                                         │                │
+│  │ • Font: 12px Arial Bold                          │                │
+│  │ • Color: #FFFFFF (white)                         │                │
+│  │ • Letter-spacing: 1px                            │                │
+│  └───────────────────────────────────────────────────┘                │
+│                                                                        │
+│  ┌─ Division Dropdown (QComboBox) ──────────────────┐                │
+│  │ [AFC East                                    ▼]  │                │
+│  │ • Background: #2a2a2a                            │                │
+│  │ • Border: 1px #333 (red on hover)                │                │
+│  │ • Font: 11px Arial                               │                │
+│  │ • Options: 8 divisions                           │                │
+│  │   - AFC East, North, South, West                 │                │
+│  │   - NFC East, North, South, West                 │                │
+│  └──────────────────────────────────────────────────┘                │
+│                                                                        │
+│  Background: #1a1a1a                                                  │
+│  Border-bottom: 3px solid #cc0000                                     │
+│  Height: ~60px                                                        │
+└────────────────────────────────────────────────────────────────────────┘
+
+
+┌─ TEAM ROW (TeamRowWidget) ────────────────────────────────────────────┐
+│                                                                        │
+│  [Rank] [Indicator] [Team Abbrev]                        [W-L]        │
+│   1.       🟢         BUF                                 8-2          │
+│                                                                        │
+│  • Height: 28px (fixed)                                               │
+│  • Background: #1a1a1a (hover: #252525)                              │
+│  • Border-bottom: 1px solid #333                                      │
+│  • Cursor: Pointer on hover                                           │
+│  • Clickable: Emits team_clicked(team_id)                            │
+│                                                                        │
+│  ┌─ Rank Label ──────┐                                                │
+│  │ 1.                │ 20px width, #888 color                        │
+│  └───────────────────┘                                                │
+│                                                                        │
+│  ┌─ Indicator Label ┐                                                │
+│  │ 🟢 or 🔴          │ 20px width                                     │
+│  └───────────────────┘ Green = playoff position                       │
+│                        Red = out of playoffs                          │
+│                                                                        │
+│  ┌─ Team Label ──────┐                                                │
+│  │ BUF               │ 11px Arial Bold, white                        │
+│  └───────────────────┘ Stretches to fill space                       │
+│                                                                        │
+│  ┌─ Record Label ────┐                                                │
+│  │ 8-2               │ 11px Arial Bold, #888                         │
+│  └───────────────────┘ Right-aligned                                 │
+│                                                                        │
+└────────────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ COLOR PALETTE (ESPN Dark Theme)
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─────────────────┬──────────────┬──────────────────────────────────────┐
+│ Element         │ Color        │ Hex Code                            │
+├─────────────────┼──────────────┼──────────────────────────────────────┤
+│ Background      │ Very Dark    │ #0d0d0d (ESPN_DARK_BG)              │
+│ Card Background │ Dark Gray    │ #1a1a1a (ESPN_CARD_BG)              │
+│ Hover State     │ Lighter Gray │ #252525                             │
+│ Border          │ Medium Gray  │ #333333 (ESPN_BORDER)               │
+│ Accent Color    │ Red          │ #cc0000 (ESPN_RED)                  │
+│ Text Primary    │ White        │ #FFFFFF                             │
+│ Text Secondary  │ Gray         │ #888888                             │
+│ Playoff Green   │ Green        │ 🟢 Emoji (visual indicator)          │
+│ Out Red         │ Red          │ 🔴 Emoji (visual indicator)          │
+│ Dropdown BG     │ Dark Gray    │ #2a2a2a                             │
+└─────────────────┴──────────────┴──────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ SPACING & LAYOUT
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─ Vertical Layout ──────────────────────────────────────────────────────┐
+│                                                                         │
+│  [Header Frame]         60px   ← Title + Dropdown                      │
+│  ──────────────────────────────────────────────────────────────        │
+│  [Team Row 1]           28px   ← Division Rank 1                       │
+│  [Team Row 2]           28px   ← Division Rank 2                       │
+│  [Team Row 3]           28px   ← Division Rank 3                       │
+│  [Team Row 4]           28px   ← Division Rank 4                       │
+│  ──────────────────────────────────────────────────────────────        │
+│  [Stretch]              ~28px  ← Padding/spacing                       │
+│                                                                         │
+│  TOTAL HEIGHT:          ~200px (fixed)                                 │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─ Horizontal Spacing (Team Row) ────────────────────────────────────────┐
+│                                                                         │
+│  ┌8px─┬────┬8px┬────┬8px┬──────────────┬────────┬8px┐                │
+│  │    │Rank│   │Ind │   │Team          │Record  │    │                │
+│  │    │20px│   │20px│   │(stretch)     │        │    │                │
+│  └────┴────┴───┴────┴───┴──────────────┴────────┴────┘                │
+│   Margin              Spacing                    Margin                │
+│                                                                         │
+│  • Left Margin:  8px                                                   │
+│  • Right Margin: 8px                                                   │
+│  • Element Gap:  8px                                                   │
+│  • Total Width:  ~250-350px (flexible)                                 │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ DROPDOWN STATES
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─ NORMAL STATE ──────────────────────┐
+│ [AFC East                        ▼] │  Background: #2a2a2a
+│                                     │  Border: 1px #333
+│                                     │  Text: #FFFFFF
+└─────────────────────────────────────┘
+
+┌─ HOVER STATE ───────────────────────┐
+│ [AFC East                        ▼] │  Background: #333333
+│                                     │  Border: 1px #cc0000 (RED!)
+│                                     │  Text: #FFFFFF
+└─────────────────────────────────────┘
+
+┌─ EXPANDED (Dropdown Menu) ──────────┐
+│ [AFC East                        ▲] │
+│ ┌───────────────────────────────┐   │
+│ │ AFC East                       │ ← Selected (#cc0000 bg)
+│ │ AFC North                      │
+│ │ AFC South                      │
+│ │ AFC West                       │
+│ │ NFC East                       │
+│ │ NFC North                      │
+│ │ NFC South                      │
+│ │ NFC West                       │
+│ └───────────────────────────────┘   │
+└─────────────────────────────────────┘
+  Menu Background: #2a2a2a
+  Selection: #cc0000 background
+  Border: 1px #333
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ INTERACTION FLOW
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─ USER CLICKS DROPDOWN ──────────────────────────────────────────────────┐
+│                                                                          │
+│  1. User clicks dropdown                                                │
+│     └─> Dropdown expands (8 division options)                          │
+│                                                                          │
+│  2. User selects "NFC North"                                            │
+│     └─> _on_division_changed("NFC North") called                       │
+│         ├─> self._current_division = "NFC North"                       │
+│         ├─> self._refresh_display()                                    │
+│         │   ├─> Parse "NFC North" → conference="NFC", division="North" │
+│         │   ├─> Filter standings_data to NFC North teams               │
+│         │   ├─> Sort by division_rank (or wins)                        │
+│         │   └─> Create 4 TeamRowWidgets                                │
+│         └─> Emit division_changed.emit("NFC North")                    │
+│             └─> Parent widget receives signal                          │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+┌─ USER CLICKS TEAM ROW ──────────────────────────────────────────────────┐
+│                                                                          │
+│  1. User clicks "Lions" row                                             │
+│     └─> TeamRowWidget.mousePressEvent() triggered                      │
+│         └─> row.clicked.emit(22)  # team_id=22 for Lions              │
+│             └─> StandingsSnapshotWidget._on_team_clicked(22)          │
+│                 └─> team_clicked.emit(22)                              │
+│                     └─> Parent widget receives signal                  │
+│                         └─> Navigate to Lions team page                │
+│                                                                          │
+└──────────────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ DATA FLOW
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─ INITIALIZATION (Placeholder Data) ────────────────────────────────────┐
+│                                                                         │
+│  StandingsSnapshotWidget()                                             │
+│    └─> _setup_ui()                                                     │
+│        ├─> Create header, dropdown, teams_container                   │
+│        └─> _load_placeholder_data()                                   │
+│            └─> Generate 32 teams (8 divisions × 4 teams)              │
+│                └─> set_standings(placeholder_standings)               │
+│                    └─> _refresh_display()                             │
+│                        └─> Show AFC East by default                   │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─ LIVE DATA UPDATE ─────────────────────────────────────────────────────┐
+│                                                                         │
+│  Database Query → standings_data (List[Dict])                          │
+│    │                                                                    │
+│    └─> widget.set_standings(standings_data)                           │
+│        └─> self._standings_data = standings_data                      │
+│            └─> _refresh_display()                                     │
+│                ├─> Filter to current division                         │
+│                ├─> Sort by rank/wins                                  │
+│                ├─> Calculate playoff positions                        │
+│                └─> Create TeamRowWidgets                              │
+│                    └─> Display 4 teams                                │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ TYPICAL USE CASES
+═══════════════════════════════════════════════════════════════════════════════
+
+┌─ USE CASE 1: League Overview Sidebar ──────────────────────────────────┐
+│                                                                         │
+│  ┌───────────────────┬─────────────────────────────────────┐          │
+│  │                   │                                     │          │
+│  │  LEAGUE LEADERS   │   [Main Content Area]              │          │
+│  │  ───────────────  │                                     │          │
+│  │  • Player stats   │   Game schedule, news, etc.        │          │
+│  │  • Top performers │                                     │          │
+│  │                   │                                     │          │
+│  │  STANDINGS  ◄───  │                                     │          │
+│  │  ───────────────  │                                     │          │
+│  │  [AFC East  ▼]    │                                     │          │
+│  │  1. BUF    8-2    │                                     │          │
+│  │  2. MIA    7-3    │                                     │          │
+│  │  3. NYJ    5-5    │                                     │          │
+│  │  4. NE     3-7    │                                     │          │
+│  │                   │                                     │          │
+│  │  PLAYOFF PICTURE  │                                     │          │
+│  │  ───────────────  │                                     │          │
+│  └───────────────────┴─────────────────────────────────────┘          │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─ USE CASE 2: Dashboard Quick Glance ───────────────────────────────────┐
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────┐          │
+│  │ DASHBOARD                                                │          │
+│  ├─────────────────────────────────────────────────────────┤          │
+│  │                                                          │          │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │          │
+│  │  │ YOUR TEAM    │  │ STANDINGS    │  │ NEXT GAME    │  │          │
+│  │  │              │  │ [NFC North▼] │  │              │  │          │
+│  │  │ Lions 8-2    │  │ 1. DET  8-2  │  │ DET vs GB    │  │          │
+│  │  │              │  │ 2. MIN  6-4  │  │ Sunday 1PM   │  │          │
+│  │  │              │  │ 3. GB   5-5  │  │              │  │          │
+│  │  │              │  │ 4. CHI  3-7  │  │              │  │          │
+│  │  └──────────────┘  └──────────────┘  └──────────────┘  │          │
+│  │                                                          │          │
+│  └─────────────────────────────────────────────────────────┘          │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+ END OF VISUAL REFERENCE
+═══════════════════════════════════════════════════════════════════════════════
+
+File: game_cycle_ui/widgets/standings_snapshot_widget.py
+Lines: 418
+Classes: StandingsSnapshotWidget, TeamRowWidget
+Signals: team_clicked(int), division_changed(str)
+Methods: set_context(), set_division(), set_standings(), clear()
+Status: ✅ COMPLETE

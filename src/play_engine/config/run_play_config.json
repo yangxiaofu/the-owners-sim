@@ -4,26 +4,26 @@
   "description": "Centralized configuration for run play simulation parameters - Designer balancing file",
   
   "formation_matchups": {
-    "description": "Formation vs formation matchup matrix with average yards and variance (NFL avg: 4.4 YPC)",
+    "description": "Formation vs formation matchup matrix with average yards and variance (NFL avg: 4.4 YPC). Base values reduced to compensate for breakaway run mechanism adding ~1.6 YPC on average.",
     "matchups": {
       "I_FORMATION": {
-        "FOUR_THREE": {"avg_yards": 4.8, "variance": 2.5},
-        "NICKEL": {"avg_yards": 5.5, "variance": 2.8},
-        "GOAL_LINE": {"avg_yards": 2.8, "variance": 1.8}
+        "FOUR_THREE": {"avg_yards": 3.3, "variance": 3.0},
+        "NICKEL": {"avg_yards": 4.1, "variance": 3.3},
+        "GOAL_LINE": {"avg_yards": 2.2, "variance": 2.2}
       },
       "SINGLEBACK": {
-        "FOUR_THREE": {"avg_yards": 4.4, "variance": 2.3},
-        "NICKEL": {"avg_yards": 5.0, "variance": 2.6}
+        "FOUR_THREE": {"avg_yards": 3.0, "variance": 2.8},
+        "NICKEL": {"avg_yards": 3.6, "variance": 3.1}
       },
       "SHOTGUN": {
-        "FOUR_THREE": {"avg_yards": 3.8, "variance": 2.1},
-        "NICKEL": {"avg_yards": 4.2, "variance": 2.2}
+        "FOUR_THREE": {"avg_yards": 2.5, "variance": 3.0},
+        "NICKEL": {"avg_yards": 3.1, "variance": 3.3}
       },
       "PISTOL": {
-        "FOUR_THREE": {"avg_yards": 4.6, "variance": 2.4}
+        "FOUR_THREE": {"avg_yards": 3.3, "variance": 3.2}
       }
     },
-    "default_matchup": {"avg_yards": 4.2, "variance": 2.2}
+    "default_matchup": {"avg_yards": 2.8, "variance": 2.8}
   },
   
   "player_attributes": {
@@ -65,17 +65,26 @@
       "long_run_threshold": 5,
       "assisted_tackle_probability": 0.75
     },
-    "variance_cap": 1.2
+    "variance_cap": 1.5
   },
 
   "fumble_rates": {
     "description": "Fumble probability rates for run plays (NFL avg: ~1.5% per rush, adjusted for simulation)",
-    "base_fumble_rate": 0.025,
+    "base_fumble_rate": 0.050,
     "rb_skill_modifiers": {
       "elite_reduction": 0.008,
       "good_reduction": 0.004,
       "poor_increase": 0.006
     },
     "recovery_rate": 0.50
+  },
+
+  "breakaway_run": {
+    "description": "Separate explosive play mechanism for 20+ yard runs (NFL avg: ~6.7% per carry)",
+    "speed_threshold": 75,
+    "base_probability": 0.065,
+    "speed_bonus_per_point": 0.002,
+    "min_yards": 15,
+    "max_yards": 35
   }
 }

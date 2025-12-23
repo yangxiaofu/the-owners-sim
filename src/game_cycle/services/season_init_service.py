@@ -542,10 +542,10 @@ class SeasonInitializationService:
         for team_id in range(1, 33):
             try:
                 # Get active roster for this team
+                # Note: get_team_roster already filters by roster_status='active' internally
                 roster = roster_api.get_team_roster(
                     dynasty_id=self._dynasty_id,
-                    team_id=team_id,
-                    roster_status='active'
+                    team_id=team_id
                 )
 
                 # Count players by position group
@@ -595,9 +595,8 @@ class SeasonInitializationService:
                         for _ in range(needed):
                             signed = False
                             for search_pos in search_positions:
-                                free_agents = fa_service.get_free_agents(
-                                    position=search_pos,
-                                    limit=5
+                                free_agents = fa_service.get_available_free_agents(
+                                    position_filter=search_pos
                                 )
 
                                 if free_agents:

@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional, Set
 import json
 import logging
 
-from utils.player_field_extractors import extract_overall_rating
+from src.utils.player_field_extractors import extract_overall_rating
 from game_cycle.models.persistent_gm_proposal import PersistentGMProposal
 from game_cycle.models.proposal_enums import ProposalType, ProposalStatus
 

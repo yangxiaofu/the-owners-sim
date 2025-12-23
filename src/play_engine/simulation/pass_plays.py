@@ -252,7 +252,7 @@ class PassPlaySimulator(BasePlaySimulator):
             pass_config = config.get_pass_play_config()
             default_matchup = pass_config.get('formation_matchups', {}).get('default_matchup', {})
             base_params = default_matchup.copy() if default_matchup else {
-                'completion_rate': 0.65, 'sack_rate': 0.09, 'pressure_rate': 0.24, 'deflection_rate': 0.06, 'int_rate': 0.025,
+                'completion_rate': 0.65, 'sack_rate': 0.09, 'pressure_rate': 0.24, 'deflection_rate': 0.0021, 'int_rate': 0.025,
                 'avg_air_yards': 8.0, 'avg_yac': 4.5, 'avg_time_to_throw': 2.5
             }
         
@@ -439,7 +439,7 @@ class PassPlaySimulator(BasePlaySimulator):
                 if avg_db_rating >= very_good_threshold:  # Elite secondary
                     modified_params['completion_rate'] *= elite_coverage_bonus
                     modified_params['int_rate'] *= poor_coverage_penalty
-                    modified_params['deflection_rate'] *= elite_rush_bonus
+                    modified_params['deflection_rate'] *= elite_coverage_bonus  # Fixed: was elite_rush_bonus (1.3), now 0.95
                 elif avg_db_rating <= poor_threshold:  # Poor secondary
                     modified_params['completion_rate'] *= good_rush_bonus
                     modified_params['int_rate'] *= poor_rush_penalty
@@ -692,11 +692,24 @@ class PassPlaySimulator(BasePlaySimulator):
         sack_roll = random.random()
         pressure_roll = random.random()
 
+        # Get base rates from params
+        sack_rate = params['sack_rate']
+        pressure_rate = params['pressure_rate']
+
+        # Apply blitz package modifiers - blitzes have higher sack/pressure rates
+        # NFL Reality: 5-man blitz = ~1.3x sack rate, Cover-0 = ~1.6x
+        if self.rusher_assignments and hasattr(self.rusher_assignments, 'blitz_package'):
+            from ..play_types.blitz_types import get_blitz_package_definition
+            pkg_def = get_blitz_package_definition(self.rusher_assignments.blitz_package)
+            if pkg_def:
+                sack_rate *= pkg_def.sack_rate_modifier
+                pressure_rate *= pkg_def.pressure_rate_modifier
+
         # Check if QB would be sacked
-        would_be_sacked = sack_roll < params['sack_rate']
+        would_be_sacked = sack_roll < sack_rate
 
         # Check for pressure (more common than sacks, ~30% of plays)
-        is_pressured = pressure_roll < params['pressure_rate']
+        is_pressured = pressure_roll < pressure_rate
 
         # Mobile QBs can scramble in TWO scenarios:
         # 1. When pressured (designed scrambles / feeling pressure)
@@ -1557,9 +1570,9 @@ class PassPlaySimulator(BasePlaySimulator):
                             break
             elif pass_outcome.get('incomplete'):
                 # Tight coverage forcing incompletion - attribute pass defended
-                # NFL counts ~40-50% of incompletions as "passes defended" (tight coverage)
-                # The rest are drops, throwaways, miscommunication, etc.
-                if random.random() < 0.45:  # 45% of incompletions credited to coverage
+                # NFL counts ~10-15% of incompletions as exceptional coverage deserving PD credit
+                # The rest are drops, throwaways, miscommunication, poor throws, etc.
+                if random.random() < 0.10:  # 10% of incompletions credited to exceptional coverage
                     coverage_player = self._select_interception_player_weighted(defensive_backs)
                     if coverage_player:
                         coverage_stats = create_player_stats_from_player(coverage_player, team_id=self.defensive_team_id)
@@ -1947,6 +1960,8 @@ class PassPlaySimulator(BasePlaySimulator):
 
             # Calculate position bonus based on natural pass rushing ability
             # and blitz surprise factor (unblocked rushers are very effective)
+            # Blitz surprise factors calibrated to achieve NFL sack distribution:
+            # DL: ~63%, LB: ~28%, DB: ~9%
             if pos in ['defensive_end', 'de', 'edge', 'leo']:
                 position_bonus = 10   # Primary edge rushers - always rush
                 blitz_surprise = 1.0  # No surprise (expected)
@@ -1955,18 +1970,18 @@ class PassPlaySimulator(BasePlaySimulator):
                 blitz_surprise = 1.0  # No surprise
             elif pos in ['outside_linebacker', 'olb']:
                 position_bonus = 5    # Edge rushers/blitzers
-                blitz_surprise = 5.0  # High surprise - often unblocked on designed blitzes
+                blitz_surprise = 15.0 # Was 11.0 - LBs need higher win rate on blitz plays
             elif pos in ['free_safety', 'fs', 'strong_safety', 'ss', 'safety']:
                 position_bonus = 0    # Low natural rush ability (neutral)
-                blitz_surprise = 6.0  # VERY HIGH surprise - often come completely unblocked!
+                blitz_surprise = 7.0  # Was 9.0 - DBs unblocked but reduce to balance LB
             elif pos in ['cornerback', 'cb', 'nickel_cornerback', 'ncb']:
                 position_bonus = 0    # Low natural rush ability
-                blitz_surprise = 5.5  # Very high surprise - edge blitz usually unblocked
+                blitz_surprise = 6.5  # Was 8.5 - Reduce CB to shift sacks to LB
             elif pos in ['inside_linebacker', 'ilb', 'middle_linebacker', 'mlb',
                         'mike', 'will', 'sam', 'linebacker', 'lb', 'mike_linebacker',
                         'will_linebacker', 'sam_linebacker']:
                 position_bonus = 0    # Neutral - A-gap blitzes are quick paths to QB
-                blitz_surprise = 6.0  # Very high - A-gap/interior blitzes often unblocked
+                blitz_surprise = 16.0 # Was 12.0 - A-gap/interior blitzes often completely unblocked
             else:
                 position_bonus = -10  # Unknown position
                 blitz_surprise = 1.0

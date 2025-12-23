@@ -11,7 +11,8 @@ from PySide6.QtWidgets import (
     QWidget, QHBoxLayout, QVBoxLayout, QLabel, QFrame, QGroupBox
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
+
+from game_cycle_ui.theme import Colors, Typography, FontSizes, TextColors
 
 
 class CapSummaryWidget(QWidget):
@@ -89,7 +90,7 @@ class CapSummaryWidget(QWidget):
         self._available_frame = self._create_stat_frame(
             "Available Space",
             "$0",
-            value_color="#2E7D32"  # Default green
+            value_color=Colors.SUCCESS  # Default green
         )
         content_layout.addWidget(self._available_frame)
 
@@ -97,7 +98,7 @@ class CapSummaryWidget(QWidget):
         self._dead_money_frame = self._create_stat_frame(
             "Dead Money",
             "$0",
-            value_color="#C62828"  # Red for dead money
+            value_color=Colors.ERROR  # Red for dead money
         )
         content_layout.addWidget(self._dead_money_frame)
 
@@ -107,7 +108,7 @@ class CapSummaryWidget(QWidget):
         self,
         title: str,
         initial_value: str,
-        value_color: str = "#000"
+        value_color: str = Colors.TEXT_PRIMARY
     ) -> QFrame:
         """
         Create a frame with title label and value label.
@@ -127,12 +128,13 @@ class CapSummaryWidget(QWidget):
 
         # Title label
         title_label = QLabel(title)
-        title_label.setStyleSheet("color: #666; font-size: 11px;")
+        title_label.setFont(Typography.CAPTION)
+        title_label.setStyleSheet(f"color: {Colors.MUTED};")
         layout.addWidget(title_label)
 
         # Value label
         value_label = QLabel(initial_value)
-        value_label.setFont(QFont("Arial", 16, QFont.Bold))
+        value_label.setFont(Typography.H4)
         value_label.setStyleSheet(f"color: {value_color};")
         layout.addWidget(value_label)
 
@@ -207,22 +209,22 @@ class CapSummaryWidget(QWidget):
         """
         if available < 0:
             # Over cap - red
-            return "#C62828"
+            return Colors.ERROR
 
         if limit <= 0:
-            return "#2E7D32"  # Default green if no limit
+            return Colors.SUCCESS  # Default green if no limit
 
         pct = available / limit
 
         if pct > 0.10:
             # > 10% available - healthy (green)
-            return "#2E7D32"
+            return Colors.SUCCESS
         elif pct > 0.05:
             # 5-10% available - caution (amber)
-            return "#FF8F00"
+            return Colors.WARNING
         else:
             # < 5% available - tight (red)
-            return "#C62828"
+            return Colors.ERROR
 
     def get_cap_data(self) -> Dict:
         """Get the current cap data."""

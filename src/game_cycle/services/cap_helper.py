@@ -202,11 +202,13 @@ class CapHelper:
             # Get player's current contract
             contract = self._cap_db_api.get_player_contract(
                 player_id=player_id,
-                dynasty_id=self._dynasty_id,
-                season=self._season
+                team_id=team_id,
+                season=self._season,
+                dynasty_id=self._dynasty_id
             )
 
             if not contract:
+                print(f"[DEBUG CapHelper] Player {player_id}: No contract found for season {self._season}")
                 return {
                     "cap_savings": 0,
                     "dead_money": 0,
@@ -218,10 +220,11 @@ class CapHelper:
             contract_id = contract.get("contract_id")
             year_details = self._cap_db_api.get_contract_year_details(
                 contract_id=contract_id,
-                year=self._season
+                season_year=self._season
             )
 
             if not year_details:
+                print(f"[DEBUG CapHelper] Player {player_id}: No year_details for season {self._season}, using fallback. Contract: total_value={contract.get('total_value')}, years={contract.get('contract_years')}, bonus={contract.get('signing_bonus')}")
                 # No year details - estimate based on contract averages
                 total_value = contract.get("total_value", 0)
                 years = contract.get("contract_years", 1)
@@ -237,13 +240,16 @@ class CapHelper:
                     "can_release": True
                 }
 
-            # Calculate from year details
-            cap_hit = year_details.get("cap_hit", 0)
-            base_salary = year_details.get("base_salary", 0)
-            prorated_bonus = year_details.get("prorated_signing_bonus", 0)
+            # Calculate from year details (year_details is a list, get first item)
+            year_detail = year_details[0] if year_details else {}
+            # Column names: total_cap_hit, signing_bonus_proration
+            cap_hit = year_detail.get("total_cap_hit", 0)
+            base_salary = year_detail.get("base_salary", 0)
+            prorated_bonus = year_detail.get("signing_bonus_proration", 0)
+            print(f"[DEBUG CapHelper] Player {player_id}: year_detail found - cap_hit={cap_hit}, base={base_salary}, bonus={prorated_bonus}")
 
             # Get remaining guaranteed money
-            remaining_guaranteed = year_details.get("guaranteed_remaining", 0)
+            remaining_guaranteed = year_detail.get("guaranteed_remaining", 0)
 
             # Calculate dead money (remaining prorated bonus + any remaining guarantees)
             dead_money = prorated_bonus + remaining_guaranteed
@@ -352,6 +358,11 @@ class CapHelper:
             conn = sqlite3.connect(self._db_path)
             cursor = conn.cursor()
 
+            # Debug logging
+            self._logger.debug(
+                f"reconcile_team_cap: team_id={team_id}, season={self._season}, dynasty={self._dynasty_id}"
+            )
+
             # First try contract_year_details for accurate cap hits
             cursor.execute('''
                 SELECT COALESCE(SUM(cyd.total_cap_hit), 0) as total_cap_hit,
@@ -368,8 +379,18 @@ class CapHelper:
             total_cap_hit = row[0] if row else 0
             contract_count = row[1] if row else 0
 
-            # If no contract_year_details found, calculate from player_contracts
+            self._logger.debug(
+                f"Primary query result: cap_hit=${total_cap_hit:,}, contracts={contract_count}"
+            )
+
+            # If no contract_year_details found, use fallback calculation from player_contracts
+            # This is a safety net - properly created contracts should have year details
+            # NOTE: Must filter by season to only include contracts active in target year
             if total_cap_hit == 0:
+                self._logger.debug(
+                    f"No contract_year_details found for team {team_id} in season {self._season}. "
+                    "Using fallback calculation from player_contracts."
+                )
                 cursor.execute('''
                     SELECT COALESCE(SUM(
                         CASE
@@ -384,11 +405,17 @@ class CapHelper:
                     WHERE team_id = ?
                       AND dynasty_id = ?
                       AND is_active = 1
-                ''', (team_id, self._dynasty_id))
+                      AND start_year <= ?
+                      AND end_year >= ?
+                ''', (team_id, self._dynasty_id, self._season, self._season))
 
                 row = cursor.fetchone()
                 total_cap_hit = int(row[0]) if row and row[0] else 0
                 contract_count = row[1] if row else 0
+                self._logger.info(
+                    f"Fallback cap calculation for team {team_id}: "
+                    f"${total_cap_hit:,} cap hit, {contract_count} contracts"
+                )
 
             conn.close()
 

@@ -265,3 +265,83 @@ class BaseCoachArchetype:
 CoachArchetype = BaseCoachArchetype
 
 
+# Predefined coach archetypes for roster/personnel decisions
+_COACH_ARCHETYPES: Dict[str, Dict[str, Any]] = {
+    "balanced": {
+        "name": "Balanced",
+        "description": "Well-rounded approach balancing experience and development",
+        "aggression": 0.5,
+        "risk_tolerance": 0.5,
+        "conservatism": 0.5,
+        "starter_loyalty": 0.5,
+        "rookie_trust": 0.5,
+    },
+    "aggressive": {
+        "name": "Aggressive",
+        "description": "Bold decision-maker willing to take risks on young talent",
+        "aggression": 0.7,
+        "risk_tolerance": 0.7,
+        "conservatism": 0.3,
+        "starter_loyalty": 0.4,
+        "rookie_trust": 0.7,
+    },
+    "conservative": {
+        "name": "Conservative",
+        "description": "Prefers proven veterans and established starters",
+        "aggression": 0.3,
+        "risk_tolerance": 0.3,
+        "conservatism": 0.7,
+        "starter_loyalty": 0.8,
+        "rookie_trust": 0.3,
+    },
+    "player_developer": {
+        "name": "Player Developer",
+        "description": "Focuses on developing young talent over immediate results",
+        "aggression": 0.5,
+        "risk_tolerance": 0.6,
+        "conservatism": 0.4,
+        "starter_loyalty": 0.4,
+        "rookie_trust": 0.8,
+    },
+    "veteran_oriented": {
+        "name": "Veteran Oriented",
+        "description": "Values experience and proven track records",
+        "aggression": 0.4,
+        "risk_tolerance": 0.4,
+        "conservatism": 0.6,
+        "starter_loyalty": 0.8,
+        "rookie_trust": 0.3,
+    },
+}
+
+
+@dataclass
+class CoachArchetypeWithPersonnel(BaseCoachArchetype):
+    """Extended coach archetype with personnel decision traits."""
+    starter_loyalty: float = 0.5
+    rookie_trust: float = 0.5
+
+
+def load_coach_archetype(archetype_key: str) -> CoachArchetypeWithPersonnel:
+    """
+    Load a coach archetype by key.
+
+    Args:
+        archetype_key: Archetype identifier (e.g., "balanced", "aggressive", "conservative")
+
+    Returns:
+        CoachArchetypeWithPersonnel with traits for the specified archetype
+    """
+    archetype_data = _COACH_ARCHETYPES.get(archetype_key.lower(), _COACH_ARCHETYPES["balanced"])
+
+    return CoachArchetypeWithPersonnel(
+        name=archetype_data["name"],
+        description=archetype_data.get("description", ""),
+        aggression=archetype_data.get("aggression", 0.5),
+        risk_tolerance=archetype_data.get("risk_tolerance", 0.5),
+        conservatism=archetype_data.get("conservatism", 0.5),
+        starter_loyalty=archetype_data.get("starter_loyalty", 0.5),
+        rookie_trust=archetype_data.get("rookie_trust", 0.5),
+    )
+
+

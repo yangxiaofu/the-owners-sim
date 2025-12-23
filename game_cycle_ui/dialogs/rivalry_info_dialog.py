@@ -10,15 +10,14 @@ from typing import Dict, Any, Optional
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
-    QProgressBar, QPushButton, QTableWidget, QTableWidgetItem,
-    QHeaderView, QGroupBox
+    QProgressBar, QPushButton, QGroupBox
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont, QColor
 
 from game_cycle_ui.theme import (
-    UITheme, TABLE_HEADER_STYLE,
-    get_intensity_label, get_rivalry_intensity_color, RIVALRY_TYPE_COLORS
+    UITheme, get_intensity_label, get_rivalry_intensity_color,
+    RIVALRY_TYPE_COLORS, Colors, NEUTRAL_BUTTON_STYLE,
+    Typography, FontSizes, TextColors
 )
 
 
@@ -87,11 +86,7 @@ class RivalryInfoDialog(QDialog):
 
         # Close button
         close_btn = QPushButton("Close")
-        close_btn.setStyleSheet(
-            "QPushButton { background-color: #666; color: white; "
-            "border-radius: 4px; padding: 10px 30px; font-size: 13px; }"
-            "QPushButton:hover { background-color: #555; }"
-        )
+        close_btn.setStyleSheet(NEUTRAL_BUTTON_STYLE)
         close_btn.clicked.connect(self.accept)
 
         btn_layout = QHBoxLayout()
@@ -109,7 +104,7 @@ class RivalryInfoDialog(QDialog):
 
         # Rivalry name
         self.name_label = QLabel("Rivalry")
-        self.name_label.setFont(QFont("Arial", 18, QFont.Bold))
+        self.name_label.setFont(Typography.H3)
         self.name_label.setAlignment(Qt.AlignCenter)
         header_layout.addWidget(self.name_label)
 
@@ -123,7 +118,7 @@ class RivalryInfoDialog(QDialog):
         self.type_badge = QLabel("TYPE")
         self.type_badge.setStyleSheet(
             "padding: 4px 12px; border-radius: 4px; "
-            "font-weight: bold; font-size: 11px;"
+            f"font-weight: bold; font-size: {FontSizes.CAPTION};"
         )
         type_layout.addWidget(self.type_badge)
 
@@ -131,7 +126,7 @@ class RivalryInfoDialog(QDialog):
         self.protected_badge.setStyleSheet(
             "background-color: #FFD700; color: #333; "
             "padding: 4px 12px; border-radius: 4px; "
-            "font-weight: bold; font-size: 11px;"
+            f"font-weight: bold; font-size: {FontSizes.CAPTION};"
         )
         self.protected_badge.hide()  # Hidden by default
         type_layout.addWidget(self.protected_badge)
@@ -157,7 +152,7 @@ class RivalryInfoDialog(QDialog):
         bar_layout.addWidget(self.intensity_bar, stretch=1)
 
         self.intensity_value_label = QLabel("0")
-        self.intensity_value_label.setFont(QFont("Arial", 14, QFont.Bold))
+        self.intensity_value_label.setFont(Typography.H5)
         self.intensity_value_label.setMinimumWidth(40)
         self.intensity_value_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
         bar_layout.addWidget(self.intensity_value_label)
@@ -167,7 +162,7 @@ class RivalryInfoDialog(QDialog):
         # Intensity level label
         self.intensity_level_label = QLabel("Mild")
         self.intensity_level_label.setAlignment(Qt.AlignCenter)
-        self.intensity_level_label.setFont(QFont("Arial", 12))
+        self.intensity_level_label.setFont(Typography.BODY)
         intensity_layout.addWidget(self.intensity_level_label)
 
         parent_layout.addWidget(intensity_group)
@@ -185,7 +180,7 @@ class RivalryInfoDialog(QDialog):
         team_a_layout.setAlignment(Qt.AlignCenter)
 
         self.team_a_label = QLabel("Team A")
-        self.team_a_label.setFont(QFont("Arial", 13, QFont.Bold))
+        self.team_a_label.setFont(Typography.BODY_LARGE_BOLD)
         self.team_a_label.setAlignment(Qt.AlignCenter)
         team_a_layout.addWidget(self.team_a_label)
 
@@ -193,7 +188,7 @@ class RivalryInfoDialog(QDialog):
 
         # VS separator
         vs_label = QLabel("vs")
-        vs_label.setFont(QFont("Arial", 16, QFont.Bold))
+        vs_label.setFont(Typography.H4)
         vs_label.setStyleSheet("color: #999;")
         vs_label.setAlignment(Qt.AlignCenter)
         teams_layout.addWidget(vs_label)
@@ -205,7 +200,7 @@ class RivalryInfoDialog(QDialog):
         team_b_layout.setAlignment(Qt.AlignCenter)
 
         self.team_b_label = QLabel("Team B")
-        self.team_b_label.setFont(QFont("Arial", 13, QFont.Bold))
+        self.team_b_label.setFont(Typography.BODY_LARGE_BOLD)
         self.team_b_label.setAlignment(Qt.AlignCenter)
         team_b_layout.addWidget(self.team_b_label)
 
@@ -223,20 +218,20 @@ class RivalryInfoDialog(QDialog):
         record_layout = QHBoxLayout()
 
         self.team_a_record = QLabel("0")
-        self.team_a_record.setFont(QFont("Arial", 28, QFont.Bold))
-        self.team_a_record.setStyleSheet("color: #2E7D32;")  # Green
+        self.team_a_record.setFont(Typography.DISPLAY)
+        self.team_a_record.setStyleSheet(f"color: {Colors.SUCCESS};")
         self.team_a_record.setAlignment(Qt.AlignCenter)
         record_layout.addWidget(self.team_a_record, stretch=1)
 
         separator = QLabel("-")
-        separator.setFont(QFont("Arial", 28, QFont.Bold))
+        separator.setFont(Typography.DISPLAY)
         separator.setStyleSheet("color: #999;")
         separator.setAlignment(Qt.AlignCenter)
         record_layout.addWidget(separator)
 
         self.team_b_record = QLabel("0")
-        self.team_b_record.setFont(QFont("Arial", 28, QFont.Bold))
-        self.team_b_record.setStyleSheet("color: #1976D2;")  # Blue
+        self.team_b_record.setFont(Typography.DISPLAY)
+        self.team_b_record.setStyleSheet(f"color: {Colors.INFO};")
         self.team_b_record.setAlignment(Qt.AlignCenter)
         record_layout.addWidget(self.team_b_record, stretch=1)
 
@@ -245,7 +240,7 @@ class RivalryInfoDialog(QDialog):
         # Ties (if any)
         self.ties_label = QLabel("")
         self.ties_label.setAlignment(Qt.AlignCenter)
-        self.ties_label.setStyleSheet("color: #666;")
+        self.ties_label.setStyleSheet(f"color: {Colors.MUTED};")
         h2h_layout.addWidget(self.ties_label)
 
         # Current streak
@@ -253,11 +248,11 @@ class RivalryInfoDialog(QDialog):
         streak_layout.addStretch()
 
         streak_title = QLabel("Current Streak:")
-        streak_title.setStyleSheet("color: #666;")
+        streak_title.setStyleSheet(f"color: {Colors.MUTED};")
         streak_layout.addWidget(streak_title)
 
         self.streak_label = QLabel("No current streak")
-        self.streak_label.setFont(QFont("Arial", 11, QFont.Bold))
+        self.streak_label.setFont(Typography.CAPTION_BOLD)
         streak_layout.addWidget(self.streak_label)
 
         streak_layout.addStretch()
@@ -268,11 +263,11 @@ class RivalryInfoDialog(QDialog):
         last_layout.addStretch()
 
         last_title = QLabel("Last Meeting:")
-        last_title.setStyleSheet("color: #666;")
+        last_title.setStyleSheet(f"color: {Colors.MUTED};")
         last_layout.addWidget(last_title)
 
         self.last_meeting_label = QLabel("N/A")
-        self.last_meeting_label.setFont(QFont("Arial", 11))
+        self.last_meeting_label.setFont(Typography.CAPTION)
         last_layout.addWidget(self.last_meeting_label)
 
         last_layout.addStretch()
@@ -289,7 +284,7 @@ class RivalryInfoDialog(QDialog):
         # Playoff meetings count
         self.playoff_meetings_label = QLabel("Playoff Meetings: 0")
         self.playoff_meetings_label.setAlignment(Qt.AlignCenter)
-        self.playoff_meetings_label.setFont(QFont("Arial", 12, QFont.Bold))
+        self.playoff_meetings_label.setFont(Typography.BODY_BOLD)
         playoff_layout.addWidget(self.playoff_meetings_label)
 
         # Playoff record
@@ -297,18 +292,18 @@ class RivalryInfoDialog(QDialog):
         playoff_record_layout.addStretch()
 
         self.playoff_team_a_wins = QLabel("0")
-        self.playoff_team_a_wins.setFont(QFont("Arial", 16, QFont.Bold))
-        self.playoff_team_a_wins.setStyleSheet("color: #2E7D32;")
+        self.playoff_team_a_wins.setFont(Typography.H4)
+        self.playoff_team_a_wins.setStyleSheet(f"color: {Colors.SUCCESS};")
         playoff_record_layout.addWidget(self.playoff_team_a_wins)
 
         playoff_sep = QLabel("-")
-        playoff_sep.setFont(QFont("Arial", 16, QFont.Bold))
+        playoff_sep.setFont(Typography.H4)
         playoff_sep.setStyleSheet("color: #999;")
         playoff_record_layout.addWidget(playoff_sep)
 
         self.playoff_team_b_wins = QLabel("0")
-        self.playoff_team_b_wins.setFont(QFont("Arial", 16, QFont.Bold))
-        self.playoff_team_b_wins.setStyleSheet("color: #1976D2;")
+        self.playoff_team_b_wins.setFont(Typography.H4)
+        self.playoff_team_b_wins.setStyleSheet(f"color: {Colors.INFO};")
         playoff_record_layout.addWidget(self.playoff_team_b_wins)
 
         playoff_record_layout.addStretch()
@@ -326,12 +321,12 @@ class RivalryInfoDialog(QDialog):
 
         # Type badge
         rivalry_type = self._rivalry.rivalry_type.value
-        type_color = RIVALRY_TYPE_COLORS.get(rivalry_type, "#666")
+        type_color = RIVALRY_TYPE_COLORS.get(rivalry_type, Colors.MUTED)
         self.type_badge.setText(rivalry_type.upper())
         self.type_badge.setStyleSheet(
-            f"background-color: {type_color}; color: white; "
+            f"background-color: {type_color}; color: {TextColors.ON_DARK}; "
             "padding: 4px 12px; border-radius: 4px; "
-            "font-weight: bold; font-size: 11px;"
+            f"font-weight: bold; font-size: {FontSizes.CAPTION};"
         )
 
         # Protected badge
@@ -384,12 +379,12 @@ class RivalryInfoDialog(QDialog):
 
                 # Color based on which team
                 if self._h2h_record.current_streak_team == self._rivalry.team_a_id:
-                    self.streak_label.setStyleSheet("color: #2E7D32; font-weight: bold;")
+                    self.streak_label.setStyleSheet(f"color: {Colors.SUCCESS}; font-weight: bold;")
                 else:
-                    self.streak_label.setStyleSheet("color: #1976D2; font-weight: bold;")
+                    self.streak_label.setStyleSheet(f"color: {Colors.INFO}; font-weight: bold;")
             else:
                 self.streak_label.setText("No current streak")
-                self.streak_label.setStyleSheet("color: #666;")
+                self.streak_label.setStyleSheet(f"color: {Colors.MUTED};")
 
             # Last meeting
             if self._h2h_record.last_meeting_season:
@@ -413,9 +408,9 @@ class RivalryInfoDialog(QDialog):
     def _get_intensity_bar_color(self, intensity: int) -> str:
         """Get progress bar chunk color based on intensity."""
         if intensity >= 90:
-            return "#C62828"  # Red - Legendary
+            return Colors.ERROR  # Red - Legendary
         elif intensity >= 75:
-            return "#F57C00"  # Orange - Intense
+            return Colors.WARNING  # Orange - Intense
         elif intensity >= 50:
             return "#FBC02D"  # Yellow - Competitive
         elif intensity >= 25:

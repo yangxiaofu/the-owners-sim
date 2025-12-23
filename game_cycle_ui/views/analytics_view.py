@@ -16,10 +16,15 @@ from PySide6.QtWidgets import (
     QFrame, QTabWidget, QPushButton, QProgressBar
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont, QColor
+from PySide6.QtGui import QColor
 
 from constants.position_abbreviations import get_position_abbreviation
-from game_cycle_ui.theme import TABLE_HEADER_STYLE
+from game_cycle_ui.theme import (
+    TABLE_HEADER_STYLE, TAB_STYLE, PRIMARY_BUTTON_STYLE,
+    SECONDARY_BUTTON_STYLE, DANGER_BUTTON_STYLE,
+    WARNING_BUTTON_STYLE, NEUTRAL_BUTTON_STYLE,
+    Typography, FontSizes, TextColors, apply_table_style
+)
 
 
 class NumericTableWidgetItem(QTableWidgetItem):
@@ -121,7 +126,7 @@ class AnalyticsView(QWidget):
         header = QHBoxLayout()
 
         title = QLabel("PLAYER GRADES")
-        title.setFont(QFont("Arial", 16, QFont.Bold))
+        title.setFont(Typography.H4)
         header.addWidget(title)
 
         header.addStretch()
@@ -164,11 +169,7 @@ class AnalyticsView(QWidget):
 
         # Refresh button
         self.refresh_btn = QPushButton("Refresh")
-        self.refresh_btn.setStyleSheet(
-            "QPushButton { background-color: #1976D2; color: white; "
-            "border-radius: 4px; padding: 6px 16px; }"
-            "QPushButton:hover { background-color: #1565C0; }"
-        )
+        self.refresh_btn.setStyleSheet(SECONDARY_BUTTON_STYLE)
         self.refresh_btn.clicked.connect(self._on_refresh_clicked)
         header.addWidget(self.refresh_btn)
 
@@ -239,11 +240,11 @@ class AnalyticsView(QWidget):
         vlayout.setContentsMargins(0, 0, 0, 0)
 
         title_label = QLabel(title)
-        title_label.setStyleSheet(f"color: {color}; font-size: 11px; font-weight: bold;")
+        title_label.setStyleSheet(f"color: {color}; font-size: {FontSizes.CAPTION}; font-weight: bold;")
         vlayout.addWidget(title_label)
 
         value_label = QLabel(initial_value)
-        value_label.setFont(QFont("Arial", 18, QFont.Bold))
+        value_label.setFont(Typography.H3)
         value_label.setStyleSheet(f"color: {color};")
         vlayout.addWidget(value_label)
 
@@ -253,6 +254,7 @@ class AnalyticsView(QWidget):
     def _create_tabs(self, parent_layout: QVBoxLayout):
         """Create tab widget with grade tables."""
         self.tabs = QTabWidget()
+        self.tabs.setStyleSheet(TAB_STYLE)
 
         # Grade Leaders tab
         self.leaders_table = self._create_grade_table([
@@ -300,8 +302,10 @@ class AnalyticsView(QWidget):
         table.setColumnCount(len(headers))
         table.setHorizontalHeaderLabels(headers)
 
+        # Apply centralized table styling
+        apply_table_style(table)
+
         header = table.horizontalHeader()
-        header.setStyleSheet(TABLE_HEADER_STYLE)
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
         for i in range(2, len(headers)):
@@ -309,7 +313,6 @@ class AnalyticsView(QWidget):
 
         table.setEditTriggers(QTableWidget.NoEditTriggers)
         table.setSelectionBehavior(QTableWidget.SelectRows)
-        table.setAlternatingRowColors(True)
         table.verticalHeader().setVisible(False)
         table.setSortingEnabled(True)
 
@@ -321,15 +324,16 @@ class AnalyticsView(QWidget):
         table.setColumnCount(len(headers))
         table.setHorizontalHeaderLabels(headers)
 
+        # Apply centralized table styling
+        apply_table_style(table)
+
         header = table.horizontalHeader()
-        header.setStyleSheet(TABLE_HEADER_STYLE)
         header.setSectionResizeMode(0, QHeaderView.Stretch)
         for i in range(1, len(headers)):
             header.setSectionResizeMode(i, QHeaderView.ResizeToContents)
 
         table.setEditTriggers(QTableWidget.NoEditTriggers)
         table.setSelectionBehavior(QTableWidget.SelectRows)
-        table.setAlternatingRowColors(True)
         table.verticalHeader().setVisible(False)
         table.setSortingEnabled(True)
 
@@ -639,10 +643,10 @@ class AnalyticsView(QWidget):
         # Color based on grade tier
         if grade >= 90:
             item.setForeground(QColor("#1565C0"))
-            item.setFont(QFont("Arial", 10, QFont.Bold))
+            item.setFont(Typography.SMALL_BOLD)
         elif grade >= 80:
             item.setForeground(QColor("#2E7D32"))
-            item.setFont(QFont("Arial", 10, QFont.Bold))
+            item.setFont(Typography.SMALL_BOLD)
         elif grade >= 70:
             item.setForeground(QColor("#558B2F"))
         elif grade >= 60:
@@ -770,7 +774,7 @@ class AnalyticsView(QWidget):
         # Update header
         self.history_header.setText(f"Game-by-Game Grades: {player_name}")
         self.history_header.setStyleSheet(
-            "color: #1976D2; font-weight: bold; font-size: 13px; padding: 8px;"
+            f"color: {TextColors.INFO}; font-weight: bold; font-size: {FontSizes.H5}; padding: 8px;"
         )
 
         # Load history data

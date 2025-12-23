@@ -1,8 +1,40 @@
 {
   "team_id": 8,
   "team_name": "Pittsburgh Steelers",
-  "total_players": 51,
+  "total_players": 52,
   "players": {
+    "5001": {
+      "player_id": 5001,
+      "first_name": "Aaron",
+      "last_name": "Rodgers",
+      "number": 8,
+      "birthdate": "1987-05-28",
+      "positions": [
+        "quarterback"
+      ],
+      "team_id": 8,
+      "attributes": {
+        "overall": 88,
+        "speed": 72,
+        "accuracy": 95,
+        "arm_strength": 90,
+        "awareness": 95,
+        "discipline": 85,
+        "composure": 95,
+        "experience": 98,
+        "penalty_technique": 92,
+        "leadership": 90,
+        "pocket_presence": 95
+      },
+      "contract": {
+        "contract_years": 3,
+        "annual_salary": 37500000,
+        "signing_bonus": 35000000,
+        "guaranteed_money": 75000000,
+        "contract_type": "free_agent",
+        "cap_hit_2025": 23500000
+      }
+    },
     "9002": {
       "player_id": 9002,
       "first_name": "Najee",

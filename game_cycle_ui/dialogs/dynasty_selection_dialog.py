@@ -14,10 +14,10 @@ import os
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QListWidget, QListWidgetItem, QGroupBox, QLineEdit,
-    QFormLayout, QMessageBox, QTextEdit
+    QFormLayout, QMessageBox, QTextEdit, QFrame, QSpinBox,
+    QSplitter
 )
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
 
 # Add src to path for imports
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -27,6 +27,10 @@ if src_path not in sys.path:
 
 from game_cycle_ui.controllers.dynasty_controller import GameCycleDynastyController
 from game_cycle_ui.widgets.team_gallery_widget import TeamGalleryWidget
+from game_cycle_ui.theme import (
+    Colors, Typography, FontSizes, TextColors,
+    PRIMARY_BUTTON_STYLE, SECONDARY_BUTTON_STYLE, NEUTRAL_BUTTON_STYLE
+)
 from team_management.teams.team_loader import TeamDataLoader
 
 
@@ -78,45 +82,45 @@ class GameCycleDynastySelectionDialog(QDialog):
         self._load_dynasties()
 
     def _create_ui(self):
-        """Create the dialog UI layout."""
+        """Create the dialog UI layout with tabbed team selection."""
         layout = QVBoxLayout()
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
 
-        # Title
-        title_label = QLabel("Select or Create a Dynasty")
-        title_font = QFont()
-        title_font.setPointSize(16)
-        title_font.setBold(True)
-        title_label.setFont(title_font)
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(title_label)
+        # Main content - horizontal split with splitter
+        splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # Main content - horizontal split
-        content_layout = QHBoxLayout()
-
-        # Left side: Existing dynasties list
+        # Left side: Existing dynasties list (narrower)
         left_panel = self._create_dynasty_list_panel()
-        content_layout.addWidget(left_panel, stretch=2)
+        splitter.addWidget(left_panel)
 
-        # Right side: Dynasty info / Create new
-        right_panel = self._create_info_panel()
-        content_layout.addWidget(right_panel, stretch=3)
+        # Right side: Create new dynasty form
+        right_panel = self._create_new_dynasty_panel()
+        splitter.addWidget(right_panel)
 
-        layout.addLayout(content_layout)
+        # Set initial sizes (1:3 ratio)
+        splitter.setSizes([250, 750])
+        splitter.setHandleWidth(1)
+
+        layout.addWidget(splitter, stretch=1)
 
         # Bottom buttons
         button_layout = QHBoxLayout()
         button_layout.addStretch()
 
         self.load_button = QPushButton("Load Dynasty")
+        self.load_button.setStyleSheet(SECONDARY_BUTTON_STYLE)
         self.load_button.setEnabled(False)
         self.load_button.clicked.connect(self._on_load_dynasty)
         button_layout.addWidget(self.load_button)
 
         self.create_button = QPushButton("Create New Dynasty")
+        self.create_button.setStyleSheet(PRIMARY_BUTTON_STYLE)
         self.create_button.clicked.connect(self._on_create_dynasty)
         button_layout.addWidget(self.create_button)
 
         cancel_button = QPushButton("Cancel")
+        cancel_button.setStyleSheet(NEUTRAL_BUTTON_STYLE)
         cancel_button.clicked.connect(self.reject)
         button_layout.addWidget(cancel_button)
 
@@ -125,74 +129,187 @@ class GameCycleDynastySelectionDialog(QDialog):
         self.setLayout(layout)
 
     def _create_dynasty_list_panel(self):
-        """Create the left panel with dynasty list."""
-        group = QGroupBox("Existing Dynasties")
-        layout = QVBoxLayout()
+        """Create the left panel with dynasty list and info."""
+        panel = QFrame()
+        panel.setStyleSheet("""
+            QFrame { background: #1a1a1a; border-radius: 8px; }
+            QGroupBox {
+                border: 1px solid #333333;
+                border-radius: 6px;
+                margin-top: 8px;
+                padding-top: 8px;
+                color: #CCCCCC;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px;
+            }
+        """)
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
+
+        # Header
+        header = QLabel("Saved Dynasties")
+        header.setFont(Typography.H5)
+        header.setStyleSheet("color: #FFFFFF; background: transparent;")
+        layout.addWidget(header)
 
         # Dynasty list widget
         self.dynasty_list = QListWidget()
+        self.dynasty_list.setStyleSheet("""
+            QListWidget {
+                background: #2a2a2a;
+                border: 1px solid #333333;
+                border-radius: 4px;
+                color: #FFFFFF;
+            }
+            QListWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #333333;
+            }
+            QListWidget::item:selected {
+                background: #3a5a7a;
+            }
+            QListWidget::item:hover {
+                background: #3a3a3a;
+            }
+        """)
         self.dynasty_list.itemSelectionChanged.connect(self._on_dynasty_selected)
         self.dynasty_list.itemDoubleClicked.connect(self._on_load_dynasty)
-        layout.addWidget(self.dynasty_list)
-
-        # Info label
-        info_label = QLabel("Double-click to load a dynasty")
-        info_label.setStyleSheet("color: gray; font-style: italic;")
-        layout.addWidget(info_label)
-
-        group.setLayout(layout)
-        return group
-
-    def _create_info_panel(self):
-        """Create the right panel with dynasty info/creation form."""
-        group = QGroupBox("Dynasty Information")
-        layout = QVBoxLayout()
+        layout.addWidget(self.dynasty_list, stretch=1)
 
         # Dynasty info display (shown when dynasty selected)
+        info_group = QGroupBox("Dynasty Info")
+        info_layout = QVBoxLayout(info_group)
         self.info_widget = QTextEdit()
         self.info_widget.setReadOnly(True)
-        self.info_widget.setMaximumHeight(150)
-        layout.addWidget(self.info_widget)
+        self.info_widget.setMaximumHeight(120)
+        self.info_widget.setStyleSheet("""
+            QTextEdit {
+                background: #2a2a2a;
+                border: none;
+                color: #CCCCCC;
+            }
+        """)
+        info_layout.addWidget(self.info_widget)
+        layout.addWidget(info_group)
 
-        # Create new dynasty form
-        form_group = QGroupBox("Create New Dynasty")
-        form_layout = QFormLayout()
+        # Info label
+        info_label = QLabel("Double-click to load")
+        info_label.setStyleSheet("color: #666666; font-style: italic; background: transparent;")
+        info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(info_label)
 
+        return panel
+
+    def _create_new_dynasty_panel(self):
+        """Create the right panel with new dynasty creation form."""
+        panel = QFrame()
+        panel.setStyleSheet("QFrame { background: #1a1a1a; border-radius: 8px; }")
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
+
+        # Header
+        header = QLabel("Create New Dynasty")
+        header.setFont(Typography.H4)
+        header.setStyleSheet("color: #FFFFFF;")
+        layout.addWidget(header)
+
+        # Form fields in a horizontal row
+        form_row = QHBoxLayout()
+        form_row.setSpacing(16)
+
+        # Dynasty Name
+        name_container = QVBoxLayout()
+        name_label = QLabel("Dynasty Name")
+        name_label.setStyleSheet("color: #888888;")
+        name_label.setFont(Typography.SMALL)
+        name_container.addWidget(name_label)
         self.dynasty_name_input = QLineEdit()
-        self.dynasty_name_input.setPlaceholderText("Enter dynasty name (e.g., 'Eagles Dynasty')")
-        # Default value for faster testing
+        self.dynasty_name_input.setPlaceholderText("e.g., Eagles Dynasty")
         self.dynasty_name_input.setText(f"Test{uuid.uuid4().hex[:8]}")
+        self.dynasty_name_input.setStyleSheet("""
+            QLineEdit {
+                background: #2a2a2a;
+                border: 1px solid #444444;
+                border-radius: 4px;
+                padding: 8px;
+                color: #FFFFFF;
+            }
+            QLineEdit:focus { border-color: #1976D2; }
+        """)
         self.dynasty_name_input.textChanged.connect(self._on_name_changed)
-        form_layout.addRow("Dynasty Name:", self.dynasty_name_input)
+        name_container.addWidget(self.dynasty_name_input)
+        form_row.addLayout(name_container, stretch=2)
 
+        # Owner Name
+        owner_container = QVBoxLayout()
+        owner_label = QLabel("Owner Name")
+        owner_label.setStyleSheet("color: #888888;")
+        owner_label.setFont(Typography.SMALL)
+        owner_container.addWidget(owner_label)
         self.owner_name_input = QLineEdit()
         self.owner_name_input.setText("User")
-        self.owner_name_input.setPlaceholderText("Enter your name")
-        form_layout.addRow("Owner Name:", self.owner_name_input)
+        self.owner_name_input.setPlaceholderText("Your name")
+        self.owner_name_input.setStyleSheet("""
+            QLineEdit {
+                background: #2a2a2a;
+                border: 1px solid #444444;
+                border-radius: 4px;
+                padding: 8px;
+                color: #FFFFFF;
+            }
+            QLineEdit:focus { border-color: #1976D2; }
+        """)
+        owner_container.addWidget(self.owner_name_input)
+        form_row.addLayout(owner_container, stretch=1)
 
-        # Team selection gallery (visual grid of 32 teams)
+        # Starting Season
+        season_container = QVBoxLayout()
+        season_label = QLabel("Starting Season")
+        season_label.setStyleSheet("color: #888888;")
+        season_label.setFont(Typography.SMALL)
+        season_container.addWidget(season_label)
+        self.season_input = QSpinBox()
+        self.season_input.setRange(2000, 2100)
+        self.season_input.setValue(2025)
+        self.season_input.setStyleSheet("""
+            QSpinBox {
+                background: #2a2a2a;
+                border: 1px solid #444444;
+                border-radius: 4px;
+                padding: 8px;
+                color: #FFFFFF;
+            }
+            QSpinBox:focus { border-color: #1976D2; }
+        """)
+        season_container.addWidget(self.season_input)
+        form_row.addLayout(season_container, stretch=1)
+
+        layout.addLayout(form_row)
+
+        # Team selection section header
+        team_header = QLabel("Select Your Team")
+        team_header.setFont(Typography.H5)
+        team_header.setStyleSheet("color: #FFFFFF; margin-top: 8px;")
+        layout.addWidget(team_header)
+
+        # Team selection gallery (tabbed conference view)
         self.team_gallery = TeamGalleryWidget(self.team_loader)
         self.team_gallery.team_selected.connect(self._on_team_selected)
-        form_layout.addRow(self.team_gallery)
+        layout.addWidget(self.team_gallery, stretch=1)
 
-        self.season_input = QLineEdit()
-        self.season_input.setText("2025")
-        self.season_input.setPlaceholderText("Starting season (e.g., 2025)")
-        form_layout.addRow("Starting Season:", self.season_input)
-
-        # Validation message
+        # Validation/status message at bottom
         self.validation_label = QLabel("")
-        self.validation_label.setStyleSheet("color: red;")
+        self.validation_label.setStyleSheet(f"color: {Colors.SUCCESS};")
+        self.validation_label.setFont(Typography.BODY)
         self.validation_label.setWordWrap(True)
-        form_layout.addRow("", self.validation_label)
+        layout.addWidget(self.validation_label)
 
-        form_group.setLayout(form_layout)
-        layout.addWidget(form_group)
-
-        layout.addStretch()
-
-        group.setLayout(layout)
-        return group
+        return panel
 
     def _load_dynasties(self):
         """Load existing dynasties into the list."""
@@ -273,12 +390,12 @@ class GameCycleDynastySelectionDialog(QDialog):
 
         if not is_valid:
             self.validation_label.setText(f"X {error_msg}")
-            self.validation_label.setStyleSheet("color: red;")
+            self.validation_label.setStyleSheet(f"color: {Colors.ERROR};")
         else:
             # Show what the dynasty ID will be
             dynasty_id = self.controller.generate_dynasty_id(name)
             self.validation_label.setText(f"Dynasty ID will be: {dynasty_id}")
-            self.validation_label.setStyleSheet("color: green;")
+            self.validation_label.setStyleSheet(f"color: {Colors.SUCCESS};")
 
     def _on_team_selected(self, team_id: int):
         """Handle team selection from gallery."""
@@ -286,7 +403,7 @@ class GameCycleDynastySelectionDialog(QDialog):
         team = self.team_loader.get_team_by_id(team_id)
         if team:
             self.validation_label.setText(f"Selected: {team.city} {team.nickname}")
-            self.validation_label.setStyleSheet("color: green;")
+            self.validation_label.setStyleSheet(f"color: {Colors.SUCCESS};")
 
     def _on_load_dynasty(self):
         """Load the selected dynasty."""
@@ -326,14 +443,8 @@ class GameCycleDynastySelectionDialog(QDialog):
         if not owner_name:
             owner_name = "User"
 
-        # Validate season
-        try:
-            season = int(self.season_input.text())
-            if season < 2000 or season > 2100:
-                raise ValueError("Season must be between 2000 and 2100")
-        except ValueError as e:
-            QMessageBox.warning(self, "Validation Error", f"Invalid season: {str(e)}")
-            return
+        # Get season from spinbox
+        season = self.season_input.value()
 
         # Show progress (creation can take a few seconds)
         self.create_button.setEnabled(False)

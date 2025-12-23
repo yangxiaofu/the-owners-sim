@@ -109,8 +109,10 @@ class GameCycleInitializer:
             stage = "REGULAR_WEEK_1"
             phase = "REGULAR_SEASON"
         else:
-            stage = "PRESEASON_WEEK_1"
-            phase = "PRESEASON"
+            # Start at training camp to go through preseason weeks
+            # (OFFSEASON_PRESEASON_W1/W2/W3 are part of offseason flow now)
+            stage = "OFFSEASON_TRAINING_CAMP"
+            phase = "OFFSEASON"
 
         self.db.execute(
             "INSERT INTO stage_state (id, season_year, current_stage, phase) VALUES (1, ?, ?, ?)",

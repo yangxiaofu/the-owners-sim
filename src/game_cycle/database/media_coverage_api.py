@@ -11,11 +11,14 @@ Part of Milestone 12: Media Coverage.
 """
 
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 from .connection import GameCycleDatabase
+
+logger = logging.getLogger(__name__)
 
 
 # ============================================
@@ -187,6 +190,11 @@ class MediaCoverageAPI:
         if not rankings:
             raise ValueError("Rankings list cannot be empty")
 
+        logger.debug(
+            f"Saving power rankings: dynasty={dynasty_id}, season={season}, "
+            f"week={week}, count={len(rankings)}"
+        )
+
         count = 0
         for r in rankings:
             self.db.execute(
@@ -200,6 +208,8 @@ class MediaCoverageAPI:
                 )
             )
             count += 1
+
+        logger.debug(f"Successfully saved {count} power rankings to database")
         return count
 
     def get_power_rankings(
@@ -219,6 +229,10 @@ class MediaCoverageAPI:
         Returns:
             List of PowerRanking sorted by rank
         """
+        logger.debug(
+            f"Querying power rankings: dynasty={dynasty_id}, season={season}, week={week}"
+        )
+
         rows = self.db.query_all(
             """SELECT pr.id, pr.dynasty_id, pr.season, pr.week, pr.team_id, pr.rank,
                       pr.previous_rank, pr.tier, pr.blurb, pr.created_at,
@@ -229,6 +243,8 @@ class MediaCoverageAPI:
                ORDER BY pr.rank""",
             (dynasty_id, season, week)
         )
+
+        logger.debug(f"Query returned {len(rows)} power rankings")
         return [self._row_to_power_ranking(row) for row in rows]
 
     def get_team_ranking_history(
@@ -476,47 +492,95 @@ class MediaCoverageAPI:
     ) -> List[Headline]:
         """
         Get headlines for display combining:
-        - RECAP-type headlines from previous week (completed games)
-        - PREVIEW headlines for current week (upcoming games)
+        - RECAP-type headlines from current_week (completed games)
+        - PREVIEW headlines for current_week + 1 (upcoming games)
 
         This ensures proper timing: showing results of completed games
         alongside previews of upcoming matchups.
 
+        Special case: Week 1
+        - PRE-simulation: Show only PREVIEW headlines
+        - POST-simulation: Show RECAP headlines from completed Week 1 games
+
         Args:
             dynasty_id: Dynasty identifier
             season: Season year
-            current_week: Current week number (1-18)
+            current_week: The completed week number (1-18). For Week 2+,
+                         recaps are shown for this week, previews for week+1.
             limit: Max headlines to return
 
         Returns:
             List of Headline sorted by priority DESC, created_at DESC
         """
-        # Week 1: no completed games, show only Week 1 previews
+        # Week 1 special handling: check if games have been played
         if current_week <= 1:
-            return self.get_headlines(
-                dynasty_id, season, week=1, headline_type='PREVIEW'
-            )[:limit]
+            # Check if Week 1 games exist (completed)
+            games_exist = self._check_week_games_exist(dynasty_id, season, week=1)
 
-        recap_week = current_week - 1
+            if not games_exist:
+                # PRE-simulation: No games yet, show only previews
+                return self.get_headlines(
+                    dynasty_id, season, week=1, headline_type='PREVIEW'
+                )[:limit]
+            else:
+                # POST-simulation: Games completed, show Week 1 RECAP + Week 2 PREVIEW
+                # This ensures users see recaps of completed Week 1 games and previews for upcoming Week 2
+                recap_types_str = ','.join(f"'{t}'" for t in RECAP_HEADLINE_TYPES)
+
+                sql = f"""
+                    SELECT id, dynasty_id, season, week, headline_type, headline,
+                           subheadline, body_text, sentiment, priority,
+                           team_ids, player_ids, game_id, metadata, created_at
+                    FROM media_headlines h
+                    WHERE h.dynasty_id = ? AND h.season = ?
+                      AND (
+                          -- RECAP headlines from Week 1 (completed games)
+                          (h.week = 1 AND h.headline_type IN ({recap_types_str}))
+                          OR
+                          -- PREVIEW headlines for Week 2 (upcoming games)
+                          (h.week = 2 AND h.headline_type = 'PREVIEW'
+                           AND (h.game_id IS NULL OR NOT EXISTS (
+                               SELECT 1 FROM games g
+                               WHERE g.game_id = h.game_id
+                                 AND g.dynasty_id = h.dynasty_id
+                           )))
+                      )
+                    ORDER BY h.priority DESC, h.created_at DESC
+                    LIMIT ?
+                """
+
+                rows = self.db.query_all(sql, (dynasty_id, season, limit))
+                return [self._row_to_headline(row) for row in rows]
+
+        # Week 2+: Normal flow (RECAP from current week + PREVIEW for next week)
+        # The caller passes the completed week, so use it directly for recaps
+        recap_week = current_week
         recap_types_str = ','.join(f"'{t}'" for t in RECAP_HEADLINE_TYPES)
 
         sql = f"""
             SELECT id, dynasty_id, season, week, headline_type, headline,
                    subheadline, body_text, sentiment, priority,
                    team_ids, player_ids, game_id, metadata, created_at
-            FROM media_headlines
-            WHERE dynasty_id = ? AND season = ?
+            FROM media_headlines h
+            WHERE h.dynasty_id = ? AND h.season = ?
               AND (
-                  (week = ? AND headline_type IN ({recap_types_str}))
+                  -- RECAP headlines from current week (completed games)
+                  (h.week = ? AND h.headline_type IN ({recap_types_str}))
                   OR
-                  (week = ? AND headline_type = 'PREVIEW')
+                  -- PREVIEW headlines for next week, ONLY unplayed games
+                  (h.week = ? AND h.headline_type = 'PREVIEW'
+                   AND (h.game_id IS NULL OR NOT EXISTS (
+                       SELECT 1 FROM games g
+                       WHERE g.game_id = h.game_id
+                         AND g.dynasty_id = h.dynasty_id
+                   )))
               )
-            ORDER BY priority DESC, created_at DESC
+            ORDER BY h.priority DESC, h.created_at DESC
             LIMIT ?
         """
 
         rows = self.db.query_all(
-            sql, (dynasty_id, season, recap_week, current_week, limit)
+            sql, (dynasty_id, season, recap_week, current_week + 1, limit)
         )
         return [self._row_to_headline(row) for row in rows]
 
@@ -612,6 +676,27 @@ class MediaCoverageAPI:
             (dynasty_id, headline_id)
         )
         return self._row_to_headline(row) if row else None
+
+    def _check_week_games_exist(self, dynasty_id: str, season: int, week: int) -> bool:
+        """
+        Check if games have been played for a specific week.
+
+        Args:
+            dynasty_id: Dynasty identifier
+            season: Season year
+            week: Week number
+
+        Returns:
+            True if at least one game exists for the week, False otherwise
+        """
+        sql = """
+            SELECT COUNT(*) as count
+            FROM games
+            WHERE dynasty_id = ? AND season = ? AND week = ?
+        """
+
+        result = self.db.query_one(sql, (dynasty_id, season, week))
+        return result['count'] > 0 if result else False
 
     def _row_to_headline(self, row: tuple) -> Headline:
         """Convert database row to Headline dataclass."""

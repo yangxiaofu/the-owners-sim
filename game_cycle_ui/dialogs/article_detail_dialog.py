@@ -29,12 +29,17 @@ from game_cycle_ui.theme import (
     SENTIMENT_COLORS,
     SENTIMENT_BADGES,
     ESPN_RED,
+    ESPN_DARK_RED,
     ESPN_DARK_BG,
     ESPN_CARD_BG,
+    ESPN_CARD_HOVER,
     ESPN_TEXT_PRIMARY,
     ESPN_TEXT_SECONDARY,
     ESPN_BORDER,
     get_headline_category_display,
+    Colors,
+    FontSizes,
+    TextColors,
 )
 
 
@@ -95,7 +100,7 @@ class ArticleDetailDialog(QDialog):
         header_bg.setStyleSheet(f"""
             background: qlineargradient(
                 x1:0, y1:0, x2:1, y2:1,
-                stop:0 #1a1a1a, stop:0.5 #252525, stop:1 #1a1a1a
+                stop:0 {ESPN_CARD_BG}, stop:0.5 {ESPN_CARD_HOVER}, stop:1 {ESPN_CARD_BG}
             );
             border-bottom: 4px solid {ESPN_RED};
         """)
@@ -106,7 +111,7 @@ class ArticleDetailDialog(QDialog):
         icon_label = QLabel("NFL COVERAGE")
         icon_label.setStyleSheet(f"""
             color: {ESPN_RED};
-            font-size: 14px;
+            font-size: {FontSizes.H5};
             font-weight: bold;
             letter-spacing: 3px;
             background: transparent;
@@ -155,7 +160,7 @@ class ArticleDetailDialog(QDialog):
         category_badge.setStyleSheet(f"""
             background-color: {ESPN_RED};
             color: {ESPN_TEXT_PRIMARY};
-            font-size: 10px;
+            font-size: {FontSizes.CAPTION};
             font-weight: bold;
             padding: 4px 10px;
             border-radius: 2px;
@@ -174,7 +179,7 @@ class ArticleDetailDialog(QDialog):
         headline_label = QLabel(headline_text)
         headline_label.setWordWrap(True)
         headline_label.setStyleSheet(f"""
-            font-size: 22px;
+            font-size: {FontSizes.H2};
             font-weight: bold;
             color: {ESPN_TEXT_PRIMARY};
             line-height: 1.3;
@@ -188,7 +193,7 @@ class ArticleDetailDialog(QDialog):
             sub_label = QLabel(subheadline)
             sub_label.setWordWrap(True)
             sub_label.setStyleSheet(f"""
-                font-size: 14px;
+                font-size: {FontSizes.H5};
                 color: {ESPN_TEXT_SECONDARY};
                 font-style: italic;
                 margin-top: 4px;
@@ -212,7 +217,7 @@ class ArticleDetailDialog(QDialog):
                 width: 10px;
             }}
             QScrollBar::handle:vertical {{
-                background-color: #444444;
+                background-color: {Colors.MUTED};
                 border-radius: 5px;
                 min-height: 20px;
             }}
@@ -241,15 +246,15 @@ class ArticleDetailDialog(QDialog):
                     # First paragraph slightly larger
                     if i == 0:
                         para_label.setStyleSheet(f"""
-                            font-size: 15px;
+                            font-size: {FontSizes.H5};
                             color: {ESPN_TEXT_PRIMARY};
                             line-height: 1.7;
                             background-color: transparent;
                         """)
                     else:
                         para_label.setStyleSheet(f"""
-                            font-size: 14px;
-                            color: #CCCCCC;
+                            font-size: {FontSizes.H5};
+                            color: {Colors.DISABLED};
                             line-height: 1.6;
                             background-color: transparent;
                         """)
@@ -291,11 +296,11 @@ class ArticleDetailDialog(QDialog):
                 border-radius: 4px;
                 padding: 10px 30px;
                 font-weight: bold;
-                font-size: 12px;
+                font-size: {FontSizes.BODY};
                 letter-spacing: 1px;
             }}
             QPushButton:hover {{
-                background-color: #990000;
+                background-color: {ESPN_DARK_RED};
             }}
             QPushButton:pressed {{
                 background-color: #660000;

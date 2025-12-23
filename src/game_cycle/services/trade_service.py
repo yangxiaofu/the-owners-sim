@@ -8,10 +8,10 @@ import json
 import logging
 import sqlite3
 from datetime import date
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.persistence.transaction_logger import TransactionLogger
-from utils.player_field_extractors import extract_overall_rating
+from src.utils.player_field_extractors import extract_overall_rating
 from src.transactions.transaction_constants import TRADE_DEADLINE_WEEK
 from src.transactions.models import (
     TradeAsset, TradeProposal, TradeDecision, AssetType, FairnessRating,
@@ -776,6 +776,14 @@ class TradeService:
             f"Trade #{trade_id} executed: Team {proposal.team1_id} <-> Team {proposal.team2_id}"
         )
 
+        # Update player popularity for traded players (Milestone 16)
+        # Apply 4-week market adjustment process
+        try:
+            self._adjust_traded_player_popularity(proposal, transfers_to_log)
+        except Exception as pop_error:
+            # Don't fail trade execution for popularity calculation errors
+            self._logger.warning(f"Failed to adjust popularity for traded players: {pop_error}")
+
         return {
             "trade_id": trade_id,
             "status": "accepted",
@@ -987,6 +995,93 @@ class TradeService:
     # AI Trade Evaluation (Tollgate 3)
     # =========================================================================
 
+    # Untouchable player thresholds (v1.2 - trade realism)
+    UNTOUCHABLE_ELITE_MIN_OVR = 90  # Elite players at this OVR are untouchable
+    UNTOUCHABLE_ELITE_MAX_AGE = 29  # Under 30 for elite untouchable
+    UNTOUCHABLE_QB_MIN_OVR = 85  # Franchise QBs at this OVR are untouchable
+    UNTOUCHABLE_QB_MAX_AGE = 31  # Under 32 for franchise QB untouchable
+
+    def _is_untouchable_player(self, player_data: Dict[str, Any]) -> Tuple[bool, str]:
+        """
+        Check if a player should be considered untouchable by AI teams.
+
+        Untouchable criteria (v1.2 - trade realism):
+        1. Franchise QB: 85+ OVR and under 32 years old
+        2. Elite player: 90+ OVR and under 30 years old
+
+        This prevents AI teams from accepting unrealistic trades like
+        "Trade away Lamar Jackson for a 1st round pick."
+
+        Args:
+            player_data: Dict with overall_rating, age, position fields
+
+        Returns:
+            Tuple of (is_untouchable: bool, reason: str)
+        """
+        overall = player_data.get("overall_rating") or player_data.get("overall") or 0
+        age = player_data.get("age", 99)
+        position = str(player_data.get("position", "")).upper()
+
+        # Normalize position (handle JSON array format)
+        if position.startswith("["):
+            import json as json_lib
+            try:
+                positions = json_lib.loads(position)
+                position = positions[0].upper() if positions else ""
+            except (json.JSONDecodeError, IndexError):
+                pass
+
+        name = player_data.get("player_name") or player_data.get("name", "Unknown")
+
+        # 1. Franchise QB under 32 is untouchable
+        if position == "QB":
+            if overall >= self.UNTOUCHABLE_QB_MIN_OVR and age <= self.UNTOUCHABLE_QB_MAX_AGE:
+                return True, f"{name} is a franchise quarterback and is not available"
+
+        # 2. Elite players (90+) under 30 are untouchable
+        if overall >= self.UNTOUCHABLE_ELITE_MIN_OVR and age <= self.UNTOUCHABLE_ELITE_MAX_AGE:
+            return True, f"{name} is a cornerstone player and is not available"
+
+        return False, ""
+
+    def _check_untouchable_in_proposal(
+        self,
+        proposal: TradeProposal,
+        evaluating_team_id: int
+    ) -> Tuple[bool, str]:
+        """
+        Check if the proposal asks an AI team to give up untouchable players.
+
+        Args:
+            proposal: The trade proposal
+            evaluating_team_id: Team ID making the evaluation
+
+        Returns:
+            Tuple of (has_untouchable: bool, rejection_reason: str)
+        """
+        from src.transactions.models import AssetType
+
+        # Determine which assets the evaluating team would give up
+        if evaluating_team_id == proposal.team1_id:
+            giving_up = proposal.team1_assets
+        else:
+            giving_up = proposal.team2_assets
+
+        # Check each player asset
+        for asset in giving_up:
+            if asset.asset_type == AssetType.PLAYER:
+                player_data = {
+                    "overall_rating": asset.overall_rating,
+                    "age": asset.age,
+                    "position": asset.position,
+                    "player_name": asset.player_name
+                }
+                is_untouchable, reason = self._is_untouchable_player(player_data)
+                if is_untouchable:
+                    return True, reason
+
+        return False, ""
+
     def _build_team_context(self, team_id: int) -> TeamContext:
         """
         Build TeamContext from database for AI evaluation.
@@ -1085,12 +1180,29 @@ class TradeService:
             ValueError: If ai_team_id is not part of the proposal
         """
         from src.transactions.trade_evaluator import TradeEvaluator
+        from src.transactions.models import TradeDecisionType
 
         # Validate AI team is part of the proposal
         if ai_team_id not in (proposal.team1_id, proposal.team2_id):
             raise ValueError(
                 f"Team {ai_team_id} is not part of this trade proposal "
                 f"(teams: {proposal.team1_id}, {proposal.team2_id})"
+            )
+
+        # v1.2 Trade Realism: Check for untouchable players first
+        # AI teams will never trade away franchise QBs or elite young players
+        has_untouchable, rejection_reason = self._check_untouchable_in_proposal(
+            proposal, ai_team_id
+        )
+        if has_untouchable:
+            self._logger.info(
+                f"Team {ai_team_id} rejected trade: untouchable player "
+                f"({rejection_reason})"
+            )
+            return TradeDecision(
+                decision=TradeDecisionType.REJECT,
+                reasoning=rejection_reason,
+                confidence=1.0  # 100% confident in rejection
             )
 
         # Build context and archetype for evaluating team
@@ -1268,3 +1380,79 @@ class TradeService:
                 assets.append(asset)
 
         return assets
+
+    # =========================================================================
+    # Player Popularity Integration (Milestone 16)
+    # =========================================================================
+
+    def _adjust_traded_player_popularity(
+        self,
+        proposal: TradeProposal,
+        transfers: List[Dict[str, Any]]
+    ) -> None:
+        """
+        Adjust popularity for traded players (Milestone 16).
+
+        Applies 4-week market adjustment process:
+        - Week 0: -20% disruption (trade shock)
+        - Weeks 1-4: Linear interpolation to new market multiplier
+        - Week 5+: Full new market multiplier applied
+
+        Args:
+            proposal: The executed trade proposal
+            transfers: List of player transfer dicts with player_id, from_team_id, to_team_id
+
+        Note:
+            This method catches ImportError gracefully if PopularityCalculator
+            is not yet implemented, allowing trades to execute without popularity.
+        """
+        try:
+            from ..services.popularity_calculator import PopularityCalculator
+            from ..database.standings_api import StandingsAPI
+            from ..database.connection import GameCycleDatabase
+
+            # Create database connection for PopularityCalculator
+            gc_db = GameCycleDatabase(self._db_path)
+            calculator = PopularityCalculator(gc_db, self._dynasty_id)
+
+            # Get current week from season context
+            # During regular season: use actual week
+            # During offseason: use week 0 (trade deadline is week 9, offseason trading is week 0)
+            current_week = 0  # Default to offseason
+
+            # Attempt to get current week from standings/season state
+            try:
+                standings_api = StandingsAPI(gc_db)
+                standings = standings_api.get_standings(self._dynasty_id, self._season)
+                # If standings exist, we're in regular season - estimate week from games played
+                if standings and len(standings) > 0:
+                    # Rough estimate: use average games played / 32 teams as week indicator
+                    # More precise: could check schedule or game results
+                    pass  # Keep week 0 for now - can be enhanced later
+            except Exception:
+                pass  # Use week 0 default
+
+            # Process each transferred player
+            for transfer in transfers:
+                player_id = transfer.get("player_id")
+                old_team_id = transfer.get("from_team_id")
+                new_team_id = transfer.get("to_team_id")
+
+                if player_id and old_team_id and new_team_id:
+                    calculator.adjust_for_trade(
+                        player_id=player_id,
+                        old_team_id=old_team_id,
+                        new_team_id=new_team_id,
+                        current_week=current_week
+                    )
+                    self._logger.debug(
+                        f"Adjusted popularity for player {player_id} "
+                        f"traded from team {old_team_id} to team {new_team_id}"
+                    )
+
+        except ImportError:
+            # PopularityCalculator not yet implemented - silently skip
+            self._logger.debug("PopularityCalculator not available - skipping trade popularity adjustment")
+        except Exception as e:
+            # Log error but don't fail trade execution
+            self._logger.warning(f"Failed to adjust popularity for traded players: {e}", exc_info=True)

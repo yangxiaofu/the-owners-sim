@@ -3,7 +3,7 @@ Team View - Dashboard showing user's team overview.
 
 Split panel layout with:
 - Left sidebar: Team identity, record, power ranking, coaching, stats, top performers
-- Right main area: Tabbed content (Schedule, Games, News, Roster)
+- Right main area: Tabbed content (Schedule, Games, News)
 
 Game-centric focus for the user's controlled team.
 """
@@ -13,17 +13,20 @@ from typing import Dict, List, Optional, Any
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame,
-    QTabWidget, QTableWidget, QTableWidgetItem, QHeaderView,
-    QScrollArea, QPushButton
+    QTabWidget, QScrollArea, QPushButton
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont
 
 from game_cycle_ui.widgets.team_sidebar_widget import TeamSidebarWidget
 from game_cycle_ui.widgets.team_schedule_widget import TeamScheduleWidget
 from game_cycle_ui.widgets.game_preview_widget import GamePreviewWidget
 from game_cycle_ui.widgets.headline_card_widget import HeadlineCardWidget
-from game_cycle_ui.theme import TABLE_HEADER_STYLE, ESPN_THEME
+from game_cycle_ui.widgets.roster_table_widget import RosterTableWidget
+from game_cycle_ui.theme import (
+    ESPN_THEME, TAB_STYLE, PRIMARY_BUTTON_STYLE, SECONDARY_BUTTON_STYLE,
+    DANGER_BUTTON_STYLE, WARNING_BUTTON_STYLE, NEUTRAL_BUTTON_STYLE,
+    Typography, FontSizes, TextColors
+)
 
 
 class TeamView(QWidget):
@@ -32,7 +35,7 @@ class TeamView(QWidget):
 
     Split panel layout:
     - Left (280px): TeamSidebarWidget with identity, record, stats
-    - Right (expandable): Tabbed content (Schedule, Games, News, Roster)
+    - Right (expandable): Tabbed content (Schedule, Games, News)
     """
 
     # Signals
@@ -85,18 +88,14 @@ class TeamView(QWidget):
         header_row = QHBoxLayout()
 
         self.header_label = QLabel("MY TEAM")
-        self.header_label.setFont(QFont("Arial", 16, QFont.Bold))
+        self.header_label.setFont(Typography.H4)
         self.header_label.setStyleSheet("color: white;")
         header_row.addWidget(self.header_label)
 
         header_row.addStretch()
 
         refresh_btn = QPushButton("Refresh")
-        refresh_btn.setStyleSheet(
-            "QPushButton { background-color: #1976D2; color: white; "
-            "border-radius: 4px; padding: 6px 16px; }"
-            "QPushButton:hover { background-color: #1565C0; }"
-        )
+        refresh_btn.setStyleSheet(SECONDARY_BUTTON_STYLE)
         refresh_btn.clicked.connect(self._on_refresh_clicked)
         header_row.addWidget(refresh_btn)
 
@@ -104,25 +103,19 @@ class TeamView(QWidget):
 
         # Tab widget
         self.content_tabs = QTabWidget()
-        self.content_tabs.setStyleSheet(
-            "QTabWidget::pane { border: none; background: transparent; }"
-            "QTabBar::tab { background: #333; color: #888; padding: 8px 16px; "
-            "border-top-left-radius: 4px; border-top-right-radius: 4px; margin-right: 2px; }"
-            "QTabBar::tab:selected { background: #444; color: white; }"
-            "QTabBar::tab:hover { background: #3a3a3a; }"
-        )
+        self.content_tabs.setStyleSheet(TAB_STYLE)
 
         # Tab 1: Schedule
         self._create_schedule_tab()
 
-        # Tab 2: Games (Recent Results)
+        # Tab 2: Players (Roster)
+        self._create_players_tab()
+
+        # Tab 3: Games (Recent Results)
         self._create_games_tab()
 
-        # Tab 3: News
+        # Tab 4: News
         self._create_news_tab()
-
-        # Tab 4: Roster (Top Players)
-        self._create_roster_tab()
 
         main_layout.addWidget(self.content_tabs)
         parent_layout.addWidget(main_frame, 1)  # Stretch factor
@@ -138,6 +131,19 @@ class TeamView(QWidget):
         layout.addWidget(self.schedule_widget)
 
         self.content_tabs.addTab(schedule_container, "Schedule")
+
+    def _create_players_tab(self):
+        """Create the Players tab with roster table."""
+        players_container = QWidget()
+        layout = QVBoxLayout(players_container)
+        layout.setContentsMargins(0, 8, 0, 0)
+
+        self.roster_widget = RosterTableWidget()
+        # Connect double-click to open player detail dialog
+        self.roster_widget.table.cellDoubleClicked.connect(self._on_roster_player_double_clicked)
+        layout.addWidget(self.roster_widget)
+
+        self.content_tabs.addTab(players_container, "Players")
 
     def _create_games_tab(self):
         """Create the Upcoming Games tab with game preview."""
@@ -168,8 +174,8 @@ class TeamView(QWidget):
 
         self.news_container = QWidget()
         self.news_layout = QVBoxLayout(self.news_container)
-        self.news_layout.setSpacing(8)
-        self.news_layout.setContentsMargins(0, 0, 4, 0)
+        self.news_layout.setSpacing(0)  # No spacing - items have bottom borders
+        self.news_layout.setContentsMargins(0, 0, 0, 0)
         self.news_layout.addStretch()
 
         scroll.setWidget(self.news_container)
@@ -177,43 +183,13 @@ class TeamView(QWidget):
 
         # Empty state
         self.news_empty_label = QLabel("No news yet")
-        self.news_empty_label.setFont(QFont("Arial", 10))
+        self.news_empty_label.setFont(Typography.SMALL)
         self.news_empty_label.setStyleSheet(f"color: {ESPN_THEME['text_muted']};")
         self.news_empty_label.setAlignment(Qt.AlignCenter)
         self.news_empty_label.hide()
         layout.addWidget(self.news_empty_label)
 
         self.content_tabs.addTab(news_container, "News")
-
-    def _create_roster_tab(self):
-        """Create the Roster tab with top players by position."""
-        roster_container = QWidget()
-        layout = QVBoxLayout(roster_container)
-        layout.setContentsMargins(0, 8, 0, 0)
-
-        # Top players table
-        self.roster_table = QTableWidget()
-        self.roster_table.setColumnCount(5)
-        self.roster_table.setHorizontalHeaderLabels([
-            "Pos", "Player", "Grade", "Key Stat", "Trend"
-        ])
-
-        # Configure header
-        header = self.roster_table.horizontalHeader()
-        header.setStyleSheet(TABLE_HEADER_STYLE)
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # Pos
-        header.setSectionResizeMode(1, QHeaderView.Stretch)           # Player
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Grade
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # Key Stat
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Trend
-
-        self.roster_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.roster_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.roster_table.setAlternatingRowColors(True)
-        self.roster_table.verticalHeader().setVisible(False)
-
-        layout.addWidget(self.roster_table)
-        self.content_tabs.addTab(roster_container, "Roster")
 
     # =========================================================================
     # Public API
@@ -231,6 +207,10 @@ class TeamView(QWidget):
         self._dynasty_id = dynasty_id
         self._db_path = db_path
         self._season = season
+
+        # Update roster widget with game season for age calculation
+        if hasattr(self, 'roster_widget'):
+            self.roster_widget.set_season(season)
 
     def set_user_team_id(self, team_id: int):
         """
@@ -251,6 +231,7 @@ class TeamView(QWidget):
         self._load_standing()
         self._load_power_ranking()
         self._load_coaching_style()
+        self._load_star_power()
         self._load_team_stats()
         self._load_top_performers()
         self._load_schedule()
@@ -312,6 +293,88 @@ class TeamView(QWidget):
 
         except Exception as e:
             print(f"[TeamView] Error loading coaching style: {e}")
+
+    def _load_star_power(self):
+        """Load team star power summary from popularity data."""
+        if not self._db_path or not self._dynasty_id or not self._team_id:
+            return
+
+        try:
+            from game_cycle.database.connection import GameCycleDatabase
+            from game_cycle.database.popularity_api import PopularityAPI
+            from database.player_roster_api import PlayerRosterAPI
+
+            # Get current week (estimate from schedule)
+            current_week = 1
+            for game in self._schedule_data:
+                if game.get('is_played'):
+                    current_week = max(current_week, game.get('week', 1))
+
+            # Get team roster
+            roster_api = PlayerRosterAPI(self._db_path)
+            try:
+                roster = roster_api.get_team_roster(self._dynasty_id, self._team_id)
+            except ValueError:
+                # Roster not in database yet
+                self.sidebar.set_star_power({
+                    'transcendent_count': 0,
+                    'star_count': 0,
+                    'known_count': 0
+                })
+                return
+
+            # Get popularity for each player
+            db = GameCycleDatabase(self._db_path)
+            popularity_api = PopularityAPI(db)
+
+            tier_counts = {
+                'transcendent': 0,
+                'star': 0,
+                'known': 0
+            }
+            top_player = None
+            top_score = 0
+
+            for player in roster:
+                player_id = player.get('player_id')
+                score = popularity_api.get_popularity_score(
+                    self._dynasty_id, player_id, self._season, current_week
+                )
+
+                if score:
+                    # Count by tier
+                    if score.popularity_score >= 90:
+                        tier_counts['transcendent'] += 1
+                    elif score.popularity_score >= 75:
+                        tier_counts['star'] += 1
+                    elif score.popularity_score >= 50:
+                        tier_counts['known'] += 1
+
+                    # Track top player
+                    if score.popularity_score > top_score:
+                        top_score = score.popularity_score
+                        first_name = player.get('first_name', '')
+                        last_name = player.get('last_name', '')
+                        top_player = f"{first_name} {last_name}".strip()
+
+            # Update sidebar
+            star_power_data = {
+                'transcendent_count': tier_counts['transcendent'],
+                'star_count': tier_counts['star'],
+                'known_count': tier_counts['known'],
+                'top_player_name': top_player,
+                'top_player_score': int(top_score) if top_score > 0 else None
+            }
+            self.sidebar.set_star_power(star_power_data)
+
+        except Exception as e:
+            print(f"[TeamView] Error loading star power: {e}")
+            # Set default state
+            self.sidebar.set_star_power({
+                'transcendent_count': 0,
+                'star_count': 0,
+                'known_count': 0
+            })
 
     def _load_standing(self):
         """Load team standing from database."""
@@ -875,9 +938,10 @@ class TeamView(QWidget):
                     'subheadline': h.subheadline,
                     'body_text': h.body_text,
                     'sentiment': h.sentiment,
-                    'headline_type': h.headline_type
+                    'headline_type': h.headline_type,
+                    'created_at': h.created_at
                 }
-                for h in headlines[:10]
+                for h in headlines[:15]  # Show more items with compact design
             ]
 
             for headline_data in self._headlines:
@@ -891,66 +955,86 @@ class TeamView(QWidget):
             print(f"[TeamView] Error loading news: {e}")
 
     def _load_roster(self):
-        """Load roster/top players table."""
-        if not self._db_path or not self._dynasty_id or not self._team_id:
+        """Load team roster with player attributes and season stats from database."""
+        if not self._team_id:
             return
 
         try:
-            from game_cycle.database.analytics_api import AnalyticsAPI
+            # Load roster from database (where drafted/signed players exist)
+            if self._db_path and self._dynasty_id:
+                from database.player_roster_api import PlayerRosterAPI
 
-            api = AnalyticsAPI(self._db_path)
-            # Use get_team_grades_from_game_grades which includes player_name
-            grades = api.get_team_grades_from_game_grades(
-                self._dynasty_id, self._team_id, self._season
-            )
+                roster_api = PlayerRosterAPI(self._db_path)
+                try:
+                    db_roster = roster_api.get_team_roster(self._dynasty_id, self._team_id)
 
-            # Sort by grade and take top 15
-            sorted_grades = sorted(
-                grades, key=lambda g: g.get('overall_grade', 0), reverse=True
-            )[:15]
+                    # Convert database rows to expected format
+                    # Database returns positions/attributes as JSON strings
+                    players = []
+                    for row in db_roster:
+                        player = dict(row) if not isinstance(row, dict) else row.copy()
 
-            self.roster_table.setRowCount(len(sorted_grades))
+                        # Parse JSON strings to Python objects
+                        if isinstance(player.get('positions'), str):
+                            try:
+                                player['positions'] = json.loads(player['positions'])
+                            except (json.JSONDecodeError, TypeError):
+                                player['positions'] = []
 
-            for row, grade in enumerate(sorted_grades):
-                # Position
-                pos = grade.get('position', '?')
-                pos_item = QTableWidgetItem(pos[:3].upper() if pos else "?")
-                pos_item.setTextAlignment(Qt.AlignCenter)
-                self.roster_table.setItem(row, 0, pos_item)
+                        if isinstance(player.get('attributes'), str):
+                            try:
+                                player['attributes'] = json.loads(player['attributes'])
+                            except (json.JSONDecodeError, TypeError):
+                                player['attributes'] = {}
 
-                # Player name
-                name = grade.get('player_name') or f"Player {grade.get('player_id')}"
-                name_item = QTableWidgetItem(name)
-                self.roster_table.setItem(row, 1, name_item)
+                        players.append(player)
 
-                # Grade with color
-                overall = grade.get('overall_grade', 0)
-                grade_item = QTableWidgetItem(f"{overall:.1f}")
-                grade_item.setTextAlignment(Qt.AlignCenter)
-                if overall >= 85:
-                    grade_item.setForeground(Qt.green)
-                elif overall >= 70:
-                    grade_item.setForeground(Qt.yellow)
-                elif overall >= 60:
-                    grade_item.setForeground(Qt.white)
-                else:
-                    grade_item.setForeground(Qt.red)
-                self.roster_table.setItem(row, 2, grade_item)
+                    # Load season stats from database
+                    season_stats = self._load_player_season_stats()
 
-                # Key stat - show snaps played
-                snaps = grade.get('total_snaps', 0)
-                stat_item = QTableWidgetItem(f"{snaps} snaps")
-                stat_item.setTextAlignment(Qt.AlignCenter)
-                self.roster_table.setItem(row, 3, stat_item)
+                    # Update roster widget
+                    self.roster_widget.set_roster(players, season_stats)
+                    return
 
-                # Trend - show games graded
-                games = grade.get('games_graded', 0)
-                trend_item = QTableWidgetItem(f"{games}G")
-                trend_item.setTextAlignment(Qt.AlignCenter)
-                self.roster_table.setItem(row, 4, trend_item)
+                except ValueError as e:
+                    # Roster not in database yet, fall back to JSON
+                    print(f"[TeamView] Database roster not available: {e}")
+
+            # Fallback: Load from JSON file (for initial setup or if DB not available)
+            from pathlib import Path
+
+            players_dir = Path(__file__).parent.parent.parent / "src" / "data" / "players"
+
+            team_files = list(players_dir.glob(f"team_{self._team_id:02d}_*.json"))
+            if not team_files:
+                print(f"[TeamView] No player file found for team {self._team_id}")
+                return
+
+            with open(team_files[0]) as f:
+                data = json.load(f)
+
+            players_dict = data.get('players', {})
+            players = list(players_dict.values())
+
+            # Update roster widget (no stats from JSON)
+            self.roster_widget.set_roster(players, {})
 
         except Exception as e:
             print(f"[TeamView] Error loading roster: {e}")
+
+    def _load_player_season_stats(self) -> Dict[int, Dict]:
+        """Load aggregated season stats for all players on the team."""
+        try:
+            from game_cycle.database.player_stats_api import PlayerSeasonStatsAPI
+
+            api = PlayerSeasonStatsAPI(self._db_path)
+            return api.get_team_player_stats(
+                self._dynasty_id, self._team_id, self._season
+            )
+
+        except Exception as e:
+            print(f"[TeamView] Error loading player stats: {e}")
+            return {}
 
     # =========================================================================
     # Event Handlers
@@ -1016,6 +1100,43 @@ class TeamView(QWidget):
             dialog = ArticleDetailDialog(headline_data, parent=self)
             dialog.exec()
 
+    def _on_roster_player_double_clicked(self, row: int, column: int):
+        """Handle roster table double-click - open player detail dialog."""
+        # Get player data from the name item's UserRole
+        name_item = self.roster_widget.table.item(row, 0)
+        if not name_item:
+            return
+
+        player_id = name_item.data(Qt.UserRole)
+        player_data = name_item.data(Qt.UserRole + 1)
+        player_name = name_item.text()
+
+        if not player_id or not player_data:
+            return
+
+        # Check if required context is available
+        if not self._dynasty_id or not self._db_path:
+            return
+
+        # Add team_id to player_data for the dialog
+        player_data['team_id'] = self._team_id
+
+        # Get team name
+        team_name = self._team_data.get('name', '') or self._team_names.get(self._team_id, '')
+
+        from game_cycle_ui.dialogs.player_detail_dialog import PlayerDetailDialog
+        dialog = PlayerDetailDialog(
+            player_id=player_id,
+            player_name=player_name,
+            player_data=player_data,
+            dynasty_id=self._dynasty_id,
+            season=self._season,
+            db_path=self._db_path,
+            team_name=team_name,
+            parent=self
+        )
+        dialog.exec()
+
     def clear(self):
         """Clear all data."""
         self._team_id = None
@@ -1026,6 +1147,6 @@ class TeamView(QWidget):
 
         self.sidebar.clear()
         self.schedule_widget.clear()
+        self.roster_widget.clear()
         self.game_preview_widget.clear()
-        self.roster_table.setRowCount(0)
         self.header_label.setText("MY TEAM")

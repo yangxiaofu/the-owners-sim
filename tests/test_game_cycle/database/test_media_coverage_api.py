@@ -110,6 +110,19 @@ def db_path():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
+        -- Games table (needed for get_headlines_for_display subquery)
+        CREATE TABLE IF NOT EXISTS games (
+            game_id TEXT PRIMARY KEY,
+            dynasty_id TEXT NOT NULL,
+            season INTEGER NOT NULL,
+            week INTEGER NOT NULL,
+            season_type TEXT DEFAULT 'regular_season',
+            home_team_id INTEGER,
+            away_team_id INTEGER,
+            home_score INTEGER DEFAULT 0,
+            away_score INTEGER DEFAULT 0
+        );
+
         -- Insert test dynasties
         INSERT INTO dynasties (dynasty_id, name, team_id) VALUES ('test_dynasty', 'Test Dynasty', 1);
         INSERT INTO dynasties (dynasty_id, name, team_id) VALUES ('other_dynasty', 'Other Dynasty', 2);
@@ -600,3 +613,200 @@ class TestUtilityMethods:
         assert summary['headlines'] == 3
         assert summary['quotes'] == 0
         assert summary['active_arcs'] == 1
+
+
+# ==========================================
+# GET_HEADLINES_FOR_DISPLAY TESTS
+# ==========================================
+
+class TestGetHeadlinesForDisplay:
+    """
+    Tests for get_headlines_for_display() week logic.
+
+    This method combines:
+    - RECAP headlines from current_week (completed games)
+    - PREVIEW headlines from current_week + 1 (upcoming games)
+    """
+
+    def test_week1_no_games_shows_only_previews(self, api, db_path):
+        """
+        Scenario: Week 1 PRE-simulation (no games played yet)
+        - Should show: Only Week 1 previews
+        """
+        # Setup: Week 1 preview headline (no games exist)
+        api.save_headline('test_dynasty', 2025, 1, {
+            'headline_type': 'PREVIEW',
+            'headline': 'Week 1 Preview: Season opener',
+            'priority': 80
+        })
+
+        # ACT: Get headlines for week 1 (no games yet)
+        headlines = api.get_headlines_for_display('test_dynasty', 2025, current_week=1)
+
+        # ASSERT: Should only see previews
+        assert len(headlines) >= 1
+        assert all(h.headline_type == 'PREVIEW' for h in headlines)
+        assert headlines[0].week == 1
+
+    def test_week1_post_simulation_shows_recaps_and_week2_previews(self, api, db_path):
+        """
+        Scenario: Week 1 POST-simulation (games have been played)
+        - Should show: Week 1 recaps + Week 2 previews
+        """
+        # Setup: Create week 1 game (completed)
+        conn = sqlite3.connect(db_path)
+        conn.execute('''
+            INSERT INTO games (game_id, dynasty_id, season, week,
+                              home_team_id, away_team_id, home_score, away_score)
+            VALUES ('game_w1', 'test_dynasty', 2025, 1, 1, 2, 24, 17)
+        ''')
+        conn.commit()
+        conn.close()
+
+        # Setup: Week 1 recap headline
+        api.save_headline('test_dynasty', 2025, 1, {
+            'headline_type': 'GAME_RECAP',
+            'headline': 'Week 1: Team A defeats Team B',
+            'priority': 80
+        })
+
+        # Setup: Week 2 preview headline
+        api.save_headline('test_dynasty', 2025, 2, {
+            'headline_type': 'PREVIEW',
+            'headline': 'Week 2 Preview: Big matchup ahead',
+            'priority': 70
+        })
+
+        # ACT: Get headlines for week 1 (games completed, special case)
+        headlines = api.get_headlines_for_display('test_dynasty', 2025, current_week=1)
+
+        # ASSERT
+        recap_headlines = [h for h in headlines if h.headline_type == 'GAME_RECAP']
+        preview_headlines = [h for h in headlines if h.headline_type == 'PREVIEW']
+
+        assert len(recap_headlines) >= 1, "Should have week 1 recap"
+        assert len(preview_headlines) >= 1, "Should have week 2 preview"
+        assert recap_headlines[0].week == 1, "Recap should be from week 1"
+        assert preview_headlines[0].week == 2, "Preview should be for week 2"
+
+    def test_week2_shows_week1_recaps_and_week2_previews(self, api, db_path):
+        """
+        Scenario: At REGULAR_WEEK_2 (week 2 to simulate)
+        - Week 1 games have been played
+        - API receives current_week=1 (completed week)
+        - Should show: Week 1 recaps + Week 2 previews
+
+        This is the CORE test for the week offset bug.
+        """
+        # Setup: Create week 1 game (completed)
+        conn = sqlite3.connect(db_path)
+        conn.execute('''
+            INSERT INTO games (game_id, dynasty_id, season, week,
+                              home_team_id, away_team_id, home_score, away_score)
+            VALUES ('game_w1_test', 'test_dynasty', 2025, 1, 1, 2, 24, 17)
+        ''')
+        conn.commit()
+        conn.close()
+
+        # Setup: Week 1 recap headline
+        api.save_headline('test_dynasty', 2025, 1, {
+            'headline_type': 'GAME_RECAP',
+            'headline': 'Week 1: Lions defeat Bears 24-17',
+            'priority': 80
+        })
+
+        # Setup: Week 2 preview headline
+        api.save_headline('test_dynasty', 2025, 2, {
+            'headline_type': 'PREVIEW',
+            'headline': 'Week 2 Preview: Lions vs Packers',
+            'priority': 70
+        })
+
+        # Also add some headlines that should NOT appear
+        api.save_headline('test_dynasty', 2025, 3, {
+            'headline_type': 'PREVIEW',
+            'headline': 'Week 3 Preview: Should not appear',
+            'priority': 60
+        })
+
+        # ACT: Get headlines passing completed week (1)
+        # After the fix, API expects: current_week = completed week
+        headlines = api.get_headlines_for_display('test_dynasty', 2025, current_week=1)
+
+        # ASSERT
+        recap_headlines = [h for h in headlines if h.headline_type == 'GAME_RECAP']
+        preview_headlines = [h for h in headlines if h.headline_type == 'PREVIEW']
+
+        # Should have week 1 recaps
+        assert len(recap_headlines) >= 1, f"Should have week 1 recap, got {len(recap_headlines)}"
+        assert recap_headlines[0].week == 1, f"Recap should be week 1, got week {recap_headlines[0].week}"
+
+        # Should have week 2 previews (NOT week 3)
+        assert len(preview_headlines) >= 1, f"Should have week 2 preview, got {len(preview_headlines)}"
+        assert preview_headlines[0].week == 2, f"Preview should be week 2, got week {preview_headlines[0].week}"
+
+        # Should NOT have week 3 previews
+        week3_previews = [h for h in headlines if h.week == 3]
+        assert len(week3_previews) == 0, "Week 3 previews should not appear"
+
+    def test_week10_shows_week9_recaps_and_week10_previews(self, api, db_path):
+        """
+        Scenario: At REGULAR_WEEK_10 (week 10 to simulate)
+        - Week 9 games have been played
+        - API receives current_week=9 (completed week)
+        - Should show: Week 9 recaps + Week 10 previews
+
+        This tests for cumulative drift.
+        """
+        # Setup: Create week 9 game (completed)
+        conn = sqlite3.connect(db_path)
+        conn.execute('''
+            INSERT INTO games (game_id, dynasty_id, season, week,
+                              home_team_id, away_team_id, home_score, away_score)
+            VALUES ('game_w9', 'test_dynasty', 2025, 9, 1, 2, 21, 14)
+        ''')
+        conn.commit()
+        conn.close()
+
+        # Setup: Week 9 recap headline
+        api.save_headline('test_dynasty', 2025, 9, {
+            'headline_type': 'GAME_RECAP',
+            'headline': 'Week 9: Dominant performance',
+            'priority': 80
+        })
+
+        # Setup: Week 10 preview headline
+        api.save_headline('test_dynasty', 2025, 10, {
+            'headline_type': 'PREVIEW',
+            'headline': 'Week 10 Preview: Division showdown',
+            'priority': 70
+        })
+
+        # Also add wrong week headlines that should NOT appear
+        api.save_headline('test_dynasty', 2025, 8, {
+            'headline_type': 'GAME_RECAP',
+            'headline': 'Week 8: Should NOT appear',
+            'priority': 75
+        })
+
+        # ACT: Get headlines passing completed week (9)
+        headlines = api.get_headlines_for_display('test_dynasty', 2025, current_week=9)
+
+        # ASSERT
+        recap_headlines = [h for h in headlines if 'RECAP' in h.headline_type or h.headline_type in (
+            'GAME_RECAP', 'BLOWOUT', 'UPSET', 'COMEBACK', 'MILESTONE',
+            'POWER_RANKING', 'STREAK', 'DUAL_THREAT', 'PLAYER_PERFORMANCE', 'DEFENSIVE_SHOWCASE'
+        )]
+        preview_headlines = [h for h in headlines if h.headline_type == 'PREVIEW']
+
+        # Should have week 9 recaps
+        week9_recaps = [h for h in recap_headlines if h.week == 9]
+        assert len(week9_recaps) >= 1, f"Should have week 9 recap"
+
+        # Should have week 10 previews
+        week10_previews = [h for h in preview_headlines if h.week == 10]
+        assert len(week10_previews) >= 1, f"Should have week 10 preview"
+
+        # Should NOT have week 8 recaps
+        week8_headlines = [h for h in headlines if h.week == 8]
+        assert len(week8_headlines) == 0, "Week 8 headlines should NOT appear"

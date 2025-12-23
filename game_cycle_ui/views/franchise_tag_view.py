@@ -491,6 +491,12 @@ class FranchiseTagView(QWidget):
         """
         self._taggable_players = players
         self.taggable_count_label.setText(str(len(players)))
+
+        # Handle empty state internally
+        if not players:
+            self.show_no_taggable_message()
+            return
+
         self.players_table.setRowCount(len(players))
 
         for row, player in enumerate(players):

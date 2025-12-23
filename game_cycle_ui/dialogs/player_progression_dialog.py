@@ -20,6 +20,19 @@ from PySide6.QtCharts import QChart, QChartView, QLineSeries, QValueAxis
 
 from game_cycle.database.progression_history_api import ProgressionHistoryAPI
 from player_generation.archetypes.archetype_registry import ArchetypeRegistry
+from game_cycle_ui.widgets.stat_frame import create_stat_display
+from game_cycle_ui.theme import (
+    Colors,
+    Typography,
+    FontSizes,
+    TextColors,
+    PRIMARY_BUTTON_STYLE,
+    SECONDARY_BUTTON_STYLE,
+    DANGER_BUTTON_STYLE,
+    WARNING_BUTTON_STYLE,
+    NEUTRAL_BUTTON_STYLE,
+    apply_table_style
+)
 
 
 class PlayerProgressionDialog(QDialog):
@@ -31,13 +44,6 @@ class PlayerProgressionDialog(QDialog):
     - Line chart showing overall rating changes across seasons
     - History table with season-by-season changes
     """
-
-    # Color scheme
-    COLOR_GREEN = "#2E7D32"
-    COLOR_RED = "#C62828"
-    COLOR_BLUE = "#1976D2"
-    COLOR_ORANGE = "#FF6F00"
-    COLOR_GRAY = "#666"
 
     def __init__(
         self,
@@ -83,7 +89,7 @@ class PlayerProgressionDialog(QDialog):
 
         # Header with player name
         header = QLabel(f"Development: {self._player_name}")
-        header.setFont(QFont("Arial", 14, QFont.Bold))
+        header.setFont(Typography.H5)
         layout.addWidget(header)
 
         # Development info panel
@@ -97,11 +103,7 @@ class PlayerProgressionDialog(QDialog):
 
         # Close button
         close_btn = QPushButton("Close")
-        close_btn.setStyleSheet(
-            "QPushButton { background-color: #666; color: white; "
-            "border-radius: 3px; padding: 8px 24px; }"
-            "QPushButton:hover { background-color: #555; }"
-        )
+        close_btn.setStyleSheet(NEUTRAL_BUTTON_STYLE)
         close_btn.clicked.connect(self.accept)
 
         btn_layout = QHBoxLayout()
@@ -116,51 +118,32 @@ class PlayerProgressionDialog(QDialog):
         dev_layout.setSpacing(30)
 
         # Dev Curve
-        self._dev_curve_label = self._create_stat_frame(
+        self._dev_curve_label = create_stat_display(
             dev_layout, "Dev Curve", "Unknown"
         )
 
         # Peak Window
-        self._peak_window_label = self._create_stat_frame(
+        self._peak_window_label = create_stat_display(
             dev_layout, "Peak Window", "N/A"
         )
 
         # Current OVR
-        self._current_ovr_label = self._create_stat_frame(
+        self._current_ovr_label = create_stat_display(
             dev_layout, "Current OVR", "0"
         )
 
         # Potential
-        self._potential_label = self._create_stat_frame(
+        self._potential_label = create_stat_display(
             dev_layout, "Potential", "0"
         )
 
         # Upside
-        self._upside_label = self._create_stat_frame(
+        self._upside_label = create_stat_display(
             dev_layout, "Upside", "0"
         )
 
         dev_layout.addStretch()
         parent_layout.addWidget(dev_group)
-
-    def _create_stat_frame(
-        self, parent_layout: QHBoxLayout, title: str, initial_value: str
-    ) -> QLabel:
-        """Create a stat display frame and return the value label."""
-        frame = QFrame()
-        frame_layout = QVBoxLayout(frame)
-        frame_layout.setContentsMargins(0, 0, 0, 0)
-
-        title_label = QLabel(title)
-        title_label.setStyleSheet("color: #666; font-size: 11px;")
-        frame_layout.addWidget(title_label)
-
-        value_label = QLabel(initial_value)
-        value_label.setFont(QFont("Arial", 14, QFont.Bold))
-        frame_layout.addWidget(value_label)
-
-        parent_layout.addWidget(frame)
-        return value_label
 
     def _create_career_arc_chart(self, parent_layout: QVBoxLayout):
         """Create the career arc line chart."""
@@ -190,18 +173,16 @@ class PlayerProgressionDialog(QDialog):
             "Season", "Age", "Before", "After", "Change"
         ])
 
-        # Configure table appearance
+        # Apply centralized table styling
+        apply_table_style(self._history_table)
+
+        # Configure column resize modes
         header = self._history_table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Stretch)
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(2, QHeaderView.Stretch)
         header.setSectionResizeMode(3, QHeaderView.Stretch)
         header.setSectionResizeMode(4, QHeaderView.Stretch)
-
-        self._history_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self._history_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self._history_table.setAlternatingRowColors(True)
-        self._history_table.verticalHeader().setVisible(False)
 
         table_layout.addWidget(self._history_table)
         parent_layout.addWidget(table_group, stretch=1)
@@ -233,16 +214,16 @@ class PlayerProgressionDialog(QDialog):
         """Populate the development info panel."""
         # Dev Curve
         dev_curve = "Normal"
-        dev_color = self.COLOR_GRAY
+        dev_color = Colors.MUTED
 
         if self._archetype:
             curve_type = self._archetype.development_curve.lower()
             if curve_type == "early":
                 dev_curve = "Early"
-                dev_color = self.COLOR_ORANGE
+                dev_color = Colors.WARNING
             elif curve_type == "late":
                 dev_curve = "Late"
-                dev_color = self.COLOR_BLUE
+                dev_color = Colors.INFO
 
         self._dev_curve_label.setText(dev_curve)
         self._dev_curve_label.setStyleSheet(f"color: {dev_color};")
@@ -265,11 +246,11 @@ class PlayerProgressionDialog(QDialog):
 
         # Upside (difference between potential and current)
         upside = potential - current_ovr
-        upside_color = self.COLOR_GRAY
+        upside_color = Colors.MUTED
         if upside >= 10:
-            upside_color = self.COLOR_GREEN
+            upside_color = Colors.SUCCESS
         elif upside >= 5:
-            upside_color = self.COLOR_BLUE
+            upside_color = Colors.INFO
 
         self._upside_label.setText(f"+{upside}" if upside > 0 else str(upside))
         self._upside_label.setStyleSheet(f"color: {upside_color};")
@@ -323,7 +304,7 @@ class PlayerProgressionDialog(QDialog):
         # Style the series
         pen = series.pen()
         pen.setWidth(3)
-        pen.setColor(QColor(self.COLOR_BLUE))
+        pen.setColor(QColor(Colors.INFO))
         series.setPen(pen)
 
     def _populate_history_table(self):
@@ -334,7 +315,7 @@ class PlayerProgressionDialog(QDialog):
 
             no_data_item = QTableWidgetItem("No progression history available")
             no_data_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            no_data_item.setForeground(QColor(self.COLOR_GRAY))
+            no_data_item.setForeground(QColor(Colors.MUTED))
             self._history_table.setItem(0, 0, no_data_item)
             return
 
@@ -366,15 +347,15 @@ class PlayerProgressionDialog(QDialog):
             change_text = f"+{change}" if change > 0 else str(change)
             change_item = QTableWidgetItem(change_text)
             change_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            change_item.setFont(QFont("Arial", -1, QFont.Weight.Bold))
+            change_item.setFont(Typography.BODY_BOLD)
 
             # Color code the change
             if change > 0:
-                change_item.setForeground(QColor(self.COLOR_GREEN))
+                change_item.setForeground(QColor(Colors.SUCCESS))
             elif change < 0:
-                change_item.setForeground(QColor(self.COLOR_RED))
+                change_item.setForeground(QColor(Colors.ERROR))
             else:
-                change_item.setForeground(QColor(self.COLOR_GRAY))
+                change_item.setForeground(QColor(Colors.MUTED))
 
             self._history_table.setItem(row, 4, change_item)
 
@@ -385,7 +366,7 @@ class PlayerProgressionDialog(QDialog):
 
         error_item = QTableWidgetItem(f"Error loading progression data: {message}")
         error_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-        error_item.setForeground(QColor(self.COLOR_RED))
+        error_item.setForeground(QColor(Colors.ERROR))
         self._history_table.setItem(0, 0, error_item)
 
         # Also show error in chart

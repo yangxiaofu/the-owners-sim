@@ -49,6 +49,15 @@ class HeadlineType(str, Enum):
     POWER_RANKING = "POWER_RANKING"
     STREAK = "STREAK"
     PREVIEW = "PREVIEW"  # Upcoming game previews for rivalry/critical matchups
+    # NEW: Player-focused game headlines
+    PLAYER_PERFORMANCE = "PLAYER_PERFORMANCE"  # Star player carries team
+    DUAL_THREAT = "DUAL_THREAT"  # QB-WR combo, two stars
+    DEFENSIVE_SHOWCASE = "DEFENSIVE_SHOWCASE"  # Defensive player dominates
+    # Transaction-specific headline types
+    RESIGNING = "RESIGNING"  # Contract extensions and departures
+    FRANCHISE_TAG = "FRANCHISE_TAG"  # Franchise tag applications
+    ROSTER_CUT = "ROSTER_CUT"  # Surprise cuts and final roster
+    WAIVER_CLAIM = "WAIVER_CLAIM"  # Notable waiver acquisitions
 
 
 class Sentiment(str, Enum):
@@ -97,7 +106,27 @@ BASE_PRIORITIES = {
     HeadlineType.POWER_RANKING: 45,
     HeadlineType.STREAK: 55,
     HeadlineType.PREVIEW: 55,  # Slightly above game recaps, boosted by criticality
+    # NEW: Player-focused headlines
+    HeadlineType.PLAYER_PERFORMANCE: 68,  # Higher than BLOWOUT (60)
+    HeadlineType.DUAL_THREAT: 72,  # Higher than UPSET (70)
+    HeadlineType.DEFENSIVE_SHOWCASE: 75,  # Equal to COMEBACK
+    # Transaction-specific headline types
+    HeadlineType.RESIGNING: 65,  # Contract extensions (higher than SIGNING)
+    HeadlineType.FRANCHISE_TAG: 75,  # Always newsworthy ($15-30M decisions)
+    HeadlineType.ROSTER_CUT: 55,  # Base priority, boosted for stars
+    HeadlineType.WAIVER_CLAIM: 50,  # Base priority, boosted for notable claims
 }
+
+
+# =============================================================================
+# TEAM IDS BY CONFERENCE (for playoff headlines)
+# =============================================================================
+
+# AFC teams (IDs 1-16)
+AFC_TEAM_IDS = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}
+
+# NFC teams (IDs 17-32)
+NFC_TEAM_IDS = {17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32}
 
 
 # =============================================================================
@@ -119,6 +148,7 @@ DEFENSIVE_POSITIONS = {
 # =============================================================================
 
 IMPACT_WEIGHTS = {
+    # Offensive stats
     "passing_yards": 0.04,       # ~10 pts per 250 yards
     "passing_tds": 4,
     "passing_interceptions": -3,  # Negative for turnovers
@@ -126,9 +156,14 @@ IMPACT_WEIGHTS = {
     "rushing_tds": 6,
     "receiving_yards": 0.1,
     "receiving_tds": 6,
-    "tackles": 0.5,
+
+    # Defensive stats (rebalanced to increase defensive player visibility)
+    "tackles_total": 1.0,         # Increased from 0.5 to 1.0 (10 tackles = 10.0 impact)
+    "tackles_for_loss": 2.0,      # NEW: 1 TFL = 2.0 impact (high-value play)
     "sacks": 3,
     "interceptions": 5,           # Defensive interceptions
+    "passes_defended": 2.0,       # NEW: 1 PD = 2.0 impact (rewards coverage)
+    "forced_fumbles": 4.0,        # NEW: 1 FF = 4.0 impact (high-value turnover creation)
 }
 
 
@@ -727,6 +762,328 @@ COMEBACK_TEMPLATES = [
         template="From the Brink: {team} Survives {deficit}-Point Deficit",
         sentiment=Sentiment.POSITIVE,
         priority_boost=20
+    ),
+]
+
+# =============================================================================
+# PLAYER PERFORMANCE TEMPLATES (20) - Star Player Carries Team
+# =============================================================================
+
+PLAYER_PERFORMANCE_TEMPLATES = [
+    HeadlineTemplate(
+        template="{player_name}'s Heroics Lead {winner} Past {loser}, {score}",
+        sentiment=Sentiment.HYPE,
+        priority_boost=15,
+        subheadline_template="{player_name} posts {stat_highlight} in Week {week} victory"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Dominates as {winner} Tops {loser}, {score}",
+        sentiment=Sentiment.HYPE,
+        priority_boost=15,
+        subheadline_template="{player_name} posts {stat_highlight} in dominant performance"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Explodes for {stat_highlight} in {winner} Win",
+        sentiment=Sentiment.HYPE,
+        priority_boost=18,
+        subheadline_template="{winner} defeats {loser} {score} in Week {week}"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Torches {loser} Defense: {stat_highlight}",
+        sentiment=Sentiment.HYPE,
+        priority_boost=16,
+        subheadline_template="{winner} wins {score} in Week {week}"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Puts On a Clinic: {winner} {score} {loser}",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=14,
+        subheadline_template="{player_name}: {stat_highlight}"
+    ),
+    HeadlineTemplate(
+        template="{player_name}'s {stat_highlight} Powers {winner} Past {loser}",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=13,
+        subheadline_template="{winner} defeats {loser} {score}"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Unstoppable in {winner}'s {score} Win Over {loser}",
+        sentiment=Sentiment.HYPE,
+        priority_boost=15,
+        subheadline_template="{player_name}: {stat_highlight}"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Carries {winner} to Victory: {stat_highlight}",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=14,
+        subheadline_template="{winner} defeats {loser} {score} in Week {week}"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Takes Over: {winner} Defeats {loser}, {score}",
+        sentiment=Sentiment.HYPE,
+        priority_boost=16,
+        subheadline_template="{player_name}: {stat_highlight}"
+    ),
+    HeadlineTemplate(
+        template="{player_name}'s Masterclass Leads {winner} Past {loser}",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=14,
+        subheadline_template="{stat_highlight} in {score} victory"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Shines: {winner} {score} {loser}",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=10,
+        subheadline_template="{player_name}: {stat_highlight}"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Too Much for {loser} in {winner} Win",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=12,
+        subheadline_template="{stat_highlight} leads {winner} to victory"
+    ),
+    HeadlineTemplate(
+        template="{player_name}'s Precision Guides {winner} to {score} Win",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=11,
+        conditions={"player_position": "QB"},  # QB-specific
+        subheadline_template="{stat_highlight} in Week {week} victory"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Runs Wild: {stat_highlight} Leads {winner} Past {loser}",
+        sentiment=Sentiment.HYPE,
+        priority_boost=16,
+        subheadline_template="{winner} defeats {loser} {score}"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Can't Be Stopped: {winner} Tops {loser}",
+        sentiment=Sentiment.HYPE,
+        priority_boost=14,
+        subheadline_template="{player_name}: {stat_highlight} in {score} win"
+    ),
+    HeadlineTemplate(
+        template="{player_name}'s Big Day Powers {winner} to {score} Victory",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=12,
+        subheadline_template="{stat_highlight} vs {loser}"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Lights Up {loser}: {winner} Wins {score}",
+        sentiment=Sentiment.HYPE,
+        priority_boost=15,
+        subheadline_template="{player_name}: {stat_highlight}"
+    ),
+    HeadlineTemplate(
+        template="{player_name}'s Stellar Performance Lifts {winner} Over {loser}",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=13,
+        subheadline_template="{stat_highlight} in Week {week}"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Leads the Charge: {winner} Defeats {loser}, {score}",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=11,
+        subheadline_template="{player_name}: {stat_highlight}"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Delivers: {winner} Defeats {loser}",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=12,
+        subheadline_template="{stat_highlight} powers {winner_city} to {score} win"
+    ),
+]
+
+# =============================================================================
+# DUAL THREAT TEMPLATES (15) - QB-WR Combos, Dynamic Duos
+# =============================================================================
+
+DUAL_THREAT_TEMPLATES = [
+    HeadlineTemplate(
+        template="{player_name} and {player2_name} Combine to Sink {loser}",
+        sentiment=Sentiment.HYPE,
+        priority_boost=18,
+        subheadline_template="{player_name}: {stat_highlight} | {player2_name}: {player2_stat_summary}"
+    ),
+    HeadlineTemplate(
+        template="Dynamic Duo: {player_name}, {player2_name} Lead {winner} Past {loser}",
+        sentiment=Sentiment.HYPE,
+        priority_boost=20,
+        subheadline_template="{player_name}: {stat_highlight} | {player2_name}: {player2_stat_summary}"
+    ),
+    HeadlineTemplate(
+        template="{player_name} to {player2_name}: {winner} Defeats {loser}, {score}",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=16,
+        subheadline_template="{player_name}: {stat_highlight} | {player2_name}: {player2_stat_summary}"
+    ),
+    HeadlineTemplate(
+        template="{player_name}-{player2_name} Connection Too Much for {loser}",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=15,
+        subheadline_template="{player_name}: {stat_highlight} | {player2_name}: {player2_stat_summary}"
+    ),
+    HeadlineTemplate(
+        template="{player_name}, {player2_name} Star in {winner}'s {score} Win",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=14,
+        subheadline_template="{player_name}: {stat_highlight} | {player2_name}: {player2_stat_summary}"
+    ),
+    HeadlineTemplate(
+        template="{player_name} and {player2_name} Shine as {winner} Tops {loser}",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=13,
+        subheadline_template="{player_name}: {stat_highlight} | {player2_name}: {player2_stat_summary}"
+    ),
+    HeadlineTemplate(
+        template="One-Two Punch: {player_name}, {player2_name} Lead {winner} to Victory",
+        sentiment=Sentiment.HYPE,
+        priority_boost=17,
+        subheadline_template="{player_name}: {stat_highlight} | {player2_name}: {player2_stat_summary}"
+    ),
+    HeadlineTemplate(
+        template="{player_name}'s {stat_highlight} and {player2_name}'s Heroics Beat {loser}",
+        sentiment=Sentiment.HYPE,
+        priority_boost=16,
+        subheadline_template="{player2_name}: {player2_stat_summary}"
+    ),
+    HeadlineTemplate(
+        template="{winner}'s Star Duo Delivers: {player_name}, {player2_name} Beat {loser}",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=14,
+        subheadline_template="{player_name}: {stat_highlight} | {player2_name}: {player2_stat_summary}"
+    ),
+    HeadlineTemplate(
+        template="{player_name} and {player2_name} Too Much: {winner} {score} {loser}",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=13,
+        subheadline_template="{player_name}: {stat_highlight} | {player2_name}: {player2_stat_summary}"
+    ),
+    HeadlineTemplate(
+        template="Unstoppable Combo: {player_name}-{player2_name} Lead {winner} Past {loser}",
+        sentiment=Sentiment.HYPE,
+        priority_boost=18,
+        subheadline_template="{player_name}: {stat_highlight} | {player2_name}: {player2_stat_summary}"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Finds {player2_name} Repeatedly in {winner} Win",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=12,
+        subheadline_template="{player_name}: {stat_highlight} | {player2_name}: {player2_stat_summary}"
+    ),
+    HeadlineTemplate(
+        template="{winner}'s Dynamic Duo Stuns {loser}: {player_name}, {player2_name}",
+        sentiment=Sentiment.HYPE,
+        priority_boost=16,
+        subheadline_template="{player_name}: {stat_highlight} | {player2_name}: {player2_stat_summary}"
+    ),
+    HeadlineTemplate(
+        template="{player_name}, {player2_name} Combine for Dominant {winner} Win",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=14,
+        subheadline_template="{player_name}: {stat_highlight} | {player2_name}: {player2_stat_summary}"
+    ),
+    HeadlineTemplate(
+        template="{player_name}-to-{player2_name}: {winner}'s Winning Formula vs {loser}",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=13,
+        subheadline_template="{player_name}: {stat_highlight} | {player2_name}: {player2_stat_summary}"
+    ),
+]
+
+# =============================================================================
+# DEFENSIVE SHOWCASE TEMPLATES (15) - Defensive Player Dominates
+# =============================================================================
+
+DEFENSIVE_SHOWCASE_TEMPLATES = [
+    HeadlineTemplate(
+        template="{player_name} Dominates: {winner} Shuts Down {loser}, {score}",
+        sentiment=Sentiment.HYPE,
+        priority_boost=20,
+        subheadline_template="{player_name}: {stat_highlight} in Week {week}"
+    ),
+    HeadlineTemplate(
+        template="{player_name}'s Defense Leads {winner} Past {loser}",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=16,
+        subheadline_template="{stat_highlight} in {score} victory"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Wreaks Havoc: {winner} Defeats {loser}, {score}",
+        sentiment=Sentiment.HYPE,
+        priority_boost=18,
+        subheadline_template="{player_name}: {stat_highlight}"
+    ),
+    HeadlineTemplate(
+        template="{player_name}'s {stat_highlight} Shuts Down {loser} Offense",
+        sentiment=Sentiment.HYPE,
+        priority_boost=17,
+        subheadline_template="{winner} wins {score} in Week {week}"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Unblockable in {winner}'s {score} Win",
+        sentiment=Sentiment.HYPE,
+        priority_boost=16,
+        subheadline_template="{player_name}: {stat_highlight}"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Takes Over Defensively: {winner} {score} {loser}",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=15,
+        subheadline_template="{stat_highlight} dominates in Week {week}"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Anchors {winner} Defense in {score} Win Over {loser}",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=14,
+        subheadline_template="{player_name}: {stat_highlight}"
+    ),
+    HeadlineTemplate(
+        template="{player_name}'s Defensive Clinic Stifles {loser}",
+        sentiment=Sentiment.HYPE,
+        priority_boost=17,
+        subheadline_template="{stat_highlight} leads {winner} to victory"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Terrorizes {loser}: {stat_highlight} in {winner} Win",
+        sentiment=Sentiment.HYPE,
+        priority_boost=18,
+        subheadline_template="{winner} defeats {loser} {score}"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Leads {winner} Defense to {score} Victory",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=13,
+        subheadline_template="{player_name}: {stat_highlight} vs {loser}"
+    ),
+    HeadlineTemplate(
+        template="{player_name}'s Big Game on Defense Keys {winner} Win",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=14,
+        subheadline_template="{stat_highlight} in {score} win over {loser}"
+    ),
+    HeadlineTemplate(
+        template="Defensive Star: {player_name} Dominates in {winner} Win",
+        sentiment=Sentiment.HYPE,
+        priority_boost=16,
+        subheadline_template="{player_name}: {stat_highlight} in Week {week}"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Makes Game-Changing Plays: {winner} Tops {loser}",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=13,
+        subheadline_template="{stat_highlight} leads {winner} to {score} victory"
+    ),
+    HeadlineTemplate(
+        template="{player_name} Unstoppable on Defense: {winner} {score} {loser}",
+        sentiment=Sentiment.HYPE,
+        priority_boost=17,
+        subheadline_template="{player_name}: {stat_highlight}"
+    ),
+    HeadlineTemplate(
+        template="{player_name}'s Defensive Heroics Lift {winner} Past {loser}",
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=15,
+        subheadline_template="{stat_highlight} in Week {week} victory"
     ),
 ]
 
@@ -1998,6 +2355,398 @@ LOOKING_AHEAD_TEMPLATES = {
 }
 
 
+# =============================================================================
+# WILD CARD PLAYOFF HEADLINES
+# =============================================================================
+
+WILD_CARD_GAME_RECAP = [
+    HeadlineTemplate(
+        template="{winner} Advances Past Wild Card Round, Defeats {loser} {score}",
+        conditions={"playoff_round": "wild_card"},
+        sentiment=Sentiment.HYPE,
+        priority_boost=30,
+        subheadline_template="{winner_city} moves on to divisional round"
+    ),
+    HeadlineTemplate(
+        template="{winner} Survives Wild Card Thriller Against {loser}, {score}",
+        conditions={"playoff_round": "wild_card", "margin_max": 7},
+        sentiment=Sentiment.HYPE,
+        priority_boost=35,
+        subheadline_template="Win-or-go-home drama delivers in {winner_city}"
+    ),
+    HeadlineTemplate(
+        template="{winner} Dominates {loser} in Wild Card Rout, {score}",
+        conditions={"playoff_round": "wild_card", "margin_min": 21},
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=32,
+        subheadline_template="{winner} makes statement in playoff opener"
+    ),
+    HeadlineTemplate(
+        template="{winner} Edges {loser} in Wild Card Round, {score}",
+        conditions={"playoff_round": "wild_card"},
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=30
+    ),
+    HeadlineTemplate(
+        template="Wild Card Victory: {winner} Defeats {loser}, {score}",
+        conditions={"playoff_round": "wild_card"},
+        sentiment=Sentiment.HYPE,
+        priority_boost=31,
+        subheadline_template="Playoff push continues for {winner_city}"
+    ),
+    HeadlineTemplate(
+        template="{winner} Takes Care of Business in Wild Card Round, {score}",
+        conditions={"playoff_round": "wild_card"},
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=30
+    ),
+    HeadlineTemplate(
+        template="{winner}'s Playoff Run Continues with Wild Card Win Over {loser}",
+        conditions={"playoff_round": "wild_card"},
+        sentiment=Sentiment.HYPE,
+        priority_boost=31,
+        subheadline_template="Divisional round awaits after {score} victory"
+    ),
+]
+
+WILD_CARD_UPSET = [
+    HeadlineTemplate(
+        template="{winner} Shocks {loser} in Wild Card Upset, {score}",
+        conditions={"playoff_round": "wild_card", "is_upset": True},
+        sentiment=Sentiment.HYPE,
+        priority_boost=40,
+        subheadline_template="Lower seed {winner} stuns {loser} in playoff stunner"
+    ),
+    HeadlineTemplate(
+        template="Wild Card Shocker: {winner} Stuns Favored {loser}, {score}",
+        conditions={"playoff_round": "wild_card", "is_upset": True},
+        sentiment=Sentiment.HYPE,
+        priority_boost=41
+    ),
+    HeadlineTemplate(
+        template="{loser} Eliminated in Wild Card Upset by {winner}",
+        conditions={"playoff_round": "wild_card", "is_upset": True},
+        sentiment=Sentiment.HYPE,
+        priority_boost=39,
+        subheadline_template="Underdogs advance with {score} victory"
+    ),
+    HeadlineTemplate(
+        template="{winner} Pulls Off Wild Card Upset Over {loser}, {score}",
+        conditions={"playoff_round": "wild_card", "is_upset": True},
+        sentiment=Sentiment.HYPE,
+        priority_boost=40
+    ),
+]
+
+WILD_CARD_COMEBACK = [
+    HeadlineTemplate(
+        template="{winner} Stages Wild Card Comeback to Shock {loser}, {score}",
+        conditions={"playoff_round": "wild_card", "comeback_points_min": 14},
+        sentiment=Sentiment.HYPE,
+        priority_boost=38,
+        subheadline_template="Dramatic rally keeps playoff hopes alive"
+    ),
+    HeadlineTemplate(
+        template="Incredible Rally: {winner} Overcomes {comeback_deficit} to Beat {loser} in Wild Card",
+        conditions={"playoff_round": "wild_card", "comeback_points_min": 14},
+        sentiment=Sentiment.HYPE,
+        priority_boost=39
+    ),
+    HeadlineTemplate(
+        template="{winner} Mounts Epic Wild Card Comeback Against {loser}, {score}",
+        conditions={"playoff_round": "wild_card", "comeback_points_min": 14},
+        sentiment=Sentiment.HYPE,
+        priority_boost=38
+    ),
+]
+
+
+# =============================================================================
+# DIVISIONAL PLAYOFF HEADLINES
+# =============================================================================
+
+DIVISIONAL_GAME_RECAP = [
+    HeadlineTemplate(
+        template="{winner} One Win Away from Super Bowl After Divisional Victory Over {loser}",
+        conditions={"playoff_round": "divisional"},
+        sentiment=Sentiment.HYPE,
+        priority_boost=35,
+        subheadline_template="{winner} advances to {conference} Championship Game"
+    ),
+    HeadlineTemplate(
+        template="{winner} Rolls to Conference Championship with Divisional Win, {score}",
+        conditions={"playoff_round": "divisional"},
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=33
+    ),
+    HeadlineTemplate(
+        template="{winner} Survives {loser} Challenge in Divisional Round, {score}",
+        conditions={"playoff_round": "divisional", "margin_max": 7},
+        sentiment=Sentiment.HYPE,
+        priority_boost=37,
+        subheadline_template="Conference championship berth on the line in thriller"
+    ),
+    HeadlineTemplate(
+        template="{winner} Dominates {loser} in Divisional Round, {score}",
+        conditions={"playoff_round": "divisional", "margin_min": 21},
+        sentiment=Sentiment.POSITIVE,
+        priority_boost=34,
+        subheadline_template="{winner_city} marches toward Super Bowl"
+    ),
+    HeadlineTemplate(
+        template="Divisional Round Victory: {winner} Defeats {loser}, {score}",
+        conditions={"playoff_round": "divisional"},
+        sentiment=Sentiment.HYPE,
+        priority_boost=33
+    ),
+    HeadlineTemplate(
+        template="{winner} Advances to {conference} Championship Game with Win Over {loser}",
+        conditions={"playoff_round": "divisional"},
+        sentiment=Sentiment.HYPE,
+        priority_boost=34,
+        subheadline_template="One step closer to the Super Bowl"
+    ),
+    HeadlineTemplate(
+        template="{winner} Punches Ticket to Conference Championship, {score}",
+        conditions={"playoff_round": "divisional"},
+        sentiment=Sentiment.HYPE,
+        priority_boost=35,
+        subheadline_template="{loser} eliminated in divisional round"
+    ),
+]
+
+DIVISIONAL_UPSET = [
+    HeadlineTemplate(
+        template="{winner} Shocks {loser} in Divisional Round Upset, {score}",
+        conditions={"playoff_round": "divisional", "is_upset": True},
+        sentiment=Sentiment.HYPE,
+        priority_boost=42,
+        subheadline_template="Lower seed stuns favorites, advances to conference championship"
+    ),
+    HeadlineTemplate(
+        template="Divisional Shocker: {winner} Stuns {loser}, {score}",
+        conditions={"playoff_round": "divisional", "is_upset": True},
+        sentiment=Sentiment.HYPE,
+        priority_boost=43
+    ),
+    HeadlineTemplate(
+        template="{loser} Stunned in Divisional Round by {winner}",
+        conditions={"playoff_round": "divisional", "is_upset": True},
+        sentiment=Sentiment.HYPE,
+        priority_boost=41,
+        subheadline_template="Underdog advances with {score} upset victory"
+    ),
+    HeadlineTemplate(
+        template="{winner} Pulls Off Divisional Upset, Eliminates {loser} {score}",
+        conditions={"playoff_round": "divisional", "is_upset": True},
+        sentiment=Sentiment.HYPE,
+        priority_boost=42
+    ),
+]
+
+DIVISIONAL_COMEBACK = [
+    HeadlineTemplate(
+        template="{winner} Stages Dramatic Divisional Comeback to Beat {loser}, {score}",
+        conditions={"playoff_round": "divisional", "comeback_points_min": 14},
+        sentiment=Sentiment.HYPE,
+        priority_boost=40,
+        subheadline_template="Conference championship berth earned after epic rally"
+    ),
+    HeadlineTemplate(
+        template="Incredible Rally: {winner} Overcomes {comeback_deficit} in Divisional Round",
+        conditions={"playoff_round": "divisional", "comeback_points_min": 14},
+        sentiment=Sentiment.HYPE,
+        priority_boost=41
+    ),
+    HeadlineTemplate(
+        template="{winner} Mounts Epic Comeback Against {loser} in Divisional Round, {score}",
+        conditions={"playoff_round": "divisional", "comeback_points_min": 14},
+        sentiment=Sentiment.HYPE,
+        priority_boost=40
+    ),
+]
+
+
+# =============================================================================
+# CONFERENCE CHAMPIONSHIP HEADLINES
+# =============================================================================
+
+CONFERENCE_CHAMPIONSHIP_GAME_RECAP = [
+    HeadlineTemplate(
+        template="{winner} Punches Ticket to Super Bowl, Defeats {loser} {score}",
+        conditions={"playoff_round": "conference"},
+        sentiment=Sentiment.HYPE,
+        priority_boost=45,
+        subheadline_template="{winner} claims {conference} Championship, heads to Super Bowl"
+    ),
+    HeadlineTemplate(
+        template="{winner} Wins {conference} Championship, Headed to Super Bowl",
+        conditions={"playoff_round": "conference"},
+        sentiment=Sentiment.HYPE,
+        priority_boost=43,
+        subheadline_template="{winner} dominates {loser} {score} to earn Super Bowl berth"
+    ),
+    HeadlineTemplate(
+        template="{conference} Champions: {winner} Defeats {loser} to Reach Super Bowl",
+        conditions={"playoff_round": "conference"},
+        sentiment=Sentiment.HYPE,
+        priority_boost=44
+    ),
+    HeadlineTemplate(
+        template="{winner} Survives {conference} Championship Thriller, {score}",
+        conditions={"playoff_round": "conference", "margin_max": 7},
+        sentiment=Sentiment.HYPE,
+        priority_boost=47,
+        subheadline_template="Super Bowl berth decided in final seconds"
+    ),
+    HeadlineTemplate(
+        template="{winner} Dominates {conference} Championship, Cruises to Super Bowl",
+        conditions={"playoff_round": "conference", "margin_min": 21},
+        sentiment=Sentiment.HYPE,
+        priority_boost=45,
+        subheadline_template="{loser} eliminated in blowout {score} loss"
+    ),
+    HeadlineTemplate(
+        template="{winner} Earns Super Bowl Berth with {conference} Championship Victory",
+        conditions={"playoff_round": "conference"},
+        sentiment=Sentiment.HYPE,
+        priority_boost=44,
+        subheadline_template="{winner_city} celebrates conference title"
+    ),
+    HeadlineTemplate(
+        template="Super Bowl Bound: {winner} Defeats {loser} in {conference} Championship",
+        conditions={"playoff_round": "conference"},
+        sentiment=Sentiment.HYPE,
+        priority_boost=45
+    ),
+]
+
+CONFERENCE_CHAMPIONSHIP_UPSET = [
+    HeadlineTemplate(
+        template="{winner} Shocks {loser} in {conference} Championship Upset, {score}",
+        conditions={"playoff_round": "conference", "is_upset": True},
+        sentiment=Sentiment.HYPE,
+        priority_boost=48,
+        subheadline_template="Underdog punches ticket to Super Bowl in stunning upset"
+    ),
+    HeadlineTemplate(
+        template="{conference} Championship Shocker: {winner} Stuns {loser}, Reaches Super Bowl",
+        conditions={"playoff_round": "conference", "is_upset": True},
+        sentiment=Sentiment.HYPE,
+        priority_boost=49
+    ),
+    HeadlineTemplate(
+        template="{loser} Stunned in {conference} Championship by {winner}",
+        conditions={"playoff_round": "conference", "is_upset": True},
+        sentiment=Sentiment.HYPE,
+        priority_boost=47,
+        subheadline_template="Lower seed advances to Super Bowl with {score} upset"
+    ),
+]
+
+
+# =============================================================================
+# SUPER BOWL HEADLINES (HIGHEST PRIORITY)
+# =============================================================================
+
+SUPER_BOWL_CHAMPIONS = [
+    HeadlineTemplate(
+        template="{winner_caps} WIN SUPER BOWL, Defeat {loser} {score}",
+        conditions={"playoff_round": "super_bowl"},
+        sentiment=Sentiment.HYPE,
+        priority_boost=50,
+        subheadline_template="World champions crowned after {winner} victory"
+    ),
+    HeadlineTemplate(
+        template="SUPER BOWL CHAMPIONS: {winner} Defeat {loser}, {score}",
+        conditions={"playoff_round": "super_bowl"},
+        sentiment=Sentiment.HYPE,
+        priority_boost=50,
+        subheadline_template="{winner_city} celebrates championship parade"
+    ),
+    HeadlineTemplate(
+        template="{winner} Are Super Bowl Champions After Victory Over {loser}",
+        conditions={"playoff_round": "super_bowl"},
+        sentiment=Sentiment.HYPE,
+        priority_boost=48,
+        subheadline_template="{winner} caps championship season with {score} win"
+    ),
+    HeadlineTemplate(
+        template="{winner} Claim Lombardi Trophy with Super Bowl Win Over {loser}, {score}",
+        conditions={"playoff_round": "super_bowl"},
+        sentiment=Sentiment.HYPE,
+        priority_boost=49
+    ),
+    HeadlineTemplate(
+        template="{winner_caps} DOMINATE SUPER BOWL, Rout {loser} {score}",
+        conditions={"playoff_round": "super_bowl", "margin_min": 21},
+        sentiment=Sentiment.HYPE,
+        priority_boost=50,
+        subheadline_template="Championship coronation complete in dominant fashion"
+    ),
+    HeadlineTemplate(
+        template="{winner} Win Super Bowl in Thriller, Edge {loser} {score}",
+        conditions={"playoff_round": "super_bowl", "margin_max": 7},
+        sentiment=Sentiment.HYPE,
+        priority_boost=50,
+        subheadline_template="Championship decided in final moments"
+    ),
+    HeadlineTemplate(
+        template="{winner} Shock the World, Win Super Bowl Over {loser} {score}",
+        conditions={"playoff_round": "super_bowl", "is_upset": True},
+        sentiment=Sentiment.HYPE,
+        priority_boost=50,
+        subheadline_template="Underdogs claim ultimate prize in stunning upset"
+    ),
+    HeadlineTemplate(
+        template="WORLD CHAMPIONS: {winner} Defeat {loser} to Win Super Bowl",
+        conditions={"playoff_round": "super_bowl"},
+        sentiment=Sentiment.HYPE,
+        priority_boost=50,
+        subheadline_template="Lombardi Trophy returns to {winner_city}"
+    ),
+    HeadlineTemplate(
+        template="{winner} Complete Championship Run with Super Bowl Victory",
+        conditions={"playoff_round": "super_bowl"},
+        sentiment=Sentiment.HYPE,
+        priority_boost=49,
+        subheadline_template="{loser} fall short in {score} loss"
+    ),
+]
+
+
+# =============================================================================
+# PLAYOFF TEMPLATE COLLECTIONS MAPPING
+# =============================================================================
+
+PLAYOFF_TEMPLATES = {
+    "wild_card": {
+        HeadlineType.GAME_RECAP: WILD_CARD_GAME_RECAP,
+        HeadlineType.UPSET: WILD_CARD_UPSET,
+        HeadlineType.COMEBACK: WILD_CARD_COMEBACK,
+        HeadlineType.BLOWOUT: WILD_CARD_GAME_RECAP,  # Reuse GAME_RECAP with margin conditions
+    },
+    "divisional": {
+        HeadlineType.GAME_RECAP: DIVISIONAL_GAME_RECAP,
+        HeadlineType.UPSET: DIVISIONAL_UPSET,
+        HeadlineType.COMEBACK: DIVISIONAL_COMEBACK,
+        HeadlineType.BLOWOUT: DIVISIONAL_GAME_RECAP,  # Reuse GAME_RECAP with margin conditions
+    },
+    "conference": {
+        HeadlineType.GAME_RECAP: CONFERENCE_CHAMPIONSHIP_GAME_RECAP,
+        HeadlineType.UPSET: CONFERENCE_CHAMPIONSHIP_UPSET,
+        HeadlineType.COMEBACK: CONFERENCE_CHAMPIONSHIP_GAME_RECAP,  # Reuse GAME_RECAP
+        HeadlineType.BLOWOUT: CONFERENCE_CHAMPIONSHIP_GAME_RECAP,  # Reuse GAME_RECAP
+    },
+    "super_bowl": {
+        HeadlineType.GAME_RECAP: SUPER_BOWL_CHAMPIONS,
+        HeadlineType.UPSET: SUPER_BOWL_CHAMPIONS,  # All Super Bowl headlines use same high-priority pool
+        HeadlineType.COMEBACK: SUPER_BOWL_CHAMPIONS,
+        HeadlineType.BLOWOUT: SUPER_BOWL_CHAMPIONS,
+    }
+}
+
+
 class HeadlineGenerator:
     """
     Service for generating event-driven headlines.
@@ -2043,6 +2792,11 @@ class HeadlineGenerator:
             HeadlineType.BLOWOUT: BLOWOUT_TEMPLATES,
             HeadlineType.UPSET: UPSET_TEMPLATES,
             HeadlineType.COMEBACK: COMEBACK_TEMPLATES,
+            # NEW: Player-focused game headlines
+            HeadlineType.PLAYER_PERFORMANCE: PLAYER_PERFORMANCE_TEMPLATES,
+            HeadlineType.DUAL_THREAT: DUAL_THREAT_TEMPLATES,
+            HeadlineType.DEFENSIVE_SHOWCASE: DEFENSIVE_SHOWCASE_TEMPLATES,
+            # Existing non-game headlines
             HeadlineType.INJURY: INJURY_TEMPLATES,
             HeadlineType.TRADE: TRADE_TEMPLATES,
             HeadlineType.SIGNING: SIGNING_TEMPLATES,
@@ -2339,6 +3093,28 @@ class HeadlineGenerator:
         event_data: Dict[str, Any]
     ) -> List[HeadlineTemplate]:
         """Get templates that match the event conditions."""
+        # Check if this is a playoff game
+        playoff_round = event_data.get("playoff_round")
+
+        if playoff_round and playoff_round in PLAYOFF_TEMPLATES:
+            # Use playoff-specific templates first
+            playoff_template_pool = PLAYOFF_TEMPLATES[playoff_round].get(event_type, [])
+
+            # Filter by conditions
+            matching = []
+            for template in playoff_template_pool:
+                if self._template_matches(template, event_data):
+                    matching.append(template)
+
+            # If we found playoff templates, use those exclusively
+            if matching:
+                self._logger.debug(f"Using {len(matching)} playoff-specific templates for {playoff_round}")
+                return matching
+
+            # Fall through to regular templates if no playoff templates match
+            self._logger.debug(f"No playoff templates matched for {playoff_round}, using regular templates")
+
+        # Get base templates for this headline type (regular season)
         all_templates = self._templates.get(event_type, [])
         matching = []
 
@@ -2395,16 +3171,103 @@ class HeadlineGenerator:
     # Game Classification
     # =========================================================================
 
+    def _should_use_player_headline(
+        self,
+        game_data: Dict[str, Any],
+        enriched_data: Dict[str, Any]
+    ) -> Optional[HeadlineType]:
+        """
+        Determine if a player-focused headline should be used instead of team-focused.
+
+        Priority order:
+        1. DEFENSIVE_SHOWCASE - If defensive player has impact >= 12 (lowered for visibility)
+        2. DUAL_THREAT - If top 2 players both have impact >= 12 (lowered for visibility)
+        3. PLAYER_PERFORMANCE - If top player has impact >= 15 (lowered for visibility)
+        4. None - Use team-focused headline
+
+        Typical impact scores:
+        - QB: 300 YDS, 3 TDs = 24 impact
+        - QB: 350 YDS, 4 TDs = 30 impact
+        - RB: 120 YDS, 2 TDs = 24 impact
+        - WR: 120 YDS, 1 TD = 18 impact
+
+        Args:
+            game_data: Original game data
+            enriched_data: Enriched data with player info
+
+        Returns:
+            HeadlineType for player-focused headline, or None for team-focused
+        """
+        # Check if we have player data
+        player_impact = enriched_data.get("player_impact", 0)
+        if player_impact == 0:
+            self._logger.warning(f"[HEADLINE DEBUG] No player impact data - using team-focused headline")
+            return None  # No player data available
+
+        # Position is already in abbreviation format (e.g., "WR", "QB") from enrichment
+        player_position = enriched_data.get("player_position", "")
+        player2_name = enriched_data.get("player2_name", "None")
+        player2_impact = enriched_data.get("player2_impact", 0)
+        self._logger.warning(f"[HEADLINE DEBUG] Checking player headline - P1: {player_impact:.2f} ({player_position}), P2: {player2_name} ({player2_impact:.2f})")
+
+        # 1. Check for defensive showcase (defensive player with high impact)
+        if player_position in DEFENSIVE_POSITIONS and player_impact >= 12:  # Lowered from 22 to 12
+            self._logger.warning(f"[HEADLINE DEBUG] ✓ DEFENSIVE_SHOWCASE triggered (impact {player_impact:.2f} >= 12)")
+            return HeadlineType.DEFENSIVE_SHOWCASE
+
+        # 2. Check for dual threat (two stars with significant impact)
+        player2_impact = enriched_data.get("player2_impact", 0)
+        if player_impact >= 12 and player2_impact >= 12:  # Lowered from 18 to 12
+            # Position is already in abbreviation format from enrichment
+            player2_position = enriched_data.get("player2_position", "")
+            self._logger.warning(f"[HEADLINE DEBUG] Checking DUAL_THREAT - player1: {player_impact:.2f} ({player_position}), player2: {player2_impact:.2f} ({player2_position})")
+
+            # Check if they're a QB-WR/RB combo (common narrative)
+            if player_position in QB_POSITIONS:
+                if player2_position in RECEIVER_POSITIONS or player2_position in RB_POSITIONS:
+                    self._logger.warning(f"[HEADLINE DEBUG] ✓ DUAL_THREAT triggered (QB-{player2_position} combo)")
+                    return HeadlineType.DUAL_THREAT
+                else:
+                    self._logger.warning(f"[HEADLINE DEBUG] ✗ DUAL_THREAT failed: QB paired with {player2_position} (need WR/TE/RB)")
+            # Or WR/RB-QB (flip case)
+            elif player_position in RECEIVER_POSITIONS or player_position in RB_POSITIONS:
+                if player2_position in QB_POSITIONS:
+                    self._logger.warning(f"[HEADLINE DEBUG] ✓ DUAL_THREAT triggered ({player_position}-QB combo)")
+                    return HeadlineType.DUAL_THREAT
+                else:
+                    self._logger.warning(f"[HEADLINE DEBUG] ✗ DUAL_THREAT failed: {player_position} paired with {player2_position} (need QB)")
+            else:
+                self._logger.warning(f"[HEADLINE DEBUG] ✗ DUAL_THREAT failed: Neither player is QB/RB/WR/TE combo")
+
+        # 3. Check for dominant individual performance
+        if player_impact >= 15:  # Lowered from 25 to 15
+            self._logger.warning(f"[HEADLINE DEBUG] ✓ PLAYER_PERFORMANCE triggered (impact {player_impact:.2f} >= 15)")
+            return HeadlineType.PLAYER_PERFORMANCE
+
+        # No player-focused headline needed
+        self._logger.warning(f"[HEADLINE DEBUG] ✗ No player headline - impact {player_impact:.2f} below threshold (need 15+)")
+        return None
+
     def _classify_game_result(self, game_data: Dict[str, Any]) -> HeadlineType:
         """
         Determine appropriate headline type for game result.
 
         Priority:
-        1. COMEBACK (if 14+ point comeback)
-        2. UPSET (if significant favorite lost)
-        3. BLOWOUT (if 21+ point margin)
-        4. GAME_RECAP (default)
+        1. Player-focused headlines (DEFENSIVE_SHOWCASE, DUAL_THREAT, PLAYER_PERFORMANCE)
+        2. COMEBACK (if 14+ point comeback)
+        3. UPSET (if significant favorite lost)
+        4. BLOWOUT (if 21+ point margin)
+        5. GAME_RECAP (default)
         """
+        # FIRST: Enrich data to get player info
+        enriched_data = self._enrich_game_data(game_data)
+
+        # SECOND: Check for player-focused headline
+        player_headline_type = self._should_use_player_headline(game_data, enriched_data)
+        if player_headline_type:
+            return player_headline_type
+
+        # THIRD: Existing team-focused logic
         margin = abs(
             game_data.get("winner_score", 0) - game_data.get("loser_score", 0)
         )
@@ -2426,6 +3289,80 @@ class HeadlineGenerator:
         # Default to game recap
         return HeadlineType.GAME_RECAP
 
+    def _create_stat_summary(self, player: Dict[str, Any]) -> str:
+        """
+        Create brief stat summary for secondary players.
+
+        Args:
+            player: Player dict with position and stats
+
+        Returns:
+            Brief stat summary like "3 TDs, 250 yards"
+        """
+        # Convert position to abbreviation (handles database format like "wide_receiver")
+        from constants.position_abbreviations import get_position_abbreviation
+        pos = get_position_abbreviation(player.get("position", ""))
+
+        if pos in QB_POSITIONS:
+            tds = player.get("passing_tds", 0)
+            yards = player.get("passing_yards", 0)
+            return f"{tds} TD{'s' if tds != 1 else ''}, {yards} YDS"
+
+        elif pos in RB_POSITIONS:
+            tds = player.get("rushing_tds", 0)
+            yards = player.get("rushing_yards", 0)
+            return f"{yards} YDS, {tds} TD{'s' if tds != 1 else ''}"
+
+        elif pos in RECEIVER_POSITIONS:
+            rec = player.get("receptions", 0)
+            yards = player.get("receiving_yards", 0)
+            tds = player.get("receiving_tds", 0)
+            if tds > 0:
+                return f"{rec} REC, {yards} YDS, {tds} TD{'s' if tds != 1 else ''}"
+            else:
+                return f"{rec} REC, {yards} YDS"
+
+        elif pos in DEFENSIVE_POSITIONS:
+            sacks = player.get("sacks", 0)
+            ints = player.get("interceptions", 0)
+            tackles = player.get("tackles_total", 0)
+
+            # Position-based prioritization
+            is_dl = pos in ["DL", "DE", "DT", "LE", "RE", "EDGE"]  # Defensive line
+            is_db = pos in ["CB", "FS", "SS"]  # Defensive backs
+
+            # For defensive linemen: sacks are more significant than INTs
+            if is_dl:
+                if sacks >= 1.0:  # Prioritize sacks for DL
+                    return f"{sacks:.1f} SACK{'S' if sacks != 1 else ''}"
+                elif ints > 0:
+                    return f"{ints} INT{'s' if ints != 1 else ''}"
+                elif tackles >= 5:
+                    return f"{tackles} TACKLES"
+
+            # For defensive backs: INTs are more significant than sacks
+            elif is_db:
+                if ints > 0:  # Prioritize INTs for DBs
+                    return f"{ints} INT{'s' if ints != 1 else ''}"
+                elif sacks > 0:
+                    return f"{sacks:.1f} SACK{'S' if sacks != 1 else ''}"
+                elif tackles >= 5:
+                    return f"{tackles} TACKLES"
+
+            # For linebackers and other: prefer sacks but show INTs if no sacks
+            else:
+                if sacks >= 1.0:
+                    return f"{sacks:.1f} SACK{'S' if sacks != 1 else ''}"
+                elif ints > 0:
+                    return f"{ints} INT{'s' if ints != 1 else ''}"
+                elif tackles >= 5:
+                    return f"{tackles} TACKLES"
+
+            # Fallback: show tackles if nothing else significant
+            return f"{tackles} TACKLES" if tackles > 0 else "0 TACKLES"
+
+        return "key contribution"
+
     def _enrich_game_data(self, game_data: Dict[str, Any]) -> Dict[str, Any]:
         """Add team names and computed fields to game data."""
         enriched = dict(game_data)
@@ -2439,6 +3376,17 @@ class HeadlineGenerator:
             enriched["winner"] = winner_info["team"]
             enriched["winner_city"] = winner_info["city"]
             enriched["winner_nickname"] = winner_info["nickname"]
+
+            # Add uppercase version for emphasis (e.g., "SAN FRANCISCO WIN SUPER BOWL")
+            enriched["winner_caps"] = winner_info["team"].upper()
+
+            # Determine conference for playoff headlines
+            if winner_id in AFC_TEAM_IDS:
+                enriched["conference"] = "AFC"
+            elif winner_id in NFC_TEAM_IDS:
+                enriched["conference"] = "NFC"
+            else:
+                enriched["conference"] = "Unknown"
 
         if loser_id:
             loser_info = self._get_team_info(loser_id)
@@ -2496,6 +3444,142 @@ class HeadlineGenerator:
             self._logger.warning(f"Could not fetch standings for records: {e}")
             enriched["winner_record"] = "N/A"
             enriched["loser_record"] = "N/A"
+
+        # Add player data for player-focused headlines
+        game_id = game_data.get("game_id")
+        if game_id and winner_id:
+            try:
+                top_players = self._get_top_players_by_stats(game_id, winner_id, limit=4)  # Increased from 3 to 4
+
+                # DEBUG: Log player data retrieval
+                self._logger.warning(f"[HEADLINE DEBUG] game_id={game_id}, winner_id={winner_id}")
+                self._logger.warning(f"[HEADLINE DEBUG] top_players count: {len(top_players)}")
+                if top_players:
+                    self._logger.warning(f"[HEADLINE DEBUG] Top player: {top_players[0].get('player_name')} (pos: {top_players[0].get('position')}, impact: {top_players[0].get('impact', 0):.2f})")
+                    if len(top_players) > 1:
+                        self._logger.warning(f"[HEADLINE DEBUG] 2nd player: {top_players[1].get('player_name')} (pos: {top_players[1].get('position')}, impact: {top_players[1].get('impact', 0):.2f})")
+                else:
+                    self._logger.warning(f"[HEADLINE DEBUG] NO PLAYER DATA - query returned empty list")
+
+                if top_players:
+                    # Primary player
+                    player = top_players[0]
+
+                    # Convert position to abbreviation (handles database format like "wide_receiver")
+                    from constants.position_abbreviations import get_position_abbreviation
+                    pos = get_position_abbreviation(player.get("position", ""))
+
+                    enriched["player_name"] = player.get("player_name", "Unknown")
+                    enriched["player_position"] = pos  # Store abbreviation instead of raw position
+                    enriched["player_impact"] = player.get("impact", 0)
+
+                    # Position-specific stats
+                    if pos in QB_POSITIONS:
+                        enriched["player_passing_yards"] = player.get("passing_yards", 0)
+                        enriched["player_passing_tds"] = player.get("passing_tds", 0)
+                        enriched["player_passing_ints"] = player.get("passing_interceptions", 0)
+                        enriched["player_completions"] = player.get("passing_completions", 0)
+                        enriched["player_attempts"] = player.get("passing_attempts", 0)
+
+                        # Create stat highlight for QB
+                        tds = player.get("passing_tds", 0)
+                        yards = player.get("passing_yards", 0)
+                        ints = player.get("passing_interceptions", 0)
+                        if ints > 0:
+                            enriched["stat_highlight"] = f"{tds} TD{'s' if tds != 1 else ''}, {yards} YDS, {ints} INT{'s' if ints != 1 else ''}"
+                        else:
+                            enriched["stat_highlight"] = f"{tds} TD{'s' if tds != 1 else ''}, {yards} YDS"
+
+                    elif pos in RB_POSITIONS:
+                        enriched["player_rushing_yards"] = player.get("rushing_yards", 0)
+                        enriched["player_rushing_tds"] = player.get("rushing_tds", 0)
+                        enriched["player_carries"] = player.get("rushing_attempts", 0)
+
+                        # Create stat highlight for RB
+                        yards = player.get("rushing_yards", 0)
+                        tds = player.get("rushing_tds", 0)
+                        enriched["stat_highlight"] = f"{yards} YDS, {tds} TD{'s' if tds != 1 else ''}"
+
+                    elif pos in RECEIVER_POSITIONS:
+                        enriched["player_receiving_yards"] = player.get("receiving_yards", 0)
+                        enriched["player_receiving_tds"] = player.get("receiving_tds", 0)
+                        enriched["player_receptions"] = player.get("receptions", 0)
+                        enriched["player_targets"] = player.get("targets", 0)
+
+                        # Create stat highlight for WR/TE
+                        rec = player.get("receptions", 0)
+                        yards = player.get("receiving_yards", 0)
+                        tds = player.get("receiving_tds", 0)
+                        if tds > 0:
+                            enriched["stat_highlight"] = f"{rec} REC, {yards} YDS, {tds} TD{'s' if tds != 1 else ''}"
+                        else:
+                            enriched["stat_highlight"] = f"{rec} REC, {yards} YDS"
+
+                    elif pos in DEFENSIVE_POSITIONS:
+                        enriched["player_tackles"] = player.get("tackles_total", 0)
+                        enriched["player_sacks"] = player.get("sacks", 0)
+                        enriched["player_ints"] = player.get("interceptions", 0)
+                        enriched["player_forced_fumbles"] = player.get("forced_fumbles", 0)
+
+                        # Create stat highlight for defensive player (position-aware prioritization)
+                        sacks = player.get("sacks", 0)
+                        ints = player.get("interceptions", 0)
+                        tackles = player.get("tackles_total", 0)
+
+                        # Position-based prioritization
+                        is_dl = pos in ["DL", "DE", "DT", "LE", "RE", "EDGE"]
+                        is_db = pos in ["CB", "FS", "SS"]
+
+                        if is_dl:
+                            # Defensive line: prioritize sacks
+                            if sacks >= 1.0:
+                                enriched["stat_highlight"] = f"{sacks:.1f} SACK{'S' if sacks != 1 else ''}"
+                            elif ints > 0:
+                                enriched["stat_highlight"] = f"{ints} INT{'s' if ints != 1 else ''}"
+                            else:
+                                enriched["stat_highlight"] = f"{tackles} TACKLES"
+                        elif is_db:
+                            # Defensive backs: prioritize INTs
+                            if ints > 0:
+                                enriched["stat_highlight"] = f"{ints} INT{'s' if ints != 1 else ''}"
+                            elif sacks > 0:
+                                enriched["stat_highlight"] = f"{sacks:.1f} SACK{'S' if sacks != 1 else ''}"
+                            else:
+                                enriched["stat_highlight"] = f"{tackles} TACKLES"
+                        else:
+                            # Linebackers: prefer sacks
+                            if sacks >= 1.0:
+                                enriched["stat_highlight"] = f"{sacks:.1f} SACK{'S' if sacks != 1 else ''}"
+                            elif ints > 0:
+                                enriched["stat_highlight"] = f"{ints} INT{'s' if ints != 1 else ''}"
+                            else:
+                                enriched["stat_highlight"] = f"{tackles} TACKLES"
+
+                    # Secondary player for DUAL_THREAT
+                    if len(top_players) > 1:
+                        player2 = top_players[1]
+                        pos2 = get_position_abbreviation(player2.get("position", ""))
+                        enriched["player2_name"] = player2.get("player_name", "Unknown")
+                        enriched["player2_position"] = pos2  # Store abbreviation instead of raw position
+                        enriched["player2_impact"] = player2.get("impact", 0)
+                        enriched["player2_stat_summary"] = self._create_stat_summary(player2)
+
+                        # For DUAL_THREAT "QB to WR" style headlines, ensure QB is player1
+                        # If player1 is WR/RB/TE and player2 is QB, swap them
+                        if (pos in RECEIVER_POSITIONS or pos in RB_POSITIONS) and pos2 in QB_POSITIONS:
+                            # Swap player1 and player2 so QB comes first (for "X to Y" templates)
+                            enriched["player_name"], enriched["player2_name"] = enriched["player2_name"], enriched["player_name"]
+                            enriched["player_position"], enriched["player2_position"] = enriched["player2_position"], enriched["player_position"]
+                            enriched["player_impact"], enriched["player2_impact"] = enriched["player2_impact"], enriched["player_impact"]
+                            # Swap stat summaries - need to regenerate stat_highlight for the new player1 (QB)
+                            old_stat_highlight = enriched.get("stat_highlight", "")
+                            enriched["stat_highlight"] = enriched["player2_stat_summary"]
+                            enriched["player2_stat_summary"] = old_stat_highlight
+                            self._logger.warning(f"[HEADLINE DEBUG] Swapped players for QB-first ordering: {enriched['player_name']} (QB) to {enriched['player2_name']}")
+
+            except Exception as e:
+                self._logger.debug(f"Could not fetch player data for headline enrichment: {e}")
+                # Player data is optional, continue without it
 
         return enriched
 
@@ -2769,8 +3853,10 @@ class HeadlineGenerator:
         if "carries" in player_stats:
             player["rushing_attempts"] = player_stats["carries"]
         # Map interceptions to passing_interceptions for QB
-        position_upper = position.upper() if position else ""
-        if position_upper in QB_POSITIONS and "interceptions" in player_stats:
+        # Convert position to abbreviation (handles database format like "wide_receiver")
+        from constants.position_abbreviations import get_position_abbreviation
+        position_abbr = get_position_abbreviation(position) if position else ""
+        if position_abbr in QB_POSITIONS and "interceptions" in player_stats:
             player["passing_interceptions"] = player_stats["interceptions"]
 
         result = self._format_player_stat_line(player)
@@ -2848,7 +3934,7 @@ class HeadlineGenerator:
         self,
         game_id: str,
         team_id: int,
-        limit: int = 3
+        limit: int = 4  # Increased from 3 to allow more defensive player visibility
     ) -> List[Dict[str, Any]]:
         """
         Get top performing players for a team in a game based on stats.
@@ -2886,6 +3972,7 @@ class HeadlineGenerator:
                     receptions,
                     targets,
                     tackles_total,
+                    tackles_for_loss,
                     sacks,
                     interceptions,
                     forced_fumbles,
@@ -2919,11 +4006,12 @@ class HeadlineGenerator:
                     "receiving_tds": row[12] or 0,
                     "receptions": row[13] or 0,
                     "targets": row[14] or 0,
-                    "tackles": row[15] or 0,
-                    "sacks": row[16] or 0,
-                    "interceptions": row[17] or 0,
-                    "forced_fumbles": row[18] or 0,
-                    "passes_defended": row[19] or 0,
+                    "tackles_total": row[15] or 0,
+                    "tackles_for_loss": row[16] or 0,
+                    "sacks": row[17] or 0,
+                    "interceptions": row[18] or 0,
+                    "forced_fumbles": row[19] or 0,
+                    "passes_defended": row[20] or 0,
                 }
 
                 # Calculate impact using configurable weights
@@ -2994,7 +4082,7 @@ class HeadlineGenerator:
                 return {
                     "player_name": row[1] or f"Player #{row[0]}",
                     "position": row[2] or "DEF",
-                    "tackles": row[3] or 0,
+                    "tackles_total": row[3] or 0,
                     "sacks": row[4] or 0,
                     "interceptions": row[5] or 0,
                     "forced_fumbles": row[6] or 0,
@@ -3018,7 +4106,9 @@ class HeadlineGenerator:
         Returns:
             Formatted stat line string
         """
-        position = player.get("position", "").upper()
+        # Convert position to abbreviation (handles database format like "wide_receiver")
+        from constants.position_abbreviations import get_position_abbreviation
+        position = get_position_abbreviation(player.get("position", ""))
 
         # QB stat line
         if position in QB_POSITIONS and player.get("passing_yards", 0) > 0:
@@ -3061,7 +4151,7 @@ class HeadlineGenerator:
         # Defensive stat line
         if position in DEFENSIVE_POSITIONS:
             parts = []
-            tackles = player.get("tackles", 0)
+            tackles = player.get("tackles_total", 0)
             sacks = player.get("sacks", 0)
             ints = player.get("interceptions", 0)
             pds = player.get("passes_defended", 0)
@@ -3170,7 +4260,9 @@ class HeadlineGenerator:
         if game_id and winner_id:
             winner_top_players = self._get_top_players_by_stats(game_id, winner_id, limit=1)
             if winner_top_players:
-                top_player_pos = winner_top_players[0].get("position", "").upper()
+                # Convert position to abbreviation (handles database format like "wide_receiver")
+                from constants.position_abbreviations import get_position_abbreviation
+                top_player_pos = get_position_abbreviation(winner_top_players[0].get("position", ""))
                 if top_player_pos in DEFENSIVE_POSITIONS:
                     is_defensive_star = True
 

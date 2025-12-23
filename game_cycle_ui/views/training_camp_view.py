@@ -15,7 +15,12 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor, QBrush
 
-from game_cycle_ui.theme import TABLE_HEADER_STYLE
+from game_cycle_ui.theme import (
+    TAB_STYLE, Colors,
+    PRIMARY_BUTTON_STYLE, SECONDARY_BUTTON_STYLE, DANGER_BUTTON_STYLE,
+    WARNING_BUTTON_STYLE, NEUTRAL_BUTTON_STYLE,
+    Typography, FontSizes, TextColors, apply_table_style
+)
 
 
 class TrainingCampView(QWidget):
@@ -74,25 +79,25 @@ class TrainingCampView(QWidget):
         # Improved
         self._create_stat_widget(
             summary_layout, "improved_label", "Improved", "0",
-            color="#2E7D32"  # Green
+            color=Colors.SUCCESS
         )
 
         # Declined
         self._create_stat_widget(
             summary_layout, "declined_label", "Declined", "0",
-            color="#C62828"  # Red
+            color=Colors.ERROR
         )
 
         # Unchanged
         self._create_stat_widget(
             summary_layout, "unchanged_label", "Unchanged", "0",
-            color="#666"
+            color=Colors.MUTED
         )
 
         # Depth charts updated
         self._create_stat_widget(
             summary_layout, "depth_chart_label", "Depth Charts", "0/32",
-            color="#1976D2"  # Blue
+            color=Colors.INFO
         )
 
         summary_layout.addStretch()
@@ -112,11 +117,11 @@ class TrainingCampView(QWidget):
         vlayout.setContentsMargins(0, 0, 0, 0)
 
         title_label = QLabel(title)
-        title_label.setStyleSheet("color: #666; font-size: 11px;")
+        title_label.setStyleSheet(f"color: {Colors.MUTED}; font-size: {FontSizes.CAPTION};")
         vlayout.addWidget(title_label)
 
         value_label = QLabel(initial_value)
-        value_label.setFont(QFont("Arial", 16, QFont.Bold))
+        value_label.setFont(Typography.H4)
         if color:
             value_label.setStyleSheet(f"color: {color};")
         vlayout.addWidget(value_label)
@@ -187,6 +192,7 @@ class TrainingCampView(QWidget):
     def _create_tabs(self, parent_layout: QVBoxLayout):
         """Create tab widget with different views."""
         self.tab_widget = QTabWidget()
+        self.tab_widget.setStyleSheet(TAB_STYLE)
 
         # Main results table
         self._create_results_table()
@@ -214,6 +220,7 @@ class TrainingCampView(QWidget):
             "Player", "Position", "Team", "Age", "Category",
             "Old OVR", "New OVR", "Change", "Potential"
         ])
+        apply_table_style(self.results_table)
         self._configure_table(self.results_table)
 
     def _create_top_gainers_table(self):
@@ -224,6 +231,7 @@ class TrainingCampView(QWidget):
             "Player", "Position", "Team", "Age", "Category",
             "Old OVR", "New OVR", "Change", "Potential"
         ])
+        apply_table_style(self.top_gainers_table)
         self._configure_table(self.top_gainers_table)
 
     def _create_declines_table(self):
@@ -234,6 +242,7 @@ class TrainingCampView(QWidget):
             "Player", "Position", "Team", "Age", "Category",
             "Old OVR", "New OVR", "Change", "Potential"
         ])
+        apply_table_style(self.declines_table)
         self._configure_table(self.declines_table)
 
     def _create_position_breakdown_table(self):
@@ -243,30 +252,19 @@ class TrainingCampView(QWidget):
         self.position_breakdown_table.setHorizontalHeaderLabels([
             "Position", "Players", "Improved", "Declined", "Avg Change", "Breakouts"
         ])
+        apply_table_style(self.position_breakdown_table)
 
         header = self.position_breakdown_table.horizontalHeader()
-        header.setStyleSheet(TABLE_HEADER_STYLE)
         header.setSectionResizeMode(0, QHeaderView.Stretch)  # Position
         for i in range(1, 6):
             header.setSectionResizeMode(i, QHeaderView.ResizeToContents)
 
-        self.position_breakdown_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.position_breakdown_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.position_breakdown_table.setAlternatingRowColors(True)
-        self.position_breakdown_table.verticalHeader().setVisible(False)
-
     def _configure_table(self, table: QTableWidget):
-        """Configure table appearance."""
+        """Configure table column resize modes and behavior."""
         header = table.horizontalHeader()
-        header.setStyleSheet(TABLE_HEADER_STYLE)
         header.setSectionResizeMode(0, QHeaderView.Stretch)  # Player name
         for i in range(1, 9):
             header.setSectionResizeMode(i, QHeaderView.ResizeToContents)
-
-        table.setEditTriggers(QTableWidget.NoEditTriggers)
-        table.setSelectionBehavior(QTableWidget.SelectRows)
-        table.setAlternatingRowColors(True)
-        table.verticalHeader().setVisible(False)
 
         # Connect double-click handler
         table.cellDoubleClicked.connect(self._on_row_double_clicked)
@@ -277,11 +275,7 @@ class TrainingCampView(QWidget):
         btn_layout.addStretch()
 
         self.continue_btn = QPushButton("Continue to Preseason")
-        self.continue_btn.setStyleSheet(
-            "QPushButton { background-color: #1976D2; color: white; "
-            "border-radius: 4px; padding: 10px 24px; font-size: 14px; }"
-            "QPushButton:hover { background-color: #1565C0; }"
-        )
+        self.continue_btn.setStyleSheet(SECONDARY_BUTTON_STYLE)
         self.continue_btn.clicked.connect(self.continue_clicked.emit)
         btn_layout.addWidget(self.continue_btn)
 
@@ -455,6 +449,8 @@ class TrainingCampView(QWidget):
         is_bust = self._is_bust(result)
 
         # Determine row highlight color and text color
+        # Note: Using light background colors for subtle row highlighting
+        # These are distinct from main Colors constants (which are for text/icons)
         if is_breakout:
             row_color = QColor("#E1F5FE")  # Light blue background
             text_color = QColor("#0D47A1")  # Dark blue text
@@ -543,18 +539,18 @@ class TrainingCampView(QWidget):
         # Change with color coding
         if change > 0:
             change_text = f"+{change}"
-            change_color = QColor("#2E7D32")
+            change_color = QColor(Colors.SUCCESS)
         elif change < 0:
             change_text = str(change)
-            change_color = QColor("#C62828")
+            change_color = QColor(Colors.ERROR)
         else:
             change_text = "0"
-            change_color = QColor("#666")
+            change_color = QColor(Colors.MUTED)
 
         change_item = QTableWidgetItem(change_text)
         change_item.setTextAlignment(Qt.AlignCenter)
         change_item.setForeground(change_color)
-        change_item.setFont(QFont("Arial", 10, QFont.Bold))
+        change_item.setFont(Typography.SMALL_BOLD)
         if row_color:
             change_item.setBackground(QBrush(row_color))
         table.setItem(row, 7, change_item)
@@ -570,10 +566,10 @@ class TrainingCampView(QWidget):
         # Color code based on upside
         if upside <= 2:
             # Near ceiling - Green
-            potential_item.setForeground(QColor("#2E7D32"))
+            potential_item.setForeground(QColor(Colors.SUCCESS))
         elif upside >= 10:
             # High upside - Blue
-            potential_item.setForeground(QColor("#1976D2"))
+            potential_item.setForeground(QColor(Colors.INFO))
 
         if row_color:
             potential_item.setBackground(QBrush(row_color))
@@ -649,39 +645,39 @@ class TrainingCampView(QWidget):
             # Improved
             improved_item = QTableWidgetItem(str(data["improved"]))
             improved_item.setTextAlignment(Qt.AlignCenter)
-            improved_item.setForeground(QColor("#2E7D32"))
+            improved_item.setForeground(QColor(Colors.SUCCESS))
             self.position_breakdown_table.setItem(row, 2, improved_item)
 
             # Declined
             declined_item = QTableWidgetItem(str(data["declined"]))
             declined_item.setTextAlignment(Qt.AlignCenter)
-            declined_item.setForeground(QColor("#C62828"))
+            declined_item.setForeground(QColor(Colors.ERROR))
             self.position_breakdown_table.setItem(row, 3, declined_item)
 
             # Avg Change
             avg_change = data["avg_change"]
             if avg_change > 0:
                 avg_text = f"+{avg_change:.2f}"
-                avg_color = QColor("#2E7D32")
+                avg_color = QColor(Colors.SUCCESS)
             elif avg_change < 0:
                 avg_text = f"{avg_change:.2f}"
-                avg_color = QColor("#C62828")
+                avg_color = QColor(Colors.ERROR)
             else:
                 avg_text = "0.00"
-                avg_color = QColor("#666")
+                avg_color = QColor(Colors.MUTED)
 
             avg_item = QTableWidgetItem(avg_text)
             avg_item.setTextAlignment(Qt.AlignCenter)
             avg_item.setForeground(avg_color)
-            avg_item.setFont(QFont("Arial", 10, QFont.Bold))
+            avg_item.setFont(Typography.SMALL_BOLD)
             self.position_breakdown_table.setItem(row, 4, avg_item)
 
             # Breakouts
             breakout_item = QTableWidgetItem(str(data["breakouts"]))
             breakout_item.setTextAlignment(Qt.AlignCenter)
             if data["breakouts"] > 0:
-                breakout_item.setForeground(QColor("#1976D2"))
-                breakout_item.setFont(QFont("Arial", 10, QFont.Bold))
+                breakout_item.setForeground(QColor(Colors.INFO))
+                breakout_item.setFont(Typography.SMALL_BOLD)
             self.position_breakdown_table.setItem(row, 5, breakout_item)
 
             row += 1

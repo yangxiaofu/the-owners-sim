@@ -28,6 +28,9 @@ from game_cycle_ui.theme import (
     ESPN_TEXT_SECONDARY,
     ESPN_TEXT_MUTED,
     ESPN_BORDER,
+    Colors,
+    FontSizes,
+    TextColors,
 )
 
 
@@ -81,14 +84,14 @@ class GameScoreCard(QFrame):
 
         away_label = QLabel(away_abbr)
         away_label.setStyleSheet(
-            f"color: {ESPN_TEXT_PRIMARY if away_won else ESPN_TEXT_SECONDARY}; font-size: 11px; font-weight: {'bold' if away_won else 'normal'};"
+            f"color: {ESPN_TEXT_PRIMARY if away_won else ESPN_TEXT_SECONDARY}; font-size: {FontSizes.CAPTION}; font-weight: {'bold' if away_won else 'normal'};"
         )
         away_row.addWidget(away_label)
         away_row.addStretch()
 
         away_score_label = QLabel(str(away_score))
         away_score_label.setStyleSheet(
-            f"color: {ESPN_TEXT_PRIMARY if away_won else ESPN_TEXT_SECONDARY}; font-size: 12px; font-weight: bold;"
+            f"color: {ESPN_TEXT_PRIMARY if away_won else ESPN_TEXT_SECONDARY}; font-size: {FontSizes.BODY}; font-weight: bold;"
         )
         away_row.addWidget(away_score_label)
 
@@ -104,14 +107,14 @@ class GameScoreCard(QFrame):
 
         home_label = QLabel(home_abbr)
         home_label.setStyleSheet(
-            f"color: {ESPN_TEXT_PRIMARY if home_won else ESPN_TEXT_SECONDARY}; font-size: 11px; font-weight: {'bold' if home_won else 'normal'};"
+            f"color: {ESPN_TEXT_PRIMARY if home_won else ESPN_TEXT_SECONDARY}; font-size: {FontSizes.CAPTION}; font-weight: {'bold' if home_won else 'normal'};"
         )
         home_row.addWidget(home_label)
         home_row.addStretch()
 
         home_score_label = QLabel(str(home_score))
         home_score_label.setStyleSheet(
-            f"color: {ESPN_TEXT_PRIMARY if home_won else ESPN_TEXT_SECONDARY}; font-size: 12px; font-weight: bold;"
+            f"color: {ESPN_TEXT_PRIMARY if home_won else ESPN_TEXT_SECONDARY}; font-size: {FontSizes.BODY}; font-weight: bold;"
         )
         home_row.addWidget(home_score_label)
 
@@ -121,8 +124,8 @@ class GameScoreCard(QFrame):
         status = "FINAL" if is_final else self._game_data.get("status", "")
         status_label = QLabel(status)
         status_label.setStyleSheet(
-            f"color: {ESPN_RED}; font-size: 9px; font-weight: bold;" if not is_final
-            else f"color: {ESPN_TEXT_MUTED}; font-size: 9px;"
+            f"color: {ESPN_RED}; font-size: {FontSizes.TINY}; font-weight: bold;" if not is_final
+            else f"color: {ESPN_TEXT_MUTED}; font-size: {FontSizes.TINY};"
         )
         status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(status_label)
@@ -174,14 +177,14 @@ class ScoreboardTickerWidget(QWidget):
                 background-color: {ESPN_CARD_BG};
                 color: {ESPN_TEXT_PRIMARY};
                 border: none;
-                font-size: 16px;
+                font-size: {FontSizes.H4};
                 font-weight: bold;
             }}
             QPushButton:hover {{
                 background-color: {ESPN_RED};
             }}
             QPushButton:disabled {{
-                color: #444444;
+                color: {Colors.MUTED};
             }}
         """)
         self._left_btn.clicked.connect(self._scroll_left)
@@ -218,14 +221,14 @@ class ScoreboardTickerWidget(QWidget):
                 background-color: {ESPN_CARD_BG};
                 color: {ESPN_TEXT_PRIMARY};
                 border: none;
-                font-size: 16px;
+                font-size: {FontSizes.H4};
                 font-weight: bold;
             }}
             QPushButton:hover {{
                 background-color: {ESPN_RED};
             }}
             QPushButton:disabled {{
-                color: #444444;
+                color: {Colors.MUTED};
             }}
         """)
         self._right_btn.clicked.connect(self._scroll_right)

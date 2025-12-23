@@ -10,7 +10,6 @@ Displays:
 """
 
 from typing import Dict, Optional, List, Any
-import sqlite3
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox,
@@ -21,6 +20,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QFont
 
 from game_cycle.database.player_stats_api import PlayerSeasonStatsAPI
+from game_cycle.database.popularity_api import PopularityAPI, PopularityTier
 from game_cycle_ui.theme import (
     Colors,
     Typography,
@@ -30,44 +30,7 @@ from game_cycle_ui.theme import (
     get_grade_color,
     apply_table_style
 )
-
-
-# Position abbreviation mapping (normalized)
-POSITION_ABBREV = {
-    'quarterback': 'QB', 'qb': 'QB',
-    'running_back': 'RB', 'halfback': 'RB', 'rb': 'RB', 'hb': 'RB',
-    'fullback': 'FB', 'fb': 'FB',
-    'wide_receiver': 'WR', 'wr': 'WR',
-    'tight_end': 'TE', 'te': 'TE',
-    'left_tackle': 'LT', 'lt': 'LT',
-    'left_guard': 'LG', 'lg': 'LG',
-    'center': 'C', 'c': 'C',
-    'right_guard': 'RG', 'rg': 'RG',
-    'right_tackle': 'RT', 'rt': 'RT',
-    'guard': 'G', 'g': 'G',
-    'tackle': 'T', 't': 'T',
-    'offensive_line': 'OL', 'ol': 'OL',
-    'offensive_guard': 'OG', 'og': 'OG',
-    'offensive_tackle': 'OT', 'ot': 'OT',
-    'left_end': 'LE', 'le': 'LE',
-    'defensive_tackle': 'DT', 'dt': 'DT',
-    'nose_tackle': 'NT', 'nt': 'NT',
-    'right_end': 'RE', 're': 'RE',
-    'defensive_end': 'DE', 'de': 'DE',
-    'edge': 'EDGE',
-    'left_outside_linebacker': 'LOLB', 'lolb': 'LOLB',
-    'middle_linebacker': 'MLB', 'mlb': 'MLB', 'mike': 'MLB',
-    'linebacker': 'LB', 'lb': 'LB',
-    'right_outside_linebacker': 'ROLB', 'rolb': 'ROLB',
-    'inside_linebacker': 'ILB', 'ilb': 'ILB',
-    'cornerback': 'CB', 'cb': 'CB',
-    'free_safety': 'FS', 'fs': 'FS',
-    'strong_safety': 'SS', 'ss': 'SS',
-    'safety': 'S', 's': 'S',
-    'kicker': 'K', 'k': 'K',
-    'punter': 'P', 'p': 'P',
-    'long_snapper': 'LS', 'ls': 'LS',
-}
+from constants.position_abbreviations import POSITION_ABBREVIATIONS
 
 # Position group mapping for stats display
 POSITION_GROUPS = {
@@ -133,6 +96,7 @@ class PlayerDetailDialog(QDialog):
         self._season_stats: Dict[str, Any] = {}
         self._game_log: List[Dict] = []
         self._game_grades: Dict[str, float] = {}  # game_id -> grade
+        self._popularity_data: Optional[Dict[str, Any]] = None
 
         self.setWindowTitle(f"Player Details - {player_name}")
         self.setMinimumSize(750, 650)
@@ -148,41 +112,39 @@ class PlayerDetailDialog(QDialog):
             return
 
         try:
-            import sqlite3
+            from game_cycle.database.connection import GameCycleDatabase
+            import json
 
-            conn = sqlite3.connect(self._db_path)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.execute(
-                """
-                SELECT years_pro, birthdate, positions, attributes
-                FROM players
-                WHERE dynasty_id = ? AND player_id = ?
-                """,
-                (self._dynasty_id, self._player_id)
-            )
-            row = cursor.fetchone()
-            conn.close()
+            with GameCycleDatabase(self._db_path) as conn:
+                conn.row_factory = lambda c, r: dict(zip([col[0] for col in c.description], r))
+                cursor = conn.execute(
+                    """
+                    SELECT years_pro, birthdate, positions, attributes
+                    FROM players
+                    WHERE dynasty_id = ? AND player_id = ?
+                    """,
+                    (self._dynasty_id, self._player_id)
+                )
+                row = cursor.fetchone()
 
-            if row:
-                # Copy years_pro
-                if row['years_pro'] is not None:
-                    self._player_data['years_pro'] = row['years_pro']
+                if row:
+                    # Copy years_pro
+                    if row['years_pro'] is not None:
+                        self._player_data['years_pro'] = row['years_pro']
 
-                # Calculate age from birthdate if not present
-                if 'age' not in self._player_data and row['birthdate']:
-                    birth_year = int(row['birthdate'].split('-')[0])
-                    self._player_data['age'] = self._season - birth_year
+                    # Calculate age from birthdate if not present
+                    if 'age' not in self._player_data and row['birthdate']:
+                        birth_year = int(row['birthdate'].split('-')[0])
+                        self._player_data['age'] = self._season - birth_year
 
-                # Parse positions if not present
-                if 'positions' not in self._player_data and row['positions']:
-                    import json
-                    self._player_data['positions'] = json.loads(row['positions'])
+                    # Parse positions if not present
+                    if 'positions' not in self._player_data and row['positions']:
+                        self._player_data['positions'] = json.loads(row['positions'])
 
-                # Parse overall from attributes if not present
-                if 'overall' not in self._player_data and row['attributes']:
-                    import json
-                    attrs = json.loads(row['attributes'])
-                    self._player_data['overall'] = attrs.get('overall', 0)
+                    # Parse overall from attributes if not present
+                    if 'overall' not in self._player_data and row['attributes']:
+                        attrs = json.loads(row['attributes'])
+                        self._player_data['overall'] = attrs.get('overall', 0)
 
         except Exception as e:
             print(f"[PlayerDetailDialog] Error enriching player data: {e}")
@@ -193,7 +155,7 @@ class PlayerDetailDialog(QDialog):
         positions = self._player_data.get('positions', [])
         if positions:
             pos_raw = positions[0].lower() if isinstance(positions[0], str) else str(positions[0]).lower()
-            abbrev = POSITION_ABBREV.get(pos_raw, None)
+            abbrev = POSITION_ABBREVIATIONS.get(pos_raw, None)
             if abbrev:
                 return abbrev
             # If not in mapping, try uppercase first 2-3 chars
@@ -206,7 +168,7 @@ class PlayerDetailDialog(QDialog):
         position = self._player_data.get('position', '')
         if position:
             pos_raw = position.lower() if isinstance(position, str) else str(position).lower()
-            abbrev = POSITION_ABBREV.get(pos_raw, None)
+            abbrev = POSITION_ABBREVIATIONS.get(pos_raw, None)
             if abbrev:
                 return abbrev
             # If not in mapping, try uppercase first 2-3 chars
@@ -279,6 +241,9 @@ class PlayerDetailDialog(QDialog):
         self._create_season_card(cards_row)
         self._create_info_card(cards_row)
         main_layout.addLayout(cards_row)
+
+        # Popularity section
+        self._create_popularity_section(main_layout)
 
         # Game log table
         self._create_game_log_table(main_layout)
@@ -508,6 +473,51 @@ class PlayerDetailDialog(QDialog):
         card_layout.addStretch()
         parent_layout.addWidget(form_card, stretch=1)
 
+    def _create_popularity_section(self, parent_layout: QVBoxLayout):
+        """Create popularity section."""
+        self._popularity_card = QGroupBox("Star Power")
+        card_layout = QVBoxLayout(self._popularity_card)
+        card_layout.setSpacing(8)
+
+        # Main score display
+        score_layout = QHBoxLayout()
+        self._popularity_icon = QLabel("★")
+        self._popularity_icon.setFont(Typography.H4)
+        self._popularity_icon.setStyleSheet("color: #FFD700;")  # Gold star
+        score_layout.addWidget(self._popularity_icon)
+
+        self._popularity_score_label = QLabel("--")
+        self._popularity_score_label.setFont(Typography.H3)
+        score_layout.addWidget(self._popularity_score_label)
+
+        score_layout.addStretch()
+        card_layout.addLayout(score_layout)
+
+        # Trend indicator
+        self._popularity_trend_label = QLabel("--")
+        self._popularity_trend_label.setFont(Typography.BODY)
+        card_layout.addWidget(self._popularity_trend_label)
+
+        # Component breakdown
+        self._performance_label = QLabel("Performance: --")
+        self._performance_label.setFont(Typography.BODY_SMALL)
+        self._performance_label.setStyleSheet(f"color: {Colors.MUTED};")
+        card_layout.addWidget(self._performance_label)
+
+        self._visibility_label = QLabel("Visibility: --")
+        self._visibility_label.setFont(Typography.BODY_SMALL)
+        self._visibility_label.setStyleSheet(f"color: {Colors.MUTED};")
+        card_layout.addWidget(self._visibility_label)
+
+        self._market_label = QLabel("Market: --")
+        self._market_label.setFont(Typography.BODY_SMALL)
+        self._market_label.setStyleSheet(f"color: {Colors.MUTED};")
+        card_layout.addWidget(self._market_label)
+
+        # Hide by default, show only if we have data
+        self._popularity_card.setVisible(False)
+        parent_layout.addWidget(self._popularity_card)
+
     def _load_data(self):
         """Load player data from the database."""
         try:
@@ -523,20 +533,25 @@ class PlayerDetailDialog(QDialog):
             # Load game grades
             self._load_game_grades()
 
+            # Load popularity data
+            self._load_popularity_data()
+
             # Populate UI
             self._populate_season_card()
             self._populate_game_log_table()
             self._populate_season_highs()
             self._populate_recent_form()
+            self._populate_popularity_section()
 
         except Exception as e:
             self._show_error(str(e))
 
     def _load_game_log(self):
         """Load game-by-game stats from database."""
-        conn = sqlite3.connect(self._db_path)
-        conn.row_factory = sqlite3.Row
-        try:
+        from game_cycle.database.connection import GameCycleDatabase
+
+        with GameCycleDatabase(self._db_path) as conn:
+            conn.row_factory = lambda c, r: dict(zip([col[0] for col in c.description], r))
             cursor = conn.execute(
                 """
                 SELECT
@@ -557,29 +572,67 @@ class PlayerDetailDialog(QDialog):
                 (self._dynasty_id, self._player_id, self._season)
             )
             self._game_log = [dict(row) for row in cursor.fetchall()]
-        finally:
-            conn.close()
 
     def _load_game_grades(self):
         """Load per-game grades from database."""
-        conn = sqlite3.connect(self._db_path)
-        conn.row_factory = sqlite3.Row
+        from game_cycle.database.connection import GameCycleDatabase
+        import sqlite3
+
         try:
-            cursor = conn.execute(
-                """
-                SELECT game_id, overall_grade
-                FROM player_game_grades
-                WHERE dynasty_id = ? AND player_id = ? AND season = ?
-                """,
-                (self._dynasty_id, self._player_id, self._season)
-            )
-            for row in cursor.fetchall():
-                self._game_grades[row['game_id']] = row['overall_grade']
+            with GameCycleDatabase(self._db_path) as conn:
+                conn.row_factory = lambda c, r: dict(zip([col[0] for col in c.description], r))
+                cursor = conn.execute(
+                    """
+                    SELECT game_id, overall_grade
+                    FROM player_game_grades
+                    WHERE dynasty_id = ? AND player_id = ? AND season = ?
+                    """,
+                    (self._dynasty_id, self._player_id, self._season)
+                )
+                for row in cursor.fetchall():
+                    self._game_grades[row['game_id']] = row['overall_grade']
         except sqlite3.OperationalError:
             # Table may not exist yet
             pass
-        finally:
-            conn.close()
+
+    def _load_popularity_data(self):
+        """Load player popularity data from database."""
+        from game_cycle.database.connection import GameCycleDatabase
+        import sqlite3
+
+        try:
+            with GameCycleDatabase(self._db_path) as conn:
+                # Get current week from dynasty state
+                cursor = conn.execute(
+                    """
+                    SELECT current_week FROM dynasty_state
+                    WHERE dynasty_id = ?
+                    """,
+                    (self._dynasty_id,)
+                )
+                row = cursor.fetchone()
+                if not row:
+                    return
+
+                current_week = row[0] if row else 1
+
+                # Get popularity score for current week
+                popularity_api = PopularityAPI(conn)
+                popularity_score = popularity_api.get_popularity_score(
+                    self._dynasty_id,
+                    self._player_id,
+                    self._season,
+                    current_week
+                )
+
+                if popularity_score:
+                    self._popularity_data = popularity_score.to_dict()
+
+        except sqlite3.OperationalError:
+            # Table may not exist yet
+            pass
+        except Exception as e:
+            print(f"[PlayerDetailDialog] Error loading popularity data: {e}")
 
     def _populate_season_card(self):
         """Populate the season stats card based on position."""
@@ -915,6 +968,73 @@ class PlayerDetailDialog(QDialog):
                     self._trend_label.setText("Trend: Stable")
                     self._trend_label.setStyleSheet(f"color: {Colors.MUTED};")
 
+    def _populate_popularity_section(self):
+        """Populate popularity section with player data."""
+        if not self._popularity_data:
+            # No popularity data available - keep section hidden
+            return
+
+        # Show the section
+        self._popularity_card.setVisible(True)
+
+        # Get data
+        score = self._popularity_data.get('popularity_score', 0)
+        tier = self._popularity_data.get('tier', 'UNKNOWN')
+        week_change = self._popularity_data.get('week_change')
+        trend = self._popularity_data.get('trend', 'STABLE')
+        performance = self._popularity_data.get('performance_score', 0)
+        visibility = self._popularity_data.get('visibility_multiplier', 1.0)
+        market = self._popularity_data.get('market_multiplier', 1.0)
+
+        # Main score with tier
+        tier_color = self._get_popularity_tier_color(tier)
+        self._popularity_score_label.setText(f"{score:.0f} ({tier})")
+        self._popularity_score_label.setStyleSheet(f"color: {tier_color};")
+
+        # Trend with arrow and change
+        trend_arrow = self._get_trend_arrow(trend)
+        trend_color = self._get_trend_color(trend)
+        if week_change is not None:
+            change_str = f"{week_change:+.0f}" if week_change else "0"
+            self._popularity_trend_label.setText(f"Trending: {trend} {trend_arrow} ({change_str} this week)")
+        else:
+            self._popularity_trend_label.setText(f"Trending: {trend} {trend_arrow}")
+        self._popularity_trend_label.setStyleSheet(f"color: {trend_color};")
+
+        # Component breakdown
+        self._performance_label.setText(f"Performance: {performance:.0f}/100")
+        self._visibility_label.setText(f"Visibility: {visibility:.1f}x")
+        self._market_label.setText(f"Market: {market:.1f}x")
+
+    def _get_popularity_tier_color(self, tier: str) -> str:
+        """Get color for popularity tier."""
+        tier_colors = {
+            "TRANSCENDENT": "#FFD700",  # Gold
+            "STAR": "#C0C0C0",          # Silver
+            "KNOWN": "#1976D2",         # Blue
+            "ROLE_PLAYER": "#666666",   # Gray
+            "UNKNOWN": "#999999",       # Light gray
+        }
+        return tier_colors.get(tier, Colors.MUTED)
+
+    def _get_trend_arrow(self, trend: str) -> str:
+        """Get arrow symbol for trend."""
+        arrows = {
+            "RISING": "↑",
+            "FALLING": "↓",
+            "STABLE": "→",
+        }
+        return arrows.get(trend, "→")
+
+    def _get_trend_color(self, trend: str) -> str:
+        """Get color for trend."""
+        trend_colors = {
+            "RISING": Colors.SUCCESS,    # Green
+            "FALLING": Colors.ERROR,      # Red
+            "STABLE": Colors.MUTED,       # Gray
+        }
+        return trend_colors.get(trend, Colors.MUTED)
+
     def _show_error(self, message: str):
         """Display error message in the game log table."""
         self._game_log_table.setRowCount(1)
@@ -928,56 +1048,58 @@ class PlayerDetailDialog(QDialog):
     def _add_hof_status_if_retired(self, card_layout: QVBoxLayout):
         """Add HOF status information if player is retired."""
         try:
+            from game_cycle.database.connection import GameCycleDatabase
+            import sqlite3
+
             # Check if player is retired
-            conn = sqlite3.connect(self._db_path)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.execute(
-                """
-                SELECT hof_score, hof_inducted, induction_season
-                FROM retired_players
-                WHERE dynasty_id = ? AND player_id = ?
-                """,
-                (self._dynasty_id, self._player_id)
-            )
-            row = cursor.fetchone()
-            conn.close()
+            with GameCycleDatabase(self._db_path) as conn:
+                conn.row_factory = lambda c, r: dict(zip([col[0] for col in c.description], r))
+                cursor = conn.execute(
+                    """
+                    SELECT hof_score, hof_inducted, induction_season
+                    FROM retired_players
+                    WHERE dynasty_id = ? AND player_id = ?
+                    """,
+                    (self._dynasty_id, self._player_id)
+                )
+                row = cursor.fetchone()
 
-            if not row:
-                # Player is not retired
-                return
+                if not row:
+                    # Player is not retired
+                    return
 
-            # Add separator
-            separator = QFrame()
-            separator.setFrameShape(QFrame.HLine)
-            separator.setStyleSheet(f"background-color: {Colors.MUTED};")
-            card_layout.addWidget(separator)
+                # Add separator
+                separator = QFrame()
+                separator.setFrameShape(QFrame.HLine)
+                separator.setStyleSheet(f"background-color: {Colors.MUTED};")
+                card_layout.addWidget(separator)
 
-            # HOF header
-            hof_header = QLabel("Hall of Fame")
-            hof_header.setFont(Typography.BODY_BOLD)
-            hof_header.setStyleSheet(f"color: {Colors.TEXT_PRIMARY}; margin-top: 4px;")
-            card_layout.addWidget(hof_header)
+                # HOF header
+                hof_header = QLabel("Hall of Fame")
+                hof_header.setFont(Typography.BODY_BOLD)
+                hof_header.setStyleSheet(f"color: {Colors.TEXT_PRIMARY}; margin-top: 4px;")
+                card_layout.addWidget(hof_header)
 
-            # HOF Score
-            hof_score = row['hof_score'] or 0
-            tier = self._score_to_tier(hof_score)
-            tier_color = self._get_tier_color(tier)
+                # HOF Score
+                hof_score = row['hof_score'] or 0
+                tier = self._score_to_tier(hof_score)
+                tier_color = self._get_tier_color(tier)
 
-            score_row = self._create_info_row("HOF Score", f"{hof_score} ({tier})", tier_color)
-            card_layout.addWidget(score_row)
+                score_row = self._create_info_row("HOF Score", f"{hof_score} ({tier})", tier_color)
+                card_layout.addWidget(score_row)
 
-            # Induction Status
-            if row['hof_inducted']:
-                induction_year = row['induction_season']
-                status_text = f"Inducted {induction_year}"
-                status_color = Colors.SUCCESS
-            else:
-                # Check eligibility based on retirement
-                status_text = self._get_hof_status_text(hof_score)
-                status_color = tier_color
+                # Induction Status
+                if row['hof_inducted']:
+                    induction_year = row['induction_season']
+                    status_text = f"Inducted {induction_year}"
+                    status_color = Colors.SUCCESS
+                else:
+                    # Check eligibility based on retirement
+                    status_text = self._get_hof_status_text(hof_score)
+                    status_color = tier_color
 
-            status_row = self._create_info_row("Status", status_text, status_color)
-            card_layout.addWidget(status_row)
+                status_row = self._create_info_row("Status", status_text, status_color)
+                card_layout.addWidget(status_row)
 
         except sqlite3.OperationalError:
             # Table may not exist

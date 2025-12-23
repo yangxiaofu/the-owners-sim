@@ -13,7 +13,10 @@
     "desperation_threshold": 0.65,
     "patience_years": 2,
     "deadline_activity": 0.8,
-    "premium_position_focus": 0.7
+    "premium_position_focus": 0.7,
+    "analytics_preference": 0.4,
+    "scouting_preference": 0.5,
+    "market_awareness": 0.7
   },
 
   "rebuilder": {
@@ -30,7 +33,10 @@
     "desperation_threshold": 0.8,
     "patience_years": 5,
     "deadline_activity": 0.3,
-    "premium_position_focus": 0.8
+    "premium_position_focus": 0.8,
+    "analytics_preference": 0.6,
+    "scouting_preference": 0.5,
+    "market_awareness": 0.4
   },
 
   "balanced": {
@@ -47,7 +53,10 @@
     "desperation_threshold": 0.7,
     "patience_years": 3,
     "deadline_activity": 0.5,
-    "premium_position_focus": 0.6
+    "premium_position_focus": 0.6,
+    "analytics_preference": 0.5,
+    "scouting_preference": 0.5,
+    "market_awareness": 0.5
   },
 
   "aggressive_trader": {
@@ -64,7 +73,10 @@
     "desperation_threshold": 0.6,
     "patience_years": 3,
     "deadline_activity": 0.9,
-    "premium_position_focus": 0.55
+    "premium_position_focus": 0.55,
+    "analytics_preference": 0.5,
+    "scouting_preference": 0.4,
+    "market_awareness": 0.6
   },
 
   "conservative": {
@@ -81,7 +93,10 @@
     "desperation_threshold": 0.75,
     "patience_years": 4,
     "deadline_activity": 0.3,
-    "premium_position_focus": 0.5
+    "premium_position_focus": 0.5,
+    "analytics_preference": 0.4,
+    "scouting_preference": 0.6,
+    "market_awareness": 0.4
   },
 
   "draft_hoarder": {
@@ -98,7 +113,10 @@
     "desperation_threshold": 0.85,
     "patience_years": 6,
     "deadline_activity": 0.4,
-    "premium_position_focus": 0.7
+    "premium_position_focus": 0.7,
+    "analytics_preference": 0.7,
+    "scouting_preference": 0.4,
+    "market_awareness": 0.3
   },
 
   "star_chaser": {
@@ -115,6 +133,9 @@
     "desperation_threshold": 0.6,
     "patience_years": 2,
     "deadline_activity": 0.75,
-    "premium_position_focus": 0.85
+    "premium_position_focus": 0.85,
+    "analytics_preference": 0.3,
+    "scouting_preference": 0.7,
+    "market_awareness": 0.6
   }
 }

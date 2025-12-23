@@ -72,6 +72,14 @@ class BenchmarkReportGenerator:
         te_avgs = self.aggregator.get_te_averages()
         kicker_avgs = self.aggregator.get_kicker_averages()
         defense_avgs = self.aggregator.get_defense_averages()
+        lng_drops_avgs = self.aggregator.get_team_lng_drops_averages()
+        sacks_by_pos_avgs = self.aggregator.get_sacks_by_position_group()
+
+        # Merge lng/drops/fumbles/explosive stats into game_avgs
+        game_avgs.update(lng_drops_avgs)
+
+        # Merge sacks by position group into defense_avgs for comparison
+        defense_avgs.update(sacks_by_pos_avgs)
 
         # Store metadata
         self._metadata = {

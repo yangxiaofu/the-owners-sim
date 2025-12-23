@@ -79,7 +79,7 @@ class HOFBallotWidget(QWidget):
         header_layout = QHBoxLayout()
 
         title_label = QLabel(f"Hall of Fame Ballot - {self._season}")
-        title_label.setFont(Typography.HEADING_SMALL)
+        title_label.setFont(Typography.H4)
         title_label.setStyleSheet(f"color: {Colors.TEXT_PRIMARY};")
         header_layout.addWidget(title_label)
 
@@ -165,7 +165,7 @@ class HOFBallotWidget(QWidget):
         from src.game_cycle.database.hof_api import HOFAPI
 
         with GameCycleDatabase(self._db_path) as db:
-            hof_api = HOFAPI(db.connection, self._dynasty_id)
+            hof_api = HOFAPI(db.get_connection(), self._dynasty_id)
             self._voting_results = hof_api.get_voting_history_by_season(self._season)
 
         self._populate_table()

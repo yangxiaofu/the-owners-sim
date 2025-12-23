@@ -406,6 +406,14 @@ class PlayerRosterAPI:
             WHERE dynasty_id = ? AND player_id = ?
         """
 
+        # Use shared connection if available (for transaction mode)
+        if self.shared_conn:
+            cursor = self.shared_conn.cursor()
+            cursor.row_factory = sqlite3.Row
+            cursor.execute(query, (dynasty_id, player_id))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
         result = self.db_connection.execute_query(query, (dynasty_id, player_id))
         return result[0] if result else None  # Already converted to dict by execute_query()
 
@@ -447,6 +455,44 @@ class PlayerRosterAPI:
             WHERE dynasty_id = ? AND player_id = ?
         """
 
+        # Use shared connection if available (for transaction mode)
+        if self.shared_conn:
+            cursor = self.shared_conn.cursor()
+            cursor.execute(update_player_query, (new_team_id, dynasty_id, player_id))
+
+            # Update roster entry (or remove if free agent)
+            if new_team_id == 0:
+                # Free agent - remove from team roster
+                cursor.execute(
+                    "DELETE FROM team_rosters WHERE dynasty_id = ? AND player_id = ?",
+                    (dynasty_id, player_id)
+                )
+            else:
+                # Check if roster entry exists
+                cursor.execute(
+                    "SELECT 1 FROM team_rosters WHERE dynasty_id = ? AND player_id = ?",
+                    (dynasty_id, player_id)
+                )
+                exists = cursor.fetchone()
+
+                if exists:
+                    # Update existing roster entry
+                    cursor.execute(
+                        """UPDATE team_rosters
+                           SET team_id = ?, roster_status = 'active'
+                           WHERE dynasty_id = ? AND player_id = ?""",
+                        (new_team_id, dynasty_id, player_id)
+                    )
+                else:
+                    # Insert new roster entry with active status
+                    cursor.execute(
+                        """INSERT INTO team_rosters (dynasty_id, team_id, player_id, roster_status, depth_chart_order)
+                           VALUES (?, ?, ?, 'active', 99)""",
+                        (dynasty_id, new_team_id, player_id)
+                    )
+            return  # Don't commit - caller manages transaction
+
+        # Fallback to db_connection for non-transaction mode
         self.db_connection.execute_update(
             update_player_query,
             (new_team_id, dynasty_id, player_id)

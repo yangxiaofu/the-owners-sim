@@ -14,6 +14,10 @@ from .trade_generator import TradeProposalGenerator
 from .draft_generator import DraftProposalGenerator
 from .cuts_generator import RosterCutsProposalGenerator
 from .waiver_generator import WaiverProposalGenerator
+from .restructure_generator import RestructureProposalGenerator
+from .coach_cuts_generator import CoachCutsProposalGenerator
+from .early_cuts_generator import EarlyCutsProposalGenerator
+from .factory import ProposalGeneratorFactory
 
 __all__ = [
     "FranchiseTagProposalGenerator",
@@ -23,4 +27,8 @@ __all__ = [
     "DraftProposalGenerator",
     "RosterCutsProposalGenerator",
     "WaiverProposalGenerator",
+    "RestructureProposalGenerator",
+    "CoachCutsProposalGenerator",
+    "EarlyCutsProposalGenerator",
+    "ProposalGeneratorFactory",
 ]

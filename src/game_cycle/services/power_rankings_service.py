@@ -324,14 +324,29 @@ class PowerRankingsService:
         Returns:
             List of PowerRanking objects sorted by rank
         """
-        self._logger.info(f"Calculating power rankings for Week {week}")
+        self._logger.info(
+            f"Calculating power rankings for Week {week} "
+            f"(dynasty={self._dynasty_id}, season={self._season})"
+        )
 
         # Get standings for all teams
+        self._logger.debug(
+            f"Querying standings: dynasty={self._dynasty_id}, season={self._season}"
+        )
         standings = self._standings_api.get_standings(self._dynasty_id, self._season)
 
         if not standings:
-            self._logger.warning("No standings data found")
+            self._logger.error(
+                f"No standings data found for dynasty={self._dynasty_id}, season={self._season}. "
+                f"Cannot calculate power rankings without standings. "
+                f"Check if games have been simulated and standings are being saved correctly."
+            )
             return []
+
+        self._logger.debug(f"Retrieved {len(standings)} teams from standings")
+        if standings:
+            sample_teams = [s.team_id for s in standings[:3]]
+            self._logger.debug(f"Sample team IDs from standings: {sample_teams}")
 
         # Determine weights based on week
         weights = self._get_weights_for_week(week)

@@ -10,8 +10,11 @@ Design:
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Any
+from typing import Dict, Any, Optional, TYPE_CHECKING
 import uuid
+
+if TYPE_CHECKING:
+    from contract_valuation.models import ValuationResult
 
 
 @dataclass
@@ -105,6 +108,18 @@ class GMProposal:
         }
     """
 
+    # Contract valuation breakdown (optional - for UI transparency)
+    valuation_result: Optional["ValuationResult"] = None
+    """
+    Full valuation breakdown from ContractValuationEngine.
+
+    When populated, enables the UI to show:
+    - GM style and factor weights
+    - Pressure level and adjustments
+    - Individual factor contributions
+    - Detailed breakdown per factor
+    """
+
     def __post_init__(self):
         """Validate proposal values."""
         self._validate_player_info()
@@ -165,7 +180,7 @@ class GMProposal:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for logging/serialization."""
-        return {
+        result = {
             "proposal_id": self.proposal_id,
             "player_id": self.player_id,
             "player_name": self.player_name,
@@ -184,11 +199,22 @@ class GMProposal:
             "remaining_cap_after": self.remaining_cap_after,
             "score_breakdown": self.score_breakdown.copy(),
         }
+        if self.valuation_result is not None:
+            result["valuation_result"] = self.valuation_result.to_dict()
+        return result
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "GMProposal":
         """Create GMProposal from dictionary."""
-        return cls(**data)
+        # Make a copy to avoid modifying input
+        data = data.copy()
+        # Handle valuation_result separately
+        valuation_data = data.pop("valuation_result", None)
+        proposal = cls(**data)
+        if valuation_data is not None:
+            from contract_valuation.models import ValuationResult
+            proposal.valuation_result = ValuationResult.from_dict(valuation_data)
+        return proposal
 
     def get_total_value(self) -> int:
         """Calculate total contract value."""

@@ -354,15 +354,32 @@ class CoachingStaff:
             play_type = 'defensive_man_coverage'
         else:
             play_type = 'defensive_zone_coverage'
-        
+
+        # NEW: Build blitz package and rusher assignments for head coach override
+        from ..play_types.blitz_types import BlitzPackageType, build_rusher_assignments
+
+        # Head coach override uses simpler blitz selection
+        if send_pressure:
+            # Aggressive head coach override uses basic pressure package
+            blitz_package = BlitzPackageType.MIKE_BLITZ
+        else:
+            # Conservative: 4-man rush or prevent
+            if coverage == 'Prevent':
+                blitz_package = BlitzPackageType.THREE_MAN_RUSH
+            else:
+                blitz_package = BlitzPackageType.FOUR_MAN_BASE
+
+        rusher_assignments = build_rusher_assignments(blitz_package)
+
         # Convert enum to appropriate string for DefensivePlayCall (same fix as coordinator method)
         formation_name = formation.for_context(SimulatorContext.COORDINATOR)
-            
+
         return DefensivePlayCall(
             play_type=play_type,
             formation=formation_name,
             coverage=coverage,
-            blitz_package='pressure' if send_pressure else None
+            blitz_package=blitz_package.value,
+            rusher_assignments=rusher_assignments
         )
     
     def _offensive_coordinator_play_call(self, context: Dict[str, Any], situation: str, 
@@ -462,9 +479,17 @@ class CoachingStaff:
                     coverage_info['primary_coverage'] = 'Cover-2'  # Safer zone coverage
         
         # Determine play type based on coverage and pressure
-        coverage = coverage_info['primary_coverage'] 
+        coverage = coverage_info['primary_coverage']
         send_pressure = coverage_info['send_pressure']
-        
+
+        # NEW: Select specific blitz package and build rusher assignments
+        from ..play_types.blitz_types import BlitzPackageType, build_rusher_assignments
+
+        # Pass coverage info to blitz selection for prevent detection
+        context['coverage_scheme'] = coverage_info
+        blitz_package = self.defensive_coordinator.select_blitz_package(situation, context)
+        rusher_assignments = build_rusher_assignments(blitz_package)
+
         # Enhanced enum-based play type selection using unified formations
         if formation == UnifiedDefensiveFormation.PUNT_RETURN:
             # Determine if this is punt return or punt block based on pressure
@@ -484,16 +509,17 @@ class CoachingStaff:
             play_type = DefensivePlayType.MAN_COVERAGE
         else:
             play_type = DefensivePlayType.ZONE_COVERAGE
-        
+
         # Convert enum to appropriate string for DefensivePlayCall
         # Use coordinator context since DefensivePlayCall is created by coaching system
         formation_name = formation.for_context(SimulatorContext.COORDINATOR)
-            
+
         return DefensivePlayCall(
             play_type=play_type,
             formation=formation_name,
             coverage=coverage,
-            blitz_package='pressure' if send_pressure else None
+            blitz_package=blitz_package.value,
+            rusher_assignments=rusher_assignments
         )
     
     def _select_formation(self, formation_prefs: Dict[str, float], bias_aggressive: bool = False) -> str:

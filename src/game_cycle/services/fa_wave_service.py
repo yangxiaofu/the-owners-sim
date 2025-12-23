@@ -10,7 +10,7 @@ import random
 from typing import Dict, List, Any, Optional
 
 from src.game_cycle.database.fa_wave_state_api import FAWaveStateAPI, WAVE_CONFIGS
-from utils.player_field_extractors import extract_overall_rating
+from src.utils.player_field_extractors import extract_overall_rating
 
 
 class FAWaveService:

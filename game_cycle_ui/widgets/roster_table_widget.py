@@ -21,6 +21,7 @@ from game_cycle_ui.theme import (
     WARNING_BUTTON_STYLE, NEUTRAL_BUTTON_STYLE,
     Typography, FontSizes, TextColors, apply_table_style
 )
+from constants.position_abbreviations import POSITION_ABBREVIATIONS
 from utils.player_field_extractors import extract_overall_rating
 
 
@@ -43,45 +44,6 @@ DEFENSE_POSITIONS = {
 SPECIAL_TEAMS_POSITIONS = {
     'kicker', 'k', 'punter', 'p', 'long_snapper', 'ls',
     'kick_returner', 'kr', 'punt_returner', 'pr'
-}
-
-# Position abbreviation mapping
-POSITION_ABBREV = {
-    'quarterback': 'QB', 'qb': 'QB',
-    'running_back': 'RB', 'halfback': 'RB', 'rb': 'RB', 'hb': 'RB',
-    'fullback': 'FB', 'fb': 'FB',
-    'wide_receiver': 'WR', 'wr': 'WR',
-    'tight_end': 'TE', 'te': 'TE',
-    'left_tackle': 'LT', 'lt': 'LT',
-    'left_guard': 'LG', 'lg': 'LG',
-    'center': 'C', 'c': 'C',
-    'right_guard': 'RG', 'rg': 'RG',
-    'right_tackle': 'RT', 'rt': 'RT',
-    'guard': 'G', 'g': 'G',
-    'tackle': 'T', 't': 'T',
-    'offensive_line': 'OL', 'ol': 'OL',
-    'offensive_guard': 'OG', 'og': 'OG',
-    'offensive_tackle': 'OT', 'ot': 'OT',
-    'left_end': 'LE', 'le': 'LE',
-    'defensive_tackle': 'DT', 'dt': 'DT',
-    'nose_tackle': 'NT', 'nt': 'NT',
-    'right_end': 'RE', 're': 'RE',
-    'defensive_end': 'DE', 'de': 'DE',
-    'edge': 'EDGE',
-    'left_outside_linebacker': 'LOLB', 'lolb': 'LOLB',
-    'middle_linebacker': 'MLB', 'mlb': 'MLB', 'mike': 'MLB',
-    'linebacker': 'LB', 'lb': 'LB',
-    'right_outside_linebacker': 'ROLB', 'rolb': 'ROLB',
-    'inside_linebacker': 'ILB', 'ilb': 'ILB',
-    'cornerback': 'CB', 'cb': 'CB',
-    'free_safety': 'FS', 'fs': 'FS',
-    'strong_safety': 'SS', 'ss': 'SS',
-    'safety': 'S', 's': 'S',
-    'kicker': 'K', 'k': 'K',
-    'punter': 'P', 'p': 'P',
-    'long_snapper': 'LS', 'ls': 'LS',
-    'kick_returner': 'KR', 'kr': 'KR',
-    'punt_returner': 'PR', 'pr': 'PR',
 }
 
 # Position-specific attributes to display (attr_key, display_abbrev)
@@ -306,7 +268,7 @@ class RosterTableWidget(QWidget):
         attrs = player.get('attributes', {})
         positions = player.get('positions', [])
         pos_raw = positions[0].lower() if positions else 'unknown'
-        pos_abbrev = POSITION_ABBREV.get(pos_raw, pos_raw.upper()[:3])
+        pos_abbrev = POSITION_ABBREVIATIONS.get(pos_raw, pos_raw.upper()[:3])
 
         # Player name (store player_id in UserRole for retrieval on click)
         name = f"{player.get('first_name', '')} {player.get('last_name', '')}".strip()

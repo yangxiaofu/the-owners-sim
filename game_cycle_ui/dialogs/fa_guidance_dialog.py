@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal, Qt
 
 from game_cycle.models import FAGuidance, FAPhilosophy
+from game_cycle_ui.theme import Colors, FontSizes
 
 
 class FAGuidanceDialog(QDialog):
@@ -67,7 +68,7 @@ class FAGuidanceDialog(QDialog):
             "guidance when proposing signings, but you'll have final approval on all moves."
         )
         info_label.setWordWrap(True)
-        info_label.setStyleSheet("color: #555; padding: 10px; font-size: 11px;")
+        info_label.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; padding: 10px; font-size: {FontSizes.CAPTION};")
         layout.addWidget(info_label)
 
         # Philosophy section
@@ -120,7 +121,7 @@ class FAGuidanceDialog(QDialog):
         aggressive_desc = QLabel(
             "   → GM will pursue elite players, offer top market AAV, prioritize impact signings"
         )
-        aggressive_desc.setStyleSheet("color: #888; font-size: 11px;")
+        aggressive_desc.setStyleSheet(f"color: {Colors.MUTED}; font-size: {FontSizes.CAPTION};")
 
         self._philosophy_group.addButton(aggressive_radio, 0)  # ID 0
         layout.addWidget(aggressive_radio)
@@ -132,7 +133,7 @@ class FAGuidanceDialog(QDialog):
         balanced_desc = QLabel(
             "   → GM will find best value across tiers, mix of stars and depth, controlled spending"
         )
-        balanced_desc.setStyleSheet("color: #888; font-size: 11px;")
+        balanced_desc.setStyleSheet(f"color: {Colors.MUTED}; font-size: {FontSizes.CAPTION};")
 
         self._philosophy_group.addButton(balanced_radio, 1)  # ID 1
         layout.addWidget(balanced_radio)
@@ -144,7 +145,7 @@ class FAGuidanceDialog(QDialog):
         conservative_desc = QLabel(
             "   → GM will focus on depth players, short contracts, avoid expensive risks"
         )
-        conservative_desc.setStyleSheet("color: #888; font-size: 11px;")
+        conservative_desc.setStyleSheet(f"color: {Colors.MUTED}; font-size: {FontSizes.CAPTION};")
 
         self._philosophy_group.addButton(conservative_radio, 2)  # ID 2
         layout.addWidget(conservative_radio)
@@ -167,7 +168,7 @@ class FAGuidanceDialog(QDialog):
             "for these positions."
         )
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: #555; font-size: 11px; padding-bottom: 10px;")
+        desc.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; font-size: {FontSizes.CAPTION}; padding-bottom: 10px;")
         layout.addWidget(desc)
 
         # Three dropdowns for priority positions
@@ -197,7 +198,7 @@ class FAGuidanceDialog(QDialog):
             "contracts exceeding these limits."
         )
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: #555; font-size: 11px; padding-bottom: 10px;")
+        desc.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; font-size: {FontSizes.CAPTION}; padding-bottom: 10px;")
         layout.addWidget(desc)
 
         # Max contract years slider

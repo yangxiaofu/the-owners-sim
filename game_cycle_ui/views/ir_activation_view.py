@@ -13,9 +13,9 @@ from PySide6.QtWidgets import (
     QFrame, QCheckBox, QComboBox
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont, QColor, QBrush
+from PySide6.QtGui import QColor, QBrush
 
-from game_cycle_ui.theme import TABLE_HEADER_STYLE
+from game_cycle_ui.theme import apply_table_style, Colors, Typography, FontSizes, TextColors
 
 
 class IRActivationView(QWidget):
@@ -50,7 +50,7 @@ class IRActivationView(QWidget):
 
         # Title
         title = QLabel(f"Injured Reserve Activations")
-        title.setFont(QFont("Arial", 18, QFont.Bold))
+        title.setFont(Typography.H3)
         layout.addWidget(title)
 
         # Summary panel
@@ -77,11 +77,12 @@ class IRActivationView(QWidget):
         slots_layout.setContentsMargins(0, 0, 0, 0)
 
         slots_title = QLabel("IR Return Slots")
-        slots_title.setStyleSheet("color: #666; font-size: 11px;")
+        slots_title.setFont(Typography.CAPTION)
+        slots_title.setStyleSheet(f"color: {Colors.MUTED};")
         slots_layout.addWidget(slots_title)
 
         self._ir_slots_label = QLabel("0 / 8")
-        self._ir_slots_label.setFont(QFont("Arial", 16, QFont.Bold))
+        self._ir_slots_label.setFont(Typography.H4)
         slots_layout.addWidget(self._ir_slots_label)
 
         summary_layout.addWidget(slots_frame)
@@ -92,11 +93,12 @@ class IRActivationView(QWidget):
         roster_layout.setContentsMargins(0, 0, 0, 0)
 
         roster_title = QLabel("Active Roster")
-        roster_title.setStyleSheet("color: #666; font-size: 11px;")
+        roster_title.setFont(Typography.CAPTION)
+        roster_title.setStyleSheet(f"color: {Colors.MUTED};")
         roster_layout.addWidget(roster_title)
 
         self._roster_count_label = QLabel("53 / 53")
-        self._roster_count_label.setFont(QFont("Arial", 16, QFont.Bold))
+        self._roster_count_label.setFont(Typography.H4)
         roster_layout.addWidget(self._roster_count_label)
 
         summary_layout.addWidget(roster_frame)
@@ -107,12 +109,13 @@ class IRActivationView(QWidget):
         eligible_layout.setContentsMargins(0, 0, 0, 0)
 
         eligible_title = QLabel("Eligible Returns")
-        eligible_title.setStyleSheet("color: #666; font-size: 11px;")
+        eligible_title.setFont(Typography.CAPTION)
+        eligible_title.setStyleSheet(f"color: {Colors.MUTED};")
         eligible_layout.addWidget(eligible_title)
 
         self._eligible_count_label = QLabel("0")
-        self._eligible_count_label.setFont(QFont("Arial", 16, QFont.Bold))
-        self._eligible_count_label.setStyleSheet("color: #2E7D32;")  # Green
+        self._eligible_count_label.setFont(Typography.H4)
+        self._eligible_count_label.setStyleSheet(f"color: {Colors.SUCCESS};")
         eligible_layout.addWidget(self._eligible_count_label)
 
         summary_layout.addWidget(eligible_frame)
@@ -123,12 +126,13 @@ class IRActivationView(QWidget):
         decisions_layout.setContentsMargins(0, 0, 0, 0)
 
         decisions_title = QLabel("Decisions Made")
-        decisions_title.setStyleSheet("color: #666; font-size: 11px;")
+        decisions_title.setFont(Typography.CAPTION)
+        decisions_title.setStyleSheet(f"color: {Colors.MUTED};")
         decisions_layout.addWidget(decisions_title)
 
         self._decisions_label = QLabel("0 / 0")
-        self._decisions_label.setFont(QFont("Arial", 16, QFont.Bold))
-        self._decisions_label.setStyleSheet("color: #1976D2;")  # Blue
+        self._decisions_label.setFont(Typography.H4)
+        self._decisions_label.setStyleSheet(f"color: {Colors.INFO};")
         decisions_layout.addWidget(self._decisions_label)
 
         summary_layout.addWidget(decisions_frame)
@@ -164,8 +168,8 @@ class IRActivationView(QWidget):
         self._eligible_table.setColumnWidth(4, 100)  # Weeks on IR
         self._eligible_table.setColumnWidth(6, 80)   # Est. Return
 
-        self._eligible_table.setStyleSheet(TABLE_HEADER_STYLE)
-        self._eligible_table.setAlternatingRowColors(True)
+        # Apply standard table styling
+        apply_table_style(self._eligible_table)
         self._eligible_table.setSelectionMode(QTableWidget.NoSelection)
 
         layout.addWidget(self._eligible_table)
@@ -180,8 +184,9 @@ class IRActivationView(QWidget):
             "These are potential players to cut, sorted by value (lowest = best cut candidates). "
             "Select from the dropdown in the table above."
         )
+        instructions.setFont(Typography.CAPTION)
         instructions.setWordWrap(True)
-        instructions.setStyleSheet("color: #666; font-size: 11px; padding: 5px;")
+        instructions.setStyleSheet(f"color: {Colors.MUTED}; padding: 5px;")
         layout.addWidget(instructions)
 
         self._candidates_table = QTableWidget()
@@ -208,8 +213,8 @@ class IRActivationView(QWidget):
         self._candidates_table.setColumnWidth(5, 100)  # Cap Hit
         self._candidates_table.setColumnWidth(6, 80)   # Protected
 
-        self._candidates_table.setStyleSheet(TABLE_HEADER_STYLE)
-        self._candidates_table.setAlternatingRowColors(True)
+        # Apply standard table styling
+        apply_table_style(self._candidates_table)
         self._candidates_table.setSelectionMode(QTableWidget.NoSelection)
         self._candidates_table.setMaximumHeight(250)  # Limit height (reference table)
 
@@ -261,15 +266,15 @@ class IRActivationView(QWidget):
         # Update summary labels
         self._ir_slots_label.setText(f"{ir_slots_remaining} / 8")
         if ir_slots_remaining > 0:
-            self._ir_slots_label.setStyleSheet("color: #2E7D32;")  # Green
+            self._ir_slots_label.setStyleSheet(f"color: {Colors.SUCCESS};")
         else:
-            self._ir_slots_label.setStyleSheet("color: #C62828;")  # Red
+            self._ir_slots_label.setStyleSheet(f"color: {Colors.ERROR};")
 
         self._roster_count_label.setText(f"{roster_count} / 53")
         if roster_count >= 53:
-            self._roster_count_label.setStyleSheet("color: #C62828;")  # Red - Full
+            self._roster_count_label.setStyleSheet(f"color: {Colors.ERROR};")
         else:
-            self._roster_count_label.setStyleSheet("color: #2E7D32;")  # Green
+            self._roster_count_label.setStyleSheet(f"color: {Colors.SUCCESS};")
 
         self._eligible_count_label.setText(str(len(eligible_players)))
         self._decisions_label.setText(f"0 / {len(eligible_players)}")
@@ -371,7 +376,7 @@ class IRActivationView(QWidget):
             protected_item = QTableWidgetItem("Yes" if candidate.get("protected", False) else "No")
             protected_item.setTextAlignment(Qt.AlignCenter)
             if candidate.get("protected", False):
-                protected_item.setForeground(QBrush(QColor("#C62828")))  # Red for protected
+                protected_item.setForeground(QBrush(QColor(Colors.ERROR)))
             self._candidates_table.setItem(row, 6, protected_item)
 
     def _on_selection_changed(self):

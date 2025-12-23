@@ -576,6 +576,10 @@ class CentralizedStatsAggregator:
                 "rushing_yards": player_stats.rushing_yards,
                 "rushing_tds": player_stats.rushing_tds,
                 "rushing_attempts": player_stats.rushing_attempts,
+                "rushing_long": player_stats.rushing_long,
+                "rushing_20_plus": player_stats.rushing_20_plus,
+                "rushing_fumbles": player_stats.rushing_fumbles,
+                "fumbles_lost": player_stats.fumbles_lost,
 
                 # Receiving stats (complete)
                 "receiving_yards": player_stats.receiving_yards,

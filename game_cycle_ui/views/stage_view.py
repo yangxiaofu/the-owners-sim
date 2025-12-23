@@ -4,6 +4,7 @@ Stage View for The Owner's Sim (Game Cycle)
 Displays current stage and provides controls for stage-based progression.
 """
 
+import logging
 from typing import Optional, Dict, Any, List
 
 from PySide6.QtWidgets import (
@@ -48,6 +49,7 @@ class StageView(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.main_window = parent
+        self._logger = logging.getLogger(__name__)
 
         self._current_stage: Optional[Stage] = None
         self._preview_data: Dict[str, Any] = {}
@@ -224,7 +226,17 @@ class StageView(QWidget):
         self._preview_data = preview_data
 
         # Check if we're in offseason mode (no matchups, has stage_name)
-        if self._current_stage and self._current_stage.phase == SeasonPhase.OFFSEASON:
+        # BUT preseason game stages should be treated as game stages (they have matchups)
+        is_preseason_game = (
+            self._current_stage and
+            self._current_stage.stage_type in (
+                StageType.OFFSEASON_PRESEASON_W1,
+                StageType.OFFSEASON_PRESEASON_W2,
+                StageType.OFFSEASON_PRESEASON_W3
+            )
+        )
+
+        if self._current_stage and self._current_stage.phase == SeasonPhase.OFFSEASON and not is_preseason_game:
             self._show_offseason_preview(preview_data)
             return
 
@@ -240,9 +252,9 @@ class StageView(QWidget):
                 home.get("abbreviation") and home.get("team_id")):
                 valid_matchups.append(m)
             else:
-                print(f"[StageView] Skipping malformed matchup: game_id={m.get('game_id')}, "
-                      f"away={away.get('abbreviation')}/{away.get('team_id')}, "
-                      f"home={home.get('abbreviation')}/{home.get('team_id')}")
+                self._logger.warning(f"Skipping malformed matchup: game_id={m.get('game_id')}, "
+                                    f"away={away.get('abbreviation')}/{away.get('team_id')}, "
+                                    f"home={home.get('abbreviation')}/{home.get('team_id')}")
 
         # Clear existing game rows
         for row in self._game_rows:
@@ -324,7 +336,7 @@ class StageView(QWidget):
             )
             dialog.exec()
         except Exception as e:
-            print(f"[StageView] Error showing box score dialog: {e}")
+            self._logger.error(f"Error showing box score dialog: {e}", exc_info=True)
 
     def update_with_results(self, results: List[Dict[str, Any]]):
         """
@@ -346,12 +358,17 @@ class StageView(QWidget):
                     'game_stats': {...}  # Optional
                 }
         """
-        # Build a lookup map by game_id
-        results_map = {r['game_id']: r for r in results}
+        # Key by team IDs (game_id formats differ between events/games tables)
+        results_map = {}
+        for r in results:
+            key = (r.get('home_team_id'), r.get('away_team_id'))
+            results_map[key] = r
 
         # Update each game row with its result
         for game_row in self._game_rows:
-            result_data = results_map.get(game_row.game_id)
+            home_id = game_row.game_data.get('home_team', {}).get('team_id')
+            away_id = game_row.game_data.get('away_team', {}).get('team_id')
+            result_data = results_map.get((home_id, away_id))
             if result_data:
                 # Update the row (will auto-expand if collapsed)
                 game_row.update_with_result(result_data)
@@ -368,15 +385,17 @@ class StageView(QWidget):
     def set_status(self, message: str, is_error: bool = False):
         """Update the status message."""
         # Note: Status label removed from left panel
-        # Using print for debugging until status bar is implemented
-        prefix = "[ERROR]" if is_error else "[INFO]"
-        print(f"{prefix} StageView: {message}")
+        # Using logger for debugging until status bar is implemented
+        if is_error:
+            self._logger.error(f"StageView: {message}")
+        else:
+            self._logger.info(f"StageView: {message}")
 
     def set_advance_enabled(self, enabled: bool, tooltip: str = ""):
         """Enable/disable the advance button with optional tooltip."""
         # Note: Advance button removed from left panel
         # Will be added to menu bar in future update
-        print(f"[DEBUG] StageView: Advance button {'enabled' if enabled else 'disabled'}{f' - {tooltip}' if tooltip else ''}")
+        self._logger.debug(f"Advance button {'enabled' if enabled else 'disabled'}{f' - {tooltip}' if tooltip else ''}")
 
     def show_execution_result(self, result: Dict[str, Any]):
         """Display results after stage execution."""
@@ -504,17 +523,17 @@ class StageView(QWidget):
         Args:
             games_played: List of game dicts, each with optional 'game_result' field
         """
-        print(f"[StageView] store_game_results called with {len(games_played)} games")
+        self._logger.debug(f"store_game_results called with {len(games_played)} games")
         for game in games_played:
             game_id = game.get('game_id')
             game_result = game.get('game_result')
-            print(f"[StageView] Game {game_id}: has game_result={game_result is not None}")
+            self._logger.debug(f"Game {game_id}: has game_result={game_result is not None}")
             if game_id and game_result:
                 self._game_results_cache[game_id] = game_result
-                print(f"[StageView] ✓ Cached GameResult for {game_id}")
-                print(f"[StageView] GameResult has drives: {hasattr(game_result, 'drives')}")
+                self._logger.debug(f"✓ Cached GameResult for {game_id}")
+                self._logger.debug(f"GameResult has drives: {hasattr(game_result, 'drives')}")
             else:
-                print(f"[StageView] ✗ NOT caching {game_id} - missing game_id or game_result")
+                self._logger.debug(f"✗ NOT caching {game_id} - missing game_id or game_result")
 
     # Week navigation handlers
 

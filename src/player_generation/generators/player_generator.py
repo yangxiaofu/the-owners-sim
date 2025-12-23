@@ -9,6 +9,7 @@ from ..archetypes.archetype_registry import ArchetypeRegistry
 from ..core.generation_context import GenerationConfig, GenerationContext
 from .attribute_generator import AttributeGenerator
 from .name_generator import NameGenerator
+from .background_generator import BackgroundGenerator
 
 
 class PlayerGenerator:
@@ -79,10 +80,15 @@ class PlayerGenerator:
         age = config.age or self._get_default_age(config.context)
 
         # Calculate potential (Tollgate 3: Individual Player Potential)
-        potential = self._calculate_potential(true_overall, archetype, age)
+        # Pass draft_round for sleeper system (late-round diamonds in the rough)
+        potential = self._calculate_potential(true_overall, archetype, age, config.draft_round)
 
         # Store potential in true_ratings for database persistence
         true_ratings['potential'] = potential
+
+        # Generate background (college, hometown)
+        background_gen = BackgroundGenerator()
+        background = background_gen.generate_background(config)
 
         # Create player
         player = GeneratedPlayer(
@@ -96,7 +102,8 @@ class PlayerGenerator:
             archetype_id=archetype.archetype_id,
             generation_context=config.context.value,
             draft_round=config.draft_round,
-            draft_pick=config.draft_pick
+            draft_pick=config.draft_pick,
+            background=background
         )
 
         return player
@@ -139,20 +146,28 @@ class PlayerGenerator:
         self,
         true_overall: int,
         archetype: PlayerArchetype,
-        age: int
+        age: int,
+        draft_round: Optional[int] = None
     ) -> int:
         """
-        Calculate player potential based on archetype and age.
+        Calculate player potential based on archetype, age, and draft position.
 
         Potential represents the maximum achievable overall rating.
         - Minimum: current overall (can't have lower potential than current)
         - Maximum: 99
         - Young players get more headroom than veterans
+        - Late-round picks have a small chance to be "sleepers" with high potential
+
+        Sleeper System (creates "diamond in the rough" prospects):
+        - Rounds 4-5: 8% chance of 85-92 potential ("Dak Prescott" type)
+        - Rounds 6-7: 5% chance of 88-95 potential ("Tom Brady" type)
+        - UDFA: 3% chance of 85-90 potential ("Antonio Brown" type)
 
         Args:
             true_overall: Player's current true overall rating
             archetype: Player's archetype (for ceiling reference)
             age: Player's age
+            draft_round: Draft round (1-7) or None for non-draft players
 
         Returns:
             Potential rating (60-99)
@@ -184,5 +199,16 @@ class PlayerGenerator:
 
         # Never below current overall
         potential = max(potential, true_overall)
+
+        # Sleeper system: Late-round picks have a chance for high potential
+        # These are the "diamonds in the rough" - low overall but high ceiling
+        if draft_round is not None and draft_round >= 4:
+            sleeper_roll = random.random()
+            if draft_round in [4, 5] and sleeper_roll < 0.08:  # 8% chance
+                # Mid-late round sleeper (Dak Prescott, Russell Wilson type)
+                potential = max(potential, random.randint(85, 92))
+            elif draft_round in [6, 7] and sleeper_roll < 0.05:  # 5% chance
+                # Deep sleeper (Tom Brady, Antonio Brown type)
+                potential = max(potential, random.randint(88, 95))
 
         return potential

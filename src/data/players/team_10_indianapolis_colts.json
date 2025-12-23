@@ -1,8 +1,41 @@
 {
   "team_id": 10,
   "team_name": "Indianapolis Colts",
-  "total_players": 51,
+  "total_players": 52,
   "players": {
+    "5010": {
+      "player_id": 5010,
+      "first_name": "Sauce",
+      "last_name": "Gardner",
+      "number": 1,
+      "birthdate": "2002-05-17",
+      "positions": [
+        "cornerback"
+      ],
+      "team_id": 10,
+      "attributes": {
+        "overall": 92,
+        "speed": 88,
+        "strength": 82,
+        "coverage": 95,
+        "agility": 90,
+        "awareness": 88,
+        "discipline": 92,
+        "composure": 90,
+        "experience": 78,
+        "penalty_technique": 90,
+        "man_coverage": 95,
+        "zone_coverage": 92
+      },
+      "contract": {
+        "contract_years": 4,
+        "annual_salary": 30100000,
+        "signing_bonus": 13750000,
+        "guaranteed_money": 85403473,
+        "contract_type": "extension",
+        "cap_hit_2025": 16500000
+      }
+    },
     "10001": {
       "player_id": 10001,
       "first_name": "Daniel",

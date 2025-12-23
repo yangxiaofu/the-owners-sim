@@ -49,18 +49,27 @@ class DefensivePhilosophy:
 
 @dataclass
 class PersonnelUsage:
-    """How the DC manages defensive personnel packages"""
+    """How the DC manages defensive personnel packages and player rotation.
+
+    Rotation Settings (0.0-1.0):
+    - Higher values = MORE rotation = lower starter snap share
+    - These affect DefensiveRotationManager snap distribution per position group:
+      * edge_rusher_rotation: DL rotates 55-75% (most rotation to keep pass rush fresh)
+      * linebacker_versatility: LB rotates 70-85% (moderate rotation)
+      * safety_flexibility: DB rotates 82-95% (least rotation for coverage continuity)
+    """
     # Personnel package usage (0.0-1.0)
     base_defense_reliance: float = 0.5          # Stick with base 11 personnel
     nickel_package_comfort: float = 0.7         # 5 DB packages
-    dime_package_usage: float = 0.4             # 6 DB packages  
+    dime_package_usage: float = 0.4             # 6 DB packages
     goal_line_personnel_aggression: float = 0.6 # Heavy personnel in goal line
-    
-    # Player utilization
-    edge_rusher_rotation: float = 0.6           # Rotate pass rushers
-    linebacker_versatility: float = 0.5         # Use LBs in coverage
-    safety_flexibility: float = 0.6             # Move safeties around
-    cornerback_shadowing: float = 0.3           # Shadow top receivers
+
+    # Player rotation settings (0.0=minimal rotation, 1.0=heavy rotation)
+    # These directly affect DefensiveRotationManager.from_defensive_coordinator()
+    edge_rusher_rotation: float = 0.6           # DL rotation: 0.0→75% starter, 1.0→55% starter
+    linebacker_versatility: float = 0.5         # LB rotation: 0.0→85% starter, 1.0→70% starter
+    safety_flexibility: float = 0.6             # DB rotation: 0.0→95% starter, 1.0→82% starter
+    cornerback_shadowing: float = 0.3           # Shadow top receivers (not rotation-related)
 
 
 @dataclass
@@ -324,39 +333,186 @@ class DefensiveCoordinator(BaseCoachArchetype):
 
     def _should_send_pressure(self, situation: str, context: Dict[str, Any]) -> bool:
         """
-        Determine if defense should send pressure
-        
+        Determine if defense should send pressure (blitz more than 4-man rush).
+
+        NFL Reality: Teams blitz on about 25-35% of passing plays.
+        To achieve realistic sack distribution (63% DL, 28% LB, 9% DB), we need
+        ~40-50% blitz rate since blitzes produce proportionally more sacks.
+
         Args:
             situation: Game situation
             context: Additional context
-        
+
         Returns:
-            True if should send pressure/blitz
+            True if should send pressure/blitz (more than 4 rushers)
         """
-        base_blitz_rate = self.philosophy.blitz_frequency
-        
+        import random
+
+        # Base blitz rate boosted to achieve NFL sack distribution
+        # Original philosophy.blitz_frequency is 0.2-0.8, we add 0.3 baseline
+        base_blitz_rate = self.philosophy.blitz_frequency + 0.3
+
         # Situational adjustments
         if situation == 'third_down':
-            pressure_rate = self.defensive_situational.third_down_pressure_rate
+            pressure_rate = max(self.defensive_situational.third_down_pressure_rate, base_blitz_rate * 1.3)
         elif situation == 'two_minute':
             pressure_rate = self.defensive_situational.two_minute_drill_aggression
         elif situation == 'fourth_down':
-            pressure_rate = self.defensive_situational.fourth_down_stop_aggression
+            pressure_rate = max(self.defensive_situational.fourth_down_stop_aggression, base_blitz_rate * 1.5)
         else:
             pressure_rate = base_blitz_rate
-        
+
         # Adjust based on field position
         field_position = context.get('field_position', 50)
         if field_position > 80:  # Opponent in red zone
             pressure_rate *= 1.2  # More aggressive when backed up
         elif field_position < 20:  # Opponent backed up
             pressure_rate *= self.defensive_situational.backed_up_defense_conservatism
-        
-        # Factor in coordinator aggression
-        adjusted_pressure_rate = pressure_rate * (0.5 + self.aggression * 0.5)
-        
-        return adjusted_pressure_rate > 0.5
-    
+
+        # Factor in coordinator aggression (scales from 0.7x to 1.1x - narrower range)
+        adjusted_pressure_rate = pressure_rate * (0.7 + self.aggression * 0.4)
+
+        # Cap at 80% to maintain some coverage plays
+        adjusted_pressure_rate = min(0.8, adjusted_pressure_rate)
+
+        # Probabilistic blitz decision
+        return random.random() < adjusted_pressure_rate
+
+    def select_blitz_package(self, situation: str, context: Dict[str, Any] = None):
+        """
+        Select a specific blitz package based on DC philosophy and situation.
+
+        This replaces the simple boolean blitz decision with named blitz packages
+        that define exactly WHO is rushing the passer, enabling:
+        - DBs to get sacks when they blitz
+        - LBs in coverage to NOT get sacks
+        - Realistic sack attribution based on play call
+
+        Args:
+            situation: Game situation ('third_down', 'red_zone', 'two_minute', etc.)
+            context: Additional context (field_position, etc.)
+
+        Returns:
+            BlitzPackageType enum value
+        """
+        from ..play_types.blitz_types import BlitzPackageType
+        import random
+
+        if not context:
+            context = {}
+
+        # First determine if we should blitz at all
+        should_blitz = self._should_send_pressure(situation, context)
+
+        if not should_blitz:
+            # Not blitzing - choose between base 4-man rush or prevent
+            coverage_scheme = context.get('coverage_scheme', {})
+            primary_coverage = coverage_scheme.get('primary_coverage', '') if isinstance(coverage_scheme, dict) else ''
+
+            if primary_coverage == 'Prevent' or situation == 'prevent':
+                return BlitzPackageType.THREE_MAN_RUSH
+            return BlitzPackageType.FOUR_MAN_BASE
+
+        # Build weighted selection for blitz packages
+        weights = self._calculate_blitz_weights(situation, context)
+
+        # Weighted random selection
+        packages = list(weights.keys())
+        weight_values = list(weights.values())
+        total_weight = sum(weight_values)
+
+        if total_weight <= 0:
+            return BlitzPackageType.MIKE_BLITZ  # Fallback
+
+        normalized = [w / total_weight for w in weight_values]
+        selected = random.choices(packages, weights=normalized, k=1)[0]
+
+        return selected
+
+    def _calculate_blitz_weights(self, situation: str, context: Dict[str, Any]) -> Dict:
+        """
+        Calculate probability weights for each blitz package.
+
+        Uses DC philosophy traits:
+        - creative_pressure_usage: Higher = more exotic packages (DB blitzes)
+        - four_man_rush_confidence: Higher = fewer blitzes, simpler packages
+        - aggression: Higher = more 6-man blitzes
+
+        Args:
+            situation: Game situation
+            context: Additional context
+
+        Returns:
+            Dictionary of BlitzPackageType -> weight
+        """
+        from ..play_types.blitz_types import BlitzPackageType
+
+        weights = {}
+
+        # Get philosophy values
+        creativity = self.philosophy.creative_pressure_usage
+        four_man_confidence = self.philosophy.four_man_rush_confidence
+        aggression = self.aggression
+
+        # Base weights for standard LB blitzes (most common)
+        # NFL Reality: ~28% of sacks come from LBs, so LB blitzes need to be very frequent
+        # Lower four_man_confidence = more LB blitzes
+        lb_blitz_factor = 1.0 - four_man_confidence
+
+        # LB blitz weights significantly increased to achieve 28% LB sack target
+        weights[BlitzPackageType.MIKE_BLITZ] = 150 * lb_blitz_factor + 50    # Was 100 * factor + 30
+        weights[BlitzPackageType.SAM_BLITZ] = 100 * lb_blitz_factor + 35     # Was 70 * factor + 20
+        weights[BlitzPackageType.WILL_BLITZ] = 100 * lb_blitz_factor + 35    # Was 70 * factor + 20
+        weights[BlitzPackageType.OLB_BLITZ] = 130 * lb_blitz_factor + 45     # Was 90 * factor + 25
+        weights[BlitzPackageType.A_GAP_BLITZ] = 120 * lb_blitz_factor + 40   # Was 80 * factor + 20
+
+        # 6-man blitzes (LB heavy) - increased frequency
+        if aggression > 0.4:  # Lowered threshold from 0.5
+            weights[BlitzPackageType.DOUBLE_A_GAP] = 60 * aggression   # Was 40
+            weights[BlitzPackageType.DOUBLE_LB] = 50 * aggression      # Was 35
+
+        # DB blitzes require moderate creativity (exotic packages)
+        # NFL Reality: ~9% of sacks come from DBs - reduced to balance LB increase
+        if creativity >= 0.3:
+            weights[BlitzPackageType.CORNER_BLITZ] = creativity * 60 + 12    # Was creativity * 100 + 20
+            weights[BlitzPackageType.SAFETY_BLITZ] = creativity * 70 + 15    # Was creativity * 120 + 25
+            weights[BlitzPackageType.NICKEL_BLITZ] = creativity * 50 + 10    # Was creativity * 80 + 15
+
+        # Ultra-exotic packages (LB+DB combos)
+        if creativity >= 0.4:  # Lowered threshold
+            weights[BlitzPackageType.ZONE_DOG] = creativity * 50 + 10
+            weights[BlitzPackageType.FIRE_ZONE] = creativity * 50 + 10
+            weights[BlitzPackageType.LB_DB_COMBO] = creativity * aggression * 60 + 10
+
+        # Cover-0/Double safety - aggressive DBs blitzing
+        if aggression > 0.5 and creativity > 0.4:
+            weights[BlitzPackageType.COVER_0_BLITZ] = aggression * creativity * 50 + 10
+            weights[BlitzPackageType.DOUBLE_SAFETY] = aggression * creativity * 40 + 8
+
+        # Situational adjustments
+        if situation == 'third_down' or situation == 'third_and_long':
+            # More aggressive on third down
+            for pkg in [BlitzPackageType.CORNER_BLITZ, BlitzPackageType.COVER_0_BLITZ]:
+                if pkg in weights:
+                    weights[pkg] *= 1.5
+
+        elif situation == 'red_zone':
+            # A-gap blitzes effective in tight spaces
+            weights[BlitzPackageType.A_GAP_BLITZ] *= 1.5
+            weights[BlitzPackageType.DOUBLE_A_GAP] = weights.get(BlitzPackageType.DOUBLE_A_GAP, 0) * 1.5
+
+        elif situation == 'fourth_down':
+            # All-out pressure on 4th down
+            for pkg in [BlitzPackageType.COVER_0_BLITZ, BlitzPackageType.DOUBLE_SAFETY]:
+                if pkg in weights:
+                    weights[pkg] *= 2.0
+            # Add Cover-0 even for less aggressive DCs on 4th down
+            if BlitzPackageType.COVER_0_BLITZ not in weights:
+                weights[BlitzPackageType.COVER_0_BLITZ] = 15 * aggression
+
+        # Ensure all weights are positive
+        return {k: max(0.1, v) for k, v in weights.items() if v > 0}
+
     def get_personnel_package(self, offensive_personnel: str, situation: str) -> str:
         """
         Select defensive personnel package to match offensive personnel

@@ -14,7 +14,11 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QColor
 
-from game_cycle_ui.theme import UITheme, TABLE_HEADER_STYLE
+from game_cycle_ui.theme import (
+    UITheme, TABLE_HEADER_STYLE, Colors,
+    PRIMARY_BUTTON_STYLE, SECONDARY_BUTTON_STYLE, WARNING_BUTTON_STYLE,
+    Typography, FontSizes, TextColors, apply_table_style
+)
 
 
 class InjuryReportView(QWidget):
@@ -122,7 +126,8 @@ class InjuryReportView(QWidget):
         team_layout.setContentsMargins(0, 0, 0, 0)
 
         team_title = QLabel("Team")
-        team_title.setStyleSheet("color: #666; font-size: 11px;")
+        team_title.setFont(Typography.CAPTION)
+        team_title.setStyleSheet(f"color: {Colors.MUTED};")
         team_layout.addWidget(team_title)
 
         self.team_combo = QComboBox()
@@ -137,12 +142,13 @@ class InjuryReportView(QWidget):
         slots_layout.setContentsMargins(0, 0, 0, 0)
 
         slots_title = QLabel("IR Return Slots")
-        slots_title.setStyleSheet("color: #666; font-size: 11px;")
+        slots_title.setFont(Typography.CAPTION)
+        slots_title.setStyleSheet(f"color: {Colors.MUTED};")
         slots_layout.addWidget(slots_title)
 
         self.ir_slots_label = QLabel("8/8")
-        self.ir_slots_label.setFont(QFont("Arial", 16, QFont.Bold))
-        self.ir_slots_label.setStyleSheet("color: #2E7D32;")  # Green
+        self.ir_slots_label.setFont(Typography.H4)
+        self.ir_slots_label.setStyleSheet(f"color: {Colors.SUCCESS};")
         slots_layout.addWidget(self.ir_slots_label)
 
         summary_layout.addWidget(slots_frame)
@@ -153,12 +159,13 @@ class InjuryReportView(QWidget):
         active_layout.setContentsMargins(0, 0, 0, 0)
 
         active_title = QLabel("Active Injuries")
-        active_title.setStyleSheet("color: #666; font-size: 11px;")
+        active_title.setFont(Typography.CAPTION)
+        active_title.setStyleSheet(f"color: {Colors.MUTED};")
         active_layout.addWidget(active_title)
 
         self.active_count_label = QLabel("0")
-        self.active_count_label.setFont(QFont("Arial", 16, QFont.Bold))
-        self.active_count_label.setStyleSheet("color: #F57C00;")  # Orange
+        self.active_count_label.setFont(Typography.H4)
+        self.active_count_label.setStyleSheet(f"color: {Colors.WARNING};")
         active_layout.addWidget(self.active_count_label)
 
         summary_layout.addWidget(active_frame)
@@ -169,12 +176,13 @@ class InjuryReportView(QWidget):
         ir_layout.setContentsMargins(0, 0, 0, 0)
 
         ir_title = QLabel("On IR")
-        ir_title.setStyleSheet("color: #666; font-size: 11px;")
+        ir_title.setFont(Typography.CAPTION)
+        ir_title.setStyleSheet(f"color: {Colors.MUTED};")
         ir_layout.addWidget(ir_title)
 
         self.ir_count_label = QLabel("0")
-        self.ir_count_label.setFont(QFont("Arial", 16, QFont.Bold))
-        self.ir_count_label.setStyleSheet("color: #C62828;")  # Red
+        self.ir_count_label.setFont(Typography.H4)
+        self.ir_count_label.setStyleSheet(f"color: {Colors.ERROR};")
         ir_layout.addWidget(self.ir_count_label)
 
         summary_layout.addWidget(ir_frame)
@@ -185,11 +193,12 @@ class InjuryReportView(QWidget):
         week_layout.setContentsMargins(0, 0, 0, 0)
 
         week_title = QLabel("Current Week")
-        week_title.setStyleSheet("color: #666; font-size: 11px;")
+        week_title.setFont(Typography.CAPTION)
+        week_title.setStyleSheet(f"color: {Colors.MUTED};")
         week_layout.addWidget(week_title)
 
         self.week_label = QLabel("1")
-        self.week_label.setFont(QFont("Arial", 16, QFont.Bold))
+        self.week_label.setFont(Typography.H4)
         week_layout.addWidget(self.week_label)
 
         summary_layout.addWidget(week_frame)
@@ -198,7 +207,7 @@ class InjuryReportView(QWidget):
 
         # Refresh button
         refresh_btn = QPushButton("Refresh")
-        refresh_btn.setStyleSheet(UITheme.button_style("secondary"))
+        refresh_btn.setStyleSheet(SECONDARY_BUTTON_STYLE)
         refresh_btn.clicked.connect(self.refresh_requested.emit)
         summary_layout.addWidget(refresh_btn)
 
@@ -214,19 +223,19 @@ class InjuryReportView(QWidget):
 
         # Header button (click to expand/collapse)
         self.ir_rules_toggle = QToolButton()
-        self.ir_rules_toggle.setStyleSheet("""
-            QToolButton {
-                background-color: #1976D2;
+        self.ir_rules_toggle.setStyleSheet(f"""
+            QToolButton {{
+                background-color: {Colors.INFO};
                 color: white;
                 border: none;
                 padding: 8px 12px;
                 font-weight: bold;
                 text-align: left;
                 border-radius: 4px 4px 0 0;
-            }
-            QToolButton:hover {
+            }}
+            QToolButton:hover {{
                 background-color: #1565C0;
-            }
+            }}
         """)
         self.ir_rules_toggle.setText("\u25BC IR Rules & Information")
         self.ir_rules_toggle.setToolButtonStyle(Qt.ToolButtonTextOnly)
@@ -238,14 +247,14 @@ class InjuryReportView(QWidget):
 
         # Content panel (collapsible)
         self.ir_rules_content = QFrame()
-        self.ir_rules_content.setStyleSheet("""
-            QFrame {
+        self.ir_rules_content.setStyleSheet(f"""
+            QFrame {{
                 background-color: #E3F2FD;
-                border: 1px solid #1976D2;
+                border: 1px solid {Colors.INFO};
                 border-top: none;
                 border-radius: 0 0 4px 4px;
                 padding: 12px;
-            }
+            }}
         """)
         content_layout = QVBoxLayout(self.ir_rules_content)
         content_layout.setSpacing(8)
@@ -262,8 +271,9 @@ class InjuryReportView(QWidget):
 
         for title, description in rules:
             rule_label = QLabel(f"<b>{title}:</b> {description}")
+            rule_label.setFont(Typography.BODY)
             rule_label.setWordWrap(True)
-            rule_label.setStyleSheet("color: #333; font-size: 12px; background: transparent; border: none;")
+            rule_label.setStyleSheet("color: #333; background: transparent; border: none;")
             content_layout.addWidget(rule_label)
 
         self.ir_rules_content.setVisible(False)  # Start collapsed
@@ -292,9 +302,11 @@ class InjuryReportView(QWidget):
             "Player", "Pos", "Injury", "Severity", "Weeks", "Return", "Status", "Action"
         ])
 
+        # Apply standard table styling
+        apply_table_style(self.active_table)
+
         # Configure columns
         header = self.active_table.horizontalHeader()
-        header.setStyleSheet(TABLE_HEADER_STYLE)
         header.setSectionResizeMode(0, QHeaderView.Stretch)  # Player
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # Pos
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Injury
@@ -304,11 +316,6 @@ class InjuryReportView(QWidget):
         header.setSectionResizeMode(6, QHeaderView.ResizeToContents)  # Status
         header.setSectionResizeMode(7, QHeaderView.Fixed)  # Action
         header.resizeSection(7, 100)
-
-        self.active_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.active_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.active_table.setAlternatingRowColors(True)
-        self.active_table.verticalHeader().setVisible(False)
 
         table_layout.addWidget(self.active_table)
         parent_layout.addWidget(table_group, stretch=1)
@@ -324,9 +331,11 @@ class InjuryReportView(QWidget):
             "Player", "Pos", "Injury", "Placed", "Eligible", "Status", "Action"
         ])
 
+        # Apply standard table styling
+        apply_table_style(self.ir_table)
+
         # Configure columns
         header = self.ir_table.horizontalHeader()
-        header.setStyleSheet(TABLE_HEADER_STYLE)
         header.setSectionResizeMode(0, QHeaderView.Stretch)  # Player
         header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # Pos
         header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Injury
@@ -335,11 +344,6 @@ class InjuryReportView(QWidget):
         header.setSectionResizeMode(5, QHeaderView.ResizeToContents)  # Status
         header.setSectionResizeMode(6, QHeaderView.Fixed)  # Action
         header.resizeSection(6, 100)
-
-        self.ir_table.setEditTriggers(QTableWidget.NoEditTriggers)
-        self.ir_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.ir_table.setAlternatingRowColors(True)
-        self.ir_table.verticalHeader().setVisible(False)
 
         table_layout.addWidget(self.ir_table)
         parent_layout.addWidget(table_group, stretch=1)
@@ -352,7 +356,7 @@ class InjuryReportView(QWidget):
             "IR Return Slots: 8 per season"
         )
         instructions.setWordWrap(True)
-        instructions.setStyleSheet("color: #666; font-style: italic; padding: 8px;")
+        instructions.setStyleSheet(f"color: {Colors.MUTED}; font-style: italic; padding: 8px;")
         parent_layout.addWidget(instructions)
 
     def _update_summary(self, data: Dict[str, Any]):
@@ -363,11 +367,11 @@ class InjuryReportView(QWidget):
         self.ir_slots_label.setText(f"{slots}/{self.IR_RETURN_SLOTS_MAX}")
 
         if slots == 0:
-            self.ir_slots_label.setStyleSheet("color: #C62828;")  # Red - none
+            self.ir_slots_label.setStyleSheet(f"color: {Colors.ERROR};")
         elif slots <= 2:
-            self.ir_slots_label.setStyleSheet("color: #F57C00;")  # Orange - low
+            self.ir_slots_label.setStyleSheet(f"color: {Colors.WARNING};")
         else:
-            self.ir_slots_label.setStyleSheet("color: #2E7D32;")  # Green - plenty
+            self.ir_slots_label.setStyleSheet(f"color: {Colors.SUCCESS};")
 
         # Counts
         active_count = len(data.get("active_injuries", []))
@@ -438,10 +442,10 @@ class InjuryReportView(QWidget):
         ir_eligible = injury.weeks_out >= self.IR_MINIMUM_GAMES
         if ir_eligible:
             status_text = "IR Eligible"
-            status_color = "#2E7D32"  # Green
+            status_color = Colors.SUCCESS
         else:
             status_text = f"< {self.IR_MINIMUM_GAMES} weeks"
-            status_color = "#666666"  # Gray
+            status_color = Colors.MUTED
         status_item = QTableWidgetItem(status_text)
         status_item.setTextAlignment(Qt.AlignCenter)
         status_item.setForeground(QColor(status_color))
@@ -458,16 +462,12 @@ class InjuryReportView(QWidget):
             place_btn.setEnabled(ir_eligible)
 
             if ir_eligible:
-                place_btn.setStyleSheet(
-                    "QPushButton { background-color: #F57C00; color: white; "
-                    "border-radius: 3px; padding: 4px 12px; font-weight: bold; }"
-                    "QPushButton:hover { background-color: #E65100; }"
-                )
+                place_btn.setStyleSheet(WARNING_BUTTON_STYLE)
                 place_btn.setToolTip("Place on IR")
             else:
                 place_btn.setStyleSheet(
-                    "QPushButton { background-color: #ccc; color: #666; "
-                    "border-radius: 3px; padding: 4px 12px; }"
+                    f"QPushButton {{ background-color: {Colors.DISABLED}; color: {Colors.MUTED}; "
+                    f"border-radius: 3px; padding: 4px 12px; }}"
                 )
                 place_btn.setToolTip(f"Injury must be {self.IR_MINIMUM_GAMES}+ weeks")
 
@@ -539,16 +539,16 @@ class InjuryReportView(QWidget):
 
         if can_activate and has_slots and has_roster_space:
             status_text = "Eligible"
-            status_color = "#2E7D32"  # Green
+            status_color = Colors.SUCCESS
         elif can_activate and has_slots and not has_roster_space:
             status_text = "Roster Full"
-            status_color = "#F57C00"  # Orange
+            status_color = Colors.WARNING
         elif can_activate and not has_slots:
             status_text = "No Slots"
-            status_color = "#C62828"  # Red
+            status_color = Colors.ERROR
         else:
             status_text = f"Week {eligible_week}"
-            status_color = "#666666"  # Gray
+            status_color = Colors.MUTED
 
         status_item = QTableWidgetItem(status_text)
         status_item.setTextAlignment(Qt.AlignCenter)
@@ -567,28 +567,24 @@ class InjuryReportView(QWidget):
             activate_btn.setEnabled(can_use)
 
             if can_use:
-                activate_btn.setStyleSheet(
-                    "QPushButton { background-color: #2E7D32; color: white; "
-                    "border-radius: 3px; padding: 4px 12px; }"
-                    "QPushButton:hover { background-color: #1B5E20; }"
-                )
+                activate_btn.setStyleSheet(PRIMARY_BUTTON_STYLE)
                 activate_btn.setToolTip("Activate from IR (uses 1 slot)")
             elif not can_activate:
                 activate_btn.setStyleSheet(
-                    "QPushButton { background-color: #ccc; color: #666; "
-                    "border-radius: 3px; padding: 4px 12px; }"
+                    f"QPushButton {{ background-color: {Colors.DISABLED}; color: {Colors.MUTED}; "
+                    f"border-radius: 3px; padding: 4px 12px; }}"
                 )
                 activate_btn.setToolTip(f"Not eligible until Week {eligible_week}")
             elif not has_roster_space:
                 activate_btn.setStyleSheet(
-                    "QPushButton { background-color: #ccc; color: #666; "
-                    "border-radius: 3px; padding: 4px 12px; }"
+                    f"QPushButton {{ background-color: {Colors.DISABLED}; color: {Colors.MUTED}; "
+                    f"border-radius: 3px; padding: 4px 12px; }}"
                 )
                 activate_btn.setToolTip(f"Roster full ({self._roster_count}/53). Cut a player first.")
             else:
                 activate_btn.setStyleSheet(
-                    "QPushButton { background-color: #ccc; color: #666; "
-                    "border-radius: 3px; padding: 4px 12px; }"
+                    f"QPushButton {{ background-color: {Colors.DISABLED}; color: {Colors.MUTED}; "
+                    f"border-radius: 3px; padding: 4px 12px; }}"
                 )
                 activate_btn.setToolTip("No IR return slots remaining")
 
@@ -615,20 +611,22 @@ class InjuryReportView(QWidget):
 
         message_item = QTableWidgetItem(message)
         message_item.setTextAlignment(Qt.AlignCenter)
-        message_item.setForeground(QColor("#666"))
-        message_item.setFont(QFont("Arial", 12, QFont.Normal, True))  # Italic
+        message_item.setForeground(QColor(Colors.MUTED))
+        italic_font = Typography.BODY
+        italic_font.setItalic(True)
+        message_item.setFont(italic_font)
 
         table.setItem(0, 0, message_item)
 
     def _get_severity_color(self, severity: str) -> str:
         """Get color for injury severity."""
         severity_colors = {
-            "minor": "#1976D2",      # Blue
-            "moderate": "#F57C00",   # Orange
-            "severe": "#C62828",     # Red
-            "season_ending": "#C62828",  # Red
+            "minor": Colors.INFO,
+            "moderate": Colors.WARNING,
+            "severe": Colors.ERROR,
+            "season_ending": Colors.ERROR,
         }
-        return severity_colors.get(severity.lower(), "#666666")
+        return severity_colors.get(severity.lower(), Colors.MUTED)
 
     def _on_team_changed(self, index: int):
         """Handle team selection change."""

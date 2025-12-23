@@ -32,6 +32,9 @@ class PlayerStats:
     rushing_attempts: int = 0  # Database-compatible name (was: carries)
     rushing_yards: int = 0
     yards_after_contact: int = 0  # Yards gained after initial defender contact (RB power/elusiveness)
+    rushing_long: int = 0
+    rushing_20_plus: int = 0  # Count of rushes 20+ yards (explosive plays)
+    rushing_fumbles: int = 0  # Fumbles on rushing plays
 
     # Passing stats (QB)
     passing_attempts: int = 0  # Database-compatible name (was: pass_attempts)
@@ -52,8 +55,10 @@ class PlayerStats:
     receiving_tds: int = 0
     drops: int = 0
     receiving_long: int = 0
+    receiving_20_plus: int = 0  # Count of receptions 20+ yards (explosive plays)
+    receiving_fumbles: int = 0  # Fumbles on receiving plays
     yac: int = 0
-    
+
     # Blocking stats (OL)
     blocks_made: int = 0
     blocks_missed: int = 0
@@ -345,7 +350,7 @@ class PlayerStats:
         self.special_teams_snaps += 1
 
     def get_total_stats(self) -> Dict[str, int]:
-        """Get all non-zero stats as dictionary"""
+        """Get all non-zero stats as dictionary, including snap counts"""
         # Use canonical stat fields from enum
         stat_fields = ALL_STAT_FIELDS
 
@@ -353,6 +358,17 @@ class PlayerStats:
         for field_name, value in self.__dict__.items():
             if field_name in stat_fields and isinstance(value, (int, float)) and value != 0:
                 stats[field_name] = value
+
+        # CRITICAL FIX: Always include snap counts (even if not in ALL_STAT_FIELDS)
+        # Players with ONLY snaps (no other stats) still played and need to be tracked
+        # This ensures rotational players who don't get stat attribution still pass filters
+        if self.offensive_snaps > 0:
+            stats['offensive_snaps'] = self.offensive_snaps
+        if self.defensive_snaps > 0:
+            stats['defensive_snaps'] = self.defensive_snaps
+        if self.special_teams_snaps > 0:
+            stats['special_teams_snaps'] = self.special_teams_snaps
+
         return stats
 
     def get_total_yards(self) -> int:
@@ -739,7 +755,7 @@ class PlayerStatsAccumulator:
     # Fields that use max() instead of sum() when merging
     _MERGE_MAX_FIELDS = frozenset({
         'longest_field_goal', 'run_blocking_grade', 'pass_blocking_efficiency',
-        'receiving_long'
+        'receiving_long', 'rushing_long'
     })
 
     # PFF-critical stats to trace for grading audit

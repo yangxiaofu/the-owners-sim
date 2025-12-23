@@ -18,6 +18,8 @@ import random
 import sqlite3
 import json
 
+from src.utils.player_field_extractors import extract_primary_position
+
 
 # ============================================
 # Constants - Position Retirement Thresholds
@@ -235,7 +237,7 @@ class RetirementDecisionEngine:
         """
         # Parse player data
         player_id = player_dict['player_id']
-        position = self._get_primary_position(player_dict)
+        position = extract_primary_position(player_dict.get('positions'), default='WR', uppercase=True)
         age = self._calculate_age(player_dict.get('birthdate'))
         ovr = self._get_overall(player_dict)
         team_id = player_dict.get('team_id', 0)
@@ -343,7 +345,7 @@ class RetirementDecisionEngine:
             will_retire = random.random() < probability
 
             player_name = self._get_player_name(player)
-            position = self._get_primary_position(player)
+            position = extract_primary_position(player.get('positions'), default='WR', uppercase=True)
             age = self._calculate_age(player.get('birthdate'))
             ovr = self._get_overall(player)
             ovr_previous = self._get_previous_overall(player['player_id'])
@@ -394,28 +396,6 @@ class RetirementDecisionEngine:
         if group:
             return POSITION_RETIREMENT_AGES.get(group, DEFAULT_THRESHOLDS)
         return DEFAULT_THRESHOLDS
-
-    def _get_primary_position(self, player_dict: Dict[str, Any]) -> str:
-        """Extract primary position from player dict."""
-        positions = player_dict.get('positions', [])
-
-        # Handle JSON string
-        if isinstance(positions, str):
-            try:
-                positions = json.loads(positions)
-            except (json.JSONDecodeError, TypeError):
-                positions = [positions]
-
-        # Handle single position string
-        if isinstance(positions, str):
-            return positions.upper()
-
-        # Return first position or default
-        if positions and len(positions) > 0:
-            pos = positions[0]
-            if isinstance(pos, str):
-                return pos.upper()
-        return 'WR'  # Default fallback
 
     def _calculate_age(self, birthdate: Optional[str]) -> int:
         """Calculate age from birthdate string."""
