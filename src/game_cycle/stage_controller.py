@@ -223,9 +223,8 @@ class StageController:
         if skip_preseason:
             starting_stage = StageType.REGULAR_WEEK_1
         else:
-            # Start at training camp to go through preseason weeks
-            # (OFFSEASON_PRESEASON_W1/W2/W3 are part of offseason flow now)
-            starting_stage = StageType.OFFSEASON_TRAINING_CAMP
+            # Start at first preseason game (user confirmed this is desired behavior)
+            starting_stage = StageType.OFFSEASON_PRESEASON_W1
 
         # Create the starting stage
         self._current_stage = Stage(
@@ -365,8 +364,10 @@ class StageController:
         If advancing to a playoff stage, pre-seeds the bracket so matchups
         are visible before games are executed.
 
-        If advancing to a new season (waiver wire → Week 1), increments the
-        season SSOT and verifies standings are initialized.
+        If advancing from waiver wire to Week 1, checks if games exist for
+        the current season. Only increments the season SSOT if no games exist
+        (true season transition). This handles both initial dynasty setup
+        and end-of-season transitions correctly.
 
         Returns:
             The new current stage, or None if cannot advance
@@ -380,22 +381,41 @@ class StageController:
         if next_stage_temp is None:
             return None
 
-        # Check if we're transitioning to a new season (waiver wire → Week 1)
-        is_new_season = (
+        # Check if we're transitioning from waiver wire to Week 1
+        is_waiver_to_week1 = (
             current.stage_type == StageType.OFFSEASON_WAIVER_WIRE and
             next_stage_temp.stage_type == StageType.REGULAR_WEEK_1
         )
 
-        # If starting new season, increment the SSOT first
-        if is_new_season:
-            logger.info(f"Transitioning to new season, incrementing SSOT from {self._season} to {self._season + 1}")
-            self._season = self._season + 1  # Increment cache
-
-            # Update SSOT in database BEFORE creating next stage
-            self._dynasty_state_api.update_season(
-                dynasty_id=self._dynasty_id,
-                season=self._season
+        # Determine if we should increment the season year
+        # Only increment if games DO NOT exist for current season's Week 1
+        # This handles both:
+        # 1. Initial dynasty setup: offseason → first regular season (games already scheduled for current year)
+        # 2. End of season: offseason → new regular season (need to increment to next year)
+        is_new_season = False
+        if is_waiver_to_week1:
+            # Check if Week 1 games exist for current season
+            current_season_games = self._unified_api.events_get_games_by_week(
+                season=self._season,
+                week=1,
+                season_type='regular_season'
             )
+
+            if len(current_season_games) > 0:
+                # Games exist for current season - stay in current year (initial dynasty setup)
+                logger.info(f"Week 1 games found for season {self._season}, staying in current season")
+                is_new_season = False
+            else:
+                # No games for current season - increment to next year (true season transition)
+                logger.info(f"Transitioning to new season, incrementing SSOT from {self._season} to {self._season + 1}")
+                self._season = self._season + 1
+                is_new_season = True
+
+                # Update SSOT in database BEFORE creating next stage
+                self._dynasty_state_api.update_season(
+                    dynasty_id=self._dynasty_id,
+                    season=self._season
+                )
 
         # Now create the next stage with the correct season from SSOT
         next_stage = Stage(
@@ -615,7 +635,14 @@ class StageController:
 
         context = self._build_context()
 
-        if stage.phase == SeasonPhase.REGULAR_SEASON:
+        # Preseason game stages - return game matchup preview (not offseason preview)
+        if stage.stage_type in (
+            StageType.OFFSEASON_PRESEASON_W1,
+            StageType.OFFSEASON_PRESEASON_W2,
+            StageType.OFFSEASON_PRESEASON_W3
+        ):
+            return self._get_preseason_game_preview(stage, context)
+        elif stage.phase == SeasonPhase.REGULAR_SEASON:
             return self._regular_season_handler.get_week_preview(stage, context)
         elif stage.phase == SeasonPhase.PLAYOFFS:
             return self._playoff_handler.get_round_preview(stage, context)
@@ -627,6 +654,85 @@ class StageController:
                 "phase": stage.phase.name,
                 "events": [],
             }
+
+    def _get_preseason_game_preview(self, stage: Stage, context: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Get preview of preseason game week with matchups.
+
+        Similar to regular season preview but queries preseason games.
+
+        Args:
+            stage: Preseason stage (OFFSEASON_PRESEASON_W1/W2/W3)
+            context: Execution context
+
+        Returns:
+            Preview with matchups list for UI display
+        """
+        # Map stage to week number
+        week_map = {
+            StageType.OFFSEASON_PRESEASON_W1: 1,
+            StageType.OFFSEASON_PRESEASON_W2: 2,
+            StageType.OFFSEASON_PRESEASON_W3: 3
+        }
+        week_number = week_map.get(stage.stage_type, 1)
+
+        # Query preseason games for this week
+        games = self._unified_api.events_get_games_by_week(
+            season=stage.season_year,
+            week=week_number,
+            season_type='preseason'
+        )
+
+        # Build matchups from games
+        from team_management.teams.team_loader import get_team_by_id
+        matchups = []
+
+        for game_data in games:
+            # events_get_games_by_week() returns flat dict with team IDs at top level
+            home_team_id = game_data.get("home_team_id")
+            away_team_id = game_data.get("away_team_id")
+
+            home_team = get_team_by_id(home_team_id)
+            away_team = get_team_by_id(away_team_id)
+
+            # Check if game has been played (scores at top level of game_data)
+            home_score = game_data.get("home_score")
+            away_score = game_data.get("away_score")
+            is_played = home_score is not None
+
+            matchup = {
+                "game_id": game_data.get("game_id"),
+                "home_team": {
+                    "team_id": home_team_id,
+                    "name": home_team.full_name if home_team else f"Team {home_team_id}",
+                    "abbreviation": home_team.abbreviation if home_team else "???",
+                    "record": "0-0"  # Preseason records aren't tracked
+                },
+                "away_team": {
+                    "team_id": away_team_id,
+                    "name": away_team.full_name if away_team else f"Team {away_team_id}",
+                    "abbreviation": away_team.abbreviation if away_team else "???",
+                    "record": "0-0"
+                },
+                "is_played": is_played,
+                # Empty featured players for preseason (can enhance later if desired)
+                "home_featured": [],
+                "away_featured": []
+            }
+
+            # Add scores if game has been played
+            if is_played:
+                matchup["home_score"] = home_score
+                matchup["away_score"] = away_score
+
+            matchups.append(matchup)
+
+        return {
+            "week": week_number,
+            "matchups": matchups,
+            "game_count": len(games),
+            "played_count": sum(1 for m in matchups if m["is_played"]),
+        }
 
     def get_standings(self) -> List[Dict[str, Any]]:
         """Get current standings for UI display with conference/division info.

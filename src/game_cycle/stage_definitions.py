@@ -67,13 +67,17 @@ class StageType(Enum):
     OFFSEASON_TRAINING_CAMP = auto()      # Training camp - player progression (90 players)
     OFFSEASON_PRESEASON_W1 = auto()       # Preseason Week 1 - full game simulation (no cuts)
     OFFSEASON_PRESEASON_W2 = auto()       # Preseason Week 2 - full game simulation (no cuts)
-    OFFSEASON_PRESEASON_W3 = auto()       # Preseason Week 3 - game + final cuts (90 → 53)
+    OFFSEASON_PRESEASON_W3 = auto()       # Preseason Week 3 - full game simulation (no cuts)
+    OFFSEASON_ROSTER_CUTS = auto()        # Final roster cuts (90 → 53)
     OFFSEASON_WAIVER_WIRE = auto()        # Process waiver claims for cut players
 
     @classmethod
     def get_phase(cls, stage: "StageType") -> SeasonPhase:
         """Get the season phase for a given stage."""
-        if stage.name.startswith("PRESEASON"):
+        # Check for offseason preseason weeks first (before generic PRESEASON check)
+        if stage.name.startswith("OFFSEASON_PRESEASON"):
+            return SeasonPhase.PRESEASON
+        elif stage.name.startswith("PRESEASON"):
             return SeasonPhase.PRESEASON
         elif stage.name.startswith("REGULAR"):
             return SeasonPhase.REGULAR_SEASON
@@ -152,7 +156,8 @@ class Stage:
                 "OFFSEASON_TRAINING_CAMP": 27,     # Training camp (no social posts, use draft week)
                 "OFFSEASON_PRESEASON_W1": 27,      # Preseason W1 (no posts yet, use draft week)
                 "OFFSEASON_PRESEASON_W2": 28,      # Preseason W2 (no posts yet, use cuts week)
-                "OFFSEASON_PRESEASON_W3": 28,      # Preseason W3 + Final roster cuts
+                "OFFSEASON_PRESEASON_W3": 28,      # Preseason W3 (games only)
+                "OFFSEASON_ROSTER_CUTS": 28,       # Final roster cuts (same week as W3)
                 "OFFSEASON_WAIVER_WIRE": 29,       # Waiver wire claims
             }
             return offseason_week_map.get(name)
@@ -171,10 +176,8 @@ class Stage:
             return f"Preseason Week {week}"
         elif name.startswith("OFFSEASON_PRESEASON_W"):
             # OFFSEASON_PRESEASON_W1 -> "Preseason Week 1"
-            # OFFSEASON_PRESEASON_W3 -> "Preseason Week 3 & Final Cuts"
+            # OFFSEASON_PRESEASON_W3 -> "Preseason Week 3"
             week = name.replace("OFFSEASON_PRESEASON_W", "")
-            if week == "3":
-                return "Preseason Week 3 & Final Cuts"
             return f"Preseason Week {week}"
         elif name.startswith("OFFSEASON_"):
             # Convert OFFSEASON_FREE_AGENCY -> "Free Agency"
@@ -246,7 +249,8 @@ OFFSEASON_STAGES = [
     StageType.OFFSEASON_TRAINING_CAMP,    # Training camp - player progression (90 players)
     StageType.OFFSEASON_PRESEASON_W1,     # Preseason Week 1 - game simulation (no cuts)
     StageType.OFFSEASON_PRESEASON_W2,     # Preseason Week 2 - game simulation (no cuts)
-    StageType.OFFSEASON_PRESEASON_W3,     # Preseason Week 3 - game + final cuts (90 → 53)
+    StageType.OFFSEASON_PRESEASON_W3,     # Preseason Week 3 - game simulation (no cuts)
+    StageType.OFFSEASON_ROSTER_CUTS,      # Final roster cuts (90 → 53)
     StageType.OFFSEASON_WAIVER_WIRE,      # Process waiver claims for cut players
 ]
 
@@ -262,6 +266,7 @@ INTERACTIVE_OFFSEASON_STAGES = frozenset({
     StageType.OFFSEASON_PRESEASON_W1,
     StageType.OFFSEASON_PRESEASON_W2,
     StageType.OFFSEASON_PRESEASON_W3,
+    StageType.OFFSEASON_ROSTER_CUTS,
     StageType.OFFSEASON_WAIVER_WIRE,
 })
 

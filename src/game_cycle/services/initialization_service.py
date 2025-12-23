@@ -2,8 +2,7 @@
 Game Cycle Dynasty Initialization Service.
 
 Initializes game_cycle.db with player and contract data from JSON files.
-This is separate from the main.py DynastyInitializationService to maintain
-database separation between main.py (nfl_simulation.db) and main2.py (game_cycle.db).
+This service is used by main2.py which uses game_cycle.db exclusively.
 
 Architecture:
 - Loads player rosters from src/data/players/team_*.json
@@ -40,6 +39,7 @@ from .draft_service import DraftService
 from .schedule_service import ScheduleService
 from .primetime_scheduler import PrimetimeScheduler
 from .trade_service import TradeService
+from .personality_generator import PersonalityGenerator
 
 # Relative imports - game_cycle database
 from ..database.connection import GameCycleDatabase
@@ -144,6 +144,9 @@ class GameCycleInitializer:
 
             # 10. Initialize rivalries for schedule prioritization
             self._initialize_rivalries()
+
+            # 11. Initialize social media personalities (Milestone 14)
+            self._initialize_personalities()
 
             self._logger.info(
                 f"✅ Dynasty '{self._dynasty_id}' initialized successfully "
@@ -322,7 +325,8 @@ class GameCycleInitializer:
                         team_id=team_id,
                         positions=real_player.positions,
                         attributes=real_player.attributes,
-                        birthdate=real_player.birthdate
+                        birthdate=real_player.birthdate,
+                        years_pro=real_player.years_pro
                     )
 
                     # Add to team roster
@@ -370,7 +374,8 @@ class GameCycleInitializer:
                         team_id=0,  # Free agents
                         positions=free_agent.positions,
                         attributes=free_agent.attributes,
-                        birthdate=free_agent.birthdate
+                        birthdate=free_agent.birthdate,
+                        years_pro=free_agent.years_pro
                     )
 
                     # Note: Do NOT add to team_rosters - free agents not on team
@@ -476,7 +481,8 @@ class GameCycleInitializer:
         team_id: int,
         positions: List[str],
         attributes: Dict[str, Any],
-        birthdate: Optional[str] = None
+        birthdate: Optional[str] = None,
+        years_pro: int = 0
     ):
         """
         Insert player into database.
@@ -492,6 +498,7 @@ class GameCycleInitializer:
             positions: List of positions player can play
             attributes: Dict of player attributes/ratings
             birthdate: Optional birthdate (YYYY-MM-DD)
+            years_pro: Years of professional experience
         """
         # Ensure durability attribute exists (for injury system)
         if 'durability' not in attributes:
@@ -503,8 +510,8 @@ class GameCycleInitializer:
             INSERT INTO players (
                 dynasty_id, player_id, source_player_id,
                 first_name, last_name, number, team_id,
-                positions, attributes, birthdate
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                positions, attributes, birthdate, years_pro
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             self._dynasty_id,
             player_id,
@@ -515,7 +522,8 @@ class GameCycleInitializer:
             team_id,
             json.dumps(positions),
             json.dumps(attributes),
-            birthdate
+            birthdate,
+            years_pro
         ))
 
     def _add_to_roster(
@@ -645,7 +653,7 @@ class GameCycleInitializer:
 
     def _generate_schedule_for_dynasty(self):
         """
-        Generate regular season schedule for this dynasty.
+        Generate regular season and preseason schedules for this dynasty.
 
         Creates game events in the events table with proper dynasty_id,
         then assigns primetime slots (TNF, SNF, MNF) via PrimetimeScheduler.
@@ -683,6 +691,15 @@ class GameCycleInitializer:
                 )
             finally:
                 db.close()
+
+            # Generate preseason schedule (3 weeks × 16 games = 48 games)
+            from .schedule_coordinator import ScheduleCoordinator
+            coordinator = ScheduleCoordinator(self._db_path, self._dynasty_id)
+            preseason_count = coordinator.ensure_preseason_schedule(season=self._season)
+            self._logger.info(
+                f"✅ Generated {self._season} preseason schedule for dynasty '{self._dynasty_id}': "
+                f"{preseason_count} games"
+            )
 
         except Exception as e:
             # Non-critical - schedule can be generated later
@@ -767,6 +784,39 @@ class GameCycleInitializer:
         except Exception as e:
             # Non-critical - rivalries can be initialized later
             self._logger.warning(f"⚠️ Rivalry initialization skipped: {e}")
+
+    def _initialize_personalities(self):
+        """
+        Initialize social media personalities for the dynasty.
+
+        Creates:
+        - 320 fans (10 per team across different archetypes)
+        - 32 beat reporters (1 per team)
+        - 6 hot-take analysts (league-wide)
+        - 4 stats analysts (league-wide)
+        Total: 362 personalities
+
+        Personalities are used for social media post generation (Milestone 14).
+        """
+        try:
+            db = GameCycleDatabase(self._db_path)
+            personality_gen = PersonalityGenerator(db, self._dynasty_id)
+
+            counts = personality_gen.generate_all_personalities()
+            total = sum(counts.values())
+
+            self._logger.info(
+                f"✅ Initialized social personalities for dynasty '{self._dynasty_id}': "
+                f"{counts['fans']} fans, {counts['beat_reporters']} beat reporters, "
+                f"{counts['hot_takes']} hot takes, {counts['stats_analysts']} stats analysts "
+                f"({total} total)"
+            )
+
+            db.close()
+
+        except Exception as e:
+            # Non-critical - personalities can be initialized later
+            self._logger.warning(f"⚠️ Social personality initialization skipped: {e}")
 
     # Class-level cache for durability config
     _durability_config: Optional[Dict[str, List[int]]] = None
